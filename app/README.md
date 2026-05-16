@@ -10,7 +10,9 @@ Gleam is compiled inside the same Mix project for small, correctness-heavy
 policy decisions. Elixir keeps ownership of HTTP, Phoenix, processes, PubSub,
 and mutable state; Gleam modules under `src/wardwright` own pure structured
 output, history-threshold, and alert-queue classifications behind Elixir wrapper
-modules in `lib/wardwright/policy`.
+modules in `lib/wardwright/policy`. Elixir mirrors for selected pure cores live
+under `src/wardwright/elixir_reference` as test-loaded executable documentation;
+they are not compiled into runtime paths.
 
 ## Run
 
@@ -117,9 +119,6 @@ alert enqueue/backpressure classification, normalized action/result metadata,
 and route-planner strategy/reason classification. Keep process ownership,
 open config-map parsing, provider boundaries, and side-effecting delivery in
 Elixir unless a later spike proves a better split.
-Set `WARDWRIGHT_POLICY_CORE=elixir`, `gleam`, or `compare` to select the runtime
-decision implementation; `compare` executes both implementations and raises on
-semantic drift.
 
 The old Go and Rust backend prototypes remain in git history as bakeoff
 evidence, but they are no longer part of the live tree.

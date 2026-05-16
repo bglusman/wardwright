@@ -171,13 +171,12 @@ The first goal is a dense operational workbench, not a marketing dashboard.
    Initial Gleam decision modules now live under `app/src/wardwright` and are
    called from the live Elixir path through wrapper modules. They currently own
    structured-output guard-loop arbitration, recent-history threshold
-   classification, and alert enqueue/backpressure classification. Next
-   candidates are TTSR action arbitration, state-machine transition selection,
-   and deterministic cache eviction.
-   For now, each Gleam core should keep an Elixir equivalent behind
-   `WARDWRIGHT_POLICY_CORE=elixir|gleam|compare` so the project can measure
-   whether Gleam's type-safety benefit remains worth the extra boundary as
-   Elixir's set-theoretic type system matures.
+   classification, alert enqueue/backpressure classification, action/result
+   metadata, and route selector decisions. Runtime code should call the Gleam
+   cores directly through thin Elixir boundary wrappers rather than carrying
+   Elixir fallback adapters. When an Elixir mirror helps readers or reviewers,
+   keep it as executable reference documentation under
+   `app/src/wardwright/elixir_reference` and load it only from tests.
 
 4. **Runtime Isolation Demo**
    Build model/session dynamic supervisors in the primary Elixir backend and

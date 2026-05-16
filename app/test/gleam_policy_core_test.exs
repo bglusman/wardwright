@@ -1,7 +1,8 @@
 defmodule Wardwright.GleamPolicyCoreTest do
   use ExUnit.Case, async: true
 
-  alias Wardwright.Policy.CoreRuntime
+  Code.require_file("../src/wardwright/elixir_reference/policy_core_reference.exs", __DIR__)
+  alias Wardwright.PolicyCoreReference
 
   test "structured core classifies successful guard-loop outcomes" do
     assert Wardwright.Policy.StructuredCore.success_status(0) == "completed"
@@ -217,211 +218,162 @@ defmodule Wardwright.GleamPolicyCoreTest do
              })
   end
 
-  test "Elixir and Gleam policy cores remain equivalent for representative decisions" do
-    assert in_core(:compare, fn ->
-             [
-               Wardwright.Policy.StructuredCore.success_status(1),
-               Wardwright.Policy.StructuredCore.loop_outcome_status(
-                 "structured-json",
-                 1,
-                 3,
-                 1,
-                 2
-               ),
-               Wardwright.Policy.HistoryCore.count_decision([true, false, true],
-                 threshold: 2,
-                 recent_limit: 3,
-                 working_set_size: 3,
-                 scope: "session_id"
-               ),
-               Wardwright.Policy.AlertCore.decide_enqueue(
-                 %{"capacity" => 1, "on_full" => "fail_closed"},
-                 1,
-                 false,
-                 %{"idempotency_key" => "key-1", "rule_id" => "alert-rule"}
-               ),
-               Wardwright.Policy.Action.normalize(%{
-                 "rule_id" => "block-private",
-                 "kind" => "request_guard",
-                 "action" => "block",
-                 "message" => "private data blocked"
-               }),
-               Wardwright.Policy.Action.normalize_result(%{
-                 "engine" => "primitive",
-                 "status" => "ok",
-                 "actions" => [
-                   %{"rule_id" => "local-only", "action" => "restrict_routes"},
-                   %{"rule_id" => "strong-model", "action" => "switch_model"}
+  test "Gleam policy cores produce representative route and policy decisions" do
+    assert Wardwright.Policy.StructuredCore.success_status(1) == "completed_after_guard"
+
+    assert {:triggered, "session_id", 2, 2, 3, 3} =
+             Wardwright.Policy.HistoryCore.count_decision([true, false, true],
+               threshold: 2,
+               recent_limit: 3,
+               working_set_size: 3,
+               scope: "session_id"
+             )
+
+    assert %{outcome: "failed_closed"} =
+             Wardwright.Policy.AlertCore.decide_enqueue(
+               %{"capacity" => 1, "on_full" => "fail_closed"},
+               1,
+               false,
+               %{"idempotency_key" => "key-1", "rule_id" => "alert-rule"}
+             )
+
+    assert %{"action" => "block", "effect_type" => "terminal"} =
+             Wardwright.Policy.Action.normalize(%{
+               "rule_id" => "block-private",
+               "kind" => "request_guard",
+               "action" => "block",
+               "message" => "private data blocked"
+             })
+
+    assert %{route_type: "dispatcher", selected_model: "medium/model"} =
+             Wardwright.RoutePlanner.select(
+               %{
+                 "synthetic_model" => "unit-model",
+                 "version" => "unit-version",
+                 "targets" => [
+                   %{"model" => "small/model", "context_window" => 16},
+                   %{"model" => "medium/model", "context_window" => 64},
+                   %{"model" => "large/model", "context_window" => 256}
+                 ],
+                 "route_root" => "fit-dispatcher",
+                 "dispatchers" => [
+                   %{
+                     "id" => "fit-dispatcher",
+                     "models" => ["small/model", "medium/model", "large/model"]
+                   }
                  ]
-               }),
-               Wardwright.RoutePlanner.select(
-                 %{
-                   "synthetic_model" => "unit-model",
-                   "version" => "unit-version",
-                   "targets" => [
-                     %{"model" => "cheap/model", "context_window" => 128},
-                     %{"model" => "strong/model", "context_window" => 128}
-                   ],
-                   "alloys" => [
-                     %{
-                       "id" => "blend",
-                       "strategy" => "all",
-                       "constituents" => ["cheap/model", "strong/model"]
-                     }
-                   ]
-                 },
-                 64
-               ),
-               Wardwright.RoutePlanner.select(
-                 %{
-                   "synthetic_model" => "unit-model",
-                   "version" => "unit-version",
-                   "targets" => [
-                     %{"model" => "small/model", "context_window" => 16},
-                     %{"model" => "medium/model", "context_window" => 64},
-                     %{"model" => "large/model", "context_window" => 256}
-                   ],
-                   "route_root" => "fit-dispatcher",
-                   "dispatchers" => [
-                     %{
-                       "id" => "fit-dispatcher",
-                       "models" => ["small/model", "medium/model", "large/model"]
-                     }
-                   ]
-                 },
-                 32
-               ),
-               Wardwright.RoutePlanner.select(
-                 %{
-                   "synthetic_model" => "unit-model",
-                   "version" => "unit-version",
-                   "targets" => [
-                     %{"model" => "fast/model", "context_window" => 16},
-                     %{"model" => "steady/model", "context_window" => 128},
-                     %{"model" => "reserve/model", "context_window" => 256}
-                   ],
-                   "route_root" => "local-then-reserve",
-                   "cascades" => [
-                     %{
-                       "id" => "local-then-reserve",
-                       "models" => ["fast/model", "steady/model", "reserve/model"]
-                     }
-                   ]
-                 },
-                 96
-               )
-             ]
-           end) ==
-             in_core(:elixir, fn ->
-               [
-                 Wardwright.Policy.StructuredCore.success_status(1),
-                 Wardwright.Policy.StructuredCore.loop_outcome_status(
-                   "structured-json",
-                   1,
-                   3,
-                   1,
-                   2
-                 ),
-                 Wardwright.Policy.HistoryCore.count_decision([true, false, true],
-                   threshold: 2,
-                   recent_limit: 3,
-                   working_set_size: 3,
-                   scope: "session_id"
-                 ),
-                 Wardwright.Policy.AlertCore.decide_enqueue(
-                   %{"capacity" => 1, "on_full" => "fail_closed"},
-                   1,
-                   false,
-                   %{"idempotency_key" => "key-1", "rule_id" => "alert-rule"}
-                 ),
-                 Wardwright.Policy.Action.normalize(%{
-                   "rule_id" => "block-private",
-                   "kind" => "request_guard",
-                   "action" => "block",
-                   "message" => "private data blocked"
-                 }),
-                 Wardwright.Policy.Action.normalize_result(%{
-                   "engine" => "primitive",
-                   "status" => "ok",
-                   "actions" => [
-                     %{"rule_id" => "local-only", "action" => "restrict_routes"},
-                     %{"rule_id" => "strong-model", "action" => "switch_model"}
-                   ]
-                 }),
-                 Wardwright.RoutePlanner.select(
-                   %{
-                     "synthetic_model" => "unit-model",
-                     "version" => "unit-version",
-                     "targets" => [
-                       %{"model" => "cheap/model", "context_window" => 128},
-                       %{"model" => "strong/model", "context_window" => 128}
-                     ],
-                     "alloys" => [
-                       %{
-                         "id" => "blend",
-                         "strategy" => "all",
-                         "constituents" => ["cheap/model", "strong/model"]
-                       }
-                     ]
-                   },
-                   64
-                 ),
-                 Wardwright.RoutePlanner.select(
-                   %{
-                     "synthetic_model" => "unit-model",
-                     "version" => "unit-version",
-                     "targets" => [
-                       %{"model" => "small/model", "context_window" => 16},
-                       %{"model" => "medium/model", "context_window" => 64},
-                       %{"model" => "large/model", "context_window" => 256}
-                     ],
-                     "route_root" => "fit-dispatcher",
-                     "dispatchers" => [
-                       %{
-                         "id" => "fit-dispatcher",
-                         "models" => ["small/model", "medium/model", "large/model"]
-                       }
-                     ]
-                   },
-                   32
-                 ),
-                 Wardwright.RoutePlanner.select(
-                   %{
-                     "synthetic_model" => "unit-model",
-                     "version" => "unit-version",
-                     "targets" => [
-                       %{"model" => "fast/model", "context_window" => 16},
-                       %{"model" => "steady/model", "context_window" => 128},
-                       %{"model" => "reserve/model", "context_window" => 256}
-                     ],
-                     "route_root" => "local-then-reserve",
-                     "cascades" => [
-                       %{
-                         "id" => "local-then-reserve",
-                         "models" => ["fast/model", "steady/model", "reserve/model"]
-                       }
-                     ]
-                   },
-                   96
-                 )
-               ]
-             end)
+               },
+               32
+             )
   end
 
-  test "extended Gleam kernels stay equivalent through public policy surfaces" do
-    assert in_core(:compare, fn -> extended_core_results() end) ==
-             in_core(:elixir, fn -> extended_core_results() end)
+  test "extended Gleam kernels produce public policy-surface decisions" do
+    assert %{
+             route_blocked: true,
+             selected_model: "unconfigured/no-target",
+             reason: "policy forced model was too small for estimated prompt"
+           } = route_forced_model_context_block()
+
+    assert [
+             {:ok, "answer_v1", %{"answer" => "final"}},
+             {:error, "semantic_validation", "answer-not-draft"},
+             {:error, "schema_validation", "structured-json"}
+           ] = structured_output_validation_results()
+
+    assert [
+             %{status: "completed", action: "rewrite_chunk", chunks: rewritten_chunks},
+             %{status: "completed", action: "drop_chunk", chunks: dropped_chunks}
+           ] = stream_window_results()
+
+    assert Enum.join(rewritten_chunks) == "abc NewClient( done"
+    assert Enum.join(dropped_chunks) == "keep  done"
+
+    assert [context, true, false] = tool_context_results()
+    assert context["phase"] == "result_interpretation"
+    assert get_in(context, ["primary_tool", "namespace"]) == "openai.function"
+    assert get_in(context, ["primary_tool", "name"]) == "create_ticket"
+
+    assert [1, true, "rerouted", "session", false, 2, false, true] = plan_core_results()
+
+    assert [
+             ["observing", "guarding", "retrying", "recording"],
+             [],
+             %{"actions" => ["state_transition"]},
+             %{"actions" => ["deny_tool"]},
+             route_effects
+           ] = projection_results()
+
+    assert Enum.any?(route_effects, &(&1["target"] == "route"))
   end
 
-  defp extended_core_results do
-    [
-      route_forced_model_context_block(),
-      structured_output_validation_results(),
-      stream_window_results(),
-      tool_context_results(),
-      plan_core_results(),
-      projection_results()
-    ]
+  test "Gleam cores stay equivalent to executable Elixir reference documentation" do
+    assert :wardwright@structured_core.success_status(2) ==
+             PolicyCoreReference.success_status(2)
+
+    assert :wardwright@structured_core.loop_outcome_status("semantic", 3, 2, 1, 4) ==
+             PolicyCoreReference.loop_outcome_status("semantic", 3, 2, 1, 4)
+
+    assert Wardwright.Policy.HistoryCore.count_decision([true, false, true, true],
+             threshold: 2,
+             recent_limit: 3,
+             working_set_size: 4,
+             scope: "session_id"
+           ) ==
+             PolicyCoreReference.count_decision([true, false, true, true],
+               threshold: 2,
+               recent_limit: 3,
+               working_set_size: 4,
+               scope: "session_id"
+             )
+
+    assert :wardwright@plan_core.threshold(0) == PolicyCoreReference.plan_threshold(0)
+    assert :wardwright@plan_core.threshold_triggered(3, 2)
+    assert :wardwright@plan_core.tool_policy_status("reroute") == "rerouted"
+    assert :wardwright@plan_core.scope_label("session_id") == "session"
+    assert :wardwright@plan_core.state_scope_matches("reviewing", "active") == false
+    assert :wardwright@plan_core.sequence_window_limit(true, 0) == 2
+    assert :wardwright@plan_core.within_wall_clock_window(true, 50, 120, 60) == false
+    assert :wardwright@plan_core.event_after(120, 0, 100, 99)
+
+    for {action, scope} <- [
+          {"rewrite", "stream_window"},
+          {"rewrite_chunk", "chunk"},
+          {"drop_chunk", "chunk"},
+          {"retry_with_reminder", "chunk"},
+          {"pass", "chunk"},
+          {"annotate", "chunk"}
+        ] do
+      assert :wardwright@stream_core.action_tag(action, scope) ==
+               PolicyCoreReference.stream_action_tag(action, scope)
+    end
+
+    for {kind, action} <- [
+          {"route_gate", "restrict_routes"},
+          {"request_guard", "block"},
+          {"history_threshold", "annotate"},
+          {"custom", "unknown"}
+        ] do
+      assert :wardwright@action_core.phase(kind, action) ==
+               PolicyCoreReference.action_phase(kind, action)
+
+      assert :wardwright@action_core.effect_type(action) ==
+               PolicyCoreReference.action_effect_type(action)
+
+      assert :wardwright@action_core.conflict_key(action) ==
+               PolicyCoreReference.action_conflict_key(action)
+
+      assert :wardwright@action_core.conflict_policy(action) ==
+               PolicyCoreReference.action_conflict_policy(action)
+
+      assert :wardwright@action_core.default_priority(action) ==
+               PolicyCoreReference.action_default_priority(action)
+    end
+
+    assert :wardwright@action_core.result_action("ok", false, 0) ==
+             PolicyCoreReference.result_action("ok", false, 0)
+
+    assert :wardwright@action_core.result_action("error", false, 0) ==
+             PolicyCoreReference.result_action("error", false, 0)
   end
 
   defp route_forced_model_context_block do
@@ -476,7 +428,8 @@ defmodule Wardwright.GleamPolicyCoreTest do
       Wardwright.Policy.StructuredOutput.validate_output(
         ~s({"answer":"final","confidence":0.91,"citations":["one"]}),
         config
-      ),
+      )
+      |> strip_structured_payload(),
       Wardwright.Policy.StructuredOutput.validate_output(
         ~s({"answer":"draft","confidence":0.91}),
         config
@@ -487,6 +440,11 @@ defmodule Wardwright.GleamPolicyCoreTest do
       )
     ]
   end
+
+  defp strip_structured_payload({:ok, schema_id, parsed}),
+    do: {:ok, schema_id, Map.take(parsed, ["answer"])}
+
+  defp strip_structured_payload(result), do: result
 
   defp stream_window_results do
     [
@@ -602,23 +560,17 @@ defmodule Wardwright.GleamPolicyCoreTest do
     transition_node = Enum.find(nodes, &(&1["id"] == "tool-policy.transition-first"))
     deny_node = Enum.find(nodes, &(&1["id"] == "tool-policy.deny-shell"))
 
-    assert transition_node["actions"] == ["state_transition"]
     assert transition_node["writes"] == ["policy.actions", "policy_cache.session.policy_state"]
     assert transition_node["phase"] == "tool.loop_governing"
     assert deny_node["actions"] == ["deny_tool"]
     assert deny_node["writes"] == ["decision.blocked", "tool.allowed"]
 
-    route_effect =
-      Wardwright.PolicyProjection.projection("route-privacy", config)["effects"] |> hd()
-
     [
       Wardwright.PolicyProjection.state_ids("tts-retry"),
       Wardwright.PolicyProjection.state_ids("unknown-pattern"),
-      transition_node,
-      deny_node,
-      route_effect
+      Map.take(transition_node, ["actions"]),
+      Map.take(deny_node, ["actions"]),
+      Wardwright.PolicyProjection.projection("route-privacy", config)["effects"]
     ]
   end
-
-  defp in_core(core, fun), do: CoreRuntime.with_core(core, fun)
 end
