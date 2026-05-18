@@ -490,9 +490,14 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     assert response =~ "You"
     assert response =~ "Wardwright assistant"
-    assert response =~ "Jido authoring agent is installed but not configured"
     assert response =~ "Help me tighten this retry model."
-    assert response =~ "simulate_policy"
+    assert response =~ "Working on a tool plan"
+    assert response =~ "Working..."
+
+    completed = eventually_render(view, "Jido authoring agent is installed but not configured")
+
+    assert completed =~ "Jido authoring agent is installed but not configured"
+    assert completed =~ "simulate_policy"
   end
 
   test "LiveView diagram simulation can step through matching rules and state changes" do
@@ -1158,4 +1163,19 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   end
 
   defp basic_auth(username, password), do: "Basic " <> Base.encode64("#{username}:#{password}")
+
+  defp eventually_render(view, expected, attempts \\ 20)
+
+  defp eventually_render(view, expected, attempts) when attempts > 0 do
+    html = render(view)
+
+    if html =~ expected do
+      html
+    else
+      Process.sleep(10)
+      eventually_render(view, expected, attempts - 1)
+    end
+  end
+
+  defp eventually_render(view, _expected, 0), do: render(view)
 end

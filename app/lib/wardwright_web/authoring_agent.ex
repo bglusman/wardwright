@@ -11,6 +11,8 @@ defmodule WardwrightWeb.AuthoringAgent do
 
   @default_base_url "https://opencode.ai/zen/go/v1"
   @default_model "qwen3.6-plus"
+  @default_max_tokens 4096
+  @default_timeout_ms 120_000
 
   def configured? do
     enabled?() and api_key() not in [nil, ""]
@@ -22,9 +24,11 @@ defmodule WardwrightWeb.AuthoringAgent do
       backend: "jido_ai",
       base_url: base_url(),
       model: model(),
+      max_tokens: max_tokens(),
+      timeout_ms: timeout_ms(),
       tool_mode: "plan_only",
       instructions:
-        "Set WARDWRIGHT_AUTHORING_AGENT_ENABLED=1 and WARDWRIGHT_AUTHORING_AGENT_API_KEY or WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE to run live."
+        "Set WARDWRIGHT_AUTHORING_AGENT_ENABLED=1 and WARDWRIGHT_AUTHORING_AGENT_API_KEY or WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE to run live. Reasoning-heavy coding models may also need WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS and WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS."
     }
   end
 
@@ -84,7 +88,7 @@ defmodule WardwrightWeb.AuthoringAgent do
     model_spec = %{provider: :openai, id: model(), base_url: base_url()}
 
     result =
-      Jido.AI.ask(prompt,
+      Jido.AI.generate_text(prompt,
         model: model_spec,
         api_key: api_key(),
         max_tokens: max_tokens(),
@@ -93,17 +97,13 @@ defmodule WardwrightWeb.AuthoringAgent do
       )
 
     case result do
-      {:ok, content} when is_binary(content) ->
-        {:ok, %{status: "completed", content: content, backend: status()}}
-
       {:ok, response} ->
-        {:ok,
-         %{
-           status: "completed",
-           content: response_text(response),
-           raw_response: inspect(response),
-           backend: status()
-         }}
+        response
+        |> response_text()
+        |> answer(
+          finish_reason: response_finish_reason(response),
+          provider_usage: response_usage(response)
+        )
 
       {:error, reason} ->
         {:ok,
@@ -125,6 +125,28 @@ defmodule WardwrightWeb.AuthoringAgent do
        }}
   end
 
+  defp answer(content, extras) do
+    content = String.trim(content || "")
+
+    if content == "" do
+      {:ok,
+       %{
+         status: "error",
+         content: empty_answer_message(extras),
+         backend: status()
+       }
+       |> Map.merge(Map.new(extras))}
+    else
+      {:ok,
+       %{
+         status: "completed",
+         content: content,
+         backend: status()
+       }
+       |> Map.merge(Map.new(extras))}
+    end
+  end
+
   defp response_text(response) do
     cond do
       is_binary(response) ->
@@ -140,6 +162,34 @@ defmodule WardwrightWeb.AuthoringAgent do
     _ -> inspect(response)
   end
 
+  defp response_finish_reason(response) do
+    case response do
+      %{finish_reason: reason} -> reason
+      _ -> nil
+    end
+  end
+
+  defp response_usage(response) do
+    case response do
+      %{usage: usage} when is_map(usage) -> usage
+      _ -> nil
+    end
+  end
+
+  defp empty_answer_message(extras) do
+    finish_reason = Keyword.get(extras, :finish_reason)
+
+    if finish_reason in [:length, "length"] do
+      """
+      The Jido authoring agent returned reasoning metadata but no final answer before the model hit its token limit.
+
+      Increase WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS and WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS, or switch to a model that returns final content more quickly. OpenCode Go marks BYOK usage in the response usage metadata; no extra Wardwright request-body flag is currently required for the configured OpenCode Go endpoint.
+      """
+    else
+      "The Jido authoring agent returned an empty answer."
+    end
+  end
+
   defp not_configured_message(prompt) do
     """
     Jido authoring agent is installed but not configured for live model calls.
@@ -150,6 +200,8 @@ defmodule WardwrightWeb.AuthoringAgent do
         WARDWRIGHT_AUTHORING_AGENT_BASE_URL=#{@default_base_url}
         WARDWRIGHT_AUTHORING_AGENT_MODEL=#{@default_model}
         WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE=/Users/admin/.config/calciforge/secrets/opencode-api-key
+        WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=#{@default_max_tokens}
+        WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=#{@default_timeout_ms}
 
     The prompt below is what the agent would receive:
 
@@ -184,21 +236,21 @@ defmodule WardwrightWeb.AuthoringAgent do
 
   defp max_tokens do
     "WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS"
-    |> System.get_env("1200")
+    |> System.get_env(Integer.to_string(@default_max_tokens))
     |> Integer.parse()
     |> case do
       {value, ""} when value > 0 -> value
-      _ -> 1200
+      _ -> @default_max_tokens
     end
   end
 
   defp timeout_ms do
     "WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS"
-    |> System.get_env("60000")
+    |> System.get_env(Integer.to_string(@default_timeout_ms))
     |> Integer.parse()
     |> case do
       {value, ""} when value > 0 -> value
-      _ -> 60_000
+      _ -> @default_timeout_ms
     end
   end
 

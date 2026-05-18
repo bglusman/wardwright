@@ -106,6 +106,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     |> assign_new(:authoring_agent_messages, fn -> [] end)
     |> assign_new(:authoring_agent_status, fn -> WardwrightWeb.AuthoringAgent.status() end)
     |> assign_new(:authoring_agent_input, fn -> "" end)
+    |> assign_new(:authoring_agent_tasks, fn -> %{} end)
+    |> assign_new(:authoring_agent_pending, fn -> false end)
   end
 
   @impl true
@@ -141,6 +143,42 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       end
     else
       {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({ref, {:authoring_agent_response, request_id, response}}, socket)
+      when is_reference(ref) do
+    Process.demonitor(ref, [:flush])
+
+    {:noreply,
+     socket
+     |> remove_authoring_agent_task(ref)
+     |> replace_authoring_agent_message(request_id, %{
+       "id" => request_id,
+       "role" => "assistant",
+       "content" => response.content,
+       "status" => response.status
+     })}
+  end
+
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, reason}, socket) when is_reference(ref) do
+    case Map.fetch(socket.assigns.authoring_agent_tasks, ref) do
+      {:ok, request_id} ->
+        {:noreply,
+         socket
+         |> remove_authoring_agent_task(ref)
+         |> replace_authoring_agent_message(request_id, %{
+           "id" => request_id,
+           "role" => "assistant",
+           "content" => "The authoring agent stopped before returning an answer.",
+           "status" => "error",
+           "error" => inspect(reason)
+         })}
+
+      :error ->
+        {:noreply, socket}
     end
   end
 
@@ -234,29 +272,44 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         recipe_id: socket.assigns.selected_recipe_id
       }
 
-      {:ok, response} = WardwrightWeb.AuthoringAgent.respond(message, context)
+      request_id = authoring_agent_request_id()
 
       messages =
         socket.assigns.authoring_agent_messages ++
           [
-            %{"role" => "user", "content" => message},
+            %{"id" => "#{request_id}:user", "role" => "user", "content" => message},
             %{
+              "id" => request_id,
               "role" => "assistant",
-              "content" => response.content,
-              "status" => response.status
+              "content" => "Working on a tool plan...",
+              "status" => "pending"
             }
           ]
+
+      task =
+        Task.Supervisor.async_nolink(Wardwright.ProviderRuntime.TaskSupervisor, fn ->
+          {:ok, response} = WardwrightWeb.AuthoringAgent.respond(message, context)
+          {:authoring_agent_response, request_id, response}
+        end)
 
       {:noreply,
        socket
        |> assign(:authoring_agent_messages, Enum.take(messages, -8))
        |> assign(:authoring_agent_status, WardwrightWeb.AuthoringAgent.status())
-       |> assign(:authoring_agent_input, "")}
+       |> assign(:authoring_agent_input, "")
+       |> assign(
+         :authoring_agent_tasks,
+         Map.put(socket.assigns.authoring_agent_tasks, task.ref, request_id)
+       )
+       |> assign(:authoring_agent_pending, true)}
     end
   end
 
   def handle_event("authoring-agent-clear", _params, socket) do
-    {:noreply, assign(socket, :authoring_agent_messages, [])}
+    {:noreply,
+     socket
+     |> assign(:authoring_agent_messages, [])
+     |> assign(:authoring_agent_pending, map_size(socket.assigns.authoring_agent_tasks) > 0)}
   end
 
   def handle_event("reset-simulation", _params, socket) do
@@ -309,6 +362,41 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       {:noreply, socket}
     end
   end
+
+  defp authoring_agent_request_id do
+    "authoring_agent_#{System.unique_integer([:positive, :monotonic])}"
+  end
+
+  defp remove_authoring_agent_task(socket, ref) do
+    tasks = Map.delete(socket.assigns.authoring_agent_tasks, ref)
+
+    socket
+    |> assign(:authoring_agent_tasks, tasks)
+    |> assign(:authoring_agent_pending, map_size(tasks) > 0)
+  end
+
+  defp replace_authoring_agent_message(socket, request_id, replacement) do
+    {messages, replaced?} =
+      Enum.map_reduce(socket.assigns.authoring_agent_messages, false, fn message, replaced? ->
+        if message["id"] == request_id do
+          {replacement, true}
+        else
+          {message, replaced?}
+        end
+      end)
+
+    if replaced? do
+      assign(socket, :authoring_agent_messages, messages)
+    else
+      socket
+    end
+  end
+
+  defp authoring_agent_status_label("pending"), do: "working"
+  defp authoring_agent_status_label("completed"), do: "answered"
+  defp authoring_agent_status_label("not_configured"), do: "setup needed"
+  defp authoring_agent_status_label("error"), do: "error"
+  defp authoring_agent_status_label(status), do: status
 
   @impl true
   def render(assigns) do
@@ -547,8 +635,16 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             Try: "Build a reviewable route policy that keeps private context local,
             then simulate the surprising failure cases."
           </p>
-          <article :for={message <- @authoring_agent_messages} class={"agent_message #{message["role"]}"}>
-            <strong><%= if message["role"] == "user", do: "You", else: "Wardwright assistant" %></strong>
+          <article
+            :for={message <- @authoring_agent_messages}
+            class={"agent_message #{message["role"]} #{message["status"]}"}
+          >
+            <strong>
+              <%= if message["role"] == "user", do: "You", else: "Wardwright assistant" %>
+              <span :if={message["status"]} class={"agent_status #{message["status"]}"}>
+                <%= authoring_agent_status_label(message["status"]) %>
+              </span>
+            </strong>
             <pre><%= message["content"] %></pre>
           </article>
         </div>
@@ -560,7 +656,9 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             placeholder="Ask for a model, policy, simulation, or review plan"
           ><%= @authoring_agent_input %></textarea>
           <div>
-            <button type="submit">Ask agent</button>
+            <button type="submit" disabled={@authoring_agent_pending}>
+              <%= if @authoring_agent_pending, do: "Working...", else: "Ask agent" %>
+            </button>
             <button type="button" phx-click="authoring-agent-clear">Clear</button>
           </div>
         </form>
@@ -1419,13 +1517,19 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .empty_agent_message { margin: 0; color: #647482; font-size: 13px; line-height: 1.45; }
     .agent_message { display: grid; gap: 5px; border: 1px solid #dbe5ed; border-radius: 8px; padding: 10px; background: #fff; }
     .agent_message.assistant { background: #eef8f4; border-color: #b8dfd0; }
-    .agent_message strong { font-size: 12px; color: #17212b; }
+    .agent_message.pending { background: #fff8eb; border-color: #ebd19f; }
+    .agent_message.error { background: #fff2f2; border-color: #efb5b5; }
+    .agent_message strong { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: #17212b; }
+    .agent_status { border: 1px solid #cdd9e2; border-radius: 999px; padding: 2px 6px; color: #52616e; background: #fff; font-size: 10px; text-transform: uppercase; letter-spacing: 0.02em; }
+    .agent_status.pending { color: #8a5c00; border-color: #e5c06e; background: #fff7df; }
+    .agent_status.error { color: #9f2525; border-color: #efb5b5; background: #fff8f8; }
     .agent_message pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #354554; }
     .authoring_form { display: grid; gap: 8px; }
     .authoring_form textarea { width: 100%; box-sizing: border-box; border: 1px solid #cbd9e4; border-radius: 8px; padding: 10px; resize: vertical; font: inherit; }
     .authoring_form div { display: flex; gap: 8px; flex-wrap: wrap; }
     .authoring_form button { border: 1px solid #b8c8d5; background: #fff; color: #162330; border-radius: 6px; padding: 8px 10px; font-weight: 900; cursor: pointer; }
     .authoring_form button[type="submit"] { background: #17212b; border-color: #17212b; color: #fff; }
+    .authoring_form button:disabled { cursor: wait; opacity: 0.65; }
     .projection_inspector_links { margin-bottom: 14px; }
     .projection_inspector_links details { padding: 9px 11px; border: 1px solid #d8e0e7; border-radius: 8px; color: #4b5863; background: #f8fafc; }
     .projection_inspector_links summary { width: fit-content; cursor: pointer; color: #3a4650; font-size: 13px; font-weight: 800; }

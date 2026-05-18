@@ -66,8 +66,16 @@ WARDWRIGHT_AUTHORING_AGENT_ENABLED=1
 WARDWRIGHT_AUTHORING_AGENT_BASE_URL=https://opencode.ai/zen/go/v1
 WARDWRIGHT_AUTHORING_AGENT_MODEL=qwen3.6-plus
 WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE=/path/to/provider-key
-WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=60000
+WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=4096
+WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000
 ```
+
+OpenCode Go usage is BYOK when the account/key is configured that way; the API
+reports that in response usage metadata. The current OpenCode Go chat endpoint
+does not require an additional Wardwright request-body flag. Reasoning-heavy
+coding models such as Kimi K2.6 can spend many tokens before final content, so
+use a larger token budget and timeout or choose a faster final-answer model such
+as Qwen for interactive authoring.
 
 The first spike asks the assistant to propose tool plans and review risks. It
 does not automatically execute write-capable tools from chat, and it must not

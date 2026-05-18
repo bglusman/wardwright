@@ -52,8 +52,12 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert response.status == "not_configured"
     assert response.backend.configured == false
     assert response.backend.tool_mode == "plan_only"
+    assert response.backend.max_tokens == 4096
+    assert response.backend.timeout_ms == 120_000
     assert response.content =~ "Jido authoring agent is installed but not configured"
     assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE"
+    assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=4096"
+    assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000"
     assert response.prompt_preview =~ "Draft a safer tool policy."
     assert response.prompt_preview =~ "propose_rule_change"
   end
@@ -68,6 +72,8 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
     assert WardwrightWeb.AuthoringAgent.configured?()
     assert WardwrightWeb.AuthoringAgent.status().configured
+    assert WardwrightWeb.AuthoringAgent.status().max_tokens == 4096
+    assert WardwrightWeb.AuthoringAgent.status().timeout_ms == 120_000
   end
 
   defp env_keys do
