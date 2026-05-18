@@ -225,6 +225,15 @@ defmodule Wardwright.Router do
     end
   end
 
+  get "/admin/model-access" do
+    with :ok <- require_protected_access(conn) do
+      json(conn, 200, Wardwright.model_access(request_origin(conn)))
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+    end
+  end
+
   get "/admin/policy-alerts" do
     with :ok <- require_protected_access(conn) do
       json(conn, 200, Wardwright.Policy.AlertDelivery.status())
@@ -488,6 +497,20 @@ defmodule Wardwright.Router do
       :error -> {:ok, body}
     end
   end
+
+  defp request_origin(conn) do
+    scheme = Atom.to_string(conn.scheme)
+
+    if default_port?(conn.scheme, conn.port) do
+      "#{scheme}://#{conn.host}"
+    else
+      "#{scheme}://#{conn.host}:#{conn.port}"
+    end
+  end
+
+  defp default_port?(:http, 80), do: true
+  defp default_port?(:https, 443), do: true
+  defp default_port?(_, _), do: false
 
   defp receipt_for_import(receipt_id) do
     case Wardwright.ReceiptStore.get(receipt_id) do

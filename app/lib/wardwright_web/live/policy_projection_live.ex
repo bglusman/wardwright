@@ -14,12 +14,12 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       Wardwright.Runtime.Events.subscribe(Wardwright.Runtime.Events.topic(:policies))
     end
 
-    {:ok, assign_projection(socket, params)}
+    {:ok, assign_projection(socket, params, nil)}
   end
 
   @impl true
-  def handle_params(params, _uri, socket) do
-    socket = assign_projection(socket, params)
+  def handle_params(params, uri, socket) do
+    socket = assign_projection(socket, params, uri)
 
     if unsupported_pattern?(Map.get(params, "pattern")) do
       {:noreply,
@@ -37,7 +37,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     end
   end
 
-  defp assign_projection(socket, params) do
+  defp assign_projection(socket, params, uri) do
     pattern_id = normalize_pattern(Map.get(params, "pattern"))
     mode = normalize_mode(Map.get(params, "mode"))
     recipe_source_id = normalize_recipe_source(Map.get(params, "source"))
@@ -89,6 +89,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     |> assign(:simulation_history_context, simulation_history_context)
     |> assign(:simulation_boundary, simulation_boundary)
     |> assign(:projection_stats, projection_stats(projection, simulations))
+    |> assign(:model_access, Wardwright.model_access(access_origin(uri)))
     |> assign(:selected_simulation, selected_simulation)
     |> assign(:selected_node, selected_node)
     |> assign(:simulation_playing, false)
@@ -398,6 +399,69 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           <strong><%= @projection_stats.review_count %></strong>
           <small>conflicts, warnings, opaque regions</small>
         </article>
+      </section>
+
+      <section class="panel model_access" aria-label="Model and agent access">
+        <div class="panel_header">
+          <div>
+            <h2>Model Access</h2>
+            <p>Use these OpenAI-compatible endpoints and model IDs when pointing a local agent at Wardwright.</p>
+          </div>
+          <.badge value={"#{length(@model_access["provider_models"])} provider models"} />
+        </div>
+
+        <div class="access_grid">
+          <article class="access_card">
+            <span>Agent endpoint</span>
+            <strong><%= @model_access["service"]["openai_base_url"] %></strong>
+            <dl>
+              <dt>Chat</dt>
+              <dd><code><%= @model_access["service"]["chat_completions_url"] %></code></dd>
+              <dt>Models</dt>
+              <dd><code><%= @model_access["service"]["models_url"] %></code></dd>
+              <dt>MCP</dt>
+              <dd><code><%= @model_access["service"]["mcp_url"] %></code></dd>
+              <dt>CLI help</dt>
+              <dd><code><%= @model_access["service"]["tools_command"] %></code></dd>
+            </dl>
+          </article>
+
+          <article :for={model <- @model_access["synthetic_models"]} class="access_card synthetic_access">
+            <span>Synthetic model</span>
+            <strong><%= model["id"] %></strong>
+            <small>Version <%= model["active_version"] %>; route <%= model["route_type"] %> via <%= model["route_root"] %>.</small>
+            <div class="chips">
+              <span :for={model_id <- model["agent_model_ids"]} class="chip"><%= model_id %></span>
+            </div>
+            <details class="copyable_example">
+              <summary>Show minimal request</summary>
+              <pre><%= minimal_chat_request(model["id"]) %></pre>
+            </details>
+          </article>
+        </div>
+
+        <div class="provider_model_list">
+          <h3>Configured Provider Models</h3>
+          <article :for={provider <- @model_access["provider_models"]} class="provider_model_card">
+            <div>
+              <span><%= provider["provider_id"] %> / <%= provider["kind"] %></span>
+              <strong><%= provider["raw_model_id"] %></strong>
+              <small><%= provider["target_model_id"] %></small>
+            </div>
+            <dl>
+              <dt>Base URL</dt>
+              <dd><code><%= provider["base_url"] %></code></dd>
+              <dt>Context</dt>
+              <dd><%= provider["context_window"] || "unknown" %></dd>
+              <dt>Credential</dt>
+              <dd><%= provider["credential_source"] %></dd>
+              <dt>Health</dt>
+              <dd><.badge value={provider["health"]} /></dd>
+              <dt>Attempts</dt>
+              <dd><%= provider["attempt_count"] %></dd>
+            </dl>
+          </article>
+        </div>
       </section>
 
       <section class="panel">
@@ -1196,6 +1260,20 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .scan_strip span { color: #66727c; font-size: 12px; font-weight: 800; text-transform: uppercase; }
     .scan_strip strong { color: #17202a; font-size: 18px; line-height: 1.2; }
     .scan_strip small { color: #5e6b76; line-height: 1.35; overflow-wrap: anywhere; }
+    .model_access { background: #fbfcfd; }
+    .access_grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr); gap: 12px; }
+    .access_card, .provider_model_card { display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid #d5dde4; border-radius: 8px; background: #fff; }
+    .access_card > span, .provider_model_card span, .provider_model_list h3 { color: #66727c; font-size: 12px; font-weight: 800; text-transform: uppercase; }
+    .access_card strong, .provider_model_card strong { color: #17202a; overflow-wrap: anywhere; }
+    .access_card small, .provider_model_card small { color: #5e6b76; line-height: 1.4; overflow-wrap: anywhere; }
+    .access_card dl, .provider_model_card dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 10px; margin: 0; }
+    .access_card dt, .provider_model_card dt { color: #66727c; font-size: 12px; font-weight: 800; }
+    .access_card dd, .provider_model_card dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+    .copyable_example summary { width: fit-content; cursor: pointer; color: #2f5f87; font-size: 13px; font-weight: 800; }
+    .copyable_example pre { margin-top: 8px; }
+    .provider_model_list { display: grid; gap: 9px; }
+    .provider_model_list h3 { margin: 0; }
+    .provider_model_card { grid-template-columns: minmax(180px, 0.65fr) minmax(0, 1fr); align-items: start; }
     .projection_inspector_links { margin-bottom: 14px; }
     .projection_inspector_links details { padding: 9px 11px; border: 1px solid #d8e0e7; border-radius: 8px; color: #4b5863; background: #f8fafc; }
     .projection_inspector_links summary { width: fit-content; cursor: pointer; color: #3a4650; font-size: 13px; font-weight: 800; }
@@ -1393,7 +1471,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       .shell > [data-phx-main] { display: block; min-height: 100vh; }
       .sidebar { position: static; overflow: visible; gap: 16px; padding: 18px 16px; }
       .workspace { padding: 18px 16px; }
-      .split, .scan_strip, .state_columns, .simulation_player, .player_event, .turn_editor_grid, .boundary_pair.changed, .attempt_step, .state_run_strip { grid-template-columns: 1fr; }
+      .split, .scan_strip, .access_grid, .provider_model_card, .state_columns, .simulation_player, .player_event, .turn_editor_grid, .boundary_pair.changed, .attempt_step, .state_run_strip { grid-template-columns: 1fr; }
       .topbar, .panel_header, .state_machine_summary, .assistant_boundary, .diagram_header, .turn_editor_header { display: grid; }
       .topbar { gap: 12px; }
       .sidebar_footer { margin-top: 0; }
@@ -1422,6 +1500,38 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         length(projection["conflicts"]) + length(projection["opaque_regions"]) +
           length(projection["warnings"])
     }
+  end
+
+  defp access_origin(nil), do: "http://127.0.0.1:8787"
+
+  defp access_origin(uri) when is_binary(uri) do
+    case URI.parse(uri) do
+      %URI{scheme: scheme, host: host, port: port} when is_binary(scheme) and is_binary(host) ->
+        if default_port?(scheme, port) do
+          "#{scheme}://#{host}"
+        else
+          "#{scheme}://#{host}:#{port}"
+        end
+
+      _ ->
+        "http://127.0.0.1:8787"
+    end
+  end
+
+  defp access_origin(_), do: "http://127.0.0.1:8787"
+
+  defp default_port?("http", 80), do: true
+  defp default_port?("https", 443), do: true
+  defp default_port?(_, _), do: false
+
+  defp minimal_chat_request(model_id) do
+    %{
+      "model" => model_id,
+      "messages" => [
+        %{"role" => "user", "content" => "Say hello from Wardwright."}
+      ]
+    }
+    |> Jason.encode!(pretty: true)
   end
 
   defp selected_recipe(%{"recipes" => recipes}, pattern_id, recipe_id) when is_list(recipes) do

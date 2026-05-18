@@ -51,6 +51,56 @@ defmodule Wardwright.PublicApiTest do
     assert is_map(model["route_graph"])
   end
 
+  test "protected model access endpoint lists agent endpoints and provider raw models" do
+    config =
+      unit_policy_config()
+      |> Map.put("synthetic_model", Wardwright.synthetic_model())
+      |> Map.put("version", Wardwright.synthetic_version())
+      |> Map.put("targets", [
+        %{
+          "model" => Wardwright.local_model(),
+          "context_window" => Wardwright.local_context_window(),
+          "provider_base_url" => "https://user:secret@example.test/v1?api_key=do-not-leak"
+        },
+        %{
+          "model" => Wardwright.managed_model(),
+          "context_window" => Wardwright.managed_context_window()
+        }
+      ])
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    rejected = call(:get, "/admin/model-access", nil, [], {203, 0, 113, 10})
+    assert rejected.status == 403
+
+    local = call(:get, "/admin/model-access")
+    assert local.status == 200
+
+    body = Jason.decode!(local.resp_body)
+
+    assert body["service"]["openai_base_url"] =~ "/v1"
+    assert body["service"]["chat_completions_url"] =~ "/v1/chat/completions"
+    assert body["service"]["mcp_url"] =~ "/mcp"
+    assert body["service"]["tools_command"] == "wardwright tools"
+
+    [model] = body["synthetic_models"]
+    assert model["id"] == "coding-balanced"
+    assert "coding-balanced" in model["agent_model_ids"]
+    assert "wardwright/coding-balanced" in model["agent_model_ids"]
+
+    raw_models = Enum.map(body["provider_models"], & &1["target_model_id"])
+    assert Wardwright.local_model() in raw_models
+    assert Wardwright.managed_model() in raw_models
+
+    local_provider =
+      Enum.find(body["provider_models"], &(&1["target_model_id"] == Wardwright.local_model()))
+
+    assert local_provider["base_url"] == "https://example.test/v1"
+    assert local_provider["credential_source"] == "none"
+    refute local.resp_body =~ "secret"
+    refute local.resp_body =~ "do-not-leak"
+  end
+
   test "protected policy authoring API exposes projection and tool contracts" do
     rejected = call(:get, "/v1/policy-authoring/tools", nil, [], {203, 0, 113, 10})
     assert rejected.status == 403

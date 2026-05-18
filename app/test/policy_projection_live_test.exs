@@ -315,6 +315,11 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Use your agent"
     assert html =~ "/mcp"
     assert html =~ "wardwright tools"
+    assert html =~ "Model Access"
+    assert html =~ "/v1/chat/completions"
+    assert html =~ "coding-balanced"
+    assert html =~ "wardwright/coding-balanced"
+    assert html =~ Wardwright.local_model()
     assert html =~ "Policy Simulator"
     assert html =~ "Policy run map"
     assert html =~ "State and turn model"
