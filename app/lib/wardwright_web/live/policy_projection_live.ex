@@ -1306,7 +1306,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .inline_form input { width: 100%; min-height: 36px; padding: 7px 9px; border: 1px solid #cbd5df; border-radius: 6px; color: #17202a; background: #fbfcfd; font: inherit; }
     .stacked_form fieldset { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px; border: 1px solid #d8e0e7; border-radius: 8px; background: #fbfcfd; }
     .stacked_form legend { padding: 0 4px; color: #4b5863; font-size: 12px; font-weight: 900; text-transform: uppercase; }
-    .radio_card { grid-template-columns: max-content minmax(0, 1fr); align-items: start; padding: 9px; border: 1px solid #d8e0e7; border-radius: 7px; background: #fff; cursor: pointer; }
+    .radio_card { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: start; padding: 9px; border: 1px solid #d8e0e7; border-radius: 7px; background: #fff; cursor: pointer; }
     .radio_card input { margin-top: 3px; }
     .radio_card span { display: grid; gap: 3px; min-width: 0; }
     .radio_card strong { color: #17202a; }

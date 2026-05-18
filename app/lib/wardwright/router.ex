@@ -827,10 +827,6 @@ defmodule Wardwright.Router do
     end
   end
 
-  defp optional_model(nil), do: {:ok, nil}
-  defp optional_model(""), do: {:ok, nil}
-  defp optional_model(model), do: Wardwright.normalize_model(model)
-
   defp model_auth_error_type(401), do: "unauthorized"
   defp model_auth_error_type(403), do: "forbidden"
   defp model_auth_error_type(_status), do: "invalid_request"
@@ -869,10 +865,6 @@ defmodule Wardwright.Router do
   defp bearer_token("Bearer " <> token), do: WardwrightWeb.RequestContext.blank_to_nil(token)
   defp bearer_token("bearer " <> token), do: WardwrightWeb.RequestContext.blank_to_nil(token)
   defp bearer_token(_value), do: nil
-
-  defp model_auth_error_type(401), do: "unauthorized"
-  defp model_auth_error_type(403), do: "forbidden"
-  defp model_auth_error_type(_status), do: "invalid_request"
 
   defp route_decision(request, policy) do
     estimate = Wardwright.estimate_prompt_tokens(Map.get(request, "messages", []))

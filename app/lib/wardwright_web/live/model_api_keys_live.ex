@@ -44,6 +44,35 @@ defmodule WardwrightWeb.ModelApiKeysLive do
   @impl true
   def render(assigns) do
     ~H"""
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="mark">W</span>
+        <div>
+          <strong>Wardwright</strong>
+          <span>Model access controls</span>
+        </div>
+      </div>
+
+      <nav>
+        <h2 class="nav_heading">Workbench</h2>
+        <a href="/policies">
+          <strong>Policy Workbench</strong>
+          <span>Review policy definitions and model routing.</span>
+        </a>
+        <a class="active" href="/admin/model-api-keys">
+          <strong>Model API Keys</strong>
+          <span>Configure keyed and unkeyed model access.</span>
+        </a>
+      </nav>
+
+      <div class="sidebar_footer">
+        <span>Active model</span>
+        <strong><%= @model %></strong>
+        <span>Access</span>
+        <code><%= if @requires_api_key, do: "keyed", else: @unkeyed_model_access %></code>
+      </div>
+    </aside>
+
     <section class="workspace model_key_workspace">
       <header class="topbar">
         <div>

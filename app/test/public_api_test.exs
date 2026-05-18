@@ -19,7 +19,9 @@ defmodule Wardwright.PublicApiTest do
     assert [] = call(:get, "/v1/models").resp_body |> Jason.decode!() |> Map.fetch!("data")
 
     assert [] =
-             call(:get, "/v1/wardwright/models").resp_body |> Jason.decode!() |> Map.fetch!("data")
+             call(:get, "/v1/wardwright/models").resp_body
+             |> Jason.decode!()
+             |> Map.fetch!("data")
 
     rejected =
       call(:post, "/v1/chat/completions", %{
