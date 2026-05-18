@@ -88,7 +88,7 @@ defmodule WardwrightWeb.AuthoringAgent do
     model_spec = %{provider: :openai, id: model(), base_url: base_url()}
 
     result =
-      Jido.AI.generate_text(prompt,
+      jido_client().generate_text(prompt,
         model: model_spec,
         api_key: api_key(),
         max_tokens: max_tokens(),
@@ -152,7 +152,7 @@ defmodule WardwrightWeb.AuthoringAgent do
       is_binary(response) ->
         response
 
-      function_exported?(ReqLLM.Response, :text, 1) ->
+      is_struct(response, ReqLLM.Response) ->
         ReqLLM.Response.text(response)
 
       true ->
@@ -252,6 +252,10 @@ defmodule WardwrightWeb.AuthoringAgent do
       {value, ""} when value > 0 -> value
       _ -> @default_timeout_ms
     end
+  end
+
+  defp jido_client do
+    Application.get_env(:wardwright, :authoring_agent_client, Jido.AI)
   end
 
   defp api_key do

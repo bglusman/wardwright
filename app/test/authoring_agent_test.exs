@@ -2,6 +2,8 @@ defmodule WardwrightWeb.AuthoringAgentTest do
   use ExUnit.Case, async: false
 
   setup do
+    original_client = Application.get_env(:wardwright, :authoring_agent_client, :unset)
+
     original_env =
       for key <- env_keys(), into: %{} do
         {key, System.get_env(key)}
@@ -16,6 +18,11 @@ defmodule WardwrightWeb.AuthoringAgentTest do
           value -> System.put_env(key, value)
         end
       end)
+
+      case original_client do
+        :unset -> Application.delete_env(:wardwright, :authoring_agent_client)
+        client -> Application.put_env(:wardwright, :authoring_agent_client, client)
+      end
     end)
 
     :ok
@@ -74,6 +81,40 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert WardwrightWeb.AuthoringAgent.status().configured
     assert WardwrightWeb.AuthoringAgent.status().max_tokens == 4096
     assert WardwrightWeb.AuthoringAgent.status().timeout_ms == 120_000
+  end
+
+  test "configured response explains token-limited reasoning-only provider responses" do
+    Application.put_env(
+      :wardwright,
+      :authoring_agent_client,
+      __MODULE__.LengthLimitedAuthoringClient
+    )
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
+
+    {:ok, response} = WardwrightWeb.AuthoringAgent.respond("Make a cow model.")
+
+    assert response.status == "error"
+    assert response.finish_reason == :length
+    assert response.provider_usage == %{output_tokens: 20, is_byok: true}
+    assert response.content =~ "reasoning metadata but no final answer"
+    assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS"
+    assert response.content =~ "no extra Wardwright request-body flag"
+  end
+
+  defmodule LengthLimitedAuthoringClient do
+    def generate_text(_prompt, _opts) do
+      {:ok,
+       %ReqLLM.Response{
+         id: "test-response",
+         model: "kimi-k2.6",
+         context: nil,
+         message: %ReqLLM.Message{role: :assistant, content: []},
+         finish_reason: :length,
+         usage: %{output_tokens: 20, is_byok: true}
+       }}
+    end
   end
 
   defp env_keys do
