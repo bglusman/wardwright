@@ -94,6 +94,7 @@ async function runViewportSmoke(viewport) {
     await waitForEval(cdp, `document.body && document.body.innerText.includes("Playback")`);
     await waitForEval(cdp, `!document.documentElement.classList.contains("phx-loading")`);
     await waitForEval(cdp, `document.querySelector(".simulation_player button") !== null`);
+    await waitForLiveView(cdp);
 
     await assertClickableControl(cdp, viewport.name, "Step");
     await clickControl(cdp, "Step", viewport);
@@ -187,6 +188,14 @@ async function assertClickableControl(cdp, viewportName, label) {
       `${viewportName}: ${label} control is covered by ${result.coveringTag}.${result.coveringClass}`
     );
   }
+}
+
+async function waitForLiveView(cdp) {
+  await waitForEval(
+    cdp,
+    `window.liveSocket && (typeof window.liveSocket.isConnected !== "function" || window.liveSocket.isConnected())`
+  );
+  await waitForEval(cdp, `document.querySelector("[data-phx-main]") !== null`);
 }
 
 function controlPointExpression(label) {

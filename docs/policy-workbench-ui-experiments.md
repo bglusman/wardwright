@@ -6,7 +6,7 @@ description: Design target and comparison criteria for Wardwright policy visuali
 
 # Policy Workbench UI Experiments
 
-Wardwright's policy workbench should explain how a synthetic model call will be
+Wardwright's policy workbench should explain how a Wardwright model call will be
 governed before the operator activates a policy, then show what happened after a
 live or simulated call. The deterministic policy artifact remains the source of
 truth. The UI renders projections, simulations, receipts, and assistant drafts
@@ -16,7 +16,7 @@ as review aids.
 
 The first workbench should answer these questions quickly:
 
-- Which synthetic model route graph is configured before policy runs?
+- Which Wardwright model route graph is configured before policy runs?
 - Which policy rules constrain, override, retry, block, or escalate that route?
 - Does the policy behave differently for local, cloud, alloy, fallback, or
   partial-context routes?
@@ -102,7 +102,7 @@ Initial assistant tools:
 - `simulate_policy(policy_artifact, scenarios)`
 - `propose_rule_change(policy_artifact, intent, constraints)`
 - `inspect_receipt(receipt_id)`
-- `inspect_route_plan(synthetic_model, request_facts)`
+- `inspect_route_plan(model_id, request_facts)`
 - `validate_policy_artifact(policy_artifact)`
 
 The chat UI should keep assistant output adjacent to the projection and artifact

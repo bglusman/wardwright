@@ -352,7 +352,7 @@ defmodule Wardwright.PolicyProjection do
       |> Base.encode16(case: :lower)
 
     %{
-      "artifact_id" => "#{pattern["id"]}-#{Map.get(config, "synthetic_model", "policy")}",
+      "artifact_id" => "#{pattern["id"]}-#{Map.get(config, "model_id", "policy")}",
       "artifact_hash" => "sha256:#{hash}",
       "policy_version" => "draft.#{pattern["id"]}.001",
       "normalized_format" => "yaml"
@@ -1858,7 +1858,7 @@ defmodule Wardwright.PolicyProjection do
           turn,
           "interactive-structured-output-malformed",
           "Edited JSON triggers repair retry",
-          "Provider output is not parseable JSON for the promised synthetic model contract.",
+          "Provider output is not parseable JSON for the promised Wardwright model contract.",
           "json parse failed",
           "retry_with_validation_feedback"
         )
@@ -1872,7 +1872,7 @@ defmodule Wardwright.PolicyProjection do
             "engine_id" => "hybrid-output-review",
             "input_summary" => summarize_turn(turn),
             "expected_behavior" =>
-              "The parsed JSON satisfies one accepted branch of the synthetic model contract.",
+              "The parsed JSON satisfies one accepted branch of the Wardwright model contract.",
             "verdict" => "passed",
             "trace" => [
               trace(
@@ -2417,7 +2417,7 @@ defmodule Wardwright.PolicyProjection do
         ],
         "receipt_preview" => %{
           "receipt_id" => "simulated-policy-receipt",
-          "synthetic_model" => Wardwright.synthetic_model(),
+          "model_id" => Wardwright.model_id(),
           "policy_version" => "draft.ttsr.001",
           "stream" => %{
             "rule_matched" => "no-old-client",
@@ -2915,7 +2915,7 @@ defmodule Wardwright.PolicyProjection do
       "scenario_id" => "configured-route-policy",
       "title" => "Configured route governance path",
       "engine_id" => "request-route-plan",
-      "input_summary" => "Synthetic request chosen to exercise the first configured route rule.",
+      "input_summary" => "Generated request chosen to exercise the first configured route rule.",
       "expected_behavior" => "Policy.Plan emits route constraints or an explicit no-match trace.",
       "verdict" => if(actions == [], do: "inconclusive", else: "passed"),
       "trace" => route_policy_trace(actions, rules),
@@ -2989,7 +2989,7 @@ defmodule Wardwright.PolicyProjection do
       "scenario_id" => "configured-tool-policy",
       "title" => "Configured tool governance path",
       "engine_id" => "tool-context-plan",
-      "input_summary" => "Synthetic request chosen to exercise the first configured tool rule.",
+      "input_summary" => "Generated request chosen to exercise the first configured tool rule.",
       "expected_behavior" =>
         "Projection links normalized tool context to a declared tool policy action.",
       "verdict" => "passed",

@@ -60,7 +60,7 @@ tests passed, but every backend-facing alert test failed for all prototypes:
 - fail-closed queue-full chat requests returned HTTP 200 instead of 429 or 503.
 
 The common failure pattern suggests the visible contract did not force agents to
-wire `request_guard` plus `alert_async` through both synthetic simulation and
+wire `request_guard` plus `alert_async` through both wardwright simulation and
 normal chat completion paths with the exact evaluator config shape.
 
 ## Process Notes

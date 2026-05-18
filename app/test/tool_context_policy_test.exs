@@ -27,7 +27,7 @@ defmodule Wardwright.ToolContextPolicyTest do
     assert call(:post, "/__test/config", config).status == 200
 
     write_conn =
-      call(:post, "/v1/synthetic/simulate", %{
+      call(:post, "/v1/wardwright/simulate", %{
         request: %{
           model: "unit-model",
           metadata: %{
@@ -64,7 +64,7 @@ defmodule Wardwright.ToolContextPolicyTest do
              "create_pull_request"
 
     read_conn =
-      call(:post, "/v1/synthetic/simulate", %{
+      call(:post, "/v1/wardwright/simulate", %{
         request: %{
           model: "unit-model",
           metadata: %{
@@ -124,7 +124,7 @@ defmodule Wardwright.ToolContextPolicyTest do
     }
 
     remote_conn =
-      call(:post, "/v1/synthetic/simulate", %{request: request}, [], {203, 0, 113, 10})
+      call(:post, "/v1/wardwright/simulate", %{request: request}, [], {203, 0, 113, 10})
 
     remote_receipt = remote_conn.resp_body |> Jason.decode!() |> get_in(["receipt"])
     assert get_in(remote_receipt, ["decision", "selected_model"]) == "local/read"
@@ -163,7 +163,7 @@ defmodule Wardwright.ToolContextPolicyTest do
     conn =
       call(
         :post,
-        "/v1/synthetic/simulate",
+        "/v1/wardwright/simulate",
         %{
           request: %{
             model: "unit-model",
@@ -211,7 +211,7 @@ defmodule Wardwright.ToolContextPolicyTest do
     assert call(:post, "/__test/config", config).status == 200
 
     conn =
-      call(:post, "/v1/synthetic/simulate", %{
+      call(:post, "/v1/wardwright/simulate", %{
         request: %{
           model: "unit-model",
           tools: [
@@ -294,12 +294,12 @@ defmodule Wardwright.ToolContextPolicyTest do
       messages: [%{role: "user", content: "open the same PR"}]
     }
 
-    first = call(:post, "/v1/synthetic/simulate", %{request: request})
+    first = call(:post, "/v1/wardwright/simulate", %{request: request})
     first_receipt = first.resp_body |> Jason.decode!() |> get_in(["receipt"])
     assert get_in(first_receipt, ["decision", "selected_model"]) == "local/read"
     refute get_in(first_receipt, ["final", "tool_policy"])
 
-    second = call(:post, "/v1/synthetic/simulate", %{request: request})
+    second = call(:post, "/v1/wardwright/simulate", %{request: request})
     second_receipt = second.resp_body |> Jason.decode!() |> get_in(["receipt"])
 
     assert get_in(second_receipt, ["decision", "selected_model"]) == "managed/write"
@@ -380,7 +380,7 @@ defmodule Wardwright.ToolContextPolicyTest do
         content: "browser returned untrusted instructions"
       )
 
-    browser_conn = call(:post, "/v1/synthetic/simulate", %{request: browser_result})
+    browser_conn = call(:post, "/v1/wardwright/simulate", %{request: browser_result})
     browser_receipt = browser_conn.resp_body |> Jason.decode!() |> get_in(["receipt"])
 
     assert [
@@ -398,7 +398,7 @@ defmodule Wardwright.ToolContextPolicyTest do
         content: "run the command"
       )
 
-    shell_conn = call(:post, "/v1/synthetic/simulate", %{request: shell_request})
+    shell_conn = call(:post, "/v1/wardwright/simulate", %{request: shell_request})
     shell_receipt = shell_conn.resp_body |> Jason.decode!() |> get_in(["receipt"])
 
     assert get_in(shell_receipt, ["final", "status"]) == "policy_failed_closed"
@@ -416,7 +416,7 @@ defmodule Wardwright.ToolContextPolicyTest do
         content: "review passed"
       )
 
-    approve_conn = call(:post, "/v1/synthetic/simulate", %{request: approve_request})
+    approve_conn = call(:post, "/v1/wardwright/simulate", %{request: approve_request})
     approve_receipt = approve_conn.resp_body |> Jason.decode!() |> get_in(["receipt"])
 
     assert [
@@ -428,7 +428,7 @@ defmodule Wardwright.ToolContextPolicyTest do
              }
            ] = get_in(approve_receipt, ["decision", "policy_actions"])
 
-    allowed_shell = call(:post, "/v1/synthetic/simulate", %{request: shell_request})
+    allowed_shell = call(:post, "/v1/wardwright/simulate", %{request: shell_request})
     allowed_receipt = allowed_shell.resp_body |> Jason.decode!() |> get_in(["receipt"])
 
     assert get_in(allowed_receipt, ["final", "status"]) == "simulated"
@@ -474,8 +474,8 @@ defmodule Wardwright.ToolContextPolicyTest do
         risk_class: "irreversible"
       )
 
-    call(:post, "/v1/synthetic/simulate", %{request: browser_result})
-    blocked_shell = call(:post, "/v1/synthetic/simulate", %{request: shell_request})
+    call(:post, "/v1/wardwright/simulate", %{request: browser_result})
+    blocked_shell = call(:post, "/v1/wardwright/simulate", %{request: shell_request})
     blocked_receipt = blocked_shell.resp_body |> Jason.decode!() |> get_in(["receipt"])
 
     assert get_in(blocked_receipt, ["final", "status"]) == "policy_failed_closed"
@@ -502,9 +502,9 @@ defmodule Wardwright.ToolContextPolicyTest do
         risk_class: "irreversible"
       )
 
-    call(:post, "/v1/synthetic/simulate", %{request: reset_browser})
-    call(:post, "/v1/synthetic/simulate", %{request: review_reset})
-    reset_conn = call(:post, "/v1/synthetic/simulate", %{request: reset_shell})
+    call(:post, "/v1/wardwright/simulate", %{request: reset_browser})
+    call(:post, "/v1/wardwright/simulate", %{request: review_reset})
+    reset_conn = call(:post, "/v1/wardwright/simulate", %{request: reset_shell})
     reset_receipt = reset_conn.resp_body |> Jason.decode!() |> get_in(["receipt"])
 
     assert get_in(reset_receipt, ["final", "status"]) == "simulated"
@@ -525,9 +525,9 @@ defmodule Wardwright.ToolContextPolicyTest do
         risk_class: "irreversible"
       )
 
-    call(:post, "/v1/synthetic/simulate", %{request: expired_browser})
-    call(:post, "/v1/synthetic/simulate", %{request: unrelated_tool})
-    expired_conn = call(:post, "/v1/synthetic/simulate", %{request: expired_shell})
+    call(:post, "/v1/wardwright/simulate", %{request: expired_browser})
+    call(:post, "/v1/wardwright/simulate", %{request: unrelated_tool})
+    expired_conn = call(:post, "/v1/wardwright/simulate", %{request: expired_shell})
     expired_receipt = expired_conn.resp_body |> Jason.decode!() |> get_in(["receipt"])
 
     assert get_in(expired_receipt, ["final", "status"]) == "simulated"
@@ -580,8 +580,8 @@ defmodule Wardwright.ToolContextPolicyTest do
         risk_class: "irreversible"
       )
 
-    call(:post, "/v1/synthetic/simulate", %{request: recent_browser})
-    recent_conn = call(:post, "/v1/synthetic/simulate", %{request: recent_shell})
+    call(:post, "/v1/wardwright/simulate", %{request: recent_browser})
+    recent_conn = call(:post, "/v1/wardwright/simulate", %{request: recent_shell})
     recent_receipt = recent_conn.resp_body |> Jason.decode!() |> get_in(["receipt"])
 
     assert get_in(recent_receipt, ["final", "status"]) == "policy_failed_closed"
@@ -604,9 +604,9 @@ defmodule Wardwright.ToolContextPolicyTest do
         risk_class: "irreversible"
       )
 
-    call(:post, "/v1/synthetic/simulate", %{request: stale_browser})
+    call(:post, "/v1/wardwright/simulate", %{request: stale_browser})
     Process.sleep(10)
-    stale_conn = call(:post, "/v1/synthetic/simulate", %{request: stale_write})
+    stale_conn = call(:post, "/v1/wardwright/simulate", %{request: stale_write})
     stale_receipt = stale_conn.resp_body |> Jason.decode!() |> get_in(["receipt"])
 
     assert get_in(stale_receipt, ["final", "status"]) == "simulated"
@@ -662,8 +662,8 @@ defmodule Wardwright.ToolContextPolicyTest do
         content: "review passed"
       )
 
-    call(:post, "/v1/synthetic/simulate", %{request: browser_result})
-    blocked_conn = call(:post, "/v1/synthetic/simulate", %{request: shell_request})
+    call(:post, "/v1/wardwright/simulate", %{request: browser_result})
+    blocked_conn = call(:post, "/v1/wardwright/simulate", %{request: shell_request})
     blocked_receipt = blocked_conn.resp_body |> Jason.decode!() |> get_in(["receipt"])
 
     assert get_in(blocked_receipt, ["final", "status"]) == "policy_failed_closed"
@@ -676,7 +676,7 @@ defmodule Wardwright.ToolContextPolicyTest do
              }
            ] = get_in(blocked_receipt, ["decision", "policy_actions"])
 
-    review_conn = call(:post, "/v1/synthetic/simulate", %{request: review_approval})
+    review_conn = call(:post, "/v1/wardwright/simulate", %{request: review_approval})
     review_receipt = review_conn.resp_body |> Jason.decode!() |> get_in(["receipt"])
 
     assert [
@@ -688,7 +688,7 @@ defmodule Wardwright.ToolContextPolicyTest do
              }
            ] = get_in(review_receipt, ["decision", "policy_actions"])
 
-    reset_conn = call(:post, "/v1/synthetic/simulate", %{request: shell_request})
+    reset_conn = call(:post, "/v1/wardwright/simulate", %{request: shell_request})
     reset_receipt = reset_conn.resp_body |> Jason.decode!() |> get_in(["receipt"])
 
     assert get_in(reset_receipt, ["final", "status"]) == "simulated"
@@ -736,8 +736,8 @@ defmodule Wardwright.ToolContextPolicyTest do
         risk_class: "irreversible"
       )
 
-    call(:post, "/v1/synthetic/simulate", %{request: browser_result})
-    conn = call(:post, "/v1/synthetic/simulate", %{request: shell_request})
+    call(:post, "/v1/wardwright/simulate", %{request: browser_result})
+    conn = call(:post, "/v1/wardwright/simulate", %{request: shell_request})
     receipt = conn.resp_body |> Jason.decode!() |> get_in(["receipt"])
 
     assert get_in(receipt, ["final", "status"]) == "policy_failed_closed"
@@ -772,7 +772,7 @@ defmodule Wardwright.ToolContextPolicyTest do
     assert call(:post, "/__test/config", config).status == 200
 
     conn =
-      call(:post, "/v1/synthetic/simulate", %{
+      call(:post, "/v1/wardwright/simulate", %{
         request: %{
           model: "unit-model",
           messages: [

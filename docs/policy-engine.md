@@ -15,7 +15,7 @@ from a general-purpose scripting fantasy. The first product question is:
 The current prototype has a small built-in request policy engine. The next step
 is to define the durable execution model that can support request, route,
 stream, output, and history-aware policies without adding unbounded overhead to
-every synthetic model call.
+every Wardwright model call.
 
 The live BEAM implementation now has a first policy-plan boundary:
 `Wardwright.Policy.Plan` evaluates request-phase governance rules and emits a
@@ -89,7 +89,7 @@ before the policy engine becomes useful.
 ## Execution Phases
 
 Policies should run at explicit phases. Each phase receives only the data it
-needs unless the synthetic model asks for more.
+needs unless the Wardwright model asks for more.
 
 1. **request.received**
    - Inputs: normalized request, caller context, metadata, estimated tokens.
@@ -126,7 +126,7 @@ needs unless the synthetic model asks for more.
 ## State And Route Binding
 
 The state machine is the policy control-flow model. The route planner remains
-the synthetic-model selection model. They should compose through explicit route
+the Wardwright model selection model. They should compose through explicit route
 bindings rather than collapsing every state into exactly one backend model.
 
 A state may optionally declare a route binding:
@@ -188,7 +188,7 @@ MVP guardrails:
 - bounded ring buffer by bytes/tokens/events
 - max policy CPU per stream event
 - max policy CPU per attempt
-- explicit fail-open/fail-closed setting per synthetic model
+- explicit fail-open/fail-closed setting per Wardwright model
 - receipt fields for `released_to_consumer`, trigger offset, action, retry count
 
 ### Related Real-World Patterns
@@ -355,7 +355,7 @@ state_requirements:
   - id: retry_count
     scope: run
     kind: counter
-    key: "route_retry:{synthetic_model}"
+    key: "route_retry:{model_id}"
 ```
 
 Policy code then sees:
@@ -375,7 +375,7 @@ Policy code then sees:
 ```
 
 This keeps policy deterministic and makes cost visible. It also lets the UI
-explain why a synthetic model has higher overhead.
+explain why a Wardwright model has higher overhead.
 
 ## History Access And Metadata
 
@@ -393,7 +393,7 @@ There are three possible designs:
 
 The third approach is probably the best ergonomic compromise. Policy authors
 can use query shapes that resemble the ordinary Wardwright read API, but the policy
-runtime only serves data that the synthetic model explicitly declared as part of
+runtime only serves data that the Wardwright model explicitly declared as part of
 its hot working set.
 
 Direct access to the full historical `GET` surface is attractive because it is
@@ -478,7 +478,7 @@ policy_context:
     - id: run_retry_count
       source: counters
       scope: run
-      key: "retry:{synthetic_model}"
+      key: "retry:{model_id}"
     - id: tenant_token_budget
       source: counters
       scope: tenant
@@ -499,7 +499,7 @@ policy_context:
       max_age_seconds: 1800
       fields:
         - receipt_id
-        - synthetic_model
+        - model_id
         - final.status
         - decision.selected_model
         - final.events
@@ -545,7 +545,7 @@ ctx.receipts.list(
 
 That is different from giving Starlark arbitrary access to `/v1/receipts`.
 The query is deterministic, scoped, authorized, served from a bounded cache, and
-visible in the synthetic model's overhead estimate. If a policy asks for data
+visible in the Wardwright model's overhead estimate. If a policy asks for data
 outside the configured cache, Wardwright should return an explicit "not available"
 policy fact rather than silently scanning durable history.
 

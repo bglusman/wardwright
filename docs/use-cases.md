@@ -96,7 +96,7 @@ the model returns malformed or semantically incomplete output.
 
 Wardwright policy:
 
-- require a structured-output mode for the synthetic model
+- require a structured-output mode for the Wardwright model
 - validate before the consumer sees the output
 - retry with validation feedback or fail closed
 - record the validation failure class and repair count
@@ -131,7 +131,7 @@ turning every agent integration into a bespoke experiment.
 
 Wardwright policy:
 
-- version prompt transforms with the synthetic model
+- version prompt transforms with the Wardwright model
 - apply transforms consistently across clients
 - record which transform version influenced a run
 - compare receipt outcomes across variants

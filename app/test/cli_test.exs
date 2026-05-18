@@ -47,13 +47,13 @@ defmodule Wardwright.CLITest do
     assert output =~ "https://wardwright.dev/agent-authoring.html"
     assert output =~ "explain_projection"
     assert output =~ "GET /v1/policy-authoring/projections/{pattern_id}"
-    assert output =~ "draft_synthetic_model"
-    assert output =~ "POST /v1/policy-authoring/synthetic-models/draft"
+    assert output =~ "draft_wardwright_model"
+    assert output =~ "POST /v1/policy-authoring/wardwright-models/draft"
     assert output =~ "list_dune_snippets"
     assert output =~ "evaluate_dune_snippet"
     assert output =~ "save_dune_snippet"
     assert output =~ "delete_dune_snippet"
-    assert output =~ "activate_synthetic_model"
+    assert output =~ "activate_wardwright_model"
     assert output =~ "propose_rule_change"
     refute output =~ "not implemented"
     assert output =~ "validate_policy_artifact"
@@ -78,8 +78,8 @@ defmodule Wardwright.CLITest do
     assert "evaluate_dune_snippet" in names
     assert "save_dune_snippet" in names
     assert "delete_dune_snippet" in names
-    assert "draft_synthetic_model" in names
-    assert "activate_synthetic_model" in names
+    assert "draft_wardwright_model" in names
+    assert "activate_wardwright_model" in names
     assert "record_scenario" in names
     assert "propose_rule_change" in names
     assert "validate_policy_artifact" in names

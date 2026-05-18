@@ -20,10 +20,10 @@
       "management_area": "Output evidence and claims",
       "category": "output.finalizing",
       "promise": "Treat provider JSON/schema support as helpful but not sufficient: validate the final contract Wardwright promised to the caller.",
-      "failure_story": "Different providers expose different structured-output constraints, and a caller may accept one of several valid shapes. A single-provider schema mode does not always match the synthetic model contract.",
+      "failure_story": "Different providers expose different structured-output constraints, and a caller may accept one of several valid shapes. A single-provider schema mode does not always match the Wardwright model contract.",
       "old_behavior": "The app delegated schema correctness to whichever provider happened to run this turn.",
       "wardwright_behavior": "Wardwright owns the outer contract, can retry with validation feedback, and can record which schema branch or semantic check failed.",
-      "composition": "Structured-output policy can sit after dispatcher, cascade, or alloy routing because the caller sees one stable synthetic model contract.",
+      "composition": "Structured-output policy can sit after dispatcher, cascade, or alloy routing because the caller sees one stable Wardwright model contract.",
       "primitives": ["structured_output", "schema_branch", "retry_with_validation_feedback"],
       "pattern_id": "ambiguous-success",
       "recipe_kind": "policy_recipe"

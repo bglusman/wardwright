@@ -6,7 +6,7 @@ description: The product vision and current architecture direction for Wardwrigh
 
 # Wardwright Vision
 
-Wardwright is a synthetic model platform for agentic systems. A caller asks for a
+Wardwright is a Wardwright model platform for agentic systems. A caller asks for a
 stable model name, such as `coding-balanced` or `wardwright/json-extractor`; Wardwright
 decides what that name means today, records why, and exposes the result through
 an OpenAI-compatible interface.
@@ -23,7 +23,7 @@ an OpenAI-compatible interface.
 
 ## Product Shape
 
-In the finished product, Wardwright should let an operator define synthetic models
+In the finished product, Wardwright should let an operator define Wardwright models
 as shareable artifacts:
 
 - public model name and namespace behavior
@@ -39,11 +39,11 @@ The key distinction is that the public model name is not just an alias for one
 provider model. It is a governed contract.
 
 Wardwright has two major inspirations. XBOW's model-alloy idea motivates
-synthetic models that can combine multiple LLMs into one coherent agent-facing
+Wardwright models that can combine multiple LLMs into one coherent agent-facing
 behavior instead of treating "model" as a single provider ID. oh-my-pi's
 Time Traveling Streamed Rules motivate output-stream governance that starts with
 zero prompt-context cost, then aborts and retries only when the model begins to
-emit a triggering pattern. See [Synthetic Model Composition](synthetic-models.html)
+emit a triggering pattern. See [Wardwright Model Composition](wardwright-models.html)
 for the route primitives and source links.
 
 ## Requirements Direction
@@ -92,7 +92,7 @@ and debugging speed rather than raw expressiveness.
 
 <div class="flow">
   <div class="flow-step"><strong>1. Caller</strong> sends a normal OpenAI-style chat completion request.</div>
-  <div class="flow-step"><strong>2. Wardwright</strong> resolves the synthetic model name and captures caller provenance.</div>
+  <div class="flow-step"><strong>2. Wardwright</strong> resolves the Wardwright model name and captures caller provenance.</div>
   <div class="flow-step"><strong>3. Policy</strong> can transform the prompt, pick a route, validate stream events, retry, alert, or stop.</div>
   <div class="flow-step"><strong>4. Provider</strong> receives only the concrete request Wardwright has chosen to send.</div>
   <div class="flow-step"><strong>5. Receipt</strong> records the route, policy actions, timing, usage, and final outcome.</div>
@@ -109,7 +109,7 @@ constrained workflows with known failure modes:
 - repair or reject malformed JSON, XML, or other structured output
 - alert a human operator when uncertainty, retries, or spend cross a threshold
 - add or vary request preambles and postscripts for controlled experiments
-- record caller and consuming-agent visibility across shared synthetic models
+- record caller and consuming-agent visibility across shared Wardwright models
 
 Security policies still matter, especially around prompt injection and leakage,
 but they are one family of governance examples rather than the product's whole

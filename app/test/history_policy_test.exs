@@ -35,7 +35,7 @@ defmodule Wardwright.HistoryPolicyTest do
     miss =
       call(
         :post,
-        "/v1/synthetic/simulate",
+        "/v1/wardwright/simulate",
         %{request: %{model: "unit-model", messages: [%{role: "user", content: "hello"}]}},
         [{"x-wardwright-session-id", "session-a"}]
       )
@@ -52,7 +52,7 @@ defmodule Wardwright.HistoryPolicyTest do
     hit =
       call(
         :post,
-        "/v1/synthetic/simulate",
+        "/v1/wardwright/simulate",
         %{request: %{model: "unit-model", messages: [%{role: "user", content: "hello"}]}},
         [{"x-wardwright-session-id", "session-a"}]
       )
@@ -88,7 +88,7 @@ defmodule Wardwright.HistoryPolicyTest do
     conn =
       call(
         :post,
-        "/v1/synthetic/simulate",
+        "/v1/wardwright/simulate",
         %{
           request: %{
             model: "unit-model",
@@ -155,7 +155,7 @@ defmodule Wardwright.HistoryPolicyTest do
     conn =
       call(
         :post,
-        "/v1/synthetic/simulate",
+        "/v1/wardwright/simulate",
         %{request: %{model: "unit-model", messages: [%{role: "user", content: "hello"}]}},
         [{"x-wardwright-session-id", "session-a"}]
       )
@@ -197,7 +197,7 @@ defmodule Wardwright.HistoryPolicyTest do
     miss =
       call(
         :post,
-        "/v1/synthetic/simulate",
+        "/v1/wardwright/simulate",
         %{request: %{model: "unit-model", messages: [%{role: "user", content: "hello"}]}},
         [{"x-wardwright-session-id", "session-a"}]
       )
@@ -207,7 +207,7 @@ defmodule Wardwright.HistoryPolicyTest do
     hit =
       call(
         :post,
-        "/v1/synthetic/simulate",
+        "/v1/wardwright/simulate",
         %{
           request: %{
             model: "unit-model",
@@ -224,7 +224,7 @@ defmodule Wardwright.HistoryPolicyTest do
     isolated =
       call(
         :post,
-        "/v1/synthetic/simulate",
+        "/v1/wardwright/simulate",
         %{request: %{model: "unit-model", messages: [%{role: "user", content: "hello"}]}},
         [{"x-wardwright-session-id", "session-b"}]
       )

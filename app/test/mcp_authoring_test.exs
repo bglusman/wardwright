@@ -43,9 +43,9 @@ defmodule Wardwright.MCPAuthoringTest do
       |> Enum.map(& &1.name)
 
     assert tool_names == [
-             "activate_synthetic_model",
+             "activate_wardwright_model",
              "delete_dune_snippet",
-             "draft_synthetic_model",
+             "draft_wardwright_model",
              "evaluate_dune_snippet",
              "explain_projection",
              "list_dune_snippets",
@@ -168,11 +168,11 @@ defmodule Wardwright.MCPAuthoringTest do
     assert delete_response.structured_content["deleted"] == true
   end
 
-  test "draft synthetic model tool returns a callable model artifact" do
+  test "draft Wardwright model tool returns a callable model artifact" do
     assert {:reply, %Response{} = response, %Frame{}} =
-             WardwrightWeb.MCP.Tools.DraftSyntheticModel.execute(
+             WardwrightWeb.MCP.Tools.DraftWardwrightModel.execute(
                %{
-                 "synthetic_model" => "mcp-router",
+                 "model_id" => "mcp-router",
                  "targets" => [
                    %{"model" => "local/small", "context_window" => 1024},
                    %{"model" => "managed/large", "context_window" => 128_000}
@@ -186,7 +186,7 @@ defmodule Wardwright.MCPAuthoringTest do
                Frame.new()
              )
 
-    assert get_in(response.structured_content, ["artifact", "synthetic_model"]) == "mcp-router"
+    assert get_in(response.structured_content, ["artifact", "model_id"]) == "mcp-router"
     assert get_in(response.structured_content, ["validation", "errors"]) == []
 
     assert get_in(response.structured_content, ["access", "model_ids"]) == [
@@ -282,9 +282,9 @@ defmodule Wardwright.MCPAuthoringTest do
       |> Enum.map(& &1["name"])
 
     assert tool_names == [
-             "activate_synthetic_model",
+             "activate_wardwright_model",
              "delete_dune_snippet",
-             "draft_synthetic_model",
+             "draft_wardwright_model",
              "evaluate_dune_snippet",
              "explain_projection",
              "list_dune_snippets",

@@ -4,7 +4,7 @@ Workspace-wide instructions for AI coding agents operating on this public repo.
 
 ## What This Repo Is
 
-Wardwright is an experimental synthetic model platform extracted from Calciforge's
+Wardwright is experimental LLM model middleware extracted from Calciforge's
 model-gateway work. Clients call stable OpenAI-compatible model names while
 Wardwright owns route graphs, policy/governance, provider selection, caller
 traceability, simulation, and receipts.
@@ -36,7 +36,8 @@ In short:
 - **Wardwright** — the tentative product name.
 - **Ingary** — the historical working name. Public project pages now use
   `wardwright.dev`.
-- **Synthetic model** — stable public model contract backed by a route graph.
+- **Wardwright model** — stable public model contract backed by route,
+  policy, governance, simulation, and receipt behavior.
 - **Route graph** — dispatcher/cascade/alloy/guard/concrete model graph.
 - **Receipt** — structured record explaining route decisions, policy actions,
   provider attempts, caller provenance, and final status.

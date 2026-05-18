@@ -138,7 +138,7 @@ defmodule Wardwright.StreamRuntimeGuardTest do
           "context_window" => 256,
           "provider_kind" => "canned_sequence",
           "canned_stream_chunks" => ["safe prefix before provider error "],
-          "canned_stream_error" => "synthetic stream failure"
+          "canned_stream_error" => "wardwright stream failure"
         }
       ])
       |> Map.put("governance", [])
@@ -170,7 +170,7 @@ defmodule Wardwright.StreamRuntimeGuardTest do
     receipt = Wardwright.ReceiptStore.get(receipt_id)
 
     assert get_in(receipt, ["final", "status"]) == "provider_error"
-    assert get_in(receipt, ["final", "provider_error"]) == "synthetic stream failure"
+    assert get_in(receipt, ["final", "provider_error"]) == "wardwright stream failure"
   end
 
   test "provider runtime drains queued chunks after policy halt" do

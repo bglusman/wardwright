@@ -18,7 +18,7 @@ reviewed independently.
 
 The first useful workbench loop is:
 
-1. Select a synthetic model and policy artifact.
+1. Select a Wardwright model and policy artifact.
 2. See the baseline route graph.
 3. See policy overlays by phase and effect.
 4. Run or load a simulation scenario.
@@ -138,7 +138,7 @@ Gate:
 
 First screen should be the workbench, not a landing page:
 
-- left rail: synthetic model, policy version, projection mode, scenario set
+- left rail: Wardwright model, policy version, projection mode, scenario set
 - center: route/policy graph with phase tabs and trace overlay
 - right rail: assistant chat, artifact diff, and selected-node inspector
 - bottom drawer: simulation timeline and receipt evidence

@@ -39,7 +39,7 @@
   "limitations": [
     "The alert sink is in-memory prototype state, not durable storage.",
     "Delivery workers are spawned Tokio tasks; graceful shutdown/drain semantics are represented by inspectable pending/delivered state but no shutdown drain hook was added in this round.",
-    "Retry behavior is deliberately synthetic: fail_then_recover fails the first attempt and succeeds on retry, sufficient for contract visibility but not a general retry scheduler.",
+    "Retry behavior is deliberately wardwright: fail_then_recover fails the first attempt and succeeds on retry, sufficient for contract visibility but not a general retry scheduler.",
     "Fail-closed request behavior is wired through chat and simulate paths, but native tests cover the report-level block decision rather than a full HTTP request."
   ],
   "mutation_check_self_review": {

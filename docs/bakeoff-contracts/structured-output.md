@@ -22,7 +22,7 @@ backends. The work is tiered:
 
 ## Goal
 
-Implement non-streaming structured-output governance for a synthetic model. A
+Implement non-streaming structured-output governance for a Wardwright model. A
 request may receive malformed, schema-invalid, or semantically invalid provider
 output. The governor must treat those failures as non-terminal guard events
 while budget remains, retry with validation feedback, and return the first valid
@@ -37,7 +37,7 @@ explicitly records it as an extra capability.
 
 The prototype test API may accept a dynamic config containing:
 
-- `synthetic_model`: the externally requested model alias
+- `model_id`: the externally requested model alias
 - `targets`: one or more provider model targets
 - `structured_output.schemas`: named JSON schemas
 - `structured_output.schema_rule_id`: rule id recorded for JSON syntax and
@@ -103,7 +103,7 @@ field.
 Every governed request must write a receipt whose public fields include enough
 information to reconstruct the path:
 
-- selected synthetic model and provider target
+- selected Wardwright model and provider target
 - final structured-output status
 - selected schema id for successful output
 - parsed output for successful output

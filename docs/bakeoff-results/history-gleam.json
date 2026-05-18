@@ -46,7 +46,7 @@
     "ffi_or_interop": "Elixir calls the generated Erlang module :elixir_ingary@history_core directly. Regex and literal predicate evaluation remains in Elixir because Gleam regex interop would have required additional Erlang FFI for this spike."
   },
   "isolation_behavior": {
-    "model_runtime": "Synthetic model/version runtimes are represented by Registry-backed GenServers under ElixirIngary.ModelSupervisor.",
+    "model_runtime": "Wardwright model/version runtimes are represented by Registry-backed GenServers under ElixirIngary.ModelSupervisor.",
     "session_runtime": "Session/run history is owned by Registry-backed GenServers under ElixirIngary.SessionSupervisor.",
     "tested": "A test crashes one session worker and verifies another session under the same model retains history; it also starts another model runtime.",
     "limitation": "The session supervisor is global rather than physically nested below each model runtime. The registry key still scopes by model/version/session/run, but model-subtree teardown semantics are modeled rather than fully hierarchical."

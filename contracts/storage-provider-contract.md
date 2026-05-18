@@ -43,7 +43,7 @@ Receipts overlap with logs, but they should not be reduced to ordinary logs.
 Wardwright needs both concepts:
 
 - **Receipts** are product records: queryable, versioned, retention-aware,
-  privacy-aware, and tied to synthetic model behavior.
+  privacy-aware, and tied to Wardwright model behavior.
 - **Receipt events** are ordered state-machine facts that build a receipt.
 - **Logs** are operational diagnostics for humans and infrastructure.
 - **Telemetry sinks** are external copies of selected receipt/log/metric events.
@@ -159,10 +159,10 @@ Storage providers must support:
 
 - create and fetch provider definitions
 - create and fetch concrete model definitions
-- create synthetic model records
-- create immutable synthetic model versions
+- create Wardwright model records
+- create immutable Wardwright model versions
 - activate draft/canary/rollback rollout state
-- import synthetic model artifacts with provenance and review state
+- import Wardwright model artifacts with provenance and review state
 - reject mutation of already-activated model versions
 
 ### Receipts
@@ -188,8 +188,8 @@ Receipt queries must support filtering by:
 - consuming user ID
 - session ID
 - run ID
-- synthetic model ID
-- synthetic model version ID
+- Wardwright model ID
+- Wardwright model version ID
 - selected provider
 - selected concrete model
 - final status

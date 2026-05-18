@@ -19,7 +19,7 @@ than discovering ETS table names or references directly.
 
 ## Configuration
 
-Synthetic model config may include:
+Wardwright model config may include:
 
 ```json
 {

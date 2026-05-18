@@ -61,7 +61,7 @@ The target process hierarchy is:
 
 1. application supervisor
 2. model registry and dynamic supervisor
-3. one model runtime subtree per synthetic model/version
+3. one model runtime subtree per Wardwright model/version
 4. session registry and dynamic supervisor under each model runtime
 5. one session runtime per caller/session/run
 6. narrow workers for provider calls, sidecars, dirty NIF calls, alert queues,
@@ -118,7 +118,7 @@ client-heavy canvas app.
 
 Initial LiveView surfaces:
 
-- synthetic model catalog and version switcher
+- Wardwright model catalog and version switcher
 - policy projection workbench
 - simulation runner with trace overlay
 - receipt explorer and diff view

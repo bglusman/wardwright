@@ -296,7 +296,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           <button type="submit">Load examples</button>
         </form>
 
-        <h2 class="nav_heading">Example Synthetic Models</h2>
+        <h2 class="nav_heading">Example Wardwright Models</h2>
 
         <details :for={group <- @recipe_groups} class="recipe_group" open={group.open}>
           <summary>
@@ -324,7 +324,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         <small>
           Installed packages include <code>wardwright tools</code> for copyable agent
           instructions. MCP uses this Wardwright server with the <code>/mcp</code> path
-          and can draft or activate local synthetic models.
+          and can draft or activate local Wardwright models.
         </small>
       </section>
 
@@ -431,10 +431,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             </dl>
           </article>
 
-          <article :for={model <- @model_access["synthetic_models"]} class="access_card synthetic_access">
-            <span>Synthetic model</span>
+          <article :for={model <- @model_access["wardwright_models"]} class="access_card wardwright_access">
+            <span>Wardwright model</span>
             <strong><%= model["id"] %></strong>
-            <small>Version <%= model["active_version"] %>; route <%= model["route_type"] %> via <%= model["route_root"] %>.</small>
+            <small>Version <%= model["active_version"] %>; model graph <%= model["route_type"] %> via <%= model["route_root"] %>.</small>
             <div class="chips">
               <span :for={model_id <- model["agent_model_ids"]} class="chip"><%= model_id %></span>
             </div>
@@ -1092,8 +1092,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         <div class="chips">
           <span class="chip">explain_projection</span>
           <span class="chip">simulate_policy</span>
-          <span class="chip">draft_synthetic_model</span>
-          <span class="chip">activate_synthetic_model</span>
+          <span class="chip">draft_wardwright_model</span>
+          <span class="chip">activate_wardwright_model</span>
           <span class="chip">propose_rule_change</span>
           <span class="chip">validate_policy_artifact</span>
         </div>

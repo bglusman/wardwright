@@ -150,7 +150,7 @@ defmodule Wardwright.RouterCase do
 
   def unit_policy_config do
     %{
-      "synthetic_model" => "unit-model",
+      "model_id" => "unit-model",
       "version" => "unit-version",
       "targets" => [
         %{"model" => "tiny/model", "context_window" => 8},
@@ -217,8 +217,8 @@ defmodule Wardwright.RouterCase do
       "receipt_schema" => "v1",
       "receipt_id" => receipt_id,
       "created_at" => created_at,
-      "synthetic_model" => "coding-balanced",
-      "synthetic_version" => "2026-05-13.mock",
+      "model_id" => "coding-balanced",
+      "model_version" => "2026-05-13.mock",
       "simulation" => status == "simulated",
       "caller" => %{
         "tenant_id" => %{"value" => "tenant-a", "source" => "header"},

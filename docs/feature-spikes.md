@@ -8,7 +8,7 @@ description: Research-backed feature directions for policy examples and tests.
 
 This page is a working backlog for self-directed Wardwright experiments. The goal
 is not to chase every gateway feature. The goal is to find constrained agentic
-workflows where a synthetic model policy layer can measurably reduce failures,
+workflows where a Wardwright model policy layer can measurably reduce failures,
 cost, latency, or diagnosis time.
 
 ## Research Signals
@@ -29,7 +29,7 @@ oh-my-pi's Time Traveling Streamed Rules are the closest public analogue to
 Wardwright's stream-policy idea: regex-triggered output stream rules that activate
 only when the model starts producing relevant content, abort the stream, inject
 a reminder, and retry once per session. Wardwright can generalize that into
-backend-neutral synthetic model policy with explicit receipt semantics and
+backend-neutral Wardwright model policy with explicit receipt semantics and
 bounded release latency.
 
 ## Experiment Matrix
@@ -42,13 +42,13 @@ bounded release latency.
 | Policy graph and conflict workbench | Complex policies need visible ordering, parallel-safe groups, and conflict review. | Phase graph, rule cards, effect sets, arbitration badges, and conflict diagnostics. | UI can become too abstract unless grounded in examples and receipts. | Users can explain why a rule runs in parallel, ordered, or rejected before activation. |
 | Starlark AST and trace workbench | Code-first policy might be viable if behavior can be visualized through AST projection and simulation traces. | Small Starlark policy editor, parsed branch/call graph, source-span highlights, scenario trace overlay, and opaque-branch warnings. | Static AST can imply more understanding than exists; runtime traces must be authoritative. | Users can identify which code branch/action caused a scenario difference without reading the full policy. |
 | Dune snippet primitive simplification | Today's "primitives" are useful but not always mentally primitive. Predefined local Dune snippets might make behavior easier for agents and advanced users to inspect, fork, and edit. | Re-express existing structured behaviors as named Dune snippets behind the same action/result ABI, expose a snippet registry and evaluator over HTTP/MCP, and keep projection/simulation engine-neutral. The spike now routes legacy `engine: primitive` contains rules through `primitive.request-contains-actions` and request-side contains/regex rule decisions through `primitive.request-rule-action`, while host code still applies effects. Users and agents can also save reviewed local workspace snippets, evaluate them by id, delete them, and reference them from `engine: "dune"` artifacts by `snippet_id`. | Dune is not a hostile-code boundary; code-shaped authoring can hide product complexity if traces are weak. | A user can understand and safely modify a predefined behavior faster than with the current structured fields, without losing validation or scenario evidence. |
-| Provider credential and caller auth hardening | Secret storage and service authorization are currently separate and easy to confuse. | Keep fnox/env references for provider credentials, add explicit model-use authorization and provider-configuration authorization, and make package startup warn when real credentials are configured without a trusted access boundary. | Product auth can sprawl; avoid building multi-tenant identity until deployment shape is clearer. | Operators can tell who may call each synthetic model, who may edit providers, and where each provider credential is resolved without exposing secret values. |
+| Provider credential and caller auth hardening | Secret storage and service authorization are currently separate and easy to confuse. | Keep fnox/env references for provider credentials, add explicit model-use authorization and provider-configuration authorization, and make package startup warn when real credentials are configured without a trusted access boundary. | Product auth can sprawl; avoid building multi-tenant identity until deployment shape is clearer. | Operators can tell who may call each Wardwright model, who may edit providers, and where each provider credential is resolved without exposing secret values. |
 | Structured-vs-code policy comparison | The primary authoring model is still an open product decision. | Build the same TTSR, cache-count, and model-switch policies in structured primitives and Starlark-first UIs against the same scenarios. | Parallel spikes can split focus unless they share scenarios and success criteria. | One approach clearly improves prediction, review, debugging, or trust for technical policy authors. |
 | Tool-loop detector | Retry loops are expensive and diagnosable from session facts. | Session rolling counter keyed by tool/args/result hashes. | Needs agent/tool metadata standardization. | Fewer repeated equivalent calls in generated traces. |
 | Async alert sinks | Makes policy value visible before full approval workflow exists. | Receipt event plus webhook/Telegram/Slack sink adapter. | Sink failure/backpressure semantics. | Policy trip reliably creates auditable delivery record. |
 | Approval gate | Valuable for irreversible operations, but not just a notification. | Pending request state, approve/edit/reject, timeout. | Requires durable state and client UX contract. | Resumable approval tests pass without duplicate side effects. |
 | Prompt variant receipts | Makes Wardwright useful as a prompt experiment boundary. | Versioned preamble/postscript transforms recorded in receipts. | Can become Helicone-style product sprawl. | Operators can compare outcomes by transform version. |
-| Budget/context governor | Route decisions are central to synthetic models. | Run/session counters and context-threshold route actions. | Budget facts need deterministic cache semantics. | Generated threshold tests produce stable route/degrade/alert choices. |
+| Budget/context governor | Route decisions are central to Wardwright models. | Run/session counters and context-threshold route actions. | Budget facts need deterministic cache semantics. | Generated threshold tests produce stable route/degrade/alert choices. |
 | Trace-to-regression importer | Converts production failures into examples and tests. | Receipt fixture import to BDD scenario generator. | Needs stable receipt schema and redaction. | A labeled incident becomes a failing test before fix. |
 
 ## First Example Library

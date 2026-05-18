@@ -60,19 +60,19 @@ defmodule WardwrightWeb.PolicyAuthoringTools do
         "/agent-authoring.html#try-dune-snippets"
       ),
       tool(
-        "draft_synthetic_model",
+        "draft_wardwright_model",
         "POST",
-        "/v1/policy-authoring/synthetic-models/draft",
-        "Build and validate a draft synthetic-model artifact from supplied targets, route selectors, governance rules, and stream rules without activating it.",
-        "Use when creating a new local synthetic model or normalizing a hand-written artifact before review.",
+        "/v1/policy-authoring/wardwright-models/draft",
+        "Build and validate a draft Wardwright model artifact from supplied provider/model targets, route graph nodes, governance rules, and stream rules without activating it.",
+        "Use when creating a new local Wardwright model or normalizing a hand-written artifact before review.",
         "Draft-only. This does not change the model served by /v1/chat/completions.",
-        "/agent-authoring.html#draft-a-synthetic-model"
+        "/agent-authoring.html#draft-a-wardwright-model"
       ),
       tool(
-        "activate_synthetic_model",
+        "activate_wardwright_model",
         "POST",
-        "/v1/policy-authoring/synthetic-models",
-        "Validate and activate a synthetic-model artifact as the current local Wardwright model so agents can call it through the OpenAI-compatible endpoint.",
+        "/v1/policy-authoring/wardwright-models",
+        "Validate and activate a Wardwright model artifact as the current local model so agents can call it through the OpenAI-compatible endpoint.",
         "Use only after the user has reviewed the draft, validation output, and relevant simulations.",
         "Write-capable. Requires protected local access and changes the current local model.",
         "/agent-authoring.html#activate-only-after-review"

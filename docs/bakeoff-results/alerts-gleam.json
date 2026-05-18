@@ -34,8 +34,8 @@
       "final.alert_deliveries[].queue_capacity",
       "failure_domain",
       "caller.session_id",
-      "synthetic_model",
-      "synthetic_version"
+      "model_id",
+      "model_version"
     ],
     "admin_surfaces": [
       "GET /admin/alerts exposes queue depth, capacity, counters, retries, and delivery terminal states",
@@ -68,7 +68,7 @@
     "failing_then_recovering_retries": "covered by ExUnit retry_count and delivered attempt 2 assertion plus Gleam retry classification"
   },
   "isolation_behavior": {
-    "model_runtime": "ElixirIngary.RuntimeSupervisor starts one ElixirIngary.ModelRuntime subtree per synthetic model/version.",
+    "model_runtime": "ElixirIngary.RuntimeSupervisor starts one ElixirIngary.ModelRuntime subtree per Wardwright model/version.",
     "session_runtime": "Each model runtime starts a dynamic supervisor for session workers. Session names are registered in one fixed app-level registry keyed by model/version/session to avoid config-derived atom growth.",
     "alert_sink_failure_domain": "The prototype uses one app-level AlertSink, so backpressure is globally visible across models. Receipts identify the model/session failure domain for each alert, but the queue is not yet per-model or per-session.",
     "tested": "A deliberate session crash under unit-model/unit-version does not prevent a sibling session or an independent other-model/other-version session runtime from answering."

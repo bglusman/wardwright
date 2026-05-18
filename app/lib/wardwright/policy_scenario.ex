@@ -226,7 +226,7 @@ defmodule Wardwright.PolicyScenario do
   end
 
   defp receipt_summary(receipt, status) do
-    model = string_field(receipt, "synthetic_model") || "unknown model"
+    model = string_field(receipt, "model_id") || "unknown model"
     "Imported receipt for #{model} with final status #{status}."
   end
 

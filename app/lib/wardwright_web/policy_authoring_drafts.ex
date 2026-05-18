@@ -6,7 +6,7 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
   @default_version "draft"
   @default_route_id "dispatcher.prompt_length"
 
-  def synthetic_model_draft(body, origin \\ "http://127.0.0.1:8787") when is_map(body) do
+  def wardwright_model_draft(body, origin \\ "http://127.0.0.1:8787") when is_map(body) do
     body = string_keys(body)
     artifact = artifact_from_body(body)
     validation = PolicyArtifactValidator.validate(artifact, source: "draft")
@@ -19,7 +19,7 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
     }
   end
 
-  def activate_synthetic_model(body, origin \\ "http://127.0.0.1:8787") when is_map(body) do
+  def activate_wardwright_model(body, origin \\ "http://127.0.0.1:8787") when is_map(body) do
     body = string_keys(body)
     artifact = artifact_from_body(body)
     validation = PolicyArtifactValidator.validate(artifact, source: "draft")
@@ -36,10 +36,10 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
            }}
 
         {:error, message} ->
-          {:error, message, synthetic_model_draft(body, origin)}
+          {:error, message, wardwright_model_draft(body, origin)}
       end
     else
-      {:error, "artifact has validation errors", synthetic_model_draft(body, origin)}
+      {:error, "artifact has validation errors", wardwright_model_draft(body, origin)}
     end
   end
 
@@ -97,7 +97,7 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
 
     Wardwright.default_config()
     |> Map.merge(%{
-      "synthetic_model" => draft_model_id(body),
+      "model_id" => draft_model_id(body),
       "version" => draft_version(body),
       "targets" => draft_targets(body),
       "route_root" => route["id"],
@@ -124,7 +124,7 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
 
   defp draft_model_id(body) do
     body
-    |> Map.get("synthetic_model", Map.get(body, "id", "draft-model"))
+    |> Map.get("model_id", Map.get(body, "id", "draft-model"))
     |> to_string()
     |> String.trim()
   end
@@ -253,7 +253,7 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
   end
 
   defp access_details(artifact, origin) do
-    model = Map.get(artifact, "synthetic_model")
+    model = Map.get(artifact, "model_id")
 
     %{
       "model_ids" => [model, "wardwright/#{model}"],
@@ -266,7 +266,7 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
   defp next_steps(%{"errors" => []}) do
     [
       "Review validation warnings and coverage gaps.",
-      "POST the same body to /v1/policy-authoring/synthetic-models to activate it locally.",
+      "POST the same body to /v1/policy-authoring/wardwright-models to activate it locally.",
       "Point an OpenAI-compatible agent at the returned openai_base_url and use one of the returned model_ids."
     ]
   end

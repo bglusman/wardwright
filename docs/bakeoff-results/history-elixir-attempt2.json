@@ -67,6 +67,6 @@
     "architecture": "Agent serialization is adequate for this prototype and gives deterministic sequence allocation under concurrent writes. A production path would need durable storage plus authenticated admin endpoints.",
     "code_quality": "The history decision logic is concentrated in PolicyCache and Router only adapts caller scope and receipt trace. Existing cache_count remains for compatibility but new policies use history_decision.",
     "test_quality": "Tests assert externally visible behavior through Plug routes where practical and direct PolicyCache calls for regex/concurrency edge cases. They check failure-sensitive counts, scope, trace fields, and ordering rather than private implementation details.",
-    "security": "No secrets, provider tokens, private endpoints, or raw real user content were added. Fixtures use synthetic session/run identifiers and synthetic prompt text."
+    "security": "No secrets, provider tokens, private endpoints, or raw real user content were added. Fixtures use wardwright session/run identifiers and wardwright prompt text."
   }
 }

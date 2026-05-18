@@ -12,7 +12,7 @@ defmodule Wardwright.RequestPolicyTest do
       }
     }
 
-    conn = call(:post, "/v1/synthetic/simulate", request)
+    conn = call(:post, "/v1/wardwright/simulate", request)
     assert conn.status == 200
     body = Jason.decode!(conn.resp_body)
 
@@ -46,7 +46,7 @@ defmodule Wardwright.RequestPolicyTest do
     assert call(:post, "/__test/config", config).status == 200
 
     conn =
-      call(:post, "/v1/synthetic/simulate", %{
+      call(:post, "/v1/wardwright/simulate", %{
         request: %{
           model: "unit-model",
           messages: [%{role: "user", content: "Please return JSON."}]

@@ -60,12 +60,12 @@ defmodule Wardwright.PolicyEngineAndConfigTest do
   end
 
   test "test config rejects invalid route graph shapes" do
-    prefixed = unit_policy_config() |> Map.put("synthetic_model", "wardwright/unit-model")
+    prefixed = unit_policy_config() |> Map.put("model_id", "wardwright/unit-model")
     conn = call(:post, "/__test/config", prefixed)
     assert conn.status == 400
 
     assert Jason.decode!(conn.resp_body)["error"]["message"] ==
-             "synthetic_model must be unprefixed"
+             "model_id must be unprefixed"
 
     duplicate =
       unit_policy_config()

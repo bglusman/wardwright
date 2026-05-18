@@ -487,7 +487,7 @@ Before the first bakeoff, fill this table from live code:
 | Capability | Go | Rust | Elixir | Gleam-on-BEAM | Notes |
 |---|---|---|---|---|---|
 | OpenAI-compatible chat endpoint |  |  |  |  |  |
-| Synthetic simulate endpoint |  |  |  |  |  |
+| Wardwright simulate endpoint |  |  |  |  |  |
 | Config mutation endpoint |  |  |  |  |  |
 | Provider target config |  |  |  |  |  |
 | Env/fnox credential references |  |  |  |  |  |
@@ -504,8 +504,8 @@ The Elixir and Gleam-on-BEAM variants should explicitly model Wardwright runtime
 isolation. The target process hierarchy is:
 
 - application supervisor
-- dynamic supervisor and registry for synthetic model runtimes
-- one model runtime process or subtree per synthetic model/version
+- dynamic supervisor and registry for Wardwright model runtimes
+- one model runtime process or subtree per Wardwright model/version
 - dynamic supervisor and registry under each model runtime for active sessions
 - one session process or subtree per caller/session/run
 - provider/NIF/sidecar workers linked under the narrowest runtime that owns

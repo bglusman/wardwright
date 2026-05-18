@@ -1,6 +1,6 @@
-defmodule WardwrightWeb.MCP.Tools.ActivateSyntheticModel do
+defmodule WardwrightWeb.MCP.Tools.ActivateWardwrightModel do
   @moduledoc """
-  Activate a validated synthetic-model artifact as the current local model.
+  Activate a validated Wardwright model artifact as the current local model.
 
   Use this only after a draft artifact has been validated, simulated, and
   approved by the user. Activation changes the current local model exposed
@@ -15,22 +15,23 @@ defmodule WardwrightWeb.MCP.Tools.ActivateSyntheticModel do
   schema do
     field(:artifact, :map,
       description:
-        "Optional full artifact. When omitted, provide synthetic_model, targets, route, governance, and stream_rules fields."
+        "Optional full artifact. When omitted, provide model_id, targets, route, governance, and stream_rules fields."
     )
 
-    field(:synthetic_model, :string,
-      description: "Unprefixed synthetic model id, for example support-router."
+    field(:model_id, :string,
+      description: "Unprefixed Wardwright model id, for example support-router."
     )
 
     field(:version, :string, description: "Draft version label.")
 
     field(:targets, :list,
-      description: "Concrete target model objects, usually with model and context_window fields."
+      description:
+        "Provider target objects or Wardwright model targets with target_kind=wardwright_model and embedded artifact."
     )
 
     field(:route, :map,
       description:
-        "Route selector object. Supported type values are dispatcher, cascade, and alloy."
+        "Route graph node object. Current type values are dispatcher/context-fit, cascade/ordered fallback, and alloy/blended route."
     )
 
     field(:governance, :list,
@@ -45,7 +46,7 @@ defmodule WardwrightWeb.MCP.Tools.ActivateSyntheticModel do
 
   @impl true
   def execute(params, frame) do
-    case PolicyAuthoringDrafts.activate_synthetic_model(params) do
+    case PolicyAuthoringDrafts.activate_wardwright_model(params) do
       {:ok, result} -> Tools.reply_json(result, frame)
       {:error, message, result} -> Tools.execution_error(message, frame, result)
     end
