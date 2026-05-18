@@ -472,8 +472,8 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "/mcp"
     assert html =~ "wardwright tools"
     assert html =~ "wardwright admin"
-    assert html =~ "Workbench model"
-    assert html =~ "The simulator uses this model&#39;s current policy and routes."
+    assert html =~ "Simulation target"
+    assert html =~ "Changing this immediately selects the registered Wardwright model"
     assert html =~ "Model Access"
     assert html =~ "href=\"/admin/model-api-keys\""
     assert html =~ "Manage access"
@@ -537,7 +537,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     {:ok, view, html} = live(build_conn(), "/policies/tts-retry/diagram?model=beta-workbench")
 
-    assert html =~ "Simulating <strong>beta-workbench</strong>"
+    assert html =~ "Simulation target: <strong>beta-workbench</strong>"
     assert html =~ beta_hash
     assert html =~ "alpha-workbench"
     assert html =~ "beta-workbench"
@@ -545,11 +545,14 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     updated =
       view
-      |> element("form[phx-submit='select-workbench-model']")
-      |> render_submit(%{"workbench_model" => "alpha-workbench"})
+      |> element("form.workbench_model_selector")
+      |> render_change(%{"workbench_model" => "alpha-workbench"})
 
-    assert updated =~ "Simulating <strong>alpha-workbench</strong>"
+    assert updated =~ "Simulation target: <strong>alpha-workbench</strong>"
     assert updated =~ "model=alpha-workbench"
+
+    assert updated =~
+             "/policies/stream-rewrite-state/diagram/recipe/credential-redaction-ladder?model=alpha-workbench"
   end
 
   test "LiveView can save the edited user and model turn as a reusable scenario" do
@@ -749,7 +752,9 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     {:ok, _view, html} = live(build_conn(), "/policies/stream-rewrite-state/diagram/step/3")
 
     assert html =~ "Regex rewrite and state transition"
-    assert html =~ "Example set"
+    assert html =~ "Example catalog"
+    assert html =~ "Example scenarios"
+    assert html =~ "Examples change the story, scenario, and projection view."
     assert html =~ "Project examples"
     assert html =~ "wardwright.dev/recipes"
     assert html =~ "account redactor"
@@ -982,14 +987,13 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Workspace tool policy"
     assert html =~ "1 examples reference unsupported policy patterns for this build."
     refute html =~ "Unsupported future policy"
-    assert html =~ "Load examples"
     assert html =~ "Tool call governance"
     assert html =~ "tool receipt context"
 
     workspace =
       view
-      |> element("form[phx-submit='select-recipe-source']")
-      |> render_submit(%{"recipe_source" => "built_in"})
+      |> element("form.recipe_source")
+      |> render_change(%{"recipe_source" => "built_in"})
 
     assert workspace =~ "Project examples"
     assert workspace =~ workspace_dir

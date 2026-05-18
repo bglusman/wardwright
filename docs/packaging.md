@@ -7,8 +7,9 @@ description: Release, native binary, and Homebrew packaging plan for Wardwright.
 # Packaging
 
 Status: initial Burrito/Tinfoil packaging path in place. Release `v0.0.5` is
-prepared as a usable early release before the policy UI is complete enough to
-call `0.1.0`.
+the latest published usable early release. The current development line prepares
+the next release candidate with a stronger workbench, saved simulator test
+cases, and an experimental in-page authoring assistant.
 
 Wardwright is a BEAM application with a Phoenix/LiveView operator UI and Gleam
 decision cores. The packaging goal is a user-facing binary that does not require
@@ -145,11 +146,14 @@ remember the local URL.
 `wardwright tools` prints MCP and policy-authoring API instructions for local
 agents. The JSON form is generated from the same registry used by the protected
 `/v1/policy-authoring/tools` endpoint, so scripts can discover the available
-authoring surface without scraping the UI. The advertised authoring surface
-includes draft model creation, local model activation, draft-only rule-change
-proposals, validation, projection explanation, and simulation/scenario tools.
-The [Agent Authoring Guide](agent-authoring.html) explains when an agent should
-use each tool and which operations are draft-only versus write-capable.
+authoring surface without scraping the UI. The advertised HTTP surface includes
+draft model creation, local model activation, draft-only rule-change proposals,
+validation, projection explanation, simulation, Dune snippet, and scenario
+record/import/export/retention tools. The MCP endpoint currently exposes the
+projection, simulation, Dune snippet, draft/activate/propose, and validation
+subset; scenario write tools remain HTTP-only. The
+[Agent Authoring Guide](agent-authoring.html) explains when an agent should use
+each tool and which operations are draft-only versus write-capable.
 
 `WARDWRIGHT_ADMIN_TOKEN` remains optional for loopback-only use. For browser
 access to the operator workbench and protected control APIs beyond loopback, set
@@ -246,6 +250,9 @@ where the policy UI and validation story are useful enough to promote.
   prepares the next package version.
 - Release `v0.0.5` adds workspace Dune snippet save/evaluate/compose/delete
   support for local agents and a Homebrew service bind file for port overrides.
+- The next release candidate adds simulation-target selection, editable retry
+  attempts, saved simulator test cases, screenshots/docs for the stronger
+  simulator loop, and an experimental in-page authoring assistant.
 - Fnox-backed provider credentials are runtime-supported but not package-managed;
   fnox installation/profile management and product authorization remain
   post-`0.0.5` hardening work.
@@ -253,7 +260,6 @@ where the policy UI and validation story are useful enough to promote.
   macOS builds intentionally install Homebrew `zig@0.15` because upstream Zig
   0.15.2 can fail to link on newer macOS/Xcode combinations.
 - Burrito prints some wrapper diagnostics to stderr before the BEAM app starts.
-- The current app has minimal static assets. If LiveView assets grow, packaging
-  must add an explicit asset build/digest step before `mix release`.
-- The formula is service-oriented and starts the HTTP app. The current CLI only
-  covers service startup, version/help, and policy-authoring tool discovery.
+- The current app has minimal static assets. If LiveView assets grow beyond the
+  checked-in bundle, packaging must add an explicit asset build/digest step
+  before `mix release`.

@@ -22,10 +22,11 @@ description: LLM model middleware, governance, and receipts for agentic workflow
 </section>
 
 <div class="notice">
-  <strong>Status:</strong> Wardwright is early but installable. The prepared
-  <code>v0.0.5</code> release publishes native macOS and Linux artifacts, a
-  Homebrew formula, an OpenAI-compatible gateway, and a policy workbench with
-  simulation playback and starter model examples.
+  <strong>Status:</strong> Wardwright is early but installable. The published
+  <code>v0.0.5</code> release ships native macOS and Linux artifacts, a
+  Homebrew formula, an OpenAI-compatible gateway, and a policy workbench. The
+  next release candidate adds model-aware simulation, saved test cases, and an
+  experimental in-page authoring assistant.
 </div>
 
 ## Install
@@ -85,8 +86,9 @@ providers.
 
 The installed app includes a workbench at `/policies` for visualizing and
 simulating Wardwright models before using them behind real traffic. Load an
-example or local model, edit the simulated request, model output, and relevant
-history, then step through the resulting policy run.
+example or local model, choose the registered Wardwright model being simulated,
+edit the simulated request, model output, retry attempts, and relevant history,
+then step through the resulting policy run.
 
 <figure>
   <img src="assets/workbench/stream-retry-simulator.png" alt="Wardwright policy workbench showing a stream retry simulation">
@@ -96,7 +98,7 @@ history, then step through the resulting policy run.
 Fresh installs include starter examples for output contracts, route/model
 composition, stream repair and session state, plus tool/workflow control.
 Locally authored models use the same workbench path when they expose a supported
-projection.
+projection, and reviewed turns can be saved as reusable simulator test cases.
 
 See [Policy Workbench](workbench.html) for screenshots and examples. External
 agents can use `wardwright tools`, `/mcp`, and the protected authoring APIs; see

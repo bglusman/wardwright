@@ -13,7 +13,8 @@ decision happened.
 ## Install
 
 Wardwright publishes early native binaries for macOS and Linux. The latest
-prepared release is `v0.0.5`.
+published release is `v0.0.5`; these docs also cover next-release-candidate
+workbench and authoring features before they are tagged.
 
 ### macOS Homebrew
 
@@ -95,7 +96,7 @@ Wardwright exposes:
 
 - OpenAI-compatible `/v1/chat/completions` and `/v1/models` endpoints.
 - A policy workbench at `/policies`.
-- Protected authoring APIs and MCP at `/mcp`.
+- Protected authoring APIs, plus MCP tools at `/mcp`.
 - Receipts, simulations, model access details, and admin status endpoints.
 
 See [Agent Authoring](docs/agent-authoring.md) for the review loop external
@@ -121,9 +122,11 @@ provider credentials on an instance reachable by untrusted users. See
 ## Policy Workbench
 
 The installed service includes a LiveView workbench at `/policies`. It loads
-seeded and local examples, lets you edit simulated caller input, backend model
-output, and relevant history, then steps through routing, state transitions,
-stream retries, rewrites, tool decisions, and receipt events.
+seeded and local examples, lets you choose the Wardwright model being simulated,
+edit caller input, backend model output, retry attempts, and relevant history,
+then steps through routing, state transitions, stream retries, rewrites, tool
+decisions, and receipt events. Reviewed turns can be saved as reusable test cases
+for later simulation, regression export, or agent review.
 
 ![Wardwright policy workbench showing context-window dispatcher simulation](docs/assets/workbench/route-composition-simulator.png)
 
@@ -146,6 +149,10 @@ Current capabilities include:
 - ETS-backed hot policy history plus protected authoring, simulation, receipt,
   and admin surfaces.
 - Workspace recipe loading for seeded and local model examples.
+- Simulation-target selection, editable simulator turns, and saved scenario/test
+  case records.
+- An experimental in-page authoring assistant that uses the same review-oriented
+  tool registry as external agents.
 
 Wardwright is still early. Interfaces are treated as product contracts, and
 unsupported inputs should fail loudly or be documented as current limitations.

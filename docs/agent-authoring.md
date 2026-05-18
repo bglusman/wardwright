@@ -54,10 +54,10 @@ See [Provider Credentials](provider-credentials.html).
 
 ## Optional In-Page Assistant Spike
 
-The local workbench may expose an experimental **Authoring Agent Spike** panel
-when this spike branch is running. It uses `jido_ai` through a small
-`WardwrightWeb.AuthoringAgent` boundary and prompts the model with the same
-authoring tool names used by MCP/API clients.
+The local workbench may expose an experimental **Authoring Agent** panel when it
+is enabled. It uses `jido_ai` through a small `WardwrightWeb.AuthoringAgent`
+boundary and prompts the model with the same authoring tool names used by
+MCP/API clients.
 
 To try it locally with an OpenAI-compatible backend:
 
@@ -71,18 +71,21 @@ WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=16384
 WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000
 ```
 
-To dogfood Wardwright itself, route the in-page assistant through the local
-OpenAI-compatible Wardwright endpoint instead of a direct provider endpoint:
+To dogfood Wardwright itself, route the in-page assistant through a specific
+local Wardwright model instead of a direct provider endpoint:
 
 ```sh
 WARDWRIGHT_AUTHORING_AGENT_ENABLED=1
 WARDWRIGHT_AUTHORING_AGENT_ROUTE=wardwright
+WARDWRIGHT_AUTHORING_AGENT_MODEL=local-fast-draft
+WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY_FILE=/path/to/local/model-key
 WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=16384
 WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000
 ```
 
 That makes authoring-agent prompts visible to the same routing, receipts, and
-runtime activity surfaces as other local model calls.
+runtime activity surfaces as other local model calls. Omit the model key only
+when the selected Wardwright model allows unkeyed access.
 
 OpenCode Go usage is BYOK when the account/key is configured that way; the API
 reports that in response usage metadata. The current OpenCode Go chat endpoint
@@ -93,9 +96,10 @@ as Qwen for interactive authoring.
 
 The first spike may execute read-only and draft-only tools from chat so it can
 inspect projections, simulate scenarios, validate artifacts, and prepare
-reviewable model drafts. It does not automatically execute durable write-capable
-tools, and it must not claim a model is active unless the activation tool
-reports success.
+reviewable model drafts. Durable writes still need explicit review boundaries:
+the assistant should not activate a model, delete a saved case, or persist a
+snippet unless the user approved that operation. It must not claim a model is
+active unless the activation tool reports success.
 
 ## Inspect Before You Edit
 
@@ -126,6 +130,27 @@ pattern. Simulations should answer practical questions:
 Add or import scenarios when a behavior is important enough to preserve.
 Scenario evidence should be small, reviewable, and redacted unless the user
 explicitly asks to retain raw content.
+
+## Record Scenarios As Regression Evidence
+
+Use `record_scenario` when a simulated turn should become reusable evidence. A
+scenario should include:
+
+- `title` and `expected_behavior` in user-facing language
+- `model_id` and `artifact_hash` when known
+- a `turn` with raw user input, raw model output, optional retry-attempt outputs,
+  and any history facts the policy reads
+- a trace or receipt preview that explains why the saved case matters
+
+Use `delete_scenario` to remove a stale local case, `import_receipt_scenario` to
+turn a real receipt into pinned replay evidence, `export_regression_pack` to
+share or review pinned scenarios, and `apply_scenario_retention` to prune old
+unpinned exploratory cases.
+
+The workbench can save the same shape directly from the editable simulator. That
+is the preferred path when a human is actively reviewing the example because it
+keeps the visible user/model pair, history context, selected simulation target,
+and trace together.
 
 ## Draft A Wardwright Model
 

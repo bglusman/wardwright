@@ -685,8 +685,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           <span>Set keyed and unkeyed access for local models.</span>
         </a>
 
-        <form class="workbench_model_selector" phx-change="select-workbench-model" phx-submit="select-workbench-model">
-          <label for="workbench_model">Workbench model</label>
+        <form class="workbench_model_selector" phx-change="select-workbench-model">
+          <label for="workbench_model">Simulation target</label>
           <select id="workbench_model" name="workbench_model" phx-change="select-workbench-model">
             <option
               :for={model <- @available_models}
@@ -697,14 +697,13 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             </option>
           </select>
           <small>
-            The simulator uses this model's current policy and routes. Examples below
-            are scenario lenses you can run against it.
+            Changing this immediately selects the registered Wardwright model whose
+            current policy and routes are simulated.
           </small>
-          <button type="submit">Use model</button>
         </form>
 
-        <form class="recipe_source" phx-change="select-recipe-source" phx-submit="select-recipe-source">
-          <label for="recipe_source">Example set</label>
+        <form class="recipe_source" phx-change="select-recipe-source">
+          <label for="recipe_source">Example catalog</label>
           <select id="recipe_source" name="recipe_source" phx-change="select-recipe-source">
             <option
               :for={source <- @recipe_sources}
@@ -717,10 +716,13 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           <small><%= @recipe_catalog["source"]["endpoint"] || "compiled into this build" %></small>
           <small>Shared examples: wardwright.dev/recipes</small>
           <span class="recipe_source_status"><%= recipe_catalog_status(@recipe_catalog) %></span>
-          <button type="submit">Load examples</button>
         </form>
 
-        <h2 class="nav_heading">Example Wardwright Models</h2>
+        <h2 class="nav_heading">Example scenarios</h2>
+        <p class="nav_note">
+          Examples change the story, scenario, and projection view. They do not
+          change the selected simulation target.
+        </p>
 
         <details :for={group <- @recipe_groups} class="recipe_group" open={group.open}>
           <summary>
@@ -766,7 +768,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           <h1><%= @selected_recipe["title"] || @selected_pattern["title"] %></h1>
           <p><%= @selected_recipe["promise"] || @selected_pattern["promise"] %></p>
           <small class="editing_target_summary">
-            Simulating <strong><%= @selected_model_id %></strong> with the selected example scenario.
+            Simulation target: <strong><%= @selected_model_id %></strong>.
+            Example: <strong><%= @selected_recipe["title"] || @selected_pattern["title"] %></strong>.
           </small>
         </div>
         <div class="engine_card">
@@ -1396,7 +1399,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         <form class="scenario_save_form" phx-submit="save-simulation-scenario">
           <div>
             <strong>Save as a reusable test case</strong>
-            <span>Keep this editable user/model pair, policy memory, expected trace, and current workbench model for later simulation, regression export, or agent review.</span>
+            <span>Keep this editable user/model pair, policy memory, expected trace, and current simulation target for later simulation, regression export, or agent review.</span>
           </div>
           <label>
             <span>Scenario title</span>
@@ -1749,6 +1752,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .brand span, .sidebar_footer span { color: #adbac5; font-size: 12px; }
     nav a { display: grid; gap: 3px; padding: 10px 12px; border: 1px solid transparent; border-radius: 6px; }
     .nav_heading { margin: 10px 12px 2px; color: #adbac5; font-size: 11px; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase; }
+    .nav_note { margin: -2px 12px 10px; color: #93a4b3; font-size: 12px; font-weight: 700; line-height: 1.35; }
     nav a span { color: #adbac5; font-size: 12px; }
     nav a.active, nav a:hover { border-color: #6f7f8e; background: #34424e; }
     .recipe_group { display: grid; gap: 4px; padding: 4px 0 6px; border-top: 1px solid #3f4f5d; }
@@ -1760,8 +1764,6 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .recipe_source, .workbench_model_selector, .recipe_empty { display: grid; gap: 6px; margin-bottom: 4px; padding: 10px 12px; border: 1px solid #4d5f6f; border-radius: 6px; background: #2d3944; }
     .recipe_source label, .recipe_source span, .recipe_source small, .workbench_model_selector label, .workbench_model_selector small, .recipe_empty span { min-width: 0; color: #adbac5; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
     .recipe_source select, .workbench_model_selector select { width: 100%; min-width: 0; min-height: 32px; border: 1px solid #657583; border-radius: 6px; color: #e6ebef; background: #25313b; font-weight: 800; }
-    .recipe_source button, .workbench_model_selector button { min-height: 30px; border: 1px solid #657583; border-radius: 6px; color: #e6ebef; background: #34424e; font-weight: 800; cursor: pointer; }
-    .recipe_source button:hover, .workbench_model_selector button:hover { border-color: #91a1af; background: #3d4d5b; }
     .recipe_source_status { line-height: 1.35; }
     .agent_cta { min-width: 0; display: grid; gap: 6px; margin-top: 12px; padding: 11px 12px; border: 1px solid #557088; border-radius: 6px; background: #243746; }
     .agent_cta span { color: #99b6cb; font-size: 11px; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase; }
