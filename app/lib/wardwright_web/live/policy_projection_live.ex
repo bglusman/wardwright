@@ -56,12 +56,20 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     pattern_id = normalize_pattern(Map.get(params, "pattern"))
     mode = normalize_mode(Map.get(params, "mode"))
     recipe_source_id = normalize_recipe_source(Map.get(params, "source"))
+    model_workbench? = Map.get(params, "model") not in [nil, ""]
     available_models = Wardwright.model_summaries()
     selected_model_config = selected_workbench_model_config(Map.get(params, "model"))
     selected_model_id = Wardwright.model_id(selected_model_config)
     recipe_catalog = recipe_catalog(recipe_source_id)
-    explicit_recipe? = Map.get(params, "recipe") not in [nil, ""]
-    selected_recipe = selected_recipe(recipe_catalog, pattern_id, Map.get(params, "recipe"))
+    explicit_recipe? = not model_workbench?
+
+    selected_recipe =
+      if model_workbench? do
+        %{}
+      else
+        selected_recipe(recipe_catalog, pattern_id, Map.get(params, "recipe"))
+      end
+
     selected_recipe_id = selected_recipe["id"] || ""
     projection = Wardwright.PolicyProjection.projection(pattern_id, selected_model_config)
     simulations = Wardwright.PolicyProjection.simulations(pattern_id, selected_model_config)
@@ -944,8 +952,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     <section class="workspace">
       <header class="topbar">
         <div>
-          <h1><%= @selected_recipe["title"] || @selected_pattern["title"] %></h1>
-          <p><%= @selected_recipe["promise"] || @selected_pattern["promise"] %></p>
+          <h1><%= workbench_title(@selected_model_config, @selected_recipe, @selected_pattern, @explicit_recipe?) %></h1>
+          <p><%= workbench_promise(@selected_model_config, @selected_recipe, @selected_pattern, @explicit_recipe?) %></p>
           <small class="editing_target_summary">
             <%= if @explicit_recipe? do %>
               Example preview:
@@ -965,7 +973,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         </div>
       </header>
 
-      <section :if={rich_recipe?(@selected_recipe)} class="recipe_context">
+      <section :if={@explicit_recipe? and rich_recipe?(@selected_recipe)} class="recipe_context">
         <div class="recipe_context_header">
           <div>
             <span>Example story</span>
@@ -1200,6 +1208,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           selected_recipe_source_id={@selected_recipe_source_id}
           selected_recipe_id={@selected_recipe_id}
           selected_model_id={@selected_model_id}
+          model_workbench?={!@explicit_recipe?}
         />
 
         <%= if @mode == "diagram" do %>
@@ -1398,6 +1407,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   attr(:selected_recipe_source_id, :string, required: true)
   attr(:selected_recipe_id, :string, required: true)
   attr(:selected_model_id, :string, required: true)
+  attr(:model_workbench?, :boolean, required: true)
 
   def projection_inspector_links(assigns) do
     assigns =
@@ -1415,7 +1425,16 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           <div>
             <a
               :for={mode <- @inspector_modes}
-              href={path(@selected_pattern_id, mode, @selected_recipe_source_id, @selected_recipe_id, @selected_model_id)}
+              href={
+                inspector_path(
+                  @selected_pattern_id,
+                  mode,
+                  @selected_recipe_source_id,
+                  @selected_recipe_id,
+                  @selected_model_id,
+                  @model_workbench?
+                )
+              }
             >
               <strong><%= mode_label(mode) %></strong>
               <small><%= mode_hint(mode) %></small>
@@ -1424,14 +1443,35 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         </details>
       <% else %>
         <div class="inspector_nav">
-          <a class="simulator_return" href={path(@selected_pattern_id, "diagram", @selected_recipe_source_id, @selected_recipe_id, @selected_model_id)}>
+          <a
+            class="simulator_return"
+            href={
+              inspector_path(
+                @selected_pattern_id,
+                "diagram",
+                @selected_recipe_source_id,
+                @selected_recipe_id,
+                @selected_model_id,
+                @model_workbench?
+              )
+            }
+          >
             <strong>Back to simulator</strong>
             <small>primary workspace</small>
           </a>
           <a
             :for={mode <- @inspector_modes}
             class={if mode == @mode, do: "active", else: ""}
-            href={path(@selected_pattern_id, mode, @selected_recipe_source_id, @selected_recipe_id, @selected_model_id)}
+            href={
+              inspector_path(
+                @selected_pattern_id,
+                mode,
+                @selected_recipe_source_id,
+                @selected_recipe_id,
+                @selected_model_id,
+                @model_workbench?
+              )
+            }
           >
             <strong><%= mode_label(mode) %></strong>
             <small><%= mode_hint(mode) %></small>
@@ -2972,8 +3012,32 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     if model_id == Wardwright.model_id(), do: nil, else: model_id
   end
 
+  defp inspector_path(pattern_id, mode, source_id, _recipe_id, model_id, true) do
+    path(pattern_id, mode, source_id, nil, model_id)
+  end
+
+  defp inspector_path(pattern_id, mode, source_id, recipe_id, _model_id, false) do
+    path(pattern_id, mode, source_id, recipe_id)
+  end
+
   defp maybe_put_query(query, _key, value) when value in [nil, ""], do: query
   defp maybe_put_query(query, key, value), do: Map.put(query, key, value)
+
+  defp workbench_title(config, _recipe, _pattern, false) do
+    Wardwright.model_id(config)
+  end
+
+  defp workbench_title(_config, recipe, pattern, true) do
+    recipe["title"] || pattern["title"]
+  end
+
+  defp workbench_promise(config, _recipe, pattern, false) do
+    config["description"] || pattern["promise"]
+  end
+
+  defp workbench_promise(_config, recipe, pattern, true) do
+    recipe["promise"] || pattern["promise"]
+  end
 
   defp workbench_title("diagram"), do: "Policy Simulator"
   defp workbench_title(_mode), do: "Artifact Inspector"

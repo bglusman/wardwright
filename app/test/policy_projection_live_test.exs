@@ -538,11 +538,15 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     {:ok, view, html} = live(build_conn(), "/policies/tts-retry/diagram?model=beta-workbench")
 
     assert html =~ "Registered model workbench:"
+    assert html =~ "<h1>beta-workbench</h1>"
     assert html =~ "<strong>beta-workbench</strong>"
     assert html =~ beta_hash
     assert html =~ "alpha-workbench"
     assert html =~ "beta-workbench"
     assert html =~ "model=beta-workbench"
+    assert html =~ ~s(href="/policies/tts-retry/phase_map?model=beta-workbench")
+    refute html =~ "Example story"
+    refute html =~ "A coding assistant keeps recommending an old client constructor"
     refute html =~ "Choose a registered model"
 
     updated =
@@ -551,8 +555,10 @@ defmodule Wardwright.PolicyProjectionLiveTest do
       |> render_change(%{"workbench_model" => "alpha-workbench"})
 
     assert updated =~ "Registered model workbench:"
+    assert updated =~ "<h1>alpha-workbench</h1>"
     assert updated =~ "<strong>alpha-workbench</strong>"
     assert updated =~ "model=alpha-workbench"
+    refute updated =~ "Example story"
 
     assert updated =~
              "/policies/stream-rewrite-state/diagram/recipe/credential-redaction-ladder"
