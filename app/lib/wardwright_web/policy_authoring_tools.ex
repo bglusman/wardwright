@@ -1,55 +1,99 @@
 defmodule WardwrightWeb.PolicyAuthoringTools do
   @moduledoc false
 
+  @docs_root "https://wardwright.dev"
+
   def list do
     [
       tool(
         "explain_projection",
         "GET",
         "/v1/policy-authoring/projections/{pattern_id}",
-        "Return the deterministic projection, including state machine, phase, effect, conflict, and opaque-region data."
+        "Return the deterministic projection, including state machine, phase, effect, conflict, and opaque-region data.",
+        "Use before editing when you need to understand what a policy model currently does.",
+        "Read-only. The projection is explanatory; deterministic policy artifacts remain the source of truth.",
+        "/agent-authoring.html#inspect-before-you-edit"
       ),
       tool(
         "simulate_policy",
         "GET",
         "/v1/policy-authoring/simulations/{pattern_id}",
-        "Return persisted simulation scenarios when present, otherwise explicit fixture evidence linked to projection node ids and the current artifact hash."
+        "Return persisted simulation scenarios when present, otherwise explicit fixture evidence linked to projection node ids and the current artifact hash.",
+        "Use to compare the user's intended behavior with the behavior Wardwright can demonstrate.",
+        "Read-only. Simulation evidence explains behavior but does not prove every possible input.",
+        "/agent-authoring.html#simulate-before-you-activate"
+      ),
+      tool(
+        "draft_synthetic_model",
+        "POST",
+        "/v1/policy-authoring/synthetic-models/draft",
+        "Build and validate a draft synthetic-model artifact from supplied targets, route selectors, governance rules, and stream rules without activating it.",
+        "Use when creating a new local synthetic model or normalizing a hand-written artifact before review.",
+        "Draft-only. This does not change the model served by /v1/chat/completions.",
+        "/agent-authoring.html#draft-a-synthetic-model"
+      ),
+      tool(
+        "activate_synthetic_model",
+        "POST",
+        "/v1/policy-authoring/synthetic-models",
+        "Validate and activate a synthetic-model artifact as the current local Wardwright model so agents can call it through the OpenAI-compatible endpoint.",
+        "Use only after the user has reviewed the draft, validation output, and relevant simulations.",
+        "Write-capable. Requires protected local access and changes the current local model.",
+        "/agent-authoring.html#activate-only-after-review"
+      ),
+      tool(
+        "propose_rule_change",
+        "POST",
+        "/v1/policy-authoring/propose-rule-change",
+        "Return a draft artifact with an appended, replaced, or removed governance or stream rule; never applies the proposal.",
+        "Use for small edits to existing governance or stream rules when the user wants a reviewable diff-shaped artifact.",
+        "Draft-only. Never applies changes; follow with validation/simulation and explicit activation if desired.",
+        "/agent-authoring.html#propose-a-rule-change"
       ),
       tool(
         "record_scenario",
         "POST",
         "/v1/policy-authoring/scenarios/{pattern_id}",
-        "Persist a user, assistant, fixture, or live-replay scenario so simulations can use reviewed scenario records instead of demo fixtures."
+        "Persist a user, assistant, fixture, or live-replay scenario so simulations can use reviewed scenario records instead of demo fixtures.",
+        "Use when the user identifies a representative case that should remain visible in the simulator.",
+        "Write-capable. Store redacted scenario summaries unless the user explicitly wants raw text retained.",
+        "/agent-authoring.html#record-scenarios-as-regression-evidence"
       ),
       tool(
         "import_receipt_scenario",
         "POST",
         "/v1/policy-authoring/scenarios/{pattern_id}/from-receipt/{receipt_id}",
-        "Import an existing receipt as a pinned live-replay scenario for later simulation evidence and regression export."
+        "Import an existing receipt as a pinned live-replay scenario for later simulation evidence and regression export.",
+        "Use after a real run exposes behavior worth preserving as review evidence.",
+        "Write-capable. Imported receipts may contain sensitive metadata; review before sharing exported packs.",
+        "/agent-authoring.html#record-scenarios-as-regression-evidence"
       ),
       tool(
         "export_regression_pack",
         "GET",
         "/v1/policy-authoring/scenarios/{pattern_id}/regression-export?format=json|exunit",
-        "Export pinned scenario records as a deterministic regression pack or generated ExUnit source for native regression review."
+        "Export pinned scenario records as a deterministic regression pack or generated ExUnit source for native regression review.",
+        "Use when turning reviewed simulator cases into tests or sharing a minimal behavior pack.",
+        "Read-only, but exported content can include scenario details the user should review before publishing.",
+        "/agent-authoring.html#record-scenarios-as-regression-evidence"
       ),
       tool(
         "apply_scenario_retention",
         "POST",
         "/v1/policy-authoring/scenarios/{pattern_id}/retention",
-        "Prune oldest unpinned scenario records for a policy pattern while always preserving pinned regression scenarios."
-      ),
-      tool(
-        "propose_rule_change",
-        "not_implemented",
-        nil,
-        "Future draft-only tool: propose deterministic artifact diffs without applying them."
+        "Prune oldest unpinned scenario records for a policy pattern while always preserving pinned regression scenarios.",
+        "Use to keep local simulator evidence small after pinning the scenarios that matter.",
+        "Write-capable. Deletes unpinned scenario records only; pinned regression scenarios are preserved.",
+        "/agent-authoring.html#record-scenarios-as-regression-evidence"
       ),
       tool(
         "validate_policy_artifact",
         "POST",
         "/v1/policy-authoring/validate",
-        "Validate the current or submitted policy artifact for structural errors, opaque regions, missing scenario coverage, and unsupported provider stream capabilities."
+        "Validate the current or submitted policy artifact for structural errors, opaque regions, missing scenario coverage, and unsupported provider stream capabilities.",
+        "Use after every draft or proposed change and before asking the user to activate a model.",
+        "Read-only. Validation reports errors and review gaps; it does not replace human approval.",
+        "/agent-authoring.html#validate-and-explain-gaps"
       )
     ]
   end
@@ -59,19 +103,25 @@ defmodule WardwrightWeb.PolicyAuthoringTools do
       path = tool["path"] || "not implemented"
 
       """
-        #{tool["name"]}
-          #{tool["method"]} #{path}
-          #{tool["description"]}
+          #{tool["name"]}
+            #{tool["method"]} #{path}
+            #{tool["description"]}
+            When to use: #{tool["when_to_use"]}
+            Safety: #{tool["safety"]}
+            Docs: #{tool["docs_url"]}
       """
     end)
   end
 
-  defp tool(name, method, path, description) do
+  defp tool(name, method, path, description, when_to_use, safety, docs_path) do
     %{
       "name" => name,
       "method" => method,
       "path" => path,
-      "description" => description
+      "description" => description,
+      "when_to_use" => when_to_use,
+      "safety" => safety,
+      "docs_url" => @docs_root <> docs_path
     }
   end
 end

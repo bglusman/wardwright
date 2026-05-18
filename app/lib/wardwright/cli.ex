@@ -76,6 +76,7 @@ defmodule Wardwright.CLI do
 
     Local HTTP tools are protected by loopback access or WARDWRIGHT_ADMIN_TOKEN.
     When Wardwright is bound to another port, replace 8787 with WARDWRIGHT_BIND.
+    Agent guide: https://wardwright.dev/agent-authoring.html
 
     Tools:
     #{tools}

@@ -29,13 +29,24 @@ defmodule Wardwright.MCPAuthoringTest do
     :ok
   end
 
+  setup do
+    Wardwright.reset_config()
+    Wardwright.ReceiptStore.clear()
+    Wardwright.PolicyScenarioStore.clear()
+    Wardwright.PolicyCache.reset()
+    :ok
+  end
+
   test "Hermes MCP server exposes policy authoring tools" do
     tool_names =
       WardwrightWeb.MCPServer.__components__(:tool)
       |> Enum.map(& &1.name)
 
     assert tool_names == [
+             "activate_synthetic_model",
+             "draft_synthetic_model",
              "explain_projection",
+             "propose_rule_change",
              "simulate_policy",
              "validate_policy_artifact"
            ]
@@ -70,6 +81,54 @@ defmodule Wardwright.MCPAuthoringTest do
 
     assert response.structured_content["schema"] == "wardwright.policy_validation.v1"
     assert response.structured_content["source"] == "current_config"
+  end
+
+  test "draft synthetic model tool returns a callable model artifact" do
+    assert {:reply, %Response{} = response, %Frame{}} =
+             WardwrightWeb.MCP.Tools.DraftSyntheticModel.execute(
+               %{
+                 "synthetic_model" => "mcp-router",
+                 "targets" => [
+                   %{"model" => "local/small", "context_window" => 1024},
+                   %{"model" => "managed/large", "context_window" => 128_000}
+                 ],
+                 "route" => %{
+                   "type" => "dispatcher",
+                   "id" => "dispatcher.context-fit",
+                   "models" => ["local/small", "managed/large"]
+                 }
+               },
+               Frame.new()
+             )
+
+    assert get_in(response.structured_content, ["artifact", "synthetic_model"]) == "mcp-router"
+    assert get_in(response.structured_content, ["validation", "errors"]) == []
+
+    assert get_in(response.structured_content, ["access", "model_ids"]) == [
+             "mcp-router",
+             "wardwright/mcp-router"
+           ]
+  end
+
+  test "propose rule change tool returns a draft-only proposal" do
+    assert {:reply, %Response{} = response, %Frame{}} =
+             WardwrightWeb.MCP.Tools.ProposeRuleChange.execute(
+               %{
+                 "operation" => "append_rule",
+                 "collection" => "stream_rules",
+                 "rule" => %{
+                   "id" => "retry-old-client",
+                   "pattern" => "OldClient(",
+                   "action" => "retry_with_reminder",
+                   "reminder" => "Use NewClient instead."
+                 }
+               },
+               Frame.new()
+             )
+
+    assert get_in(response.structured_content, ["proposal", "applied"]) == false
+    assert get_in(response.structured_content, ["proposal", "rule_id"]) == "retry-old-client"
+    assert get_in(response.structured_content, ["validation", "errors"]) == []
   end
 
   test "streamable HTTP transport initializes and lists tools through the Phoenix mount" do
@@ -138,7 +197,10 @@ defmodule Wardwright.MCPAuthoringTest do
       |> Enum.map(& &1["name"])
 
     assert tool_names == [
+             "activate_synthetic_model",
+             "draft_synthetic_model",
              "explain_projection",
+             "propose_rule_change",
              "simulate_policy",
              "validate_policy_artifact"
            ]

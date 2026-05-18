@@ -113,6 +113,8 @@ defmodule Wardwright.PublicApiTest do
 
     assert "explain_projection" in tool_names
     assert "simulate_policy" in tool_names
+    assert "draft_synthetic_model" in tool_names
+    assert "activate_synthetic_model" in tool_names
     assert "record_scenario" in tool_names
     assert "import_receipt_scenario" in tool_names
     assert "export_regression_pack" in tool_names
@@ -134,6 +136,172 @@ defmodule Wardwright.PublicApiTest do
 
     missing = call(:get, "/v1/policy-authoring/projections/not-real")
     assert missing.status == 404
+  end
+
+  test "protected policy authoring API drafts and activates synthetic models" do
+    draft_body = %{
+      "synthetic_model" => "support-router",
+      "version" => "draft-test",
+      "targets" => [
+        %{"model" => "local/small", "context_window" => 1024},
+        %{"model" => "managed/large", "context_window" => 128_000}
+      ],
+      "route" => %{
+        "type" => "dispatcher",
+        "id" => "dispatcher.context-fit",
+        "models" => ["local/small", "managed/large"]
+      },
+      "stream_rules" => [
+        %{
+          "id" => "redact-ticket",
+          "pattern" => "ticket_[0-9]+",
+          "action" => "rewrite_chunk",
+          "replacement" => "ticket_[redacted]"
+        }
+      ]
+    }
+
+    rejected =
+      call(
+        :post,
+        "/v1/policy-authoring/synthetic-models/draft",
+        draft_body,
+        [],
+        {203, 0, 113, 10}
+      )
+
+    assert rejected.status == 403
+
+    draft = call(:post, "/v1/policy-authoring/synthetic-models/draft", draft_body)
+    assert draft.status == 200
+
+    draft_payload = Jason.decode!(draft.resp_body)
+    assert get_in(draft_payload, ["artifact", "synthetic_model"]) == "support-router"
+    assert get_in(draft_payload, ["artifact", "route_root"]) == "dispatcher.context-fit"
+
+    assert get_in(draft_payload, ["access", "model_ids"]) == [
+             "support-router",
+             "wardwright/support-router"
+           ]
+
+    assert get_in(draft_payload, ["validation", "errors"]) == []
+
+    activated = call(:post, "/v1/policy-authoring/synthetic-models", draft_body)
+    assert activated.status == 201
+
+    assert %{"data" => [%{"id" => "support-router"}, %{"id" => "wardwright/support-router"}]} =
+             call(:get, "/v1/models").resp_body |> Jason.decode!()
+  end
+
+  test "protected policy authoring API proposes rule changes without applying them" do
+    alloy_config =
+      unit_policy_config()
+      |> Map.put("route_root", "alloy.primary")
+      |> Map.put("dispatchers", [])
+      |> Map.put("alloys", [
+        %{
+          "id" => "alloy.primary",
+          "strategy" => "deterministic_all",
+          "constituents" => ["tiny/model", "medium/model"]
+        }
+      ])
+
+    assert call(:post, "/__test/config", alloy_config).status == 200
+
+    body = %{
+      "operation" => "append_rule",
+      "collection" => "governance",
+      "rule" => %{
+        "id" => "block-unreviewed-prod",
+        "kind" => "request_guard",
+        "action" => "block",
+        "contains" => "deploy prod"
+      }
+    }
+
+    proposal = call(:post, "/v1/policy-authoring/propose-rule-change", body)
+    assert proposal.status == 200
+
+    payload = Jason.decode!(proposal.resp_body)
+    assert get_in(payload, ["proposal", "applied"]) == false
+    assert get_in(payload, ["proposal", "operation"]) == "append_rule"
+    assert get_in(payload, ["proposal", "rule_id"]) == "block-unreviewed-prod"
+    assert get_in(payload, ["validation", "errors"]) == []
+    assert get_in(payload, ["artifact", "route_root"]) == "alloy.primary"
+    assert get_in(payload, ["artifact", "alloys", Access.at(0), "id"]) == "alloy.primary"
+
+    proposed_rules = get_in(payload, ["artifact", "governance"])
+    assert Enum.any?(proposed_rules, &(&1["id"] == "block-unreviewed-prod"))
+
+    current_rules = Wardwright.current_config()["governance"]
+    refute Enum.any?(current_rules, &(&1["id"] == "block-unreviewed-prod"))
+  end
+
+  test "protected policy authoring API proposes replace and remove rule operations" do
+    config =
+      unit_policy_config()
+      |> Map.put("governance", [
+        %{
+          "id" => "ambiguous-success",
+          "kind" => "request_guard",
+          "action" => "escalate",
+          "contains" => "looks done",
+          "message" => "completion claim needs artifact"
+        },
+        %{
+          "id" => "prod-guard",
+          "kind" => "request_guard",
+          "action" => "block",
+          "contains" => "deploy prod"
+        }
+      ])
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    replace =
+      call(:post, "/v1/policy-authoring/propose-rule-change", %{
+        "operation" => "replace_rule",
+        "collection" => "governance",
+        "rule_id" => "prod-guard",
+        "rule" => %{
+          "id" => "prod-guard",
+          "kind" => "request_guard",
+          "action" => "escalate",
+          "contains" => "deploy prod",
+          "message" => "Production deploys require operator review"
+        }
+      })
+
+    assert replace.status == 200
+    replaced = Jason.decode!(replace.resp_body)
+    assert get_in(replaced, ["proposal", "change", "matched_count"]) == 1
+    assert get_in(replaced, ["proposal", "applied"]) == false
+
+    assert Enum.find(replaced["artifact"]["governance"], &(&1["id"] == "prod-guard"))[
+             "action"
+           ] == "escalate"
+
+    assert Enum.find(Wardwright.current_config()["governance"], &(&1["id"] == "prod-guard"))[
+             "action"
+           ] == "block"
+
+    remove =
+      call(:post, "/v1/policy-authoring/propose-rule-change", %{
+        "operation" => "remove_rule",
+        "collection" => "governance",
+        "rule_id" => "ambiguous-success"
+      })
+
+    assert remove.status == 200
+    removed = Jason.decode!(remove.resp_body)
+    assert get_in(removed, ["proposal", "change", "after_count"]) == 1
+    assert get_in(removed, ["proposal", "applied"]) == false
+    refute Enum.any?(removed["artifact"]["governance"], &(&1["id"] == "ambiguous-success"))
+
+    assert Enum.any?(
+             Wardwright.current_config()["governance"],
+             &(&1["id"] == "ambiguous-success")
+           )
   end
 
   test "protected policy authoring API persists scenarios for simulation evidence" do

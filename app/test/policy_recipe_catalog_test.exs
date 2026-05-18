@@ -24,8 +24,7 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
   end
 
   test "workspace source seeds starter recipes into a missing user workspace once" do
-    workspace_dir =
-      Path.join(System.tmp_dir!(), "wardwright-seeded-recipes-#{System.unique_integer()}")
+    workspace_dir = temp_workspace_dir("wardwright-seeded-recipes")
 
     Application.put_env(:wardwright, :policy_recipe_workspace_dir, workspace_dir)
 
@@ -62,8 +61,7 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
   end
 
   test "workspace source seeds starter recipes into an existing unmarked directory" do
-    workspace_dir =
-      Path.join(System.tmp_dir!(), "wardwright-existing-recipes-#{System.unique_integer()}")
+    workspace_dir = temp_workspace_dir("wardwright-existing-recipes")
 
     File.mkdir_p!(workspace_dir)
     Application.put_env(:wardwright, :policy_recipe_workspace_dir, workspace_dir)
@@ -80,7 +78,7 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
   end
 
   test "workspace source loads valid recipe JSON and ignores invalid files" do
-    workspace_dir = Path.join(System.tmp_dir!(), "wardwright-recipes-#{System.unique_integer()}")
+    workspace_dir = temp_workspace_dir("wardwright-recipes")
     File.mkdir_p!(workspace_dir)
 
     valid = %{
@@ -218,4 +216,15 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
 
   defp put_or_delete_env(key, nil), do: Application.delete_env(:wardwright, key)
   defp put_or_delete_env(key, value), do: Application.put_env(:wardwright, key, value)
+
+  defp temp_workspace_dir(prefix) do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "#{prefix}-#{System.unique_integer([:positive, :monotonic])}"
+      )
+
+    File.rm_rf!(path)
+    path
+  end
 end

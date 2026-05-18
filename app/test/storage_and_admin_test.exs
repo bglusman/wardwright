@@ -111,8 +111,7 @@ defmodule Wardwright.StorageAndAdminTest do
   end
 
   test "policy scenario store can persist reviewed scenarios to a file" do
-    path =
-      Path.join(System.tmp_dir!(), "wardwright-policy-scenarios-#{System.unique_integer()}.json")
+    path = temp_json_path("wardwright-policy-scenarios")
 
     on_exit(fn ->
       Wardwright.PolicyScenarioStore.configure_storage(nil)
@@ -158,8 +157,7 @@ defmodule Wardwright.StorageAndAdminTest do
   end
 
   test "policy scenario retention persists pruning while preserving pinned records" do
-    path =
-      Path.join(System.tmp_dir!(), "wardwright-policy-retention-#{System.unique_integer()}.json")
+    path = temp_json_path("wardwright-policy-retention")
 
     on_exit(fn ->
       Wardwright.PolicyScenarioStore.configure_storage(nil)
@@ -385,5 +383,17 @@ defmodule Wardwright.StorageAndAdminTest do
                },
                10
              )
+  end
+
+  defp temp_json_path(prefix) do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "#{prefix}-#{System.unique_integer([:positive, :monotonic])}.json"
+      )
+
+    File.rm(path)
+    File.rm("#{path}.tmp")
+    path
   end
 end

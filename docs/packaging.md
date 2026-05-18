@@ -134,7 +134,11 @@ wardwright tools --json
 `wardwright tools` prints MCP and policy-authoring API instructions for local
 agents. The JSON form is generated from the same registry used by the protected
 `/v1/policy-authoring/tools` endpoint, so scripts can discover the available
-authoring surface without scraping the UI.
+authoring surface without scraping the UI. The advertised authoring surface
+includes draft model creation, local model activation, draft-only rule-change
+proposals, validation, projection explanation, and simulation/scenario tools.
+The [Agent Authoring Guide](agent-authoring.html) explains when an agent should
+use each tool and which operations are draft-only versus write-capable.
 
 `WARDWRIGHT_ADMIN_TOKEN` remains optional for loopback-only use, but should be
 set for any deployment exposed beyond local operator access. For foreground

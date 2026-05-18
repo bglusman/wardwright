@@ -28,8 +28,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   setup do
     original_workspace = Application.get_env(:wardwright, :policy_recipe_workspace_dir)
 
-    workspace_dir =
-      Path.join(System.tmp_dir!(), "wardwright-live-default-#{System.unique_integer()}")
+    workspace_dir = temp_workspace_dir("wardwright-live-default")
 
     Application.put_env(:wardwright, :policy_recipe_workspace_dir, workspace_dir)
 
@@ -228,8 +227,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   test "LiveView projection workbench renders selected pattern and mode" do
     original_workspace = Application.get_env(:wardwright, :policy_recipe_workspace_dir)
 
-    workspace_dir =
-      Path.join(System.tmp_dir!(), "wardwright-live-render-#{System.unique_integer()}")
+    workspace_dir = temp_workspace_dir("wardwright-live-render")
 
     Application.put_env(:wardwright, :policy_recipe_workspace_dir, workspace_dir)
 
@@ -655,8 +653,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   test "LiveView recipe source can point at workspace catalogs without changing projection contract" do
     original_workspace = Application.get_env(:wardwright, :policy_recipe_workspace_dir)
 
-    workspace_dir =
-      Path.join(System.tmp_dir!(), "wardwright-live-recipes-#{System.unique_integer()}")
+    workspace_dir = temp_workspace_dir("wardwright-live-recipes")
 
     File.mkdir_p!(workspace_dir)
 
@@ -731,8 +728,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   test "LiveView default project example source loads committed starter recipes" do
     original_workspace = Application.get_env(:wardwright, :policy_recipe_workspace_dir)
 
-    workspace_dir =
-      Path.join(System.tmp_dir!(), "wardwright-live-starter-recipes-#{System.unique_integer()}")
+    workspace_dir = temp_workspace_dir("wardwright-live-starter-recipes")
 
     Application.put_env(:wardwright, :policy_recipe_workspace_dir, workspace_dir)
 
@@ -971,5 +967,16 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert updated =~ "chat_completion"
     assert updated =~ "global scope"
     refute updated =~ "do not show this private prompt"
+  end
+
+  defp temp_workspace_dir(prefix) do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "#{prefix}-#{System.unique_integer([:positive, :monotonic])}"
+      )
+
+    File.rm_rf!(path)
+    path
   end
 end

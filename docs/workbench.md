@@ -88,3 +88,18 @@ wardwright tools --json
 The same registry backs the protected policy-authoring API and the MCP endpoint
 mounted at `/mcp`. Point a local agent at the Wardwright service, let it inspect
 the available tools, and use the workbench to review the policy it creates.
+See the [Agent Authoring Guide](agent-authoring.html) for the expected
+inspect-simulate-draft-validate-review-activate loop.
+
+The first useful write path is intentionally narrow:
+
+- `draft_synthetic_model` builds and validates a synthetic-model artifact from
+  supplied target models, route selectors, governance rules, and stream rules.
+- `activate_synthetic_model` validates the same artifact and makes it the
+  current local OpenAI-compatible model.
+- `propose_rule_change` returns a draft artifact with an appended, replaced, or
+  removed governance or stream rule. It is draft-only and never applies changes.
+
+After activation, agents can call `/v1/chat/completions` with either the flat
+model id such as `support-router` or the prefixed id
+`wardwright/support-router`.

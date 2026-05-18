@@ -139,7 +139,9 @@ route/model composition, stream repair and session state, plus tool/workflow
 control. Models you create locally and store in the configured workspace recipe
 directory use the same workbench path when they expose a supported projection.
 See the [Policy Workbench](workbench.html) page for screenshots and the current
-example catalog.
+example catalog. External agents can use the local MCP/API authoring surface;
+the [Agent Authoring Guide](agent-authoring.html) describes the expected
+inspect, simulate, draft, validate, review, and activate workflow.
 
 Near-term work:
 

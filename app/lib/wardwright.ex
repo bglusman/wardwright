@@ -566,7 +566,7 @@ defmodule Wardwright do
     [text]
   end
 
-  defp normalize_config(config) do
+  def normalize_config(config) do
     %{
       "synthetic_model" =>
         config |> Map.get("synthetic_model", "") |> to_string() |> String.trim(),

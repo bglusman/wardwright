@@ -319,7 +319,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         <strong>Point MCP clients at <code>/mcp</code></strong>
         <small>
           Installed packages include <code>wardwright tools</code> for copyable agent
-          instructions. MCP uses this Wardwright server with the <code>/mcp</code> path.
+          instructions. MCP uses this Wardwright server with the <code>/mcp</code> path
+          and can draft or activate local synthetic models.
         </small>
       </section>
 
@@ -1087,6 +1088,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         <div class="chips">
           <span class="chip">explain_projection</span>
           <span class="chip">simulate_policy</span>
+          <span class="chip">draft_synthetic_model</span>
+          <span class="chip">activate_synthetic_model</span>
           <span class="chip">propose_rule_change</span>
           <span class="chip">validate_policy_artifact</span>
         </div>

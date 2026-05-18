@@ -311,6 +311,57 @@ defmodule Wardwright.Router do
     end
   end
 
+  post "/v1/policy-authoring/synthetic-models/draft" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params) do
+      json(
+        conn,
+        200,
+        WardwrightWeb.PolicyAuthoringDrafts.synthetic_model_draft(body, request_origin(conn))
+      )
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} ->
+        error(conn, 400, message, "invalid_request", "invalid_policy_artifact")
+    end
+  end
+
+  post "/v1/policy-authoring/synthetic-models" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, result} <-
+           WardwrightWeb.PolicyAuthoringDrafts.activate_synthetic_model(
+             body,
+             request_origin(conn)
+           ) do
+      json(conn, 201, result)
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message, result} ->
+        json(conn, 422, WardwrightWeb.PolicyAuthoringDrafts.with_error(result, message))
+
+      {:error, message} ->
+        error(conn, 400, message, "invalid_request", "invalid_policy_artifact")
+    end
+  end
+
+  post "/v1/policy-authoring/propose-rule-change" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params) do
+      json(conn, 200, WardwrightWeb.PolicyAuthoringDrafts.propose_rule_change(body))
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} ->
+        error(conn, 400, message, "invalid_request", "invalid_policy_artifact")
+    end
+  end
+
   get "/v1/policy-authoring/scenarios/:pattern_id" do
     with :ok <- require_protected_access(conn),
          true <- known_policy_pattern?(pattern_id) do

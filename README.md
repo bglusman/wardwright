@@ -106,7 +106,8 @@ authored models that use a supported projection shape are loaded from the same
 workspace recipe directory and use the same simulator.
 
 See [Policy Workbench](docs/workbench.md) for screenshots and the current
-example catalog.
+example catalog. External agents can use `wardwright tools` or `/mcp`; see the
+[Agent Authoring Guide](docs/agent-authoring.md) for the safe authoring loop.
 
 ## Current Contents
 
