@@ -12,11 +12,11 @@
   },
   "files": {
     "app/lib/wardwright.ex": {
-      "total": 268,
+      "total": 281,
       "patterns": {
-        "string_key_entry": 132,
-        "string_key_access": 38,
-        "map_call_string_key": 93,
+        "string_key_entry": 142,
+        "string_key_access": 39,
+        "map_call_string_key": 95,
         "get_in_string_path": 5
       }
     },
@@ -57,20 +57,20 @@
       }
     },
     "app/lib/wardwright/policy/alert_delivery.ex": {
-      "total": 46,
+      "total": 0,
       "patterns": {
-        "string_key_entry": 23,
-        "string_key_access": 16,
-        "map_call_string_key": 7,
+        "string_key_entry": 0,
+        "string_key_access": 0,
+        "map_call_string_key": 0,
         "get_in_string_path": 0
       }
     },
     "app/lib/wardwright/policy/engine.ex": {
-      "total": 50,
+      "total": 49,
       "patterns": {
-        "string_key_entry": 34,
+        "string_key_entry": 31,
         "string_key_access": 0,
-        "map_call_string_key": 16,
+        "map_call_string_key": 18,
         "get_in_string_path": 0
       }
     },
@@ -93,11 +93,11 @@
       }
     },
     "app/lib/wardwright/policy/plan.ex": {
-      "total": 225,
+      "total": 206,
       "patterns": {
-        "string_key_entry": 132,
-        "string_key_access": 3,
-        "map_call_string_key": 89,
+        "string_key_entry": 122,
+        "string_key_access": 2,
+        "map_call_string_key": 81,
         "get_in_string_path": 1
       }
     },
@@ -246,12 +246,12 @@
       }
     },
     "app/lib/wardwright/router.ex": {
-      "total": 83,
+      "total": 95,
       "patterns": {
-        "string_key_entry": 47,
-        "string_key_access": 13,
+        "string_key_entry": 54,
+        "string_key_access": 14,
         "map_call_string_key": 19,
-        "get_in_string_path": 4
+        "get_in_string_path": 8
       }
     },
     "app/lib/wardwright/runtime.ex": {
@@ -288,6 +288,15 @@
         "string_key_access": 0,
         "map_call_string_key": 0,
         "get_in_string_path": 0
+      }
+    },
+    "app/lib/wardwright/sinks.ex": {
+      "total": 165,
+      "patterns": {
+        "string_key_entry": 71,
+        "string_key_access": 47,
+        "map_call_string_key": 29,
+        "get_in_string_path": 18
       }
     },
     "app/lib/wardwright/tool_context.ex": {

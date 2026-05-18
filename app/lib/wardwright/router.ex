@@ -89,6 +89,8 @@ defmodule Wardwright.Router do
           "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0
         })
 
+        emit_receipt_sink_event(receipt, false)
+
         conn =
           conn
           |> put_resp_header("x-wardwright-receipt-id", receipt["receipt_id"])
@@ -147,6 +149,8 @@ defmodule Wardwright.Router do
         "simulation" => true,
         "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0
       })
+
+      emit_receipt_sink_event(receipt, true)
 
       json(conn, 200, %{"receipt" => receipt})
     else
@@ -237,6 +241,15 @@ defmodule Wardwright.Router do
   get "/admin/policy-alerts" do
     with :ok <- require_protected_access(conn) do
       json(conn, 200, Wardwright.Policy.AlertDelivery.status())
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+    end
+  end
+
+  get "/admin/sinks" do
+    with :ok <- require_protected_access(conn) do
+      json(conn, 200, Wardwright.Sinks.status())
     else
       {:error, :protected, message} ->
         error(conn, 403, message, "forbidden", "protected_endpoint")
@@ -812,6 +825,22 @@ defmodule Wardwright.Router do
       {:ok, _event} -> :ok
       _ -> :ok
     end
+  end
+
+  defp emit_receipt_sink_event(receipt, simulation) do
+    Wardwright.Sinks.emit([
+      %{
+        "type" => "receipt.finalized",
+        "receipt_id" => receipt["receipt_id"],
+        "status" => get_in(receipt, ["final", "status"]),
+        "simulation" => simulation,
+        "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0,
+        "selected_model" => get_in(receipt, ["decision", "selected_model"]),
+        "selected_provider" => get_in(receipt, ["decision", "selected_provider"])
+      }
+    ])
+
+    :ok
   end
 
   defp test_config_allowed? do

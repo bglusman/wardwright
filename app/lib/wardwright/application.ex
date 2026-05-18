@@ -19,7 +19,7 @@ defmodule Wardwright.Application do
         {DynamicSupervisor,
          strategy: :one_for_one, name: Wardwright.PolicyCache.SessionSupervisor},
         Wardwright.PolicyCache,
-        Wardwright.Policy.AlertDelivery,
+        Wardwright.Sinks,
         Wardwright.ProviderRuntime,
         {Task.Supervisor, name: Wardwright.ProviderRuntime.TaskSupervisor},
         {Phoenix.PubSub, name: Wardwright.PubSub},

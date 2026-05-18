@@ -134,6 +134,16 @@ defmodule Wardwright.AlertDeliveryPolicyTest do
     assert %{"kind" => "in_memory_alert_sink", "queue_depth" => 0} = Jason.decode!(conn.resp_body)
   end
 
+  test "admin sink status is protected and exposes all configured sinks" do
+    assert call(:get, "/admin/sinks", nil, [], {203, 0, 113, 10}).status == 403
+
+    conn = call(:get, "/admin/sinks")
+    assert conn.status == 200
+
+    assert %{"data" => [%{"id" => "policy-alerts", "kind" => "in_memory_alert_sink"}]} =
+             Jason.decode!(conn.resp_body)
+  end
+
   test "alert fail-closed blocks streaming and simulation paths consistently" do
     config =
       unit_policy_config()
