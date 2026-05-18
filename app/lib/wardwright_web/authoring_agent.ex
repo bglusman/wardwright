@@ -18,13 +18,16 @@ defmodule WardwrightWeb.AuthoringAgent do
   @default_max_tokens 16_384
   @default_timeout_ms 120_000
 
-  def configured? do
-    enabled?() and (local_wardwright_route?() or api_key() not in [nil, ""])
+  def configured?(context \\ %{}) do
+    enabled?() and
+      if local_wardwright_route?(),
+        do: requested_local_authoring_model_config(context) != nil,
+        else: api_key() not in [nil, ""]
   end
 
   def status(context \\ %{}) do
     %{
-      configured: configured?(),
+      configured: configured?(context),
       backend: "jido_ai",
       route: authoring_route(),
       base_url: base_url(),
@@ -34,14 +37,14 @@ defmodule WardwrightWeb.AuthoringAgent do
       can_execute_tools: true,
       tool_access: "read_and_draft_tools",
       instructions:
-        "Set WARDWRIGHT_AUTHORING_AGENT_ENABLED=1 and WARDWRIGHT_AUTHORING_AGENT_ROUTE=wardwright to dogfood the local Wardwright /v1 endpoint, or set WARDWRIGHT_AUTHORING_AGENT_API_KEY / WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE for a direct provider endpoint. Reasoning-heavy coding models may also need WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS and WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS."
+        "Set WARDWRIGHT_AUTHORING_AGENT_ENABLED=1, WARDWRIGHT_AUTHORING_AGENT_ROUTE=wardwright, and WARDWRIGHT_AUTHORING_AGENT_MODEL to dogfood a specific local Wardwright /v1 model. If that local model requires keyed access, set WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY or WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY_FILE. For direct provider calls, set WARDWRIGHT_AUTHORING_AGENT_API_KEY or WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE. Reasoning-heavy coding models may also need WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS and WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS."
     }
   end
 
   def respond(message, context \\ %{}) when is_binary(message) and is_map(context) do
     prompt = prompt(message, context)
 
-    if configured?() do
+    if configured?(context) do
       run_jido(prompt, context)
     else
       {:ok,
@@ -55,7 +58,7 @@ defmodule WardwrightWeb.AuthoringAgent do
   end
 
   def prompt(message, context \\ %{}) when is_binary(message) and is_map(context) do
-    selected_model = Map.get(context, :model_id, Wardwright.model_id())
+    selected_model = selected_model_id(context)
     selected_pattern = Map.get(context, :pattern_id, "unknown")
     selected_recipe = Map.get(context, :recipe_id, "")
 
@@ -103,7 +106,7 @@ defmodule WardwrightWeb.AuthoringAgent do
   defp run_jido(prompt, context) do
     model_id = model(context)
     provider_base_url = base_url()
-    model_spec = %{provider: :openai, id: model_id, base_url: provider_base_url}
+    model_spec = %{provider: :openai, id: model_id, model: model_id, base_url: provider_base_url}
     started_at = System.monotonic_time(:millisecond)
     backend_status = status(context)
 
@@ -474,6 +477,8 @@ defmodule WardwrightWeb.AuthoringAgent do
 
         WARDWRIGHT_AUTHORING_AGENT_ENABLED=1
         WARDWRIGHT_AUTHORING_AGENT_ROUTE=wardwright
+        WARDWRIGHT_AUTHORING_AGENT_MODEL=local-authoring-model
+        WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY_FILE=/path/to/local/wardwright/model-key
         WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=#{@default_max_tokens}
         WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=#{@default_timeout_ms}
 
@@ -519,14 +524,54 @@ defmodule WardwrightWeb.AuthoringAgent do
       if local_wardwright_route?(), do: local_wardwright_base_url(), else: @default_base_url
   end
 
-  defp model(context) do
-    System.get_env("WARDWRIGHT_AUTHORING_AGENT_MODEL") ||
-      if local_wardwright_route?(), do: context_model_id(context), else: @default_model
+  defp model(_context) do
+    case blank_to_nil(System.get_env("WARDWRIGHT_AUTHORING_AGENT_MODEL")) do
+      nil ->
+        if local_wardwright_route?(), do: "not-configured", else: @default_model
+
+      configured_model ->
+        configured_model
+    end
   end
 
-  defp context_model_id(context) when is_map(context) do
-    Map.get(context, :model_id) || Map.get(context, "model_id") || Wardwright.model_id()
+  defp selected_model_id(context) when is_map(context) do
+    blank_to_nil(Map.get(context, :model_id)) ||
+      blank_to_nil(Map.get(context, "model_id")) ||
+      Wardwright.model_id()
   end
+
+  defp requested_local_authoring_model_config(_context) do
+    case blank_to_nil(System.get_env("WARDWRIGHT_AUTHORING_AGENT_MODEL")) do
+      nil -> nil
+      configured_model -> usable_local_authoring_model_config(configured_model)
+    end
+  end
+
+  defp usable_local_authoring_model_config(model_id) do
+    with {:ok, config} <- Wardwright.model_config(model_id),
+         true <- locally_callable_for_authoring?(config) do
+      config
+    else
+      _ -> nil
+    end
+  end
+
+  defp locally_callable_for_authoring?(config) do
+    cond do
+      Wardwright.model_requires_api_key?(config) -> blank_to_nil(local_model_api_key()) != nil
+      Wardwright.unkeyed_model_access(config) == "public" -> true
+      true -> false
+    end
+  end
+
+  defp blank_to_nil(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp blank_to_nil(value), do: value
 
   defp local_wardwright_base_url do
     bind = System.get_env("WARDWRIGHT_BIND", "127.0.0.1:8787")
@@ -573,11 +618,34 @@ defmodule WardwrightWeb.AuthoringAgent do
   end
 
   defp api_key_for_request do
-    api_key() || if local_wardwright_route?(), do: "wardwright-local", else: nil
+    if local_wardwright_route?() do
+      local_model_api_key() || "wardwright-local"
+    else
+      api_key()
+    end
+  end
+
+  defp local_model_api_key do
+    System.get_env("WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY") || local_model_api_key_from_file()
   end
 
   defp api_key_from_file do
     case System.get_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE") do
+      nil ->
+        nil
+
+      path ->
+        path
+        |> File.read()
+        |> case do
+          {:ok, key} -> String.trim(key)
+          {:error, _reason} -> nil
+        end
+    end
+  end
+
+  defp local_model_api_key_from_file do
+    case System.get_env("WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY_FILE") do
       nil ->
         nil
 

@@ -713,7 +713,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         </div>
 
         <div class="authoring_agent_meta">
-          <span><strong>Model</strong> <%= @authoring_agent_status.model %></span>
+          <span><strong>Assistant model</strong> <%= @authoring_agent_status.model %></span>
           <span><strong>Route</strong> <%= @authoring_agent_status.route %></span>
           <span>
             <strong>Tool access</strong>
@@ -1598,10 +1598,11 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .notice_panel { margin-bottom: 18px; padding: 12px 14px; border: 1px solid #94c7b5; border-radius: 8px; color: #1c654f; background: #edf8f3; }
     .notice_panel.error { border-color: #df9a9a; color: #8b2d2d; background: #fff1f1; }
     .success_panel { border-color: #94c7b5; background: #f0faf6; }
-    table { width: 100%; border-collapse: collapse; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     th, td { padding: 9px 10px; border-bottom: 1px solid #e1e7ed; text-align: left; vertical-align: top; }
     th { color: #66727c; background: #f8fafc; font-size: 12px; font-weight: 900; text-transform: uppercase; }
     td { color: #26323c; font-size: 13px; }
+    th, td { overflow-wrap: anywhere; }
     .authoring_agent { border-color: #c7d8e6; background: #f8fbfd; }
     .authoring_agent_meta { display: flex; flex-wrap: wrap; gap: 8px; color: #51606d; font-size: 12px; font-weight: 800; }
     .authoring_agent_meta span { border: 1px solid #d8e2ea; border-radius: 999px; padding: 5px 8px; background: #fff; }

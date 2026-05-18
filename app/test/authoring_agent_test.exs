@@ -2,6 +2,8 @@ defmodule WardwrightWeb.AuthoringAgentTest do
   use ExUnit.Case, async: false
 
   setup do
+    Wardwright.reset_config()
+
     original_client = Application.get_env(:wardwright, :authoring_agent_client, :unset)
 
     original_env =
@@ -12,6 +14,8 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     Enum.each(env_keys(), &System.delete_env/1)
 
     on_exit(fn ->
+      Wardwright.reset_config()
+
       Enum.each(env_keys(), fn key ->
         case Map.fetch!(original_env, key) do
           nil -> System.delete_env(key)
@@ -66,6 +70,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert response.backend.timeout_ms == 120_000
     assert response.content =~ "Wardwright's authoring assistant is installed but not configured"
     assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_ROUTE=wardwright"
+    assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_MODEL=local-authoring-model"
     assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE"
     assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=16384"
     assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000"
@@ -90,6 +95,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
   test "local Wardwright route is configured without a provider API key" do
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", "wardwright")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_MODEL", Wardwright.model_id())
     System.put_env("WARDWRIGHT_BIND", "0.0.0.0:8797")
 
     assert WardwrightWeb.AuthoringAgent.configured?()
@@ -99,8 +105,14 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert status.base_url == "http://127.0.0.1:8797/v1"
     assert status.model == Wardwright.model_id()
 
-    selected_status = WardwrightWeb.AuthoringAgent.status(%{model_id: "wardwright/cow-guard"})
-    assert selected_status.model == "wardwright/cow-guard"
+    selected_status = WardwrightWeb.AuthoringAgent.status(%{model_id: Wardwright.model_id()})
+    assert selected_status.model == Wardwright.model_id()
+
+    unknown_status = WardwrightWeb.AuthoringAgent.status(%{model_id: "wardwright/cow-guard"})
+    assert unknown_status.model == Wardwright.model_id()
+
+    blank_status = WardwrightWeb.AuthoringAgent.status(%{model_id: ""})
+    assert blank_status.model == Wardwright.model_id()
   end
 
   test "local Wardwright route accepts a full v1 bind URL" do
@@ -111,7 +123,78 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert WardwrightWeb.AuthoringAgent.status().base_url == "http://127.0.0.1:8797/v1"
   end
 
-  test "local Wardwright route sends the selected model through the provider request" do
+  test "local Wardwright route uses the configured authoring backend, not the selected workbench model" do
+    on_exit(fn -> Wardwright.reset_config() end)
+
+    cow_config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "cow-guard")
+      |> Map.put("auth", %{"unkeyed_model_access" => "public"})
+
+    assert {:ok, _config} = Wardwright.put_model_config(cow_config)
+
+    Application.put_env(
+      :wardwright,
+      :authoring_agent_client,
+      __MODULE__.CapturingAuthoringClient
+    )
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", "wardwright")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_MODEL", Wardwright.model_id())
+    System.put_env("WARDWRIGHT_BIND", "127.0.0.1:8797")
+
+    {:ok, response} =
+      WardwrightWeb.AuthoringAgent.respond("Review the current model.", %{
+        model_id: "wardwright/cow-guard"
+      })
+
+    assert response.status == "completed"
+    assert response.backend.model == Wardwright.model_id()
+    assert response.content =~ "model=#{Wardwright.model_id()}"
+    assert response.content =~ "base_url=http://127.0.0.1:8797/v1"
+    assert response.content =~ "api_key=wardwright-local"
+  end
+
+  test "local Wardwright route falls back when the selected workbench model is blank" do
+    Application.put_env(
+      :wardwright,
+      :authoring_agent_client,
+      __MODULE__.CapturingAuthoringClient
+    )
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", "wardwright")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_MODEL", Wardwright.model_id())
+    System.put_env("WARDWRIGHT_BIND", "127.0.0.1:8797")
+
+    {:ok, response} =
+      WardwrightWeb.AuthoringAgent.respond("Review the current model.", %{
+        model_id: ""
+      })
+
+    assert response.status == "completed"
+    assert response.backend.model == Wardwright.model_id()
+    assert response.content =~ "model=#{Wardwright.model_id()}"
+    assert response.content =~ "provider_model=#{Wardwright.model_id()}"
+  end
+
+  test "local Wardwright route avoids internal-only models when choosing a backing model" do
+    on_exit(fn -> Wardwright.reset_config() end)
+
+    internal_config =
+      Wardwright.default_config()
+      |> Map.put("auth", %{"unkeyed_model_access" => "internal"})
+
+    public_config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "local-fast-draft-test")
+      |> Map.put("auth", %{"unkeyed_model_access" => "public"})
+      |> Map.put("requires_api_key", true)
+
+    assert {:ok, _config} = Wardwright.put_config(internal_config)
+    assert {:ok, _config} = Wardwright.put_model_config(public_config)
+
     Application.put_env(
       :wardwright,
       :authoring_agent_client,
@@ -121,17 +204,61 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", "wardwright")
     System.put_env("WARDWRIGHT_BIND", "127.0.0.1:8797")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_MODEL", "local-fast-draft-test")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY", "local-model-key")
 
     {:ok, response} =
       WardwrightWeb.AuthoringAgent.respond("Review the current model.", %{
-        model_id: "wardwright/cow-guard"
+        model_id: Wardwright.model_id()
       })
 
     assert response.status == "completed"
-    assert response.backend.model == "wardwright/cow-guard"
-    assert response.content =~ "model=wardwright/cow-guard"
-    assert response.content =~ "base_url=http://127.0.0.1:8797/v1"
-    assert response.content =~ "api_key=wardwright-local"
+    assert response.backend.model == "local-fast-draft-test"
+    assert response.content =~ "model=local-fast-draft-test"
+    assert response.content =~ "api_key=local-model-key"
+  end
+
+  test "local Wardwright route does not use direct provider keys as local model keys" do
+    on_exit(fn -> Wardwright.reset_config() end)
+
+    keyed_config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "keyed-local")
+      |> Map.put("auth", %{"unkeyed_model_access" => "public"})
+      |> Map.put("requires_api_key", true)
+
+    internal_config =
+      Wardwright.default_config()
+      |> Map.put("auth", %{"unkeyed_model_access" => "internal"})
+
+    assert {:ok, _config} = Wardwright.put_config(internal_config)
+    assert {:ok, _config} = Wardwright.put_model_config(keyed_config)
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", "wardwright")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "provider-key")
+
+    refute WardwrightWeb.AuthoringAgent.configured?(%{model_id: "keyed-local"})
+  end
+
+  test "local Wardwright route validates explicit model env override against registered models" do
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", "wardwright")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_MODEL", "not-registered")
+
+    refute WardwrightWeb.AuthoringAgent.configured?()
+
+    local_config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "local-fast-draft-test")
+      |> Map.put("auth", %{"unkeyed_model_access" => "public"})
+
+    assert {:ok, _config} = Wardwright.put_model_config(local_config)
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_MODEL", "local-fast-draft-test")
+
+    assert WardwrightWeb.AuthoringAgent.configured?()
+    assert WardwrightWeb.AuthoringAgent.status().model == "local-fast-draft-test"
   end
 
   test "configured response explains token-limited reasoning-only provider responses" do
@@ -287,7 +414,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
       {:ok,
        Jason.encode!(%{
          "answer" =>
-           "model=#{opts[:model].id} base_url=#{opts[:model].base_url} api_key=#{opts[:api_key]}",
+           "model=#{opts[:model].id} provider_model=#{opts[:model].model} base_url=#{opts[:model].base_url} api_key=#{opts[:api_key]}",
          "tool_calls" => []
        })}
     end
@@ -302,6 +429,8 @@ defmodule WardwrightWeb.AuthoringAgentTest do
       "WARDWRIGHT_BIND",
       "WARDWRIGHT_AUTHORING_AGENT_API_KEY",
       "WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE",
+      "WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY",
+      "WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY_FILE",
       "WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS",
       "WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS"
     ]

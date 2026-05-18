@@ -16,6 +16,21 @@ const viewports = [
   { name: "desktop", width: 1280, height: 900, mobile: false, scale: 1 }
 ];
 
+const overflowViewports = [
+  { name: "narrow", width: 360, height: 780, mobile: true, scale: 3 },
+  { name: "mobile", width: 390, height: 844, mobile: true, scale: 3 },
+  { name: "tablet", width: 768, height: 900, mobile: false, scale: 1 },
+  { name: "desktop", width: 1280, height: 900, mobile: false, scale: 1 }
+];
+
+const overflowPaths = [
+  "/policies",
+  "/admin/model-api-keys",
+  "/policies/tts-retry/diagram",
+  "/policies/route-privacy/diagram",
+  "/policies/tool-governance/diagram"
+];
+
 if (!chromePath) {
   const message =
     "Chrome or Chromium was not found. Set CHROME_PATH to run LiveView browser smoke tests.";
@@ -67,12 +82,59 @@ try {
   for (const viewport of viewports) {
     await runViewportSmoke(viewport);
   }
+
+  for (const viewport of overflowViewports) {
+    for (const path of overflowPaths) {
+      await assertNoPageOverflow(viewport, path);
+    }
+  }
 } finally {
   chrome.kill("SIGTERM");
   server.kill("SIGTERM");
   await rm(userDataDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }).catch(
     () => {}
   );
+}
+
+async function assertNoPageOverflow(viewport, path) {
+  const target = await createChromeTarget();
+  const cdp = await connectCdp(target.webSocketDebuggerUrl);
+
+  try {
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: viewport.width,
+      height: viewport.height,
+      deviceScaleFactor: viewport.scale,
+      mobile: viewport.mobile
+    });
+
+    await cdp.send("Page.navigate", { url: `${appUrl}${path}` });
+    await cdp.waitFor("Page.loadEventFired");
+    await waitForEval(cdp, `document.body && document.body.innerText.length > 20`);
+    await waitForEval(cdp, `!document.documentElement.classList.contains("phx-loading")`);
+
+    const result = await evaluate(
+      cdp,
+      `(() => {
+        const clientWidth = document.documentElement.clientWidth;
+        const scrollWidth = document.documentElement.scrollWidth;
+        return { clientWidth, scrollWidth, overflow: scrollWidth - clientWidth };
+      })()`
+    );
+
+    if (result.overflow > 1) {
+      throw new Error(
+        `${viewport.name} ${path}: page overflow ${result.overflow}px (` +
+          `scrollWidth ${result.scrollWidth}, clientWidth ${result.clientWidth})`
+      );
+    }
+
+    console.log(`ok ${viewport.name} ${path} has no page overflow`);
+  } finally {
+    cdp.close();
+  }
 }
 
 async function runViewportSmoke(viewport) {
