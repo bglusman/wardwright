@@ -12,11 +12,11 @@
   },
   "files": {
     "app/lib/wardwright.ex": {
-      "total": 294,
+      "total": 289,
       "patterns": {
         "string_key_entry": 155,
-        "string_key_access": 36,
-        "map_call_string_key": 97,
+        "string_key_access": 30,
+        "map_call_string_key": 98,
         "get_in_string_path": 6
       }
     },
@@ -30,6 +30,15 @@
       }
     },
     "app/lib/wardwright/cli.ex": {
+      "total": 0,
+      "patterns": {
+        "string_key_entry": 0,
+        "string_key_access": 0,
+        "map_call_string_key": 0,
+        "get_in_string_path": 0
+      }
+    },
+    "app/lib/wardwright/cli/admin.ex": {
       "total": 0,
       "patterns": {
         "string_key_entry": 0,
@@ -183,11 +192,11 @@
       }
     },
     "app/lib/wardwright/policy_projection.ex": {
-      "total": 782,
+      "total": 796,
       "patterns": {
         "string_key_entry": 645,
         "string_key_access": 59,
-        "map_call_string_key": 78,
+        "map_call_string_key": 92,
         "get_in_string_path": 0
       }
     },
@@ -264,9 +273,9 @@
       }
     },
     "app/lib/wardwright/router.ex": {
-      "total": 102,
+      "total": 100,
       "patterns": {
-        "string_key_entry": 58,
+        "string_key_entry": 56,
         "string_key_access": 14,
         "map_call_string_key": 22,
         "get_in_string_path": 8

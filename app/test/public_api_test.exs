@@ -244,6 +244,7 @@ defmodule Wardwright.PublicApiTest do
     assert "draft_wardwright_model" in tool_names
     assert "activate_wardwright_model" in tool_names
     assert "record_scenario" in tool_names
+    assert "delete_scenario" in tool_names
     assert "import_receipt_scenario" in tool_names
     assert "export_regression_pack" in tool_names
     assert "apply_scenario_retention" in tool_names
@@ -667,6 +668,17 @@ defmodule Wardwright.PublicApiTest do
       "pinned" => true,
       "input_summary" => "A reviewed stream scenario stores the split trigger.",
       "expected_behavior" => "The stream retry rule fires before release.",
+      "model_id" => "coding-balanced",
+      "artifact_hash" => "sha256:api-reviewed-artifact",
+      "turn" => %{
+        "user_input" => "Show the migration note.",
+        "model_response" => "avoid Old\nClient( in released output",
+        "response_attempts" => [
+          %{"index" => 1, "model_output" => "avoid Old\nClient( in released output"},
+          %{"index" => 2, "model_output" => "Use the current client adapter."}
+        ],
+        "history_context" => %{"policy_state" => "observing"}
+      },
       "verdict" => "passed",
       "trace" => [
         %{
@@ -689,10 +701,37 @@ defmodule Wardwright.PublicApiTest do
     created_body = Jason.decode!(created.resp_body)
     assert get_in(created_body, ["scenario", "scenario_id"]) == "api-reviewed-trigger"
     assert get_in(created_body, ["scenario", "scenario_source"]) == "persisted"
+    assert get_in(created_body, ["scenario", "model_id"]) == "coding-balanced"
+    assert get_in(created_body, ["scenario", "artifact_hash"]) == "sha256:api-reviewed-artifact"
+    assert get_in(created_body, ["scenario", "turn", "model_response"]) =~ "Old\nClient"
+
+    assert Enum.any?(
+             get_in(created_body, ["scenario", "turn", "response_attempts"]),
+             &(&1["index"] == 2 and &1["model_output"] =~ "current client")
+           )
 
     listed = call(:get, "/v1/policy-authoring/scenarios/tts-retry")
     assert listed.status == 200
-    assert [%{"scenario_id" => "api-reviewed-trigger"}] = Jason.decode!(listed.resp_body)["data"]
+
+    assert [
+             %{
+               "scenario_id" => "api-reviewed-trigger",
+               "turn" => %{"user_input" => "Show the migration note."}
+             }
+           ] = Jason.decode!(listed.resp_body)["data"]
+
+    deleted = call(:delete, "/v1/policy-authoring/scenarios/tts-retry/api-reviewed-trigger")
+    assert deleted.status == 200
+
+    assert get_in(Jason.decode!(deleted.resp_body), ["scenario", "scenario_id"]) ==
+             "api-reviewed-trigger"
+
+    assert %{"data" => []} =
+             call(:get, "/v1/policy-authoring/scenarios/tts-retry").resp_body
+             |> Jason.decode!()
+
+    assert call(:post, "/v1/policy-authoring/scenarios/tts-retry", %{"scenario" => scenario}).status ==
+             201
 
     simulations = call(:get, "/v1/policy-authoring/simulations/tts-retry")
     assert simulations.status == 200

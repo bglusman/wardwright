@@ -472,6 +472,8 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "/mcp"
     assert html =~ "wardwright tools"
     assert html =~ "wardwright admin"
+    assert html =~ "Workbench model"
+    assert html =~ "The simulator uses this model&#39;s current policy and routes."
     assert html =~ "Model Access"
     assert html =~ "href=\"/admin/model-api-keys\""
     assert html =~ "Manage access"
@@ -513,6 +515,99 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert connected_html =~ "retry selected"
     assert connected_html =~ "retry stream released"
     assert connected_html =~ "receipt preview"
+  end
+
+  test "LiveView workbench model selector drives projection and simulator config" do
+    alpha =
+      Wardwright.default_config()
+      |> Map.put("model_id", "alpha-workbench")
+
+    beta =
+      Wardwright.default_config()
+      |> Map.put("model_id", "beta-workbench")
+      |> Map.put("stream_rules", [
+        %{"id" => "beta-noop", "pattern" => "", "action" => "pass"}
+      ])
+
+    assert {:ok, _alpha} = Wardwright.put_config(alpha)
+    assert {:ok, _beta} = Wardwright.put_model_config(beta)
+
+    beta_hash =
+      Wardwright.PolicyProjection.projection("tts-retry", beta)["artifact"]["artifact_hash"]
+
+    {:ok, view, html} = live(build_conn(), "/policies/tts-retry/diagram?model=beta-workbench")
+
+    assert html =~ "Simulating <strong>beta-workbench</strong>"
+    assert html =~ beta_hash
+    assert html =~ "alpha-workbench"
+    assert html =~ "beta-workbench"
+    assert html =~ "model=beta-workbench"
+
+    updated =
+      view
+      |> element("form[phx-submit='select-workbench-model']")
+      |> render_submit(%{"workbench_model" => "alpha-workbench"})
+
+    assert updated =~ "Simulating <strong>alpha-workbench</strong>"
+    assert updated =~ "model=alpha-workbench"
+  end
+
+  test "LiveView can save the edited user and model turn as a reusable scenario" do
+    {:ok, view, _html} = live(build_conn(), "/policies/tts-retry/diagram")
+
+    view
+    |> element("#turn-editor-form")
+    |> render_change(%{
+      "simulation" => %{
+        "user_input" => "Please mention the old client constructor.",
+        "model_response" => "The migration used Old\nClient( in a draft.",
+        "response_attempts" => %{
+          "2" => "Use the current client adapter in the migration note."
+        }
+      }
+    })
+
+    html =
+      view
+      |> element("form[phx-submit='save-simulation-scenario']")
+      |> render_submit(%{
+        "scenario" => %{"title" => "Reviewed old-client split", "pinned" => "true"}
+      })
+
+    assert html =~ "Saved Reviewed old-client split."
+    assert html =~ "Saved test cases"
+    assert html =~ "Reviewed old-client split"
+
+    assert [
+             scenario
+           ] = Wardwright.PolicyScenarioStore.list("tts-retry")
+
+    assert scenario.title == "Reviewed old-client split"
+    assert scenario.pinned
+    assert scenario.model_id == "coding-balanced"
+    assert scenario.artifact_hash =~ "sha256:"
+    assert scenario.turn["user_input"] == "Please mention the old client constructor."
+    assert scenario.turn["model_response"] =~ "Old\nClient"
+
+    assert Enum.any?(
+             scenario.turn["response_attempts"],
+             &(&1["index"] == 2 and &1["model_output"] =~ "current client adapter")
+           )
+
+    html =
+      view
+      |> element("form[phx-submit='select-simulation-input']")
+      |> render_submit(%{"simulation_input" => "saved:#{scenario.id}"})
+
+    assert html =~ "Delete selected"
+
+    html =
+      view
+      |> element("button[phx-click='delete-simulation-scenario']")
+      |> render_click()
+
+    assert html =~ "Deleted Reviewed old-client split."
+    assert Wardwright.PolicyScenarioStore.list("tts-retry") == []
   end
 
   test "LiveView authoring agent panel submits to the local fallback without credentials" do

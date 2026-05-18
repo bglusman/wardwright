@@ -520,6 +520,26 @@ defmodule Wardwright.Router do
     end
   end
 
+  delete "/v1/policy-authoring/scenarios/:pattern_id/:scenario_id" do
+    with :ok <- require_protected_access(conn),
+         true <- known_policy_pattern?(pattern_id),
+         {:ok, scenario} <- Wardwright.PolicyScenarioStore.delete(pattern_id, scenario_id) do
+      json(conn, 200, Map.new([{"scenario", Wardwright.PolicyScenario.to_map(scenario)}]))
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      false ->
+        error(conn, 404, "policy pattern not found", "not_found", "policy_pattern_not_found")
+
+      {:error, "scenario not found"} ->
+        error(conn, 404, "scenario not found", "not_found", "policy_scenario_not_found")
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_policy_scenario")
+    end
+  end
+
   post "/v1/policy-authoring/scenarios/:pattern_id/from-receipt/:receipt_id" do
     with :ok <- require_protected_access(conn),
          true <- known_policy_pattern?(pattern_id),

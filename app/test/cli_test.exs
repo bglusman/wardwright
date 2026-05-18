@@ -164,6 +164,7 @@ defmodule Wardwright.CLITest do
     assert "draft_wardwright_model" in names
     assert "activate_wardwright_model" in names
     assert "record_scenario" in names
+    assert "delete_scenario" in names
     assert "propose_rule_change" in names
     assert "validate_policy_artifact" in names
 

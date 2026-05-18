@@ -92,13 +92,16 @@ defmodule Wardwright.PolicyProjection do
   end
 
   def simulation_inputs(pattern_id) do
-    Enum.map(simulation_inputs(), fn input ->
-      Map.put(input, "relationship", simulation_input_relationship(pattern_id, input["id"]))
-    end)
+    fixture_inputs =
+      Enum.map(simulation_inputs(), fn input ->
+        Map.put(input, "relationship", simulation_input_relationship(pattern_id, input["id"]))
+      end)
+
+    fixture_inputs ++ persisted_simulation_inputs(pattern_id)
   end
 
   def simulation_inputs("ambiguous-success", "structured-output-repair-gate") do
-    structured_output_simulation_inputs()
+    structured_output_simulation_inputs() ++ persisted_simulation_inputs("ambiguous-success")
   end
 
   def simulation_inputs(pattern_id, _recipe_id), do: simulation_inputs(pattern_id)
@@ -283,6 +286,38 @@ defmodule Wardwright.PolicyProjection do
 
   defp simulation_input_relationship(_pattern_id, _input_id), do: "cross_policy_probe"
 
+  defp persisted_simulation_inputs(pattern_id) do
+    pattern_id
+    |> Wardwright.PolicyScenarioStore.list()
+    |> Enum.flat_map(&persisted_simulation_input/1)
+  end
+
+  defp persisted_simulation_input(scenario) do
+    scenario
+    |> Wardwright.PolicyScenario.to_map()
+    |> Map.get("turn")
+    |> case do
+      %{} = turn ->
+        [
+          Map.new([
+            {"id", "saved:#{scenario.id}"},
+            {"title", scenario.title},
+            {"description", scenario.expected_behavior},
+            {"relationship", "saved_scenario"},
+            {"source_model_id", scenario.model_id},
+            {"source_artifact_hash", scenario.artifact_hash},
+            {"user_input", Map.get(turn, "user_input", "")},
+            {"model_response", Map.get(turn, "model_response", "")},
+            {"response_attempts", Map.get(turn, "response_attempts", [])},
+            {"history_context", Map.get(turn, "history_context", %{})}
+          ])
+        ]
+
+      _ ->
+        []
+    end
+  end
+
   def simulate_input(pattern_id, text, config \\ Wardwright.current_config()) do
     simulate_turn(pattern_id, "", text, config)
   end
@@ -308,6 +343,7 @@ defmodule Wardwright.PolicyProjection do
 
     pattern_id
     |> evaluated_simulation(turn, config)
+    |> Map.put("turn", turn)
     |> Map.put("artifact_hash", artifact_hash)
     |> Map.put("scenario_source", "interactive")
     |> Map.put("source", "interactive")
@@ -321,19 +357,53 @@ defmodule Wardwright.PolicyProjection do
         history_context,
         config \\ Wardwright.current_config()
       ) do
+    simulate_recipe_turn_with_attempts(
+      pattern_id,
+      recipe_id,
+      user_input,
+      model_response,
+      history_context,
+      [],
+      config
+    )
+  end
+
+  def simulate_recipe_turn_with_attempts(
+        pattern_id,
+        recipe_id,
+        user_input,
+        model_response,
+        history_context,
+        response_attempts,
+        config \\ Wardwright.current_config()
+      ) do
     artifact_hash = artifact(pattern(pattern_id), config)["artifact_hash"]
 
-    turn = %{
-      "user_input" => user_input || "",
-      "model_response" => model_response || "",
-      "history_context" => normalize_history_context(history_context)
-    }
+    turn =
+      simulation_turn(
+        user_input,
+        model_response,
+        history_context,
+        response_attempts
+      )
 
     pattern_id
     |> evaluated_recipe_simulation(recipe_id, turn, config)
+    |> Map.put("turn", turn)
     |> Map.put("artifact_hash", artifact_hash)
     |> Map.put("scenario_source", "interactive")
     |> Map.put("source", "interactive")
+  end
+
+  defp simulation_turn(user_input, model_response, history_context, response_attempts) do
+    Map.new([
+      {"user_input", user_input || ""},
+      {"model_response", model_response || ""},
+      {"response_attempts", normalize_response_attempts(response_attempts)},
+      {"history_context", normalize_history_context(history_context)}
+    ])
+    |> Enum.reject(fn {_key, value} -> value in [nil, []] end)
+    |> Map.new()
   end
 
   defp artifact(pattern, config) do
@@ -2613,6 +2683,9 @@ defmodule Wardwright.PolicyProjection do
     input = turn_user_input(turn)
 
     cond do
+      retry_response(turn) ->
+        retry_response(turn)
+
       String.contains?(input, "migration") ->
         "Use the current client adapter in the migration note."
 
@@ -2803,6 +2876,21 @@ defmodule Wardwright.PolicyProjection do
   defp turn_response(%{"text" => value}) when is_binary(value), do: value
   defp turn_response(_turn), do: ""
 
+  defp turn_response_attempts(%{"response_attempts" => attempts}) when is_list(attempts),
+    do: normalize_response_attempts(attempts)
+
+  defp turn_response_attempts(_turn), do: []
+
+  defp retry_response(turn) do
+    turn
+    |> turn_response_attempts()
+    |> Enum.find(&(Map.get(&1, "index") == 2))
+    |> case do
+      %{"model_output" => output} when is_binary(output) and output != "" -> output
+      _attempt -> nil
+    end
+  end
+
   defp turn_history_context(%{"history_context" => value}) when is_map(value),
     do: normalize_history_context(value)
 
@@ -2814,6 +2902,40 @@ defmodule Wardwright.PolicyProjection do
     |> Map.get("recent_related_secret_matches", "0")
     |> parse_nonnegative_integer()
   end
+
+  defp normalize_response_attempts(attempts) when is_list(attempts) do
+    attempts
+    |> Enum.flat_map(&normalize_response_attempt/1)
+    |> Enum.sort_by(&Map.get(&1, "index", 0))
+  end
+
+  defp normalize_response_attempts(_attempts), do: []
+
+  defp normalize_response_attempt(%{"index" => index} = attempt) when is_integer(index) do
+    output = Map.get(attempt, "model_output") || Map.get(attempt, "model_response")
+
+    if is_binary(output) and String.trim(output) != "" do
+      [
+        Map.new([
+          {"index", index},
+          {"model_output", output},
+          {"status", string_or_nil(Map.get(attempt, "status"))},
+          {"user_output", string_or_nil(Map.get(attempt, "user_output"))},
+          {"retry_instruction", string_or_nil(Map.get(attempt, "retry_instruction"))},
+          {"policy_result", string_or_nil(Map.get(attempt, "policy_result"))}
+        ])
+        |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+        |> Map.new()
+      ]
+    else
+      []
+    end
+  end
+
+  defp normalize_response_attempt(_attempt), do: []
+
+  defp string_or_nil(value) when is_binary(value), do: value
+  defp string_or_nil(_value), do: nil
 
   defp related_secret_history_window(turn) do
     turn
