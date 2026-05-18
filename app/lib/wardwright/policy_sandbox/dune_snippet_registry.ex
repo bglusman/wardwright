@@ -13,6 +13,57 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
 
   @snippets [
     %{
+      "id" => "primitive.request-contains-actions",
+      "title" => "Request contains actions",
+      "phase" => "request.review",
+      "description" =>
+        "Compatibility implementation for legacy engine: primitive rules that match request text and emit policy actions.",
+      "replaces_primitives" => ["engine.primitive", "contains_match"],
+      "input_shape" => %{
+        "request_text" => "string",
+        "rules" => "list[{id?: string, contains: string, action?: string}]"
+      },
+      "example_input" => %{
+        "request_text" => "please deny me",
+        "rules" => [
+          %{"id" => "legacy-deny", "contains" => "deny me", "action" => "block"}
+        ]
+      },
+      "source" => """
+      text = String.downcase(input["request_text"] || "")
+      rules = input["rules"] || []
+
+      actions =
+        Enum.reduce(rules, [], fn rule, acc ->
+          raw_contains = rule["contains"]
+          contains = if(is_binary(raw_contains), do: String.downcase(raw_contains), else: "")
+
+          if contains != "" and String.contains?(text, contains) do
+            [
+              %{
+                "rule_id" => rule["id"] || "primitive-rule",
+                "action" => rule["action"] || "annotate",
+                "matched" => true
+              }
+              | acc
+            ]
+          else
+            acc
+          end
+        end)
+        |> Enum.reverse()
+
+      %{
+        "action" => if(Enum.any?(actions, fn action -> action["action"] == "block" end), do: "block", else: "allow"),
+        "actions" => actions,
+        "reason" => "legacy primitive contains rules evaluated by Dune",
+        "trace" => [
+          %{"rule" => "legacy_primitive_contains", "matched_count" => Enum.count(actions)}
+        ]
+      }
+      """
+    },
+    %{
       "id" => "route.private-context-local-only",
       "title" => "Private context route gate",
       "phase" => "route",
@@ -166,6 +217,13 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
     case Enum.find(@snippets, &(&1["id"] == id)) do
       nil -> {:error, "Dune snippet not found: #{id}"}
       snippet -> {:ok, snippet}
+    end
+  end
+
+  def source!(id) when is_binary(id) do
+    case get(id) do
+      {:ok, snippet} -> Map.fetch!(snippet, "source")
+      {:error, message} -> raise ArgumentError, message
     end
   end
 

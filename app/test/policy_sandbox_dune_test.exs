@@ -94,7 +94,7 @@ defmodule Wardwright.PolicySandbox.DuneTest do
     registry = DuneSnippetRegistry.list()
 
     assert registry["schema"] == "wardwright.dune_snippet_registry.v1"
-    assert Enum.count(registry["data"]) >= 3
+    assert Enum.count(registry["data"]) >= 4
 
     assert %{
              "id" => "history.related-secret-ladder",
@@ -118,6 +118,32 @@ defmodule Wardwright.PolicySandbox.DuneTest do
 
     assert get_in(evaluation, ["result", "policy_result", "action"]) == "transition_state"
     assert get_in(evaluation, ["result", "policy_result", "to_state"]) == "review_required"
+  end
+
+  test "legacy primitive contains behavior is backed by the registry snippet" do
+    assert {:ok, evaluation} =
+             DuneSnippetRegistry.evaluate(%{
+               "snippet_id" => "primitive.request-contains-actions",
+               "input" => %{
+                 "request_text" => "please deny me but keep notes",
+                 "rules" => [
+                   %{"id" => "legacy-deny", "contains" => "deny me", "action" => "block"},
+                   %{"id" => "legacy-miss", "contains" => "not present", "action" => "annotate"},
+                   %{"id" => "legacy-malformed", "contains" => 123, "action" => "block"}
+                 ]
+               }
+             })
+
+    assert get_in(evaluation, ["result", "policy_status"]) == "ok"
+    assert get_in(evaluation, ["result", "policy_result", "action"]) == "block"
+
+    assert [
+             %{
+               "rule_id" => "legacy-deny",
+               "action" => "block",
+               "matched" => true
+             }
+           ] = get_in(evaluation, ["result", "policy_result", "actions"])
   end
 
   test "ad hoc snippets can be tested and malformed results fail closed" do

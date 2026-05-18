@@ -39,6 +39,7 @@ defmodule Wardwright.HybridPolicyEngineTest do
                "kind" => "route_gate",
                "action" => "block",
                "effect_type" => "terminal",
+               "source" => %{"type" => "engine", "engine" => "dune", "status" => "ok"},
                "conflict_key" => "terminal_decision"
              }
            ] = get_in(receipt, ["decision", "policy_actions"])
@@ -55,7 +56,8 @@ defmodule Wardwright.HybridPolicyEngineTest do
                  "action_schema" => "wardwright.policy_action.v1",
                  "rule_id" => "primitive-deny",
                  "action" => "block",
-                 "effect_type" => "terminal"
+                 "effect_type" => "terminal",
+                 "source" => %{"type" => "engine", "engine" => "dune", "status" => "ok"}
                }
              ]
            } =

@@ -12,6 +12,53 @@ defmodule Wardwright.PolicyEngineAndConfigTest do
              )
   end
 
+  test "Dune policy engine receives request context through input binding" do
+    assert %{
+             "engine" => "dune",
+             "action" => "block",
+             "status" => "ok",
+             "actions" => [
+               %{
+                 "action" => "block",
+                 "policy_status" => "ok",
+                 "source" => %{"type" => "engine", "engine" => "dune", "status" => "ok"}
+               }
+             ]
+           } =
+             Wardwright.Policy.Engine.evaluate(
+               %{
+                 "engine" => "dune",
+                 "source" => ~S"""
+                 %{"action" => if(input["request_text"] == "deny", do: "block", else: "allow")}
+                 """
+               },
+               %{"request_text" => "deny"}
+             )
+  end
+
+  test "Dune policy engine still supports legacy context placeholder snippets" do
+    assert %{
+             "engine" => "dune",
+             "action" => "block",
+             "actions" => [
+               %{
+                 "action" => "block",
+                 "message" => "deny",
+                 "policy_status" => "ok"
+               }
+             ]
+           } =
+             Wardwright.Policy.Engine.evaluate(
+               %{
+                 "engine" => "dune",
+                 "source" => ~S"""
+                 %{"action" => "block", "message" => __WARDWRIGHT_CONTEXT__["request_text"]}
+                 """
+               },
+               %{"request_text" => "deny"}
+             )
+  end
+
   test "test config rejects invalid route graph shapes" do
     prefixed = unit_policy_config() |> Map.put("synthetic_model", "wardwright/unit-model")
     conn = call(:post, "/__test/config", prefixed)
