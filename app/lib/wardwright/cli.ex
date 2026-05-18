@@ -19,6 +19,12 @@ defmodule Wardwright.CLI do
         write_fun.(help())
         {:halt, 0}
 
+      ["serve" | _] ->
+        :start
+
+      ["start" | _] ->
+        :start
+
       ["tools", "--json" | _] ->
         WardwrightWeb.PolicyAuthoringTools.list()
         |> Jason.encode!()
@@ -31,10 +37,12 @@ defmodule Wardwright.CLI do
         {:halt, 0}
 
       [] ->
-        :start
+        write_fun.(help())
+        {:halt, 0}
 
       _unknown ->
-        :start
+        write_fun.(help())
+        {:halt, 2}
     end
   end
 
@@ -43,7 +51,8 @@ defmodule Wardwright.CLI do
     wardwright #{version()}
 
     Usage:
-      wardwright                Start the Wardwright HTTP service
+      wardwright                Print this help
+      wardwright serve          Start the Wardwright HTTP service
       wardwright tools          Print policy-authoring MCP/API help for agents
       wardwright tools --json   Print machine-readable authoring tool metadata
       wardwright --version      Print the packaged app version

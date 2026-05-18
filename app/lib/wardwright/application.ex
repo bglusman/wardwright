@@ -128,17 +128,21 @@ defmodule Wardwright.Application do
   end
 
   defp maybe_handle_standalone_command do
-    case Wardwright.CLI.run(argv()) do
-      {:halt, status} -> System.halt(status)
-      :start -> :ok
+    if burrito?() do
+      case Wardwright.CLI.run(argv()) do
+        {:halt, status} -> System.halt(status)
+        :start -> :ok
+      end
     end
   end
 
   defp argv do
-    if System.get_env("__BURRITO") do
+    if burrito?() do
       :init.get_plain_arguments() |> Enum.map(&to_string/1)
     else
       System.argv()
     end
   end
+
+  defp burrito?, do: System.get_env("__BURRITO") != nil
 end

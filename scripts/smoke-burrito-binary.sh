@@ -35,7 +35,7 @@ esac
 WARDWRIGHT_BIND="127.0.0.1:${PORT}" \
   WARDWRIGHT_SECRET_KEY_BASE="$SECRET" \
   WARDWRIGHT_POLICY_CORE=gleam \
-  "$BINARY" >"$LOG_FILE" 2>&1 &
+  "$BINARY" serve >"$LOG_FILE" 2>&1 &
 
 PID="$!"
 cleanup() {

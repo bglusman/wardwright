@@ -1,6 +1,16 @@
 defmodule Wardwright.CLITest do
   use ExUnit.Case, async: true
 
+  test "bare command prints help instead of starting or crashing" do
+    collector = collector()
+
+    assert {:halt, 0} = Wardwright.CLI.run([], collector)
+
+    output = collected(collector)
+    assert output =~ "wardwright serve"
+    assert output =~ "Print this help"
+  end
+
   test "help advertises the service and authoring tools command" do
     collector = collector()
 
@@ -8,8 +18,22 @@ defmodule Wardwright.CLITest do
 
     output = collected(collector)
     assert output =~ "Start the Wardwright HTTP service"
+    assert output =~ "wardwright serve"
     assert output =~ "wardwright tools"
     assert output =~ "WARDWRIGHT_BIND"
+  end
+
+  test "serve command starts the application" do
+    assert :start = Wardwright.CLI.run(["serve"], collector())
+    assert :start = Wardwright.CLI.run(["start"], collector())
+  end
+
+  test "unknown commands print help and fail loudly" do
+    collector = collector()
+
+    assert {:halt, 2} = Wardwright.CLI.run(["not-a-command"], collector)
+
+    assert collected(collector) =~ "wardwright serve"
   end
 
   test "tools command prints agent-usable MCP and API guidance" do

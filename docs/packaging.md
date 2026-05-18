@@ -126,6 +126,7 @@ The same installed binary also exposes small operator/agent helper commands:
 
 ```bash
 wardwright --help
+wardwright serve
 wardwright tools
 wardwright tools --json
 ```
@@ -142,7 +143,7 @@ testing without `brew services`, run:
 ```bash
 WARDWRIGHT_SECRET_KEY_BASE="$(cat "$(brew --prefix)/etc/wardwright/secret_key_base")" \
 WARDWRIGHT_BIND=127.0.0.1:8787 \
-wardwright
+wardwright serve
 ```
 
 ## Release Workflow

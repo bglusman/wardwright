@@ -46,7 +46,7 @@ For one-shot foreground testing instead of a service:
 ```bash
 WARDWRIGHT_SECRET_KEY_BASE="$(cat "$(brew --prefix)/etc/wardwright/secret_key_base")" \
 WARDWRIGHT_BIND=127.0.0.1:8787 \
-wardwright
+wardwright serve
 ```
 
 ### Linux Tarball
@@ -69,7 +69,7 @@ Run it locally:
 ```bash
 WARDWRIGHT_SECRET_KEY_BASE="$(openssl rand -base64 64)" \
 WARDWRIGHT_BIND=127.0.0.1:8787 \
-~/.local/bin/wardwright
+~/.local/bin/wardwright serve
 ```
 
 Then visit `http://127.0.0.1:8787/policies`. Set `WARDWRIGHT_ADMIN_TOKEN` before
@@ -82,6 +82,7 @@ operators:
 
 ```bash
 wardwright --help
+wardwright serve
 wardwright tools
 wardwright tools --json
 ```

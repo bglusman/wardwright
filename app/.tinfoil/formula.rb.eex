@@ -49,7 +49,7 @@ class Wardwright < Formula
   service do
     secret_key_base = etc/"wardwright/secret_key_base"
 
-    run [opt_bin/"wardwright"]
+    run [opt_bin/"wardwright", "serve"]
     keep_alive true
     working_dir var/"lib/wardwright"
     environment_variables(

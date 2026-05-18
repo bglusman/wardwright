@@ -56,7 +56,7 @@ open http://127.0.0.1:8787/policies
 curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh
 WARDWRIGHT_SECRET_KEY_BASE="$(openssl rand -base64 64)" \
 WARDWRIGHT_BIND=127.0.0.1:8787 \
-~/.local/bin/wardwright
+~/.local/bin/wardwright serve
 ```
 
 For a pinned release, pass `--version v0.0.4` to the installer:
