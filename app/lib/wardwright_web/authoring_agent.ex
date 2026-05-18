@@ -75,6 +75,9 @@ defmodule WardwrightWeb.AuthoringAgent do
     - You may call read-only and draft-only authoring tools by returning a
       machine-readable tool_calls array. Wardwright will execute those calls and
       return the results for review.
+    - draft_wardwright_model is intentionally ephemeral. It does not register a
+      model, does not update /v1/models, and only creates a reviewable draft for
+      the current workbench session.
     - Never request silent activation, deletion, scenario persistence, or any
       other durable write. For those, explain the approval needed and name the
       exact tool a human should run after review.
@@ -83,6 +86,7 @@ defmodule WardwrightWeb.AuthoringAgent do
     - active_model_id: #{selected_model}
     - selected_policy_pattern: #{selected_pattern}
     - selected_recipe_id: #{selected_recipe}
+    - pending_drafts: #{Jason.encode!(Map.get(context, :pending_drafts, []))}
 
     Available Wardwright authoring tools:
     #{tool_manifest()}
@@ -177,7 +181,10 @@ defmodule WardwrightWeb.AuthoringAgent do
       {:ok, plan} ->
         answer_text = plan |> Map.get("answer", content) |> to_string() |> String.trim()
         tool_results = plan |> Map.get("tool_calls", []) |> execute_tool_calls()
-        approval_needed = Map.get(plan, "approval_needed", [])
+
+        approval_needed =
+          tool_results |> add_default_approval_needs(Map.get(plan, "approval_needed", []))
+
         rendered = render_tool_answer(answer_text, tool_results, approval_needed)
 
         answer(rendered, Keyword.merge(extras, tool_results: tool_results))
@@ -375,6 +382,17 @@ defmodule WardwrightWeb.AuthoringAgent do
   end
 
   defp tool_result_summary(%{
+         "name" => "draft_wardwright_model",
+         "result" => %{
+           "artifact" => %{"model_id" => model_id},
+           "validation" => %{"errors" => errors, "warnings" => warnings}
+         }
+       })
+       when is_binary(model_id) and is_list(errors) and is_list(warnings) do
+    " (draft #{model_id}, #{length(errors)} validation errors, #{length(warnings)} warnings, not active)"
+  end
+
+  defp tool_result_summary(%{
          "result" => %{"validation" => %{"errors" => errors, "warnings" => warnings}}
        })
        when is_list(errors) and is_list(warnings) do
@@ -390,6 +408,29 @@ defmodule WardwrightWeb.AuthoringAgent do
     do: " (#{error})"
 
   defp tool_result_summary(_tool_result), do: ""
+
+  defp add_default_approval_needs(tool_results, approval_needed) do
+    approval_needed = List.wrap(approval_needed)
+
+    if Enum.any?(tool_results, &draft_model_tool_result?/1) do
+      Enum.uniq(
+        approval_needed ++
+          ["Review and activate the draft from the workbench if it matches your intent."]
+      )
+    else
+      approval_needed
+    end
+  end
+
+  defp draft_model_tool_result?(%{
+         "name" => "draft_wardwright_model",
+         "status" => "executed",
+         "result" => %{"artifact" => %{"model_id" => model_id}}
+       })
+       when is_binary(model_id),
+       do: true
+
+  defp draft_model_tool_result?(_result), do: false
 
   defp render_approvals([]), do: ""
 

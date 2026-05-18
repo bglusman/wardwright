@@ -644,6 +644,52 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert completed =~ "simulate_policy"
   end
 
+  test "LiveView authoring agent keeps model drafts reviewable before activation" do
+    original_client = Application.get_env(:wardwright, :authoring_agent_client, :unset)
+    original_enabled = System.get_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED")
+    original_api_key = System.get_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY")
+    original_route = System.get_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE")
+
+    Application.put_env(:wardwright, :authoring_agent_client, __MODULE__.DraftingAuthoringClient)
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
+    System.delete_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE")
+
+    on_exit(fn ->
+      case original_client do
+        :unset -> Application.delete_env(:wardwright, :authoring_agent_client)
+        client -> Application.put_env(:wardwright, :authoring_agent_client, client)
+      end
+
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", original_enabled)
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", original_api_key)
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", original_route)
+    end)
+
+    {:ok, view, _html} = live(build_conn(), "/policies/tts-retry/diagram")
+
+    render_submit(view, "authoring-agent-submit", %{
+      "authoring_agent" => %{"message" => "Make a cow model."}
+    })
+
+    completed = eventually_render(view, "Drafts Awaiting Review", 60)
+
+    assert completed =~ "cow-lover-mode"
+    assert completed =~ "not active"
+    assert completed =~ "Activate draft"
+    assert completed =~ "Review and activate the draft from the workbench"
+    assert {:error, _message} = Wardwright.model_config("cow-lover-mode")
+
+    activated =
+      view
+      |> element("button", "Activate draft")
+      |> render_click()
+
+    assert activated =~ "Activated cow-lover-mode"
+    assert {:ok, config} = Wardwright.model_config("cow-lover-mode")
+    assert Wardwright.model_id(config) == "cow-lover-mode"
+  end
+
   test "LiveView diagram simulation can step through matching rules and state changes" do
     {:ok, view, html} = live(build_conn(), "/policies/tts-retry/diagram")
 
@@ -1311,6 +1357,9 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
   defp basic_auth(username, password), do: "Basic " <> Base.encode64("#{username}:#{password}")
 
+  defp restore_env(key, nil), do: System.delete_env(key)
+  defp restore_env(key, value), do: System.put_env(key, value)
+
   defp eventually_render(view, expected, attempts \\ 20)
 
   defp eventually_render(view, expected, attempts) when attempts > 0 do
@@ -1325,4 +1374,38 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   end
 
   defp eventually_render(view, _expected, 0), do: render(view)
+
+  defmodule DraftingAuthoringClient do
+    def generate_text(_prompt, _opts) do
+      {:ok,
+       Jason.encode!(%{
+         "answer" => "Drafted a cow-focused model.",
+         "tool_calls" => [
+           %{
+             "name" => "draft_wardwright_model",
+             "arguments" => %{
+               "model_id" => "cow-lover-mode",
+               "version" => "draft-cow",
+               "description" => "Responds normally except when the user sends mooing text.",
+               "targets" => [%{"model" => "ollama/gemma4:e4b", "context_window" => 8192}],
+               "route" => %{
+                 "type" => "dispatcher",
+                 "id" => "dispatcher.cow",
+                 "models" => ["ollama/gemma4:e4b"]
+               },
+               "stream_rules" => [
+                 %{
+                   "id" => "cow-art",
+                   "phase" => "response.streaming",
+                   "pattern" => "\\bmoo+\\b",
+                   "action" => "rewrite_chunk",
+                   "replacement" => "moo\n^__^\n(oo)\\\\_______"
+                 }
+               ]
+             }
+           }
+         ]
+       })}
+    end
+  end
 end

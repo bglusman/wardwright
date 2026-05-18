@@ -46,10 +46,12 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert prompt =~ "selected_recipe_id: private-helpdesk-local-gate"
     assert prompt =~ "Ask for human confirmation before any write-capable action."
     assert prompt =~ "You may call read-only and draft-only authoring tools"
+    assert prompt =~ "draft_wardwright_model is intentionally ephemeral"
     assert prompt =~ "draft_wardwright_model"
     assert prompt =~ "activate_wardwright_model"
     assert prompt =~ "simulate_policy"
     assert prompt =~ "\"tool_calls\""
+    assert prompt =~ "pending_drafts: []"
     assert prompt =~ "User request:\nMake the private route gate easier to review."
   end
 
@@ -314,7 +316,12 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert response.status == "completed"
     assert response.content =~ "Drafted a cow-focused model."
     assert response.content =~ "Executed authoring tools:"
-    assert response.content =~ "draft_wardwright_model: executed"
+
+    assert response.content =~
+             "draft_wardwright_model: executed (draft cow-guard, 0 validation errors, 0 warnings, not active)"
+
+    assert response.content =~ "Needs human approval:"
+    assert response.content =~ "Review and activate the draft from the workbench"
 
     assert [%{"name" => "draft_wardwright_model", "status" => "executed", "result" => result}] =
              response.tool_results

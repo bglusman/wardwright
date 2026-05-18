@@ -65,7 +65,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     selected_recipe_id = selected_recipe["id"] || ""
     projection = Wardwright.PolicyProjection.projection(pattern_id, selected_model_config)
     simulations = Wardwright.PolicyProjection.simulations(pattern_id, selected_model_config)
-    authoring_context = authoring_agent_context(projection, pattern_id, selected_recipe_id)
+    origin = access_origin(uri)
+
+    authoring_context =
+      authoring_agent_context(projection, pattern_id, selected_recipe_id, origin)
 
     simulation_inputs =
       Wardwright.PolicyProjection.simulation_inputs(pattern_id, selected_recipe_id)
@@ -124,7 +127,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     |> assign(:simulation_history_context, simulation_history_context)
     |> assign(:simulation_boundary, simulation_boundary)
     |> assign(:projection_stats, projection_stats(projection, simulations))
-    |> assign(:model_access, Wardwright.model_access(access_origin(uri)))
+    |> assign(:access_origin, origin)
+    |> assign(:model_access, Wardwright.model_access(origin))
     |> assign(:selected_simulation, selected_simulation)
     |> assign(:selected_node, selected_node)
     |> assign(:simulation_playing, false)
@@ -135,6 +139,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     |> assign_new(:policy_cache_status, fn -> Wardwright.PolicyCache.status() end)
     |> assign_new(:policy_cache_events, fn -> Wardwright.PolicyCache.recent(%{}, 8) end)
     |> assign_new(:authoring_agent_messages, fn -> [] end)
+    |> assign_new(:authoring_agent_drafts, fn -> [] end)
     |> assign(:authoring_agent_status, WardwrightWeb.AuthoringAgent.status(authoring_context))
     |> assign_new(:authoring_agent_input, fn -> "" end)
     |> assign_new(:authoring_agent_tasks, fn -> %{} end)
@@ -188,6 +193,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       "authoring agent response received request_id=#{request_id} status=#{response.status}"
     )
 
+    drafts = extract_authoring_agent_drafts(response)
+
     {:noreply,
      socket
      |> remove_authoring_agent_task(ref)
@@ -196,7 +203,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
        "role" => "assistant",
        "content" => response.content,
        "status" => response.status
-     })}
+     })
+     |> append_authoring_agent_drafts(drafts)}
   end
 
   @impl true
@@ -476,7 +484,9 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         authoring_agent_context(
           socket.assigns.projection,
           socket.assigns.selected_pattern_id,
-          socket.assigns.selected_recipe_id
+          socket.assigns.selected_recipe_id,
+          socket.assigns.access_origin,
+          socket.assigns.authoring_agent_drafts
         )
 
       request_id = authoring_agent_request_id()
@@ -533,7 +543,28 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     {:noreply,
      socket
      |> assign(:authoring_agent_messages, [])
+     |> assign(:authoring_agent_drafts, [])
      |> assign(:authoring_agent_pending, map_size(socket.assigns.authoring_agent_tasks) > 0)}
+  end
+
+  def handle_event("activate-authoring-draft", %{"draft_id" => draft_id}, socket) do
+    case Enum.find(socket.assigns.authoring_agent_drafts, &(&1["id"] == draft_id)) do
+      nil ->
+        {:noreply,
+         append_authoring_agent_notice(
+           socket,
+           "Draft #{draft_id} is no longer available.",
+           "error"
+         )}
+
+      draft ->
+        activate_authoring_draft(socket, draft)
+    end
+  end
+
+  def handle_event("discard-authoring-draft", %{"draft_id" => draft_id}, socket) do
+    drafts = Enum.reject(socket.assigns.authoring_agent_drafts, &(&1["id"] == draft_id))
+    {:noreply, assign(socket, :authoring_agent_drafts, drafts)}
   end
 
   def handle_event("reset-simulation", _params, socket) do
@@ -631,12 +662,124 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   defp selected_saved_scenario_id("saved:" <> scenario_id) when scenario_id != "", do: scenario_id
   defp selected_saved_scenario_id(_input_id), do: nil
 
-  defp authoring_agent_context(projection, pattern_id, recipe_id) do
+  defp authoring_agent_context(projection, pattern_id, recipe_id, origin, drafts \\ []) do
     %{
       model_id: Wardwright.ModelGraph.model_id(projection["artifact"], ""),
       pattern_id: pattern_id,
-      recipe_id: recipe_id
+      recipe_id: recipe_id,
+      origin: origin,
+      pending_drafts: Enum.map(drafts, &authoring_draft_prompt_summary/1)
     }
+  end
+
+  defp authoring_draft_prompt_summary(draft) do
+    %{
+      "draft_id" => draft["id"],
+      "model_id" => get_in(draft, ["artifact", "model_id"]),
+      "version" => get_in(draft, ["artifact", "version"]),
+      "validation_errors" => validation_count(draft, "errors"),
+      "validation_warnings" => validation_count(draft, "warnings")
+    }
+  end
+
+  defp extract_authoring_agent_drafts(response) do
+    response
+    |> Map.get(:tool_results, [])
+    |> Enum.filter(&draft_tool_result?/1)
+    |> Enum.map(&authoring_draft_from_tool_result/1)
+  end
+
+  defp draft_tool_result?(%{
+         "name" => "draft_wardwright_model",
+         "status" => "executed",
+         "result" => %{"artifact" => artifact}
+       })
+       when is_map(artifact),
+       do: true
+
+  defp draft_tool_result?(_tool_result), do: false
+
+  defp authoring_draft_from_tool_result(%{"result" => result}) do
+    artifact = Map.get(result, "artifact", %{})
+
+    %{
+      "id" => "draft_#{System.unique_integer([:positive, :monotonic])}",
+      "artifact" => artifact,
+      "validation" => Map.get(result, "validation", %{"errors" => [], "warnings" => []}),
+      "access" => Map.get(result, "access", %{}),
+      "next_steps" => Map.get(result, "next_steps", [])
+    }
+  end
+
+  defp append_authoring_agent_drafts(socket, []), do: socket
+
+  defp append_authoring_agent_drafts(socket, drafts) do
+    assign(
+      socket,
+      :authoring_agent_drafts,
+      Enum.take(socket.assigns.authoring_agent_drafts ++ drafts, -4)
+    )
+  end
+
+  defp activate_authoring_draft(socket, draft) do
+    origin = socket.assigns.access_origin || "http://127.0.0.1:8787"
+
+    case WardwrightWeb.PolicyAuthoringDrafts.activate_wardwright_model(
+           %{"artifact" => draft["artifact"]},
+           origin
+         ) do
+      {:ok, result} ->
+        model_id = get_in(result, ["artifact", "model_id"]) || "draft"
+        drafts = Enum.reject(socket.assigns.authoring_agent_drafts, &(&1["id"] == draft["id"]))
+
+        socket =
+          socket
+          |> assign(:authoring_agent_drafts, drafts)
+          |> assign(:available_models, Wardwright.model_summaries())
+          |> assign(:model_access, Wardwright.model_access(origin))
+          |> append_authoring_agent_notice(
+            "Activated #{model_id}. It is now available through /v1/models and the registered model workbench.",
+            "completed"
+          )
+
+        {:noreply,
+         push_patch(
+           socket,
+           to:
+             path(
+               socket.assigns.selected_pattern_id,
+               socket.assigns.mode,
+               socket.assigns.selected_recipe_source_id,
+               nil,
+               model_id
+             )
+         )}
+
+      {:error, message, result} ->
+        errors = get_in(result, ["validation", "errors"]) || []
+
+        {:noreply,
+         append_authoring_agent_notice(
+           socket,
+           "Could not activate #{draft_model_id(draft)}: #{message}. #{length(errors)} validation errors remain.",
+           "error"
+         )}
+    end
+  end
+
+  defp append_authoring_agent_notice(socket, content, status) do
+    message = %{
+      "id" => authoring_agent_request_id(),
+      "role" => "assistant",
+      "content" => content,
+      "status" => status
+    }
+
+    assign(
+      socket,
+      :authoring_agent_messages,
+      Enum.take(socket.assigns.authoring_agent_messages ++ [message], -8)
+    )
   end
 
   defp remove_authoring_agent_task(socket, ref) do
@@ -684,6 +827,20 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   defp authoring_agent_tool_access_label("read_and_draft_tools"), do: "draft tools enabled"
   defp authoring_agent_tool_access_label("suggestions_only"), do: "suggestions only"
   defp authoring_agent_tool_access_label(_access), do: "approval required"
+
+  defp draft_model_id(draft), do: get_in(draft, ["artifact", "model_id"]) || "unnamed draft"
+  defp draft_version(draft), do: get_in(draft, ["artifact", "version"]) || "draft"
+
+  defp validation_count(draft, key) do
+    draft
+    |> get_in(["validation", key])
+    |> case do
+      values when is_list(values) -> length(values)
+      _ -> 0
+    end
+  end
+
+  defp draft_valid?(draft), do: validation_count(draft, "errors") == 0
 
   @impl true
   def render(assigns) do
@@ -970,6 +1127,43 @@ defmodule WardwrightWeb.PolicyProjectionLive do
               </span>
             </strong>
             <pre><%= message["content"] %></pre>
+          </article>
+        </div>
+
+        <div :if={@authoring_agent_drafts != []} class="authoring_drafts">
+          <h3>Drafts Awaiting Review</h3>
+          <article :for={draft <- @authoring_agent_drafts} class="authoring_draft_card">
+            <div>
+              <strong><%= draft_model_id(draft) %></strong>
+              <span>not active</span>
+            </div>
+            <small>
+              Version <%= draft_version(draft) %>;
+              <%= validation_count(draft, "errors") %> validation errors,
+              <%= validation_count(draft, "warnings") %> warnings.
+            </small>
+            <small>
+              Activating registers this model immediately in <code>/v1/models</code>.
+              Review the assistant response and simulations first.
+            </small>
+            <div class="draft_actions">
+              <button
+                type="button"
+                phx-click="activate-authoring-draft"
+                phx-value-draft_id={draft["id"]}
+                disabled={!draft_valid?(draft)}
+              >
+                Activate draft
+              </button>
+              <button
+                type="button"
+                class="secondary"
+                phx-click="discard-authoring-draft"
+                phx-value-draft_id={draft["id"]}
+              >
+                Discard
+              </button>
+            </div>
           </article>
         </div>
 
@@ -1893,6 +2087,17 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .agent_status.pending { color: #8a5c00; border-color: #e5c06e; background: #fff7df; }
     .agent_status.error { color: #9f2525; border-color: #efb5b5; background: #fff8f8; }
     .agent_message pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #354554; }
+    .authoring_drafts { display: grid; gap: 10px; padding: 10px; border: 1px solid #cbd9e4; border-radius: 8px; background: #fff; }
+    .authoring_drafts h3 { margin: 0; color: #17212b; font-size: 13px; }
+    .authoring_draft_card { display: grid; gap: 7px; padding: 10px; border: 1px solid #b9d9c9; border-radius: 8px; background: #f0fbf5; }
+    .authoring_draft_card > div:first-child { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+    .authoring_draft_card strong { color: #15212b; }
+    .authoring_draft_card span { border: 1px solid #d4e2ec; border-radius: 999px; padding: 3px 7px; color: #5c6b77; background: #fff; font-size: 11px; font-weight: 900; text-transform: uppercase; }
+    .authoring_draft_card small { color: #435261; line-height: 1.4; }
+    .draft_actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .draft_actions button { border: 1px solid #7ca98f; border-radius: 6px; padding: 7px 10px; color: #fff; background: #1f6b48; font-weight: 900; cursor: pointer; }
+    .draft_actions button.secondary { color: #17212b; border-color: #c9d5df; background: #fff; }
+    .draft_actions button:disabled { cursor: not-allowed; opacity: 0.55; }
     .authoring_form { display: grid; gap: 8px; }
     .authoring_form textarea { width: 100%; box-sizing: border-box; border: 1px solid #cbd9e4; border-radius: 8px; padding: 10px; resize: vertical; font: inherit; }
     .authoring_form div { display: flex; gap: 8px; flex-wrap: wrap; }
