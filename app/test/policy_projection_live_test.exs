@@ -443,6 +443,11 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "coding-balanced"
     assert html =~ "wardwright/coding-balanced"
     assert html =~ Wardwright.local_model()
+    assert html =~ "Authoring Agent Spike"
+    assert html =~ "setup needed"
+    assert html =~ "qwen3.6-plus"
+    assert html =~ "plan_only"
+    assert html =~ "Ask agent"
     assert html =~ "Policy Simulator"
     assert html =~ "Policy run map"
     assert html =~ "State and turn model"
@@ -471,6 +476,23 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert connected_html =~ "retry selected"
     assert connected_html =~ "retry stream released"
     assert connected_html =~ "receipt preview"
+  end
+
+  test "LiveView authoring agent panel submits to the local fallback without credentials" do
+    {:ok, view, html} = live(build_conn(), "/policies/tts-retry/diagram")
+
+    assert html =~ "Authoring Agent Spike"
+
+    response =
+      render_submit(view, "authoring-agent-submit", %{
+        "authoring_agent" => %{"message" => "Help me tighten this retry model."}
+      })
+
+    assert response =~ "You"
+    assert response =~ "Wardwright assistant"
+    assert response =~ "Jido authoring agent is installed but not configured"
+    assert response =~ "Help me tighten this retry model."
+    assert response =~ "simulate_policy"
   end
 
   test "LiveView diagram simulation can step through matching rules and state changes" do

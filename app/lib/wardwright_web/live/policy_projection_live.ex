@@ -103,6 +103,9 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     |> assign_new(:runtime_events, fn -> [] end)
     |> assign_new(:policy_cache_status, fn -> Wardwright.PolicyCache.status() end)
     |> assign_new(:policy_cache_events, fn -> Wardwright.PolicyCache.recent(%{}, 8) end)
+    |> assign_new(:authoring_agent_messages, fn -> [] end)
+    |> assign_new(:authoring_agent_status, fn -> WardwrightWeb.AuthoringAgent.status() end)
+    |> assign_new(:authoring_agent_input, fn -> "" end)
   end
 
   @impl true
@@ -213,6 +216,47 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   def handle_event("pause-simulation", _params, socket) do
     {:noreply, stop_simulation(socket)}
+  end
+
+  def handle_event(
+        "authoring-agent-submit",
+        %{"authoring_agent" => %{"message" => message}},
+        socket
+      ) do
+    message = String.trim(message || "")
+
+    if message == "" do
+      {:noreply, socket}
+    else
+      context = %{
+        model_id: Wardwright.ModelGraph.model_id(socket.assigns.projection["artifact"], ""),
+        pattern_id: socket.assigns.selected_pattern_id,
+        recipe_id: socket.assigns.selected_recipe_id
+      }
+
+      {:ok, response} = WardwrightWeb.AuthoringAgent.respond(message, context)
+
+      messages =
+        socket.assigns.authoring_agent_messages ++
+          [
+            %{"role" => "user", "content" => message},
+            %{
+              "role" => "assistant",
+              "content" => response.content,
+              "status" => response.status
+            }
+          ]
+
+      {:noreply,
+       socket
+       |> assign(:authoring_agent_messages, Enum.take(messages, -8))
+       |> assign(:authoring_agent_status, WardwrightWeb.AuthoringAgent.status())
+       |> assign(:authoring_agent_input, "")}
+    end
+  end
+
+  def handle_event("authoring-agent-clear", _params, socket) do
+    {:noreply, assign(socket, :authoring_agent_messages, [])}
   end
 
   def handle_event("reset-simulation", _params, socket) do
@@ -476,6 +520,50 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             </dl>
           </article>
         </div>
+      </section>
+
+      <section class="panel authoring_agent" aria-label="In-page authoring agent spike">
+        <div class="panel_header">
+          <div>
+            <h2>Authoring Agent Spike</h2>
+            <p>
+              Narrow Jido-backed assistant for drafting, validating, and simulating
+              Wardwright model changes using the same authoring tool registry exposed
+              to MCP clients.
+            </p>
+          </div>
+          <.badge value={if @authoring_agent_status.configured, do: "live", else: "setup needed"} />
+        </div>
+
+        <div class="authoring_agent_meta">
+          <span><strong>Backend</strong> <%= @authoring_agent_status.backend %></span>
+          <span><strong>Model</strong> <%= @authoring_agent_status.model %></span>
+          <span><strong>Tool mode</strong> <%= @authoring_agent_status.tool_mode %></span>
+          <span><strong>Tools</strong> <%= length(WardwrightWeb.PolicyAuthoringTools.list()) %></span>
+        </div>
+
+        <div class="authoring_transcript" aria-live="polite">
+          <p :if={@authoring_agent_messages == []} class="empty_agent_message">
+            Try: "Build a reviewable route policy that keeps private context local,
+            then simulate the surprising failure cases."
+          </p>
+          <article :for={message <- @authoring_agent_messages} class={"agent_message #{message["role"]}"}>
+            <strong><%= if message["role"] == "user", do: "You", else: "Wardwright assistant" %></strong>
+            <pre><%= message["content"] %></pre>
+          </article>
+        </div>
+
+        <form class="authoring_form" phx-submit="authoring-agent-submit">
+          <textarea
+            name="authoring_agent[message]"
+            rows="3"
+            placeholder="Ask for a model, policy, simulation, or review plan"
+          ><%= @authoring_agent_input %></textarea>
+          <div>
+            <button type="submit">Ask agent</button>
+            <button type="button" phx-click="authoring-agent-clear">Clear</button>
+          </div>
+        </form>
       </section>
 
       <section class="panel">
@@ -1324,6 +1412,20 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     th, td { padding: 9px 10px; border-bottom: 1px solid #e1e7ed; text-align: left; vertical-align: top; }
     th { color: #66727c; background: #f8fafc; font-size: 12px; font-weight: 900; text-transform: uppercase; }
     td { color: #26323c; font-size: 13px; }
+    .authoring_agent { border-color: #c7d8e6; background: #f8fbfd; }
+    .authoring_agent_meta { display: flex; flex-wrap: wrap; gap: 8px; color: #51606d; font-size: 12px; font-weight: 800; }
+    .authoring_agent_meta span { border: 1px solid #d8e2ea; border-radius: 999px; padding: 5px 8px; background: #fff; }
+    .authoring_transcript { display: grid; gap: 10px; max-height: 360px; overflow: auto; }
+    .empty_agent_message { margin: 0; color: #647482; font-size: 13px; line-height: 1.45; }
+    .agent_message { display: grid; gap: 5px; border: 1px solid #dbe5ed; border-radius: 8px; padding: 10px; background: #fff; }
+    .agent_message.assistant { background: #eef8f4; border-color: #b8dfd0; }
+    .agent_message strong { font-size: 12px; color: #17212b; }
+    .agent_message pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #354554; }
+    .authoring_form { display: grid; gap: 8px; }
+    .authoring_form textarea { width: 100%; box-sizing: border-box; border: 1px solid #cbd9e4; border-radius: 8px; padding: 10px; resize: vertical; font: inherit; }
+    .authoring_form div { display: flex; gap: 8px; flex-wrap: wrap; }
+    .authoring_form button { border: 1px solid #b8c8d5; background: #fff; color: #162330; border-radius: 6px; padding: 8px 10px; font-weight: 900; cursor: pointer; }
+    .authoring_form button[type="submit"] { background: #17212b; border-color: #17212b; color: #fff; }
     .projection_inspector_links { margin-bottom: 14px; }
     .projection_inspector_links details { padding: 9px 11px; border: 1px solid #d8e0e7; border-radius: 8px; color: #4b5863; background: #f8fafc; }
     .projection_inspector_links summary { width: fit-content; cursor: pointer; color: #3a4650; font-size: 13px; font-weight: 800; }

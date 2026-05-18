@@ -219,8 +219,13 @@ signals, AI package, telemetry, and multi-agent workflows. It fits longer-lived
 policy-review agents, escalation workflows, and operational automation if those
 become product features.
 
-The likely path is Alloy first for the interactive policy assistant and a later
-Jido spike for agent escalation or multi-agent policy-review workflows.
+The current spike reverses that order for one narrow question: can a
+Jido-backed in-page assistant, prompted with Wardwright's existing MCP/API tool
+registry, give users a useful local authoring loop without requiring them to
+wire a separate agent client first? Treat the first version as a prompt and
+integration experiment; production use still needs explicit tool execution
+gates, nonblocking LiveView calls, redaction policy, and clearer dependency
+cost review.
 
 ## References
 

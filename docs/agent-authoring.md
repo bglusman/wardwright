@@ -6,10 +6,11 @@ description: How external agents should inspect, draft, validate, simulate, and 
 
 # Agent Authoring Guide
 
-Wardwright does not yet ship a first-party in-page authoring agent. It does
-ship a local MCP/API surface so an operator can point their preferred agent at a
-running Wardwright service and keep the deterministic policy artifact as the
-reviewed source of truth.
+Wardwright ships a local MCP/API surface so an operator can point their
+preferred agent at a running Wardwright service and keep the deterministic
+policy artifact as the reviewed source of truth. A separate Jido-backed
+in-page assistant spike is being evaluated against the same tool registry; it is
+convenience UI, not a replacement for review, validation, and activation gates.
 
 The safe workflow is:
 
@@ -50,6 +51,27 @@ configured on the host, or `credential_env` for local development and smoke
 tests. Fnox is a secret lookup path, not Wardwright authentication: do not assume
 a Wardwright service with encrypted provider keys is safe for untrusted callers.
 See [Provider Credentials](provider-credentials.html).
+
+## Optional In-Page Assistant Spike
+
+The local workbench may expose an experimental **Authoring Agent Spike** panel
+when this spike branch is running. It uses `jido_ai` through a small
+`WardwrightWeb.AuthoringAgent` boundary and prompts the model with the same
+authoring tool names used by MCP/API clients.
+
+To try it locally with an OpenAI-compatible backend:
+
+```bash
+WARDWRIGHT_AUTHORING_AGENT_ENABLED=1
+WARDWRIGHT_AUTHORING_AGENT_BASE_URL=https://opencode.ai/zen/go/v1
+WARDWRIGHT_AUTHORING_AGENT_MODEL=qwen3.6-plus
+WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE=/path/to/provider-key
+WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=60000
+```
+
+The first spike asks the assistant to propose tool plans and review risks. It
+does not automatically execute write-capable tools from chat, and it must not
+claim a model is active unless the activation tool reports success.
 
 ## Inspect Before You Edit
 
