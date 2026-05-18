@@ -1,6 +1,16 @@
 defmodule Wardwright.CLITest do
   use ExUnit.Case, async: true
 
+  test "bare command prints help instead of starting or crashing" do
+    collector = collector()
+
+    assert {:halt, 0} = Wardwright.CLI.run([], collector)
+
+    output = collected(collector)
+    assert output =~ "wardwright serve"
+    assert output =~ "Print this help"
+  end
+
   test "help advertises the service and authoring tools command" do
     collector = collector()
 
@@ -8,8 +18,22 @@ defmodule Wardwright.CLITest do
 
     output = collected(collector)
     assert output =~ "Start the Wardwright HTTP service"
+    assert output =~ "wardwright serve"
     assert output =~ "wardwright tools"
     assert output =~ "WARDWRIGHT_BIND"
+  end
+
+  test "serve command starts the application" do
+    assert :start = Wardwright.CLI.run(["serve"], collector())
+    assert :start = Wardwright.CLI.run(["start"], collector())
+  end
+
+  test "unknown commands print help and fail loudly" do
+    collector = collector()
+
+    assert {:halt, 2} = Wardwright.CLI.run(["not-a-command"], collector)
+
+    assert collected(collector) =~ "wardwright serve"
   end
 
   test "tools command prints agent-usable MCP and API guidance" do
@@ -20,8 +44,14 @@ defmodule Wardwright.CLITest do
     output = collected(collector)
     assert output =~ "http://127.0.0.1:8787/mcp"
     assert output =~ "WARDWRIGHT_ADMIN_TOKEN"
+    assert output =~ "https://wardwright.dev/agent-authoring.html"
     assert output =~ "explain_projection"
     assert output =~ "GET /v1/policy-authoring/projections/{pattern_id}"
+    assert output =~ "draft_synthetic_model"
+    assert output =~ "POST /v1/policy-authoring/synthetic-models/draft"
+    assert output =~ "activate_synthetic_model"
+    assert output =~ "propose_rule_change"
+    refute output =~ "not implemented"
     assert output =~ "validate_policy_artifact"
   end
 
@@ -30,15 +60,25 @@ defmodule Wardwright.CLITest do
 
     assert {:halt, 0} = Wardwright.CLI.run(["tools", "--json"], collector)
 
-    names =
+    tools =
       collector
       |> collected()
       |> Jason.decode!()
+
+    names =
+      tools
       |> Enum.map(& &1["name"])
 
     assert "simulate_policy" in names
+    assert "draft_synthetic_model" in names
+    assert "activate_synthetic_model" in names
     assert "record_scenario" in names
+    assert "propose_rule_change" in names
     assert "validate_policy_artifact" in names
+
+    assert Enum.all?(tools, &is_binary(&1["docs_url"]))
+    assert Enum.all?(tools, &is_binary(&1["when_to_use"]))
+    assert Enum.all?(tools, &is_binary(&1["safety"]))
   end
 
   defp collector do

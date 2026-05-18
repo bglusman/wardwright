@@ -271,6 +271,14 @@ defmodule Wardwright do
     end)
   end
 
+  def model_access(origin \\ "http://127.0.0.1:8787") do
+    WardwrightWeb.ModelAccessProjection.build(
+      current_config(),
+      Wardwright.ProviderRuntime.providers_status(),
+      origin
+    )
+  end
+
   def complete_selected_model(selected_model, request) do
     started = System.monotonic_time(:millisecond)
 
@@ -558,7 +566,7 @@ defmodule Wardwright do
     [text]
   end
 
-  defp normalize_config(config) do
+  def normalize_config(config) do
     %{
       "synthetic_model" =>
         config |> Map.get("synthetic_model", "") |> to_string() |> String.trim(),
@@ -759,15 +767,31 @@ defmodule Wardwright do
 
     cond do
       base_url != "" ->
-        {kind, base_url}
+        {kind, public_provider_base_url(base_url)}
 
       provider == "ollama" ->
-        {"ollama", System.get_env("OLLAMA_BASE_URL", "http://127.0.0.1:11434")}
+        {"ollama",
+         System.get_env("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+         |> public_provider_base_url()}
 
       true ->
         {kind, "mock://#{provider}"}
     end
   end
+
+  defp public_provider_base_url(base_url) when is_binary(base_url) do
+    case URI.parse(base_url) do
+      %URI{scheme: scheme, host: host} = uri when is_binary(scheme) and is_binary(host) ->
+        path = uri.path || ""
+        port = if uri.port in [nil, 80, 443], do: "", else: ":#{uri.port}"
+        "#{scheme}://#{host}#{port}#{path}"
+
+      _ ->
+        base_url
+    end
+  end
+
+  defp public_provider_base_url(base_url), do: base_url
 
   defp provider_kind(target) do
     cond do

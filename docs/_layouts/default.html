@@ -85,6 +85,23 @@ pre {
   overflow-x: auto;
 }
 pre code { background: transparent; color: inherit; padding: 0; }
+img {
+  max-width: 100%;
+  height: auto;
+}
+figure {
+  margin: 1.5rem 0;
+}
+figure img {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(23, 23, 23, 0.08);
+}
+figcaption {
+  margin-top: 0.45rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
 .hero {
   min-height: 70vh;
   display: grid;
@@ -170,6 +187,7 @@ footer {
     <div class="nav-links">
       <a href="{{ '/vision.html' | relative_url }}">Vision</a>
       <a href="{{ '/use-cases.html' | relative_url }}">Use Cases</a>
+      <a href="{{ '/workbench.html' | relative_url }}">Workbench</a>
       <a href="{{ '/feature-spikes.html' | relative_url }}">Feature Spikes</a>
       <a href="{{ '/policy-engine.html' | relative_url }}">Policy Engine</a>
       <a href="{{ '/governance-authoring.html' | relative_url }}">Authoring</a>

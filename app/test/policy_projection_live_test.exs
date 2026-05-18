@@ -28,8 +28,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   setup do
     original_workspace = Application.get_env(:wardwright, :policy_recipe_workspace_dir)
 
-    workspace_dir =
-      Path.join(System.tmp_dir!(), "wardwright-live-default-#{System.unique_integer()}")
+    workspace_dir = temp_workspace_dir("wardwright-live-default")
 
     Application.put_env(:wardwright, :policy_recipe_workspace_dir, workspace_dir)
 
@@ -89,6 +88,13 @@ defmodule Wardwright.PolicyProjectionLiveTest do
              "guarding",
              "retrying",
              "recording"
+           ]
+
+    assert Enum.map(projection["state_machine"]["states"], & &1["model_id"]) == [
+             Wardwright.local_model(),
+             "none",
+             Wardwright.managed_model(),
+             "none"
            ]
 
     assert Enum.map(projection["state_machine"]["simulation_steps"], & &1["state"]) == [
@@ -219,6 +225,19 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   end
 
   test "LiveView projection workbench renders selected pattern and mode" do
+    original_workspace = Application.get_env(:wardwright, :policy_recipe_workspace_dir)
+
+    workspace_dir = temp_workspace_dir("wardwright-live-render")
+
+    Application.put_env(:wardwright, :policy_recipe_workspace_dir, workspace_dir)
+
+    on_exit(fn ->
+      case original_workspace do
+        nil -> Application.delete_env(:wardwright, :policy_recipe_workspace_dir)
+        value -> Application.put_env(:wardwright, :policy_recipe_workspace_dir, value)
+      end
+    end)
+
     :ok = put_route_gate_config()
     {:ok, view, html} = live(build_conn(), "/policies/route-privacy/trace_overlay")
 
@@ -244,12 +263,18 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert connected_html =~ "Review load"
     assert connected_html =~ "Why this exists"
 
-    assert {:error, {:redirect, %{to: "/policies/route-privacy/effect_matrix"}}} =
+    assert {:error,
+            {:redirect,
+             %{to: "/policies/route-privacy/effect_matrix/recipe/private-helpdesk-local-gate"}}} =
              view
              |> element("a", "Effect table")
              |> render_click()
 
-    {:ok, matrix_view, _html} = live(build_conn(), "/policies/route-privacy/effect_matrix")
+    {:ok, matrix_view, _html} =
+      live(
+        build_conn(),
+        "/policies/route-privacy/effect_matrix/recipe/private-helpdesk-local-gate"
+      )
 
     matrix_html = render(matrix_view)
 
@@ -288,9 +313,14 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Use your agent"
     assert html =~ "/mcp"
     assert html =~ "wardwright tools"
+    assert html =~ "Model Access"
+    assert html =~ "/v1/chat/completions"
+    assert html =~ "coding-balanced"
+    assert html =~ "wardwright/coding-balanced"
+    assert html =~ Wardwright.local_model()
     assert html =~ "Policy Simulator"
     assert html =~ "Policy run map"
-    assert html =~ "State and model"
+    assert html =~ "State and turn model"
     assert html =~ "Playback"
     assert html =~ "Ready: 5 trace events available for playback."
     assert html =~ "waiting at input boundary"
@@ -433,7 +463,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     assert html =~ "Regex rewrite and state transition"
     assert html =~ "Example set"
-    assert html =~ "Workspace examples"
+    assert html =~ "Project examples"
     assert html =~ "wardwright.dev/recipes"
     assert html =~ "account redactor"
     assert html =~ "secret transition"
@@ -594,8 +624,8 @@ defmodule Wardwright.PolicyProjectionLiveTest do
       |> render_change(%{"simulation_input" => "next-turn-review-model"})
 
     assert selected =~ "Stream: next turn uses review model"
-    assert selected =~ "State and model"
-    assert selected =~ "Model: managed/kimi-k2.6"
+    assert selected =~ "State and turn model"
+    assert selected =~ "Turn model: managed/kimi-k2.6"
     assert selected =~ "After this run: review_required uses managed/kimi-k2.6."
     assert selected =~ "history threshold matched"
     assert selected =~ "current stream released"
@@ -623,8 +653,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   test "LiveView recipe source can point at workspace catalogs without changing projection contract" do
     original_workspace = Application.get_env(:wardwright, :policy_recipe_workspace_dir)
 
-    workspace_dir =
-      Path.join(System.tmp_dir!(), "wardwright-live-recipes-#{System.unique_integer()}")
+    workspace_dir = temp_workspace_dir("wardwright-live-recipes")
 
     File.mkdir_p!(workspace_dir)
 
@@ -661,7 +690,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     {:ok, view, html} = live(build_conn(), "/policies/tool-governance/diagram?source=workspace")
 
-    assert html =~ "Workspace examples"
+    assert html =~ "Project examples"
     assert html =~ workspace_dir
     assert html =~ "Workspace tool policy"
     assert html =~ "1 examples reference unsupported policy patterns for this build."
@@ -675,29 +704,31 @@ defmodule Wardwright.PolicyProjectionLiveTest do
       |> element("form[phx-submit='select-recipe-source']")
       |> render_submit(%{"recipe_source" => "built_in"})
 
-    assert workspace =~ "Workspace examples"
+    assert workspace =~ "Project examples"
     assert workspace =~ workspace_dir
     assert workspace =~ "Workspace tool policy"
+    refute workspace =~ "Built-in examples"
 
     {:ok, view, _html} = live(build_conn(), "/policies/tool-governance/diagram?source=workspace")
 
-    assert {:error, {:redirect, %{to: "/policies/tool-governance/state_machine"}}} =
+    assert {:error,
+            {:redirect,
+             %{to: "/policies/tool-governance/state_machine/recipe/tool-loop-cost-brake"}}} =
              view
              |> element("a", "State model")
              |> render_click()
 
     {:ok, _state_view, updated} =
-      live(build_conn(), "/policies/tool-governance/state_machine")
+      live(build_conn(), "/policies/tool-governance/state_machine/recipe/tool-loop-cost-brake")
 
-    assert updated =~ "Workspace examples"
+    assert updated =~ "Project examples"
     assert updated =~ "State model"
   end
 
-  test "LiveView default workspace source loads committed starter recipes" do
+  test "LiveView default project example source loads committed starter recipes" do
     original_workspace = Application.get_env(:wardwright, :policy_recipe_workspace_dir)
 
-    workspace_dir =
-      Path.join(System.tmp_dir!(), "wardwright-live-starter-recipes-#{System.unique_integer()}")
+    workspace_dir = temp_workspace_dir("wardwright-live-starter-recipes")
 
     Application.put_env(:wardwright, :policy_recipe_workspace_dir, workspace_dir)
 
@@ -708,13 +739,70 @@ defmodule Wardwright.PolicyProjectionLiveTest do
       end
     end)
 
-    {:ok, _view, html} = live(build_conn(), "/policies/route-privacy/diagram")
+    {:ok, view, html} = live(build_conn(), "/policies/route-privacy/diagram")
 
-    assert html =~ "Workspace examples"
+    assert html =~ "Project examples"
     assert html =~ workspace_dir
-    assert html =~ "Local private route gate"
-    assert html =~ "Local tool loop watch"
-    assert html =~ "Private context route gate"
+    assert html =~ "Route and model composition"
+    assert html =~ "Stream repair and session state"
+    assert html =~ "Private helpdesk route gate"
+    assert html =~ "Context-window dispatcher"
+    assert html =~ "Partial alloy context ladder"
+
+    assert active_recipe_link?(html, "private-helpdesk-local-gate")
+
+    assert html =~ "Deprecated SDK stream retry"
+    assert html =~ "Keep customer-private helpdesk turns"
+    refute html =~ "Built-in examples"
+
+    selected =
+      view
+      |> element(~s(a[href="/policies/route-privacy/diagram/recipe/context-window-dispatcher"]))
+      |> render_click()
+
+    assert active_recipe_link?(selected, "context-window-dispatcher")
+
+    {:ok, _direct_view, direct_html} =
+      live(build_conn(), "/policies/route-privacy/diagram/recipe/context-window-dispatcher")
+
+    assert active_recipe_link?(direct_html, "context-window-dispatcher")
+  end
+
+  test "LiveView recipe selection changes ambiguous-success scenarios" do
+    {:ok, _artifact_view, artifact_html} =
+      live(build_conn(), "/policies/ambiguous-success/diagram/recipe/done-but-missing-artifact")
+
+    assert artifact_html =~ "Done, but missing artifact"
+    assert artifact_html =~ "Artifact: claim without artifact"
+    refute artifact_html =~ "JSON: malformed response gets repair feedback"
+
+    {:ok, view, structured_html} =
+      live(
+        build_conn(),
+        "/policies/ambiguous-success/diagram/recipe/structured-output-repair-gate"
+      )
+
+    assert structured_html =~ "Structured output repair gate"
+    assert structured_html =~ "JSON: malformed response gets repair feedback"
+    assert structured_html =~ "retry_with_validation_feedback"
+    refute structured_html =~ "Artifact: claim without artifact"
+
+    selected =
+      view
+      |> element("form[phx-change='select-simulation-input']")
+      |> render_change(%{"simulation_input" => "json-valid-alternate-schema"})
+
+    assert selected =~ "JSON: alternate accepted schema"
+    assert selected =~ "accepted schema branch"
+    assert selected =~ "contract recorded"
+    refute selected =~ "missing artifact alert"
+  end
+
+  defp active_recipe_link?(html, recipe_id) do
+    Regex.match?(
+      ~r/<a(?=[^>]*class="active")(?=[^>]*href="\/policies\/route-privacy\/diagram\/recipe\/#{Regex.escape(recipe_id)}")[^>]*>/,
+      html
+    )
   end
 
   test "LiveView diagram mode reflects configured route and tool policies" do
@@ -761,7 +849,26 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert retry_html =~ "State machine transition graph"
     assert retry_html =~ "Observing"
     assert retry_html =~ "Retrying"
+    assert retry_html =~ "Turn model"
+    assert retry_html =~ "local/qwen-coder"
+    assert retry_html =~ "managed/kimi-k2.6"
     assert render(retry_view) =~ "stream.match"
+
+    {:ok, _stream_view, stream_html} =
+      live(build_conn(), "/policies/stream-rewrite-state/state_machine")
+
+    assert stream_html =~ "Turn model"
+
+    assert stream_html =~
+             "Same-request retry or fallback reroutes are shown as route-transition events"
+
+    assert stream_html =~ "local/qwen-coder"
+    assert stream_html =~ "managed/kimi-k2.6"
+
+    assert stream_html =~
+             "Future turns in this session should use the review-capable managed route"
+
+    assert stream_html =~ "Receipt recording does not call a provider model."
   end
 
   defp put_route_gate_config do
@@ -890,5 +997,16 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert updated =~ "chat_completion"
     assert updated =~ "global scope"
     refute updated =~ "do not show this private prompt"
+  end
+
+  defp temp_workspace_dir(prefix) do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "#{prefix}-#{System.unique_integer([:positive, :monotonic])}"
+      )
+
+    File.rm_rf!(path)
+    path
   end
 end

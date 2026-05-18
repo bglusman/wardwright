@@ -22,8 +22,8 @@ correctness-heavy pure policy logic when the boundary is stable enough.
 
 ## Install
 
-Wardwright publishes early native binaries for macOS and Linux. The current
-release is `v0.0.3`.
+Wardwright publishes early native binaries for macOS and Linux. The next
+prepared release is `v0.0.4`.
 
 ### macOS Homebrew
 
@@ -46,7 +46,7 @@ For one-shot foreground testing instead of a service:
 ```bash
 WARDWRIGHT_SECRET_KEY_BASE="$(cat "$(brew --prefix)/etc/wardwright/secret_key_base")" \
 WARDWRIGHT_BIND=127.0.0.1:8787 \
-wardwright
+wardwright serve
 ```
 
 ### Linux Tarball
@@ -61,7 +61,7 @@ curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/in
 For a pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.3
+curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.4
 ```
 
 Run it locally:
@@ -69,7 +69,7 @@ Run it locally:
 ```bash
 WARDWRIGHT_SECRET_KEY_BASE="$(openssl rand -base64 64)" \
 WARDWRIGHT_BIND=127.0.0.1:8787 \
-~/.local/bin/wardwright
+~/.local/bin/wardwright serve
 ```
 
 Then visit `http://127.0.0.1:8787/policies`. Set `WARDWRIGHT_ADMIN_TOKEN` before
@@ -82,12 +82,45 @@ operators:
 
 ```bash
 wardwright --help
+wardwright serve
 wardwright tools
 wardwright tools --json
 ```
 
 See [Packaging](docs/packaging.md) for release targets, manual archive install
 steps, and service details.
+
+## Provider Credentials
+
+Local Ollama targets need no credential. OpenAI-compatible targets can reference
+credentials with either `credential_fnox_key` or `credential_env`.
+`credential_fnox_key` is the preferred local-operator path, but Wardwright does
+not install fnox for you; the runtime expects `fnox get KEY` to work on the host.
+
+Fnox keeps raw provider keys out of artifacts and logs, but it is not a
+Wardwright authentication system. Keep real provider credentials on loopback-only
+instances or behind a trusted auth boundary. Do not configure real provider
+credentials on an instance reachable by untrusted users. See
+[Provider Credentials](docs/provider-credentials.md).
+
+## Policy Workbench
+
+The installed service includes a LiveView policy workbench at `/policies`.
+It is a simulator for synthetic models: load a seeded or local example, edit the
+simulated caller input, backend model output, and relevant history, then step
+through route selection, state transitions, stream retries, rewrites, tool
+decisions, and receipt events.
+
+![Wardwright policy workbench showing context-window dispatcher simulation](docs/assets/workbench/route-composition-simulator.png)
+
+The `v0.0.4` starter examples are grouped around output contracts, route/model
+composition, stream repair/session state, and tool/workflow control. Locally
+authored models that use a supported projection shape are loaded from the same
+workspace recipe directory and use the same simulator.
+
+See [Policy Workbench](docs/workbench.md) for screenshots and the current
+example catalog. External agents can use `wardwright tools` or `/mcp`; see the
+[Agent Authoring Guide](docs/agent-authoring.md) for the safe authoring loop.
 
 ## Current Contents
 
@@ -115,6 +148,10 @@ The active app exposes:
 - A Phoenix LiveView policy workbench at `/policies` with projection diagrams,
   simulation playback, recipe selection, state-machine views, route/effect
   summaries, and tool-governance demos.
+- A unified project example catalog seeded into the configured local recipe
+  directory (`:policy_recipe_workspace_dir`, defaulting to
+  `~/.wardwright/recipes/policies`), with optional community recipes loaded from
+  `wardwright.dev`.
 
 Wardwright is still an early prototype. Interfaces are intentionally more
 important than deep implementation maturity, and unsupported inputs should fail

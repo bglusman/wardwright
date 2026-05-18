@@ -84,13 +84,40 @@ defmodule Wardwright.Application do
   end
 
   defp check_origins(host, port) do
-    host = endpoint_host(host)
+    configured_origins =
+      "WARDWRIGHT_ALLOWED_ORIGINS"
+      |> System.get_env("")
+      |> String.split(",", trim: true)
+      |> Enum.map(&String.trim/1)
 
-    ["localhost", "127.0.0.1", host]
+    hosts =
+      ["localhost", "127.0.0.1", endpoint_host(host)] ++
+        if wildcard_host?(host), do: local_interface_hosts(), else: []
+
+    hosts
     |> Enum.uniq()
     |> Enum.flat_map(fn origin_host ->
       ["http://#{origin_host}:#{port}", "//#{origin_host}:#{port}"]
     end)
+    |> Kernel.++(configured_origins)
+    |> Enum.uniq()
+  end
+
+  defp wildcard_host?({0, 0, 0, 0}), do: true
+  defp wildcard_host?({0, 0, 0, 0, 0, 0, 0, 0}), do: true
+  defp wildcard_host?(_host), do: false
+
+  defp local_interface_hosts do
+    case :inet.getifaddrs() do
+      {:ok, interfaces} ->
+        interfaces
+        |> Enum.flat_map(fn {_name, options} -> Keyword.get_values(options, :addr) end)
+        |> Enum.filter(&match?({_, _, _, _}, &1))
+        |> Enum.map(&(:inet.ntoa(&1) |> to_string()))
+
+      {:error, _reason} ->
+        []
+    end
   end
 
   defp bind do
@@ -101,17 +128,21 @@ defmodule Wardwright.Application do
   end
 
   defp maybe_handle_standalone_command do
-    case Wardwright.CLI.run(argv()) do
-      {:halt, status} -> System.halt(status)
-      :start -> :ok
+    if burrito?() do
+      case Wardwright.CLI.run(argv()) do
+        {:halt, status} -> System.halt(status)
+        :start -> :ok
+      end
     end
   end
 
   defp argv do
-    if System.get_env("__BURRITO") do
+    if burrito?() do
       :init.get_plain_arguments() |> Enum.map(&to_string/1)
     else
       System.argv()
     end
   end
+
+  defp burrito?, do: System.get_env("__BURRITO") != nil
 end

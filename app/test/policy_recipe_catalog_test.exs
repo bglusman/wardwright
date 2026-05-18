@@ -24,8 +24,7 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
   end
 
   test "workspace source seeds starter recipes into a missing user workspace once" do
-    workspace_dir =
-      Path.join(System.tmp_dir!(), "wardwright-seeded-recipes-#{System.unique_integer()}")
+    workspace_dir = temp_workspace_dir("wardwright-seeded-recipes")
 
     Application.put_env(:wardwright, :policy_recipe_workspace_dir, workspace_dir)
 
@@ -34,23 +33,35 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
 
     assert catalog["source"]["trusted"] == true
     assert catalog["source"]["endpoint"] == workspace_dir
+    assert catalog["source"]["label"] == "Project examples"
     assert catalog["warnings"] == []
-    assert Enum.any?(catalog["recipes"], &(&1["id"] == "local-private-route-gate"))
+    assert Enum.any?(catalog["recipes"], &(&1["id"] == "private-helpdesk-local-gate"))
+    assert Enum.any?(catalog["recipes"], &(&1["id"] == "context-window-dispatcher"))
+    assert Enum.any?(catalog["recipes"], &(&1["id"] == "partial-alloy-context-ladder"))
     assert Enum.any?(catalog["recipes"], &(&1["pattern_id"] == "tool-governance"))
+
+    assert Enum.any?(
+             catalog["recipes"],
+             &(&1["collection_id"] == "route-and-model-composition")
+           )
+
+    assert Enum.any?(catalog["recipes"], &is_binary(&1["failure_story"]))
     assert File.exists?(Path.join(workspace_dir, ".starter-recipes-seeded"))
 
-    File.rm!(Path.join(workspace_dir, "starter-recipes.json"))
+    workspace_dir
+    |> Path.join("**/*.json")
+    |> Path.wildcard()
+    |> Enum.each(&File.rm!/1)
 
     assert {:ok, catalog} = Wardwright.PolicyRecipeCatalog.list("workspace")
     catalog = Wardwright.PolicyRecipeCatalog.to_map(catalog)
 
     assert catalog["recipes"] == []
-    assert catalog["warnings"] == ["No valid workspace examples were found in #{workspace_dir}."]
+    assert catalog["warnings"] == ["No valid project examples were found in #{workspace_dir}."]
   end
 
   test "workspace source seeds starter recipes into an existing unmarked directory" do
-    workspace_dir =
-      Path.join(System.tmp_dir!(), "wardwright-existing-recipes-#{System.unique_integer()}")
+    workspace_dir = temp_workspace_dir("wardwright-existing-recipes")
 
     File.mkdir_p!(workspace_dir)
     Application.put_env(:wardwright, :policy_recipe_workspace_dir, workspace_dir)
@@ -59,13 +70,47 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
     catalog = Wardwright.PolicyRecipeCatalog.to_map(catalog)
 
     assert catalog["warnings"] == []
-    assert Enum.any?(catalog["recipes"], &(&1["id"] == "local-private-route-gate"))
-    assert File.exists?(Path.join(workspace_dir, "starter-recipes.json"))
+    assert Enum.any?(catalog["recipes"], &(&1["id"] == "private-helpdesk-local-gate"))
+
+    assert File.exists?(Path.join(workspace_dir, "route-and-model-composition/recipes.json"))
+
+    assert File.exists?(Path.join(workspace_dir, ".starter-recipes-seeded"))
+  end
+
+  test "workspace source does not overwrite user recipes when seeding an existing directory" do
+    workspace_dir = temp_workspace_dir("wardwright-existing-user-recipes")
+    user_recipe_dir = Path.join(workspace_dir, "route-and-model-composition")
+    user_recipe_path = Path.join(user_recipe_dir, "recipes.json")
+
+    File.mkdir_p!(user_recipe_dir)
+
+    user_recipe_json =
+      Jason.encode!(%{
+        "recipes" => [
+          %{
+            "id" => "user-local-dispatcher",
+            "title" => "User local dispatcher",
+            "category" => "route.selecting",
+            "promise" => "Prefer local models for private work.",
+            "pattern_id" => "route-privacy"
+          }
+        ]
+      })
+
+    File.write!(user_recipe_path, user_recipe_json)
+    Application.put_env(:wardwright, :policy_recipe_workspace_dir, workspace_dir)
+
+    assert {:ok, catalog} = Wardwright.PolicyRecipeCatalog.list("workspace")
+    catalog = Wardwright.PolicyRecipeCatalog.to_map(catalog)
+
+    assert File.read!(user_recipe_path) == user_recipe_json
+    assert Enum.any?(catalog["recipes"], &(&1["id"] == "user-local-dispatcher"))
+    assert Enum.any?(catalog["recipes"], &(&1["id"] == "deprecated-sdk-stream-retry"))
     assert File.exists?(Path.join(workspace_dir, ".starter-recipes-seeded"))
   end
 
   test "workspace source loads valid recipe JSON and ignores invalid files" do
-    workspace_dir = Path.join(System.tmp_dir!(), "wardwright-recipes-#{System.unique_integer()}")
+    workspace_dir = temp_workspace_dir("wardwright-recipes")
     File.mkdir_p!(workspace_dir)
 
     valid = %{
@@ -100,7 +145,8 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
                "id" => "local-tool-review",
                "title" => "Local tool review",
                "pattern_id" => "tool-governance",
-               "source_id" => "workspace"
+               "source_id" => "workspace",
+               "collection_title" => "Project examples"
              }
            ] = catalog["recipes"]
   end
@@ -191,6 +237,8 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
     assert {:ok, decoded} = Jason.decode(body)
     assert is_list(decoded["recipes"])
     assert Enum.any?(decoded["recipes"], &(&1["id"] == "community-basic-stream-retry"))
+    assert Enum.any?(decoded["recipes"], &(&1["id"] == "community-review-model-escalation"))
+    assert Enum.any?(decoded["recipes"], &(&1["id"] == "community-local-first-cascade"))
 
     assert Enum.all?(
              decoded["recipes"],
@@ -200,4 +248,15 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
 
   defp put_or_delete_env(key, nil), do: Application.delete_env(:wardwright, key)
   defp put_or_delete_env(key, value), do: Application.put_env(:wardwright, key, value)
+
+  defp temp_workspace_dir(prefix) do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "#{prefix}-#{System.unique_integer([:positive, :monotonic])}"
+      )
+
+    File.rm_rf!(path)
+    path
+  end
 end

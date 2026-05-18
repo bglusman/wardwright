@@ -17,21 +17,23 @@ description: Synthetic model contracts, governance, and receipts for agentic wor
     <a class="button" href="vision.html">Read the Vision</a>
     <a class="button secondary" href="synthetic-models.html">Synthetic Models</a>
     <a class="button secondary" href="use-cases.html">Use Cases</a>
+    <a class="button secondary" href="workbench.html">Policy Workbench</a>
     <a class="button secondary" href="feature-spikes.html">Feature Spikes</a>
     <a class="button secondary" href="architecture-review-tasks.html">Architecture Tasks</a>
     <a class="button secondary" href="architecture-ratchets.html">Architecture Ratchets</a>
     <a class="button secondary" href="policy-workbench-implementation-plan.html">Workbench Plan</a>
     <a class="button secondary" href="tool-context-policy.html">Tool Policy</a>
+    <a class="button secondary" href="provider-credentials.html">Provider Credentials</a>
     <a class="button secondary" href="packaging.html">Packaging</a>
     <a class="button secondary" href="https://github.com/bglusman/wardwright">GitHub</a>
   </div>
 </section>
 
 <div class="notice">
-  <strong>Status:</strong> Wardwright is early but installable. Release
-  <code>v0.0.3</code> publishes native macOS and Linux artifacts, a Homebrew
-  formula, the active BEAM implementation, shared contracts, and tests used to
-  validate policy behavior. See the
+  <strong>Status:</strong> Wardwright is early but installable. The prepared
+  <code>v0.0.4</code> release publishes native macOS and Linux artifacts, a
+  Homebrew formula, the active BEAM implementation, shared contracts, and
+  a policy workbench with starter model examples and simulation playback. See the
   [Backend Selection Decision](backend-selection-decision.html) for the pruning
   rationale.
 </div>
@@ -55,19 +57,29 @@ open http://127.0.0.1:8787/policies
 curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh
 WARDWRIGHT_SECRET_KEY_BASE="$(openssl rand -base64 64)" \
 WARDWRIGHT_BIND=127.0.0.1:8787 \
-~/.local/bin/wardwright
+~/.local/bin/wardwright serve
 ```
 
-For a pinned release, pass `--version v0.0.3` to the installer:
+For a pinned release, pass `--version v0.0.4` to the installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.3
+curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.4
 ```
 
 The Linux installer verifies the release archive against published SHA-256
 checksums before installing. Set `WARDWRIGHT_ADMIN_TOKEN` before exposing
 Wardwright beyond loopback. See [Packaging](packaging.html) for manual archive
 install steps, release targets, and service details.
+
+## Provider Credentials
+
+Wardwright can call local Ollama without credentials. OpenAI-compatible provider
+targets can reference secrets through `credential_fnox_key` or `credential_env`;
+the preferred local path is fnox, with Wardwright resolving credentials by
+calling `fnox get KEY` at request time. Fnox is not bundled with Wardwright, and
+it does not authenticate who may use Wardwright. Keep real provider credentials
+on loopback-only instances or behind a trusted auth boundary. See
+[Provider Credentials](provider-credentials.html).
 
 ## What Wardwright Adds
 
@@ -119,6 +131,28 @@ synthetic model routing, stream-policy retries/rewrites, tool-context policy
 hooks, policy history/cache state, protected authoring APIs, receipts, and an
 initial LiveView workbench for policy diagrams, simulation playback, recipe
 selection, and tool-governance demos.
+
+## Policy Workbench
+
+The installed app comes with a workbench at `/policies` for visualizing and
+simulating synthetic models before they are used behind real traffic. It loads
+seeded and locally authored examples, lets operators edit a scenario, and shows
+the route, state, retry, rewrite, tool, and receipt effects produced by that
+run.
+
+<figure>
+  <img src="assets/workbench/stream-retry-simulator.png" alt="Wardwright policy workbench showing a stream retry simulation">
+  <figcaption>The simulator can replay retry-oriented stream governance, including the raw model stream, held/released output, and receipt evidence.</figcaption>
+</figure>
+
+The `v0.0.4` package seeds example collections for output contracts,
+route/model composition, stream repair and session state, plus tool/workflow
+control. Models you create locally and store in the configured workspace recipe
+directory use the same workbench path when they expose a supported projection.
+See the [Policy Workbench](workbench.html) page for screenshots and the current
+example catalog. External agents can use the local MCP/API authoring surface;
+the [Agent Authoring Guide](agent-authoring.html) describes the expected
+inspect, simulate, draft, validate, review, and activate workflow.
 
 Near-term work:
 
