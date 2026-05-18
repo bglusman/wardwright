@@ -150,6 +150,20 @@ WARDWRIGHT_BIND=127.0.0.1:8787 \
 wardwright serve
 ```
 
+## Provider Credentials
+
+The package does not install fnox. If a configured provider target uses
+`credential_fnox_key`, the host running Wardwright must already have a working
+`fnox` command on `PATH`; Wardwright resolves the value with `fnox get KEY` when
+it needs to call the provider. Environment-variable credentials via
+`credential_env` are also supported for local development and live smoke tests.
+
+Credential storage and service authentication are separate. Fnox keeps raw
+provider keys out of artifacts and logs, but it does not decide who may call a
+synthetic model. Do not configure real provider credentials on a Wardwright
+instance reachable by untrusted users unless the service is bound behind a
+trusted authentication boundary. See [Provider Credentials](provider-credentials.html).
+
 ## Release Workflow
 
 The root workflow `.github/workflows/wardwright-release.yml` is adapted from
@@ -181,6 +195,9 @@ where the policy UI and validation story are useful enough to promote.
 - Release `v0.0.4` adds clearer model binding visibility in the state-machine
   workbench, seeded example collections, simulator screenshots/docs, and
   prepares the next package version.
+- Fnox-backed provider credentials are runtime-supported but not package-managed;
+  fnox installation/profile management and product authorization remain
+  post-`0.0.4` hardening work.
 - The first CI run may expose platform-specific Burrito, Zig, or NIF issues.
   macOS builds intentionally install Homebrew `zig@0.15` because upstream Zig
   0.15.2 can fail to link on newer macOS/Xcode combinations.

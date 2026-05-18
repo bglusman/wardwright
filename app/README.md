@@ -82,9 +82,11 @@ request provides `Authorization: Bearer <token>` or
 `X-Wardwright-Admin-Token`. This currently covers `/admin/*`, receipt reads,
 and policy-cache read/write APIs. This is intended for a homelab or
 single-operator deployment shape. It is not a full multi-user auth system:
-provider API keys should stay behind fnox-backed secret lookup, while decisions
-about who may use a synthetic model, configure a provider, or enter through SSO
-depend on the eventual deployment topology.
+provider API keys should stay behind fnox-backed secret lookup or development
+environment variables, while decisions about who may use a synthetic model,
+configure a provider, or enter through SSO depend on the eventual deployment
+topology. Fnox is not bundled by the app; targets that use `credential_fnox_key`
+expect `fnox get KEY` to work on the host.
 
 ## BEAM Direction
 

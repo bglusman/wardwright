@@ -90,6 +90,19 @@ wardwright tools --json
 See [Packaging](docs/packaging.md) for release targets, manual archive install
 steps, and service details.
 
+## Provider Credentials
+
+Local Ollama targets need no credential. OpenAI-compatible targets can reference
+credentials with either `credential_fnox_key` or `credential_env`.
+`credential_fnox_key` is the preferred local-operator path, but Wardwright does
+not install fnox for you; the runtime expects `fnox get KEY` to work on the host.
+
+Fnox keeps raw provider keys out of artifacts and logs, but it is not a
+Wardwright authentication system. Keep real provider credentials on loopback-only
+instances or behind a trusted auth boundary. Do not configure real provider
+credentials on an instance reachable by untrusted users. See
+[Provider Credentials](docs/provider-credentials.md).
+
 ## Policy Workbench
 
 The installed service includes a LiveView policy workbench at `/policies`.

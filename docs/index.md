@@ -23,6 +23,7 @@ description: Synthetic model contracts, governance, and receipts for agentic wor
     <a class="button secondary" href="architecture-ratchets.html">Architecture Ratchets</a>
     <a class="button secondary" href="policy-workbench-implementation-plan.html">Workbench Plan</a>
     <a class="button secondary" href="tool-context-policy.html">Tool Policy</a>
+    <a class="button secondary" href="provider-credentials.html">Provider Credentials</a>
     <a class="button secondary" href="packaging.html">Packaging</a>
     <a class="button secondary" href="https://github.com/bglusman/wardwright">GitHub</a>
   </div>
@@ -69,6 +70,16 @@ The Linux installer verifies the release archive against published SHA-256
 checksums before installing. Set `WARDWRIGHT_ADMIN_TOKEN` before exposing
 Wardwright beyond loopback. See [Packaging](packaging.html) for manual archive
 install steps, release targets, and service details.
+
+## Provider Credentials
+
+Wardwright can call local Ollama without credentials. OpenAI-compatible provider
+targets can reference secrets through `credential_fnox_key` or `credential_env`;
+the preferred local path is fnox, with Wardwright resolving credentials by
+calling `fnox get KEY` at request time. Fnox is not bundled with Wardwright, and
+it does not authenticate who may use Wardwright. Keep real provider credentials
+on loopback-only instances or behind a trusted auth boundary. See
+[Provider Credentials](provider-credentials.html).
 
 ## What Wardwright Adds
 

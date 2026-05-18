@@ -164,9 +164,12 @@ Interface expectation:
 - Policy-authoring endpoints reuse localhost/admin-token protection. Remote MVP
   should decide whether authoring APIs require token-only access, CSRF/origin
   constraints, or a separate capability token model.
-- Provider credentials need a finalized encrypted storage story. Environment
-  variables are acceptable for local development, but remote operation needs
-  fnox or an equivalent secret store with audit-friendly configuration.
+- Provider credentials have a minimal runtime lookup story: `credential_fnox_key`
+  shells out to `fnox get KEY`, and `credential_env` remains acceptable for
+  local development and live smoke tests. Fnox is not bundled or configured by
+  Wardwright packaging, and neither fnox nor env vars solve service
+  authorization. Remote operation still needs explicit model-use authorization,
+  provider-configuration authorization, and audit-friendly secret management.
 - Receipts and cache data can contain sensitive prompts or derived facts.
   Redaction rules for UI/API responses should be explicit before remote use.
 - Multi-node visibility is plausible via PubSub, but clustering is not a

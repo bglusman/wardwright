@@ -44,6 +44,13 @@ configured `WARDWRIGHT_BIND` port. Protected HTTP tools accept loopback callers
 by default; non-loopback deployments should set `WARDWRIGHT_ADMIN_TOKEN` and
 send it as an admin bearer token.
 
+Agents should not ask users to paste raw provider API keys into model artifacts.
+For OpenAI-compatible targets, reference `credential_fnox_key` when fnox is
+configured on the host, or `credential_env` for local development and smoke
+tests. Fnox is a secret lookup path, not Wardwright authentication: do not assume
+a Wardwright service with encrypted provider keys is safe for untrusted callers.
+See [Provider Credentials](provider-credentials.html).
+
 ## Inspect Before You Edit
 
 Use `explain_projection` to understand the current model. A projection is the
