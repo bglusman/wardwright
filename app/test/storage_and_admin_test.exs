@@ -110,6 +110,84 @@ defmodule Wardwright.StorageAndAdminTest do
     assert body["write_health"] == "ok"
   end
 
+  test "sqlite store persists the active model definition" do
+    path = temp_sqlite_path("wardwright-model-config")
+    original_path = Application.get_env(:wardwright, :sqlite_store_path)
+
+    Application.put_env(:wardwright, :sqlite_store_path, path)
+
+    on_exit(fn ->
+      restore_app_env(:sqlite_store_path, original_path)
+      remove_sqlite_store(path)
+    end)
+
+    config =
+      unit_policy_config()
+      |> Map.put("model_id", "persisted-unit-model")
+      |> Map.put("version", "persisted-version")
+      |> Map.put("requires_api_key", true)
+      |> Map.put("auth", %{"unkeyed_model_access" => "internal"})
+
+    assert {:ok, saved_config} = Wardwright.put_config(config)
+    assert saved_config["model_id"] == "persisted-unit-model"
+    :persistent_term.erase({Wardwright, :config})
+
+    assert {:ok, loaded} = Wardwright.load_persisted_config()
+    assert loaded["model_id"] == "persisted-unit-model"
+    assert loaded["requires_api_key"] == true
+    assert loaded["auth"]["unkeyed_model_access"] == "internal"
+    assert Wardwright.current_config()["model_id"] == "persisted-unit-model"
+  end
+
+  test "sqlite store persists and deletes model API key hashes" do
+    path = temp_sqlite_path("wardwright-model-keys")
+    original_path = Application.get_env(:wardwright, :sqlite_store_path)
+
+    Application.put_env(:wardwright, :sqlite_store_path, path)
+
+    on_exit(fn ->
+      restore_app_env(:sqlite_store_path, original_path)
+      remove_sqlite_store(path)
+    end)
+
+    record = %{
+      "id" => "key_test",
+      "model_id" => "coding-balanced",
+      "label" => "integration",
+      "prefix" => "wwk_test",
+      "key_hash" => "hashed-value",
+      "created_at" => "2026-05-18T00:00:00Z"
+    }
+
+    assert {:ok, :ok} = Wardwright.SQLiteStore.insert_api_key(record)
+    assert {:ok, [^record]} = Wardwright.SQLiteStore.list_api_keys("coding-balanced")
+    assert {:ok, {:ok, 1}} = Wardwright.SQLiteStore.delete_api_key("key_test")
+    assert {:ok, []} = Wardwright.SQLiteStore.list_api_keys("coding-balanced")
+  end
+
+  test "sqlite store rejects configured encryption when SQLCipher is unavailable" do
+    path = temp_sqlite_path("wardwright-encrypted-models")
+    original_path = Application.get_env(:wardwright, :sqlite_store_path)
+    original_key = Application.get_env(:wardwright, :sqlite_key)
+
+    Application.put_env(:wardwright, :sqlite_store_path, path)
+    Application.put_env(:wardwright, :sqlite_key, "test-sqlite-key")
+
+    on_exit(fn ->
+      restore_app_env(:sqlite_store_path, original_path)
+      restore_app_env(:sqlite_key, original_key)
+      remove_sqlite_store(path)
+    end)
+
+    if sqlcipher_available?() do
+      assert {:ok, :ok} = Wardwright.SQLiteStore.save_model_config(Wardwright.default_config())
+    else
+      assert_raise RuntimeError, ~r/exqlite build does not expose SQLCipher/, fn ->
+        Wardwright.SQLiteStore.save_model_config(Wardwright.default_config())
+      end
+    end
+  end
+
   test "policy scenario store can persist reviewed scenarios to a file" do
     path = temp_json_path("wardwright-policy-scenarios")
 
@@ -223,6 +301,13 @@ defmodule Wardwright.StorageAndAdminTest do
     for {method, path, body} <- [
           {:get, "/admin/storage", nil},
           {:get, "/v1/receipts", nil},
+          {:post, "/v1/wardwright/simulate",
+           %{
+             "request" => %{
+               "model" => "coding-balanced",
+               "messages" => [%{"role" => "user", "content" => "hello"}]
+             }
+           }},
           {:post, "/v1/policy-cache/events", %{"kind" => "request_text"}}
         ] do
       conn = call(method, path, body, [], remote_ip)
@@ -255,6 +340,107 @@ defmodule Wardwright.StorageAndAdminTest do
 
     assert conn.status == 200
     assert Jason.decode!(conn.resp_body)["kind"] == "memory"
+  end
+
+  test "protected prototype endpoints require basic auth when a basic auth password is configured" do
+    previous = Application.get_env(:wardwright, :basic_auth_password)
+    Application.put_env(:wardwright, :basic_auth_password, "admin-ui-password")
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:wardwright, :basic_auth_password, previous),
+        else: Application.delete_env(:wardwright, :basic_auth_password)
+    end)
+
+    local_rejected = call(:get, "/admin/storage")
+    assert local_rejected.status == 403
+
+    wrong_password =
+      call(
+        :get,
+        "/admin/storage",
+        nil,
+        [{"authorization", basic_auth("admin", "wrong-password")}]
+      )
+
+    assert wrong_password.status == 403
+
+    conn =
+      call(
+        :get,
+        "/admin/storage",
+        nil,
+        [{"authorization", basic_auth("admin", "admin-ui-password")}],
+        {203, 0, 113, 10}
+      )
+
+    assert conn.status == 200
+    assert Jason.decode!(conn.resp_body)["kind"] == "memory"
+  end
+
+  test "protected admin API creates lists and revokes model API keys without exposing hashes" do
+    created =
+      call(:post, "/admin/model-api-keys", %{
+        "model" => "coding-balanced",
+        "label" => "gateway-prod"
+      })
+
+    assert created.status == 201
+    body = Jason.decode!(created.resp_body)
+    key = body["api_key"]
+    assert key["key"] =~ "wwk_"
+    assert key["label"] == "gateway-prod"
+    refute Map.has_key?(key, "key_hash")
+
+    listed = call(:get, "/admin/model-api-keys?model=coding-balanced")
+    assert listed.status == 200
+    assert [listed_key] = Jason.decode!(listed.resp_body)["data"]
+    assert listed_key["id"] == key["id"]
+    assert listed_key["prefix"] == key["prefix"]
+    refute Map.has_key?(listed_key, "key")
+    refute Map.has_key?(listed_key, "key_hash")
+
+    prefixed = call(:get, "/admin/model-api-keys?model=wardwright/coding-balanced")
+    assert prefixed.status == 200
+    assert [prefixed_key] = Jason.decode!(prefixed.resp_body)["data"]
+    assert prefixed_key["id"] == key["id"]
+
+    deleted = call(:delete, "/admin/model-api-keys/#{key["id"]}")
+    assert deleted.status == 200
+
+    relisted = call(:get, "/admin/model-api-keys?model=coding-balanced")
+    assert Jason.decode!(relisted.resp_body)["data"] == []
+  end
+
+  test "protected APIs do not emit wildcard CORS headers" do
+    conn = call(:get, "/admin/model-api-keys")
+    assert conn.status == 200
+    assert Plug.Conn.get_resp_header(conn, "access-control-allow-origin") == []
+
+    receipts = call(:get, "/v1/receipts")
+    assert receipts.status == 200
+    assert Plug.Conn.get_resp_header(receipts, "access-control-allow-origin") == []
+
+    policy_authoring = call(:get, "/v1/policy-authoring/tools")
+    assert policy_authoring.status == 200
+    assert Plug.Conn.get_resp_header(policy_authoring, "access-control-allow-origin") == []
+
+    public = call(:get, "/v1/models")
+    assert Plug.Conn.get_resp_header(public, "access-control-allow-origin") == ["*"]
+  end
+
+  test "malformed key records do not invalidate valid model API keys" do
+    {:ok, created} = Wardwright.ModelApiKeyStore.create("coding-balanced", "valid-client")
+
+    :sys.replace_state(Wardwright.ModelApiKeyStore, fn state ->
+      put_in(state.keys["malformed"], %{
+        "id" => "malformed",
+        "model_id" => "coding-balanced",
+        "key_hash" => nil
+      })
+    end)
+
+    assert Wardwright.ModelApiKeyStore.valid?("coding-balanced", created["key"])
   end
 
   test "receipt list is deterministic and returns storage summaries" do
@@ -396,4 +582,52 @@ defmodule Wardwright.StorageAndAdminTest do
     File.rm("#{path}.tmp")
     path
   end
+
+  defp temp_sqlite_path(prefix) do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "#{prefix}-#{System.unique_integer([:positive, :monotonic])}.sqlite3"
+      )
+
+    remove_sqlite_store(path)
+    path
+  end
+
+  defp remove_sqlite_store(path) do
+    File.rm(path)
+    File.rm("#{path}-wal")
+    File.rm("#{path}-shm")
+  end
+
+  defp restore_app_env(:sqlite_store_path, nil),
+    do: Application.put_env(:wardwright, :sqlite_store_path, nil)
+
+  defp restore_app_env(key, nil), do: Application.delete_env(:wardwright, key)
+  defp restore_app_env(key, value), do: Application.put_env(:wardwright, key, value)
+
+  defp sqlcipher_available? do
+    {:ok, conn} = Exqlite.Sqlite3.open(":memory:")
+
+    try do
+      case sqlite_query_one(conn, "PRAGMA cipher_version") do
+        {:row, [version]} when is_binary(version) and version != "" -> true
+        _other -> false
+      end
+    after
+      Exqlite.Sqlite3.close(conn)
+    end
+  end
+
+  defp sqlite_query_one(conn, sql) do
+    {:ok, statement} = Exqlite.Sqlite3.prepare(conn, sql)
+
+    try do
+      Exqlite.Sqlite3.step(conn, statement)
+    after
+      Exqlite.Sqlite3.release(conn, statement)
+    end
+  end
+
+  defp basic_auth(username, password), do: "Basic " <> Base.encode64("#{username}:#{password}")
 end

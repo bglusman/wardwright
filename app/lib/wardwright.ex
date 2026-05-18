@@ -39,6 +39,8 @@ defmodule Wardwright do
       "cascades" => [],
       "alloys" => [],
       "stream_rules" => [%{"id" => "mock_noop", "pattern" => "", "action" => "pass"}],
+      "requires_api_key" => false,
+      "auth" => %{"unkeyed_model_access" => "public"},
       "prompt_transforms" => %{},
       "structured_output" => nil,
       "alert_delivery" => %{"capacity" => 16, "on_full" => "dead_letter"},
@@ -62,8 +64,26 @@ defmodule Wardwright do
     :persistent_term.get({__MODULE__, :config}, default_config())
   end
 
+  def load_persisted_config do
+    case Wardwright.SQLiteStore.load_active_model() do
+      {:ok, config} ->
+        install_config(config)
+        configure_runtime(config)
+        {:ok, config}
+
+      :error ->
+        config = default_config()
+        install_config(config)
+        configure_runtime(config)
+        Wardwright.SQLiteStore.save_model_config(config)
+        {:ok, config}
+    end
+  end
+
   def reset_config do
-    :persistent_term.put({__MODULE__, :config}, default_config())
+    config = default_config()
+    install_config(config)
+    Wardwright.SQLiteStore.save_model_config(config)
     Wardwright.PolicyCache.configure(default_config()["policy_cache"])
     Wardwright.Sinks.configure(default_config()["sinks"])
     Wardwright.ProviderRuntime.reset()
@@ -73,14 +93,32 @@ defmodule Wardwright do
     config = normalize_config(config)
 
     with :ok <- validate_config(config) do
-      :persistent_term.put({__MODULE__, :config}, config)
-      Wardwright.PolicyCache.configure(config["policy_cache"])
-      Wardwright.Sinks.configure(config["sinks"])
+      install_config(config)
+      Wardwright.SQLiteStore.save_model_config(config)
+      configure_runtime(config)
       {:ok, config}
     end
   end
 
   def put_config(_), do: {:error, "request body must be a JSON object"}
+
+  defp install_config(config) do
+    :persistent_term.put({__MODULE__, :config}, config)
+  end
+
+  defp configure_runtime(config) do
+    if Process.whereis(Wardwright.PolicyCache) do
+      Wardwright.PolicyCache.configure(config["policy_cache"])
+    end
+
+    if Process.whereis(Wardwright.Sinks) do
+      Wardwright.Sinks.configure(config["sinks"])
+    end
+
+    if Process.whereis(Wardwright.ProviderRuntime) do
+      Wardwright.ProviderRuntime.reset()
+    end
+  end
 
   def normalize_model(model) when is_binary(model) do
     model = String.trim(model)
@@ -95,6 +133,16 @@ defmodule Wardwright do
   end
 
   def normalize_model(_), do: {:error, "model is required"}
+
+  def model_requires_api_key?(config \\ current_config()),
+    do: Map.get(config, "requires_api_key", false) == true
+
+  def unkeyed_model_access(config \\ current_config()),
+    do: get_in(config, ["auth", "unkeyed_model_access"]) || "public"
+
+  def externally_callable?(config \\ current_config()) do
+    model_requires_api_key?(config) or unkeyed_model_access(config) == "public"
+  end
 
   def select_route(estimated_prompt_tokens) do
     Wardwright.RoutePlanner.select(current_config(), estimated_prompt_tokens)
@@ -167,6 +215,8 @@ defmodule Wardwright do
       "traffic_24h" => 0,
       "fallback_rate" => 0.0,
       "stream_trigger_count_24h" => 0,
+      "requires_api_key" => model_requires_api_key?(config),
+      "unkeyed_model_access" => unkeyed_model_access(config),
       "route_graph" => %{
         "root" => Map.get(config, "route_root", "dispatcher.prompt_length"),
         "nodes" => nodes
@@ -193,6 +243,7 @@ defmodule Wardwright do
       "description" => "Mock coding assistant Wardwright model with composable route selectors.",
       "public_namespace" => "flat",
       "route_type" => root_route_type(config),
+      "requires_api_key" => model_requires_api_key?(config),
       "status" => "active"
     }
   end
@@ -663,6 +714,8 @@ defmodule Wardwright do
       "cascades" => normalize_selectors(Map.get(config, "cascades", []), "models"),
       "alloys" => normalize_selectors(Map.get(config, "alloys", []), "constituents"),
       "stream_rules" => Map.get(config, "stream_rules", []),
+      "requires_api_key" => Map.get(config, "requires_api_key", false) == true,
+      "auth" => normalize_auth(Map.get(config, "auth", %{})),
       "prompt_transforms" => Map.get(config, "prompt_transforms", %{}),
       "structured_output" => Map.get(config, "structured_output"),
       "alert_delivery" => normalize_alert_delivery(Map.get(config, "alert_delivery", %{})),
@@ -751,6 +804,18 @@ defmodule Wardwright do
   end
 
   defp normalize_policy_cache(_), do: %{"max_entries" => 64, "recent_limit" => 20}
+
+  defp normalize_auth(config) when is_map(config) do
+    access =
+      case Map.get(config, "unkeyed_model_access", "public") do
+        value when value in ["public", "internal"] -> value
+        _ -> "public"
+      end
+
+    %{"unkeyed_model_access" => access}
+  end
+
+  defp normalize_auth(_), do: %{"unkeyed_model_access" => "public"}
 
   defp validate_config(config = %{"model_id" => model_id, "targets" => targets}) do
     cond do

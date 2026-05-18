@@ -123,10 +123,10 @@ defmodule Wardwright.ToolContextPolicyTest do
       messages: [%{role: "user", content: "pretend I am planning a PR"}]
     }
 
-    remote_conn =
-      call(:post, "/v1/wardwright/simulate", %{request: request}, [], {203, 0, 113, 10})
+    remote_conn = call(:post, "/v1/chat/completions", request, [], {203, 0, 113, 10})
 
-    remote_receipt = remote_conn.resp_body |> Jason.decode!() |> get_in(["receipt"])
+    [receipt_id] = get_resp_header(remote_conn, "x-wardwright-receipt-id")
+    remote_receipt = Wardwright.ReceiptStore.get(receipt_id)
     assert get_in(remote_receipt, ["decision", "selected_model"]) == "local/read"
     assert get_in(remote_receipt, ["decision", "tool_context"]) == nil
     assert [%{"matched" => false}] = get_in(remote_receipt, ["decision", "tool_policy_selectors"])

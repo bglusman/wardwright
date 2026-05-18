@@ -294,6 +294,130 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ ~s(src="/assets/wardwright_live.js")
   end
 
+  test "workbench rejects remote browser access without an admin token" do
+    conn =
+      build_conn()
+      |> Map.put(:remote_ip, {203, 0, 113, 10})
+      |> get("/policies/route-privacy/diagram")
+
+    assert conn.status == 403
+    assert %{"error" => %{"code" => "protected_endpoint"}} = Jason.decode!(conn.resp_body)
+  end
+
+  test "workbench accepts remote browser access with a configured admin bearer token" do
+    previous = Application.get_env(:wardwright, :admin_token)
+    Application.put_env(:wardwright, :admin_token, "workbench-review-token")
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:wardwright, :admin_token, previous),
+        else: Application.delete_env(:wardwright, :admin_token)
+    end)
+
+    conn =
+      build_conn()
+      |> Map.put(:remote_ip, {203, 0, 113, 10})
+      |> Plug.Conn.put_req_header("authorization", "Bearer workbench-review-token")
+      |> get("/policies/route-privacy/diagram")
+
+    html = html_response(conn, 200)
+    assert html =~ "Policy projection graph"
+    assert html =~ "Private context route gate"
+  end
+
+  test "workbench requires basic auth when a basic auth password is configured" do
+    previous = Application.get_env(:wardwright, :basic_auth_password)
+    Application.put_env(:wardwright, :basic_auth_password, "workbench-password")
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:wardwright, :basic_auth_password, previous),
+        else: Application.delete_env(:wardwright, :basic_auth_password)
+    end)
+
+    local_rejected = get(build_conn(), "/policies/route-privacy/diagram")
+    assert local_rejected.status == 401
+
+    assert Plug.Conn.get_resp_header(local_rejected, "www-authenticate") == [
+             ~s(Basic realm="Wardwright", charset="UTF-8")
+           ]
+
+    wrong_user =
+      build_conn()
+      |> Plug.Conn.put_req_header("authorization", basic_auth("operator", "workbench-password"))
+      |> get("/policies/route-privacy/diagram")
+
+    assert wrong_user.status == 401
+
+    accepted =
+      build_conn()
+      |> Plug.Conn.put_req_header("authorization", basic_auth("admin", "workbench-password"))
+      |> get("/policies/route-privacy/diagram")
+
+    html = html_response(accepted, 200)
+    assert html =~ "Policy projection graph"
+    assert html =~ "Private context route gate"
+  end
+
+  test "model API key management page creates and revokes keys" do
+    {:ok, view, html} = live(build_conn(), "/admin/model-api-keys")
+
+    assert html =~ "Model API Keys"
+    assert html =~ "coding-balanced"
+    assert html =~ "Access Policy"
+    assert html =~ "href=\"/policies\""
+    assert html =~ "No API keys have been created for this model."
+
+    html =
+      view
+      |> form("#create-model-key-form", %{"key" => %{"label" => "local-gateway"}})
+      |> render_submit()
+
+    assert html =~ "Copy this key now"
+    assert html =~ "wwk_"
+    assert html =~ "local-gateway"
+    assert [%{"id" => id}] = Wardwright.ModelApiKeyStore.list("coding-balanced")
+
+    html =
+      view
+      |> element("button[phx-click='revoke-key'][phx-value-id='#{id}']")
+      |> render_click()
+
+    assert html =~ "No API keys have been created for this model."
+    assert Wardwright.ModelApiKeyStore.list("coding-balanced") == []
+  end
+
+  test "model API key management page edits keyed and unkeyed access" do
+    {:ok, view, html} = live(build_conn(), "/admin/model-api-keys")
+
+    assert html =~ "Unkeyed"
+    refute Wardwright.model_requires_api_key?()
+    assert Wardwright.unkeyed_model_access() == "public"
+
+    html =
+      view
+      |> form("#model-access-form", %{
+        "access" => %{"requires_api_key" => "true", "unkeyed_model_access" => "internal"}
+      })
+      |> render_submit()
+
+    assert html =~ "Model access saved."
+    assert html =~ "API key required"
+    assert Wardwright.model_requires_api_key?()
+    assert Wardwright.unkeyed_model_access() == "internal"
+
+    html =
+      view
+      |> form("#model-access-form", %{
+        "access" => %{"requires_api_key" => "false", "unkeyed_model_access" => "public"}
+      })
+      |> render_submit()
+
+    assert html =~ "Unkeyed"
+    refute Wardwright.model_requires_api_key?()
+    assert Wardwright.unkeyed_model_access() == "public"
+  end
+
   test "LiveView client assets are served without an npm build step" do
     conn = get(build_conn(), "/assets/wardwright_live.js")
     assert response(conn, 200) =~ "new window.LiveView.LiveSocket"
@@ -314,6 +438,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "/mcp"
     assert html =~ "wardwright tools"
     assert html =~ "Model Access"
+    assert html =~ "href=\"/admin/model-api-keys\""
     assert html =~ "/v1/chat/completions"
     assert html =~ "coding-balanced"
     assert html =~ "wardwright/coding-balanced"
@@ -1009,4 +1134,6 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     File.rm_rf!(path)
     path
   end
+
+  defp basic_auth(username, password), do: "Basic " <> Base.encode64("#{username}:#{password}")
 end

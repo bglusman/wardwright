@@ -279,6 +279,12 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       </div>
 
       <nav>
+        <h2 class="nav_heading">Operator</h2>
+        <a href="/admin/model-api-keys">
+          <strong>Model Management</strong>
+          <span>Set keyed access and rotate model API keys.</span>
+        </a>
+
         <form class="recipe_source" phx-change="select-recipe-source" phx-submit="select-recipe-source">
           <label for="recipe_source">Example set</label>
           <select id="recipe_source" name="recipe_source" phx-change="select-recipe-source">
@@ -412,7 +418,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             <h2>Model Access</h2>
             <p>Use these OpenAI-compatible endpoints and model IDs when pointing a local agent at Wardwright.</p>
           </div>
-          <.badge value={"#{length(@model_access["provider_models"])} provider models"} />
+          <div class="topbar_actions">
+            <a class="button secondary" href="/admin/model-api-keys">Manage keys</a>
+            <.badge value={"#{length(@model_access["provider_models"])} provider models"} />
+          </div>
         </div>
 
         <div class="access_grid">
@@ -1239,8 +1248,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .agent_cta code { color: #f5fbff; overflow-wrap: anywhere; }
     .sidebar_footer { margin-top: auto; padding: 14px; border: 1px solid #4d5f6f; border-radius: 6px; background: #2d3944; overflow-wrap: anywhere; }
     .workspace { min-width: 0; padding: 28px; }
+    .model_key_workspace { max-width: 1440px; margin: 0 auto; }
     .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
     .topbar > div:first-child, .panel_header > div { min-width: 0; flex: 1 1 auto; }
+    .topbar_actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
     .eyebrow { margin: 0 0 4px; color: #5e6b76; font-size: 12px; font-weight: 800; text-transform: uppercase; }
     h1, h2, h3, p { margin-top: 0; }
     h1 { margin-bottom: 6px; font-size: 30px; line-height: 1.12; }
@@ -1249,6 +1260,12 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     p { color: #5e6b76; line-height: 1.45; }
     .panel { min-width: 0; margin-bottom: 18px; padding: 20px; border: 1px solid #d3dbe2; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgb(16 24 40 / 5%); }
     .panel_header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
+    .button { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 7px 12px; border: 1px solid #2f74b5; border-radius: 6px; color: #fff; background: #2f74b5; font: inherit; font-size: 13px; font-weight: 800; line-height: 1.2; cursor: pointer; }
+    .button:hover { border-color: #235b91; background: #235b91; }
+    .button.secondary { border-color: #c5d0d9; color: #26323c; background: #fff; }
+    .button.secondary:hover { border-color: #8fa1b2; background: #f3f6f8; }
+    .button.danger { border-color: #c45c5c; color: #8b2d2d; background: #fff5f5; }
+    .button.danger:hover { border-color: #9d3737; background: #ffe8e8; }
     .engine_card { display: grid; gap: 6px; min-width: 260px; padding: 12px; border: 1px solid #d3dbe2; border-radius: 8px; background: #fff; }
     .engine_card span:last-child { color: #66727c; font-size: 12px; }
     .recipe_context { display: grid; gap: 10px; margin-bottom: 18px; padding: 16px; border: 1px solid #d3dbe2; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgb(16 24 40 / 4%); }
@@ -1281,6 +1298,32 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .provider_model_list { display: grid; gap: 9px; }
     .provider_model_list h3 { margin: 0; }
     .provider_model_card { grid-template-columns: minmax(180px, 0.65fr) minmax(0, 1fr); align-items: start; }
+    .model_key_grid { display: grid; grid-template-columns: minmax(320px, 0.85fr) minmax(420px, 1.15fr); gap: 18px; align-items: start; }
+    .model_key_grid .panel { margin-bottom: 0; }
+    .access_policy_editor { grid-row: span 2; }
+    .keys_panel { grid-column: 1 / -1; }
+    .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; }
+    .metrics div { min-width: 0; padding: 10px; border: 1px solid #e1e7ed; border-radius: 7px; background: #fbfcfd; }
+    .metrics dt { color: #66727c; font-size: 11px; font-weight: 900; text-transform: uppercase; }
+    .metrics dd { min-width: 0; margin: 3px 0 0; color: #17202a; font-weight: 800; overflow-wrap: anywhere; }
+    .stacked_form, .inline_form { display: grid; gap: 12px; min-width: 0; }
+    .inline_form { grid-template-columns: minmax(220px, 1fr) max-content; align-items: end; }
+    .inline_form label, .stacked_form label { display: grid; gap: 5px; min-width: 0; color: #4b5863; font-size: 13px; font-weight: 800; }
+    .inline_form input { width: 100%; min-height: 36px; padding: 7px 9px; border: 1px solid #cbd5df; border-radius: 6px; color: #17202a; background: #fbfcfd; font: inherit; }
+    .stacked_form fieldset { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px; border: 1px solid #d8e0e7; border-radius: 8px; background: #fbfcfd; }
+    .stacked_form legend { padding: 0 4px; color: #4b5863; font-size: 12px; font-weight: 900; text-transform: uppercase; }
+    .radio_card { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: start; padding: 9px; border: 1px solid #d8e0e7; border-radius: 7px; background: #fff; cursor: pointer; }
+    .radio_card input { margin-top: 3px; }
+    .radio_card span { display: grid; gap: 3px; min-width: 0; }
+    .radio_card strong { color: #17202a; }
+    .radio_card small { color: #5e6b76; font-weight: 600; line-height: 1.35; }
+    .notice_panel { margin-bottom: 18px; padding: 12px 14px; border: 1px solid #94c7b5; border-radius: 8px; color: #1c654f; background: #edf8f3; }
+    .notice_panel.error { border-color: #df9a9a; color: #8b2d2d; background: #fff1f1; }
+    .success_panel { border-color: #94c7b5; background: #f0faf6; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 9px 10px; border-bottom: 1px solid #e1e7ed; text-align: left; vertical-align: top; }
+    th { color: #66727c; background: #f8fafc; font-size: 12px; font-weight: 900; text-transform: uppercase; }
+    td { color: #26323c; font-size: 13px; }
     .projection_inspector_links { margin-bottom: 14px; }
     .projection_inspector_links details { padding: 9px 11px; border: 1px solid #d8e0e7; border-radius: 8px; color: #4b5863; background: #f8fafc; }
     .projection_inspector_links summary { width: fit-content; cursor: pointer; color: #3a4650; font-size: 13px; font-weight: 800; }
@@ -1478,11 +1521,12 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       .shell > [data-phx-main] { display: block; min-height: 100vh; }
       .sidebar { position: static; overflow: visible; gap: 16px; padding: 18px 16px; }
       .workspace { padding: 18px 16px; }
-      .split, .scan_strip, .access_grid, .provider_model_card, .state_columns, .simulation_player, .player_event, .turn_editor_grid, .boundary_pair.changed, .attempt_step, .state_run_strip { grid-template-columns: 1fr; }
+      .split, .scan_strip, .access_grid, .provider_model_card, .model_key_grid, .metrics, .inline_form, .state_columns, .simulation_player, .player_event, .turn_editor_grid, .boundary_pair.changed, .attempt_step, .state_run_strip { grid-template-columns: 1fr; }
       .topbar, .panel_header, .state_machine_summary, .assistant_boundary, .diagram_header, .turn_editor_header { display: grid; }
       .topbar { gap: 12px; }
       .sidebar_footer { margin-top: 0; }
       .diagram_legend, .player_controls { justify-content: flex-start; }
+      .topbar_actions { justify-content: flex-start; }
       .effect_row, .state_step, .turn_editor_header form { grid-template-columns: 1fr; }
       .trace_event small, .trace_summary span, .turn_editor_header form label { grid-column: 1; }
       .trace_event .badge { grid-column: 1; grid-row: auto; justify-self: start; }

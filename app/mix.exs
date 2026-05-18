@@ -60,6 +60,7 @@ defmodule Wardwright.MixProject do
       {:telemetry_metrics, "~> 1.0"},
       {:live_dashboard_history, "~> 0.1.5"},
       {:plug_cowboy, "~> 2.7"},
+      {:exqlite, "~> 0.36"},
       {:hermes_mcp, "~> 0.14.1"},
       {:burrito, "~> 1.5", runtime: false},
       {:tinfoil, "~> 0.2", runtime: false},

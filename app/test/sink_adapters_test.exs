@@ -19,7 +19,13 @@ defmodule Wardwright.SinkAdaptersTest do
   use Wardwright.RouterCase
 
   test "configured sinks independently receive selected metadata events" do
-    jsonl_path = Path.join(System.tmp_dir!(), "wardwright-sinks-#{System.unique_integer()}.jsonl")
+    jsonl_path =
+      Path.join(
+        System.tmp_dir!(),
+        "wardwright-sinks-#{System.unique_integer([:positive, :monotonic])}.jsonl"
+      )
+
+    File.rm(jsonl_path)
     webhook_url = webhook_url()
 
     config =
@@ -93,6 +99,81 @@ defmodule Wardwright.SinkAdaptersTest do
     assert Enum.find(sinks, &(&1["id"] == "ops-webhook"))["delivered_count"] == 2
   after
     :persistent_term.erase({Wardwright.Test.SinkWebhook, :pid})
+    Wardwright.Sinks.reset()
+  end
+
+  test "failed durable sink delivery does not suppress later retries as duplicates" do
+    not_a_dir = Path.join(System.tmp_dir!(), "wardwright-sink-parent-#{System.unique_integer()}")
+    on_exit(fn -> File.rm(not_a_dir) end)
+    File.write!(not_a_dir, "not a directory")
+
+    Wardwright.Sinks.configure([
+      %{
+        "id" => "jsonl-audit",
+        "kind" => "jsonl_file",
+        "select" => %{"types" => ["policy.alert"]},
+        "delivery" => %{"path" => Path.join(not_a_dir, "events.jsonl")}
+      }
+    ])
+
+    event = %{
+      "type" => "policy.alert",
+      "rule_id" => "always-alert",
+      "message" => "operator review requested",
+      "severity" => "warning"
+    }
+
+    assert [%{"outcome" => "dead_lettered"}] = Wardwright.Sinks.emit([event])
+    assert [%{"outcome" => "dead_lettered"}] = Wardwright.Sinks.emit([event])
+  after
+    Wardwright.Sinks.reset()
+  end
+
+  test "sink normalization rejects unsupported sink kinds" do
+    assert [
+             %{"id" => "alerts", "kind" => "memory_alert"}
+           ] =
+             Wardwright.Sinks.normalize_config([
+               %{"id" => "bad", "kind" => "webhok"},
+               %{"id" => "alerts", "kind" => "memory_alert"}
+             ])
+  end
+
+  test "legacy alert delivery settings still update the default memory sink" do
+    config =
+      Wardwright.default_config()
+      |> Map.put("alert_delivery", %{"capacity" => 0, "on_full" => "fail_closed"})
+      |> Wardwright.normalize_config()
+
+    assert %{
+             "delivery" => %{"capacity" => 0, "on_full" => "fail_closed"}
+           } = Enum.find(config["sinks"], &(&1["id"] == "policy-alerts"))
+  end
+
+  test "fail-closed policy alert sinks are visible to legacy alert delivery callers" do
+    Wardwright.Sinks.configure([
+      %{
+        "id" => "webhook-alerts",
+        "kind" => "webhook",
+        "select" => %{"types" => ["policy.alert"]},
+        "delivery" => %{"url" => "http://127.0.0.1:1/", "on_error" => "fail_closed"}
+      }
+    ])
+
+    results =
+      Wardwright.Policy.AlertDelivery.deliver([
+        %{
+          "type" => "policy.alert",
+          "rule_id" => "always-alert",
+          "message" => "operator review requested",
+          "severity" => "warning"
+        }
+      ])
+
+    assert [%{"kind" => "webhook", "outcome" => "failed_closed"}] = results
+    assert Wardwright.Policy.AlertDelivery.fail_closed?(results)
+  after
+    Wardwright.Sinks.reset()
   end
 
   test "sink telemetry metrics expose dashboard history chart inputs" do
