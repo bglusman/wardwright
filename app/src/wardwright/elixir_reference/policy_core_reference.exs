@@ -1,148 +1,64 @@
 defmodule Wardwright.PolicyCoreReference do
   @moduledoc """
-  Executable Elixir reference for selected Gleam policy cores.
+  Compatibility facade for executable Elixir references to the Gleam policy cores.
 
   This file intentionally lives under `src/wardwright/elixir_reference` as
   documentation and test support. Mix does not compile it into the application;
-  `test/gleam_policy_core_test.exs` loads it explicitly to keep representative
-  Elixir semantics available for readers while production code calls Gleam.
+  tests load it explicitly to keep Elixir semantics available for readers while
+  production code calls Gleam.
   """
 
-  def success_status(guard_count) do
-    if guard_count == 0, do: "completed", else: "completed_after_guard"
-  end
+  Code.require_file("action_core_reference.exs", __DIR__)
+  Code.require_file("alert_core_reference.exs", __DIR__)
+  Code.require_file("history_core_reference.exs", __DIR__)
+  Code.require_file("plan_core_reference.exs", __DIR__)
+  Code.require_file("projection_core_reference.exs", __DIR__)
+  Code.require_file("route_core_reference.exs", __DIR__)
+  Code.require_file("stream_core_reference.exs", __DIR__)
+  Code.require_file("structured_core_reference.exs", __DIR__)
+  Code.require_file("structured_validation_core_reference.exs", __DIR__)
+  Code.require_file("tool_context_core_reference.exs", __DIR__)
 
-  def loop_outcome_status(
-        rule_id,
-        rule_failures,
-        max_failures_per_rule,
-        attempt_count,
-        max_attempts
-      ) do
-    cond do
-      rule_failures >= max_failures_per_rule -> {"exhausted_rule_budget", rule_id}
-      attempt_count >= max_attempts -> {"exhausted_guard_budget", nil}
-      true -> {"continue", nil}
-    end
-    |> elem(0)
-  end
+  alias Wardwright.ElixirReference.ActionCore
+  alias Wardwright.ElixirReference.HistoryCore
+  alias Wardwright.ElixirReference.PlanCore
+  alias Wardwright.ElixirReference.StreamCore
+  alias Wardwright.ElixirReference.StructuredCore
 
-  def count_decision(matches, opts) do
-    threshold = opts |> Keyword.fetch!(:threshold) |> max(1)
-    recent_limit = opts |> Keyword.fetch!(:recent_limit) |> max(1)
-    working_set_size = Keyword.fetch!(opts, :working_set_size)
-    scope = Keyword.fetch!(opts, :scope)
+  defdelegate success_status(guard_count), to: StructuredCore
 
-    count = matches |> Enum.take(recent_limit) |> Enum.count(& &1)
-    status = if count >= threshold, do: :triggered, else: :not_triggered
+  defdelegate loop_outcome_status(
+                rule_id,
+                rule_failures,
+                max_failures_per_rule,
+                attempt_count,
+                max_attempts
+              ), to: StructuredCore
 
-    {status, scope, count, threshold, recent_limit, working_set_size}
-  end
+  defdelegate count_decision(matches, opts), to: HistoryCore, as: :count_matches
+  defdelegate plan_threshold(value), to: PlanCore, as: :threshold
+  defdelegate plan_threshold_triggered?(count, threshold), to: PlanCore, as: :threshold_triggered?
+  defdelegate tool_policy_status(action), to: PlanCore
+  defdelegate scope_label(scope), to: PlanCore
+  defdelegate state_scope_matches?(required_state, current_state), to: PlanCore
+  def sequence_window_limit(nil), do: PlanCore.sequence_window_limit(false, 0)
+  def sequence_window_limit(requested), do: PlanCore.sequence_window_limit(true, requested)
 
-  def plan_threshold(value), do: max(1, value)
-  def plan_threshold_triggered?(count, threshold), do: max(0, count) >= max(1, threshold)
+  def within_wall_clock_window?(nil, current_ms, prior_ms),
+    do: PlanCore.within_wall_clock_window?(false, 0, current_ms, prior_ms)
 
-  def tool_policy_status(action) do
-    case action do
-      "block" -> "blocked"
-      action when action in ["restrict_routes", "switch_model", "reroute"] -> "rerouted"
-      action when action in ["escalate", "alert_async"] -> "alerted"
-      action when action in ["inject_reminder_and_retry", "transform"] -> "transformed"
-      _ -> "allowed"
-    end
-  end
+  def within_wall_clock_window?(max_ms, current_ms, prior_ms),
+    do: PlanCore.within_wall_clock_window?(true, max_ms, current_ms, prior_ms)
 
-  def scope_label(""), do: "session"
-  def scope_label("session_id"), do: "session"
-  def scope_label("run_id"), do: "run"
-  def scope_label(value), do: value
+  defdelegate event_after?(left_created_ms, left_sequence, right_created_ms, right_sequence),
+    to: PlanCore
 
-  def state_scope_matches?("", _current_state), do: true
-  def state_scope_matches?("active", current_state), do: current_state == "active"
-  def state_scope_matches?(required_state, current_state), do: current_state == required_state
-
-  def sequence_window_limit(nil), do: 21
-  def sequence_window_limit(requested), do: max(2, requested + 1)
-
-  def within_wall_clock_window?(nil, _current_ms, _prior_ms), do: true
-  def within_wall_clock_window?(max_ms, current_ms, prior_ms), do: current_ms - prior_ms <= max_ms
-
-  def event_after?(left_created_ms, left_sequence, right_created_ms, right_sequence) do
-    {left_created_ms, left_sequence} > {right_created_ms, right_sequence}
-  end
-
-  def stream_action_tag(action, match_scope) do
-    case {action, match_scope} do
-      {"rewrite", "stream_window"} -> "rewrite_window"
-      {"rewrite", _} -> "rewrite_chunk"
-      {"rewrite_chunk", "stream_window"} -> "rewrite_window"
-      {"rewrite_chunk", _} -> "rewrite_chunk"
-      {"drop_chunk", _} -> "drop_chunk"
-      {action, _} when action in ["block", "block_final"] -> "block"
-      {action, _} when action in ["retry", "retry_with_reminder"] -> "retry"
-      {"pass", _} -> "pass"
-      _ -> "annotate"
-    end
-  end
-
-  def terminal_stream_status(action) do
-    case stream_action_tag(action, "chunk") do
-      "block" -> "stream_policy_blocked"
-      "retry" -> "stream_policy_retry_required"
-      _ -> "completed"
-    end
-  end
-
-  def action_phase(kind, action) do
-    cond do
-      action in ["restrict_routes", "switch_model", "reroute"] -> "request.routing"
-      action in ["inject_reminder_and_retry", "transform"] -> "request.rewrite"
-      action in ["escalate", "alert_async"] -> "request.alert"
-      action == "block" -> "request.terminal"
-      kind in ["history_threshold", "history_regex_threshold"] -> "request.history"
-      true -> "request.review"
-    end
-  end
-
-  def action_effect_type(action) do
-    case action do
-      "block" -> "terminal"
-      action when action in ["restrict_routes", "switch_model", "reroute"] -> "route_constraint"
-      action when action in ["inject_reminder_and_retry", "transform"] -> "request_transform"
-      action when action in ["escalate", "alert_async"] -> "alert"
-      "annotate" -> "annotation"
-      _ -> "custom"
-    end
-  end
-
-  def action_conflict_key(action) do
-    case action do
-      "block" -> "terminal_decision"
-      action when action in ["restrict_routes", "switch_model", "reroute"] -> "route_constraints"
-      action when action in ["inject_reminder_and_retry", "transform"] -> "request_rewrite"
-      _ -> ""
-    end
-  end
-
-  def action_conflict_policy(action) do
-    if action_conflict_key(action) == "", do: "parallel_safe", else: "ordered"
-  end
-
-  def action_default_priority(action) do
-    case action do
-      "block" -> 10
-      action when action in ["restrict_routes", "switch_model", "reroute"] -> 30
-      action when action in ["inject_reminder_and_retry", "transform"] -> 50
-      action when action in ["escalate", "alert_async"] -> 70
-      _ -> 90
-    end
-  end
-
-  def result_action(status, has_blocking_action, _action_count) do
-    cond do
-      status == "error" -> "block"
-      has_blocking_action -> "block"
-      true -> "allow"
-    end
-  end
+  defdelegate stream_action_tag(action, match_scope), to: StreamCore, as: :action_tag
+  defdelegate terminal_stream_status(action), to: StreamCore, as: :terminal_status
+  defdelegate action_phase(kind, action), to: ActionCore, as: :phase
+  defdelegate action_effect_type(action), to: ActionCore, as: :effect_type
+  defdelegate action_conflict_key(action), to: ActionCore, as: :conflict_key
+  defdelegate action_conflict_policy(action), to: ActionCore, as: :conflict_policy
+  defdelegate action_default_priority(action), to: ActionCore, as: :default_priority
+  defdelegate result_action(status, has_blocking_action, action_count), to: ActionCore
 end

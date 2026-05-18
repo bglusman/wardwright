@@ -176,7 +176,8 @@ The first goal is a dense operational workbench, not a marketing dashboard.
    cores directly through thin Elixir boundary wrappers rather than carrying
    Elixir fallback adapters. When an Elixir mirror helps readers or reviewers,
    keep it as executable reference documentation under
-   `app/src/wardwright/elixir_reference` and load it only from tests.
+   `app/src/wardwright/elixir_reference` as a `.exs` module matching the Gleam
+   core, and load it only from tests.
 
 4. **Runtime Isolation Demo**
    Build model/session dynamic supervisors in the primary Elixir backend and
