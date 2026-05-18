@@ -113,6 +113,8 @@ defmodule Wardwright.PublicApiTest do
 
     assert "explain_projection" in tool_names
     assert "simulate_policy" in tool_names
+    assert "list_dune_snippets" in tool_names
+    assert "evaluate_dune_snippet" in tool_names
     assert "draft_synthetic_model" in tool_names
     assert "activate_synthetic_model" in tool_names
     assert "record_scenario" in tool_names
@@ -136,6 +138,47 @@ defmodule Wardwright.PublicApiTest do
 
     missing = call(:get, "/v1/policy-authoring/projections/not-real")
     assert missing.status == 404
+  end
+
+  test "protected policy authoring API lists and evaluates Dune snippets" do
+    rejected = call(:get, "/v1/policy-authoring/dune-snippets", nil, [], {203, 0, 113, 10})
+    assert rejected.status == 403
+
+    listed = call(:get, "/v1/policy-authoring/dune-snippets")
+    assert listed.status == 200
+
+    snippets = Jason.decode!(listed.resp_body)["data"]
+    assert Enum.any?(snippets, &(&1["id"] == "tool.browser-before-shell"))
+
+    registry_eval =
+      call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{
+        "snippet_id" => "tool.browser-before-shell",
+        "input" => %{
+          "tool_name" => "shell.exec",
+          "recent_tools" => ["browser.open"]
+        }
+      })
+
+    assert registry_eval.status == 200
+    registry_body = Jason.decode!(registry_eval.resp_body)
+    assert get_in(registry_body, ["result", "policy_status"]) == "ok"
+    assert get_in(registry_body, ["result", "policy_result", "action"]) == "allow_tool"
+
+    ad_hoc_eval =
+      call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{
+        "source" => """
+        %{"action" => "block", "reason" => input["reason"]}
+        """,
+        "input" => %{"reason" => "operator test"}
+      })
+
+    assert ad_hoc_eval.status == 200
+
+    assert get_in(Jason.decode!(ad_hoc_eval.resp_body), ["result", "policy_result", "reason"]) ==
+             "operator test"
+
+    missing = call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{})
+    assert missing.status == 400
   end
 
   test "protected policy authoring API drafts and activates synthetic models" do

@@ -11,7 +11,7 @@ defmodule Wardwright.PolicySandbox.Dune do
   @default_opts [
     timeout: 250,
     max_reductions: 10_000,
-    max_heap_size: 20_000,
+    max_heap_size: 100_000,
     inspect_sort_maps: true
   ]
 
@@ -27,6 +27,41 @@ defmodule Wardwright.PolicySandbox.Dune do
     source
     |> Dune.string_to_quoted(Keyword.merge(@default_opts, opts))
     |> normalize_result()
+  end
+
+  def eval_snippet(source, input, opts \\ []) when is_binary(source) and is_list(opts) do
+    input = normalize_json_value(input)
+
+    """
+    input = #{inspect(input, limit: :infinity, printable_limit: :infinity)}
+
+    #{source}
+    """
+    |> eval_string(opts)
+    |> normalize_policy_result()
+  end
+
+  defp normalize_policy_result(%{"status" => "ok", "value" => value} = result)
+       when is_map(value) do
+    result
+    |> Map.put("policy_result", normalize_policy_map(value))
+    |> Map.put("policy_status", policy_status(value))
+  end
+
+  defp normalize_policy_result(%{"status" => "ok"} = result) do
+    Map.merge(result, %{
+      "policy_status" => "error",
+      "policy_result" => fail_closed_result("invalid_result", "Dune snippet must return a map.")
+    })
+  end
+
+  defp normalize_policy_result(
+         %{"status" => "error", "reason" => reason, "message" => message} = result
+       ) do
+    Map.merge(result, %{
+      "policy_status" => "error",
+      "policy_result" => fail_closed_result(reason, message)
+    })
   end
 
   defp normalize_result(%Dune.Success{} = success) do
@@ -48,4 +83,49 @@ defmodule Wardwright.PolicySandbox.Dune do
       "stdio" => failure.stdio
     }
   end
+
+  defp normalize_policy_map(result) do
+    result
+    |> Map.put_new("schema", "wardwright.policy_result.v1")
+    |> Map.put_new("source", "dune")
+    |> Map.put_new("action", "block")
+    |> Map.put_new("status", "matched")
+    |> Map.put_new("trace", [])
+  end
+
+  defp policy_status(%{"action" => action}) when is_binary(action), do: "ok"
+  defp policy_status(_result), do: "error"
+
+  defp fail_closed_result(reason, message) do
+    %{
+      "schema" => "wardwright.policy_result.v1",
+      "source" => "dune",
+      "status" => "error",
+      "action" => "block",
+      "reason" => reason,
+      "message" => message,
+      "trace" => [
+        %{
+          "rule" => "dune-snippet",
+          "result" => false,
+          "reason" => reason
+        }
+      ]
+    }
+  end
+
+  defp normalize_json_value(value) when is_map(value) do
+    value
+    |> Enum.map(fn {key, inner} -> {to_string(key), normalize_json_value(inner)} end)
+    |> Map.new()
+  end
+
+  defp normalize_json_value(value) when is_list(value),
+    do: Enum.map(value, &normalize_json_value/1)
+
+  defp normalize_json_value(value) when is_binary(value), do: value
+  defp normalize_json_value(value) when is_boolean(value), do: value
+  defp normalize_json_value(value) when is_number(value), do: value
+  defp normalize_json_value(nil), do: nil
+  defp normalize_json_value(value), do: inspect(value)
 end

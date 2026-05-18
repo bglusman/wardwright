@@ -24,6 +24,24 @@ defmodule WardwrightWeb.PolicyAuthoringTools do
         "/agent-authoring.html#simulate-before-you-activate"
       ),
       tool(
+        "list_dune_snippets",
+        "GET",
+        "/v1/policy-authoring/dune-snippets",
+        "List built-in Dune policy snippets with source, example inputs, phases, and the structured primitives they may replace.",
+        "Use when exploring whether a policy behavior is clearer as inspectable BEAM-native code than as structured primitive fields.",
+        "Read-only. Dune snippets are local/trusted policy candidates, not hostile-code portability guarantees.",
+        "/agent-authoring.html#try-dune-snippets"
+      ),
+      tool(
+        "evaluate_dune_snippet",
+        "POST",
+        "/v1/policy-authoring/dune-snippets/evaluate",
+        "Run a registry or ad hoc Dune snippet against a supplied JSON-like input map and return normalized policy-result evidence.",
+        "Use before proposing any Dune-backed behavior so the user can inspect concrete results and failure modes.",
+        "Read-only evaluation. Sandbox errors and malformed results fail closed; never activate snippets without scenario review.",
+        "/agent-authoring.html#try-dune-snippets"
+      ),
+      tool(
         "draft_synthetic_model",
         "POST",
         "/v1/policy-authoring/synthetic-models/draft",

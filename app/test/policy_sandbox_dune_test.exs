@@ -2,6 +2,7 @@ defmodule Wardwright.PolicySandbox.DuneTest do
   use ExUnit.Case, async: true
 
   alias Wardwright.PolicySandbox.Dune, as: DuneSandbox
+  alias Wardwright.PolicySandbox.DuneSnippetRegistry
 
   test "evaluates a deterministic policy-shaped result" do
     result =
@@ -87,5 +88,58 @@ defmodule Wardwright.PolicySandbox.DuneTest do
 
     assert %{"status" => "error", "reason" => reason} = result
     assert reason in ["timeout", "reductions"]
+  end
+
+  test "registry snippets are inspectable and evaluate against example inputs" do
+    registry = DuneSnippetRegistry.list()
+
+    assert registry["schema"] == "wardwright.dune_snippet_registry.v1"
+    assert Enum.count(registry["data"]) >= 3
+
+    assert %{
+             "id" => "history.related-secret-ladder",
+             "source" => source,
+             "example_input" => example_input
+           } =
+             Enum.find(registry["data"], &(&1["id"] == "history.related-secret-ladder"))
+
+    assert source =~ "transition_state"
+
+    assert {:ok, evaluation} =
+             DuneSnippetRegistry.evaluate(%{
+               "snippet_id" => "history.related-secret-ladder",
+               "input" => example_input
+             })
+
+    assert evaluation["schema"] == "wardwright.dune_snippet_evaluation.v1"
+    assert get_in(evaluation, ["result", "policy_status"]) == "ok"
+    assert get_in(evaluation, ["result", "policy_result", "action"]) == "transition_state"
+    assert get_in(evaluation, ["result", "policy_result", "to_state"]) == "review_required"
+  end
+
+  test "ad hoc snippets can be tested and malformed results fail closed" do
+    assert {:ok, evaluation} =
+             DuneSnippetRegistry.evaluate(%{
+               "source" => """
+               if input["approved"] do
+                 %{"action" => "allow", "reason" => "approved"}
+               else
+                 %{"action" => "require_review", "reason" => "missing approval"}
+               end
+               """,
+               "input" => %{"approved" => false}
+             })
+
+    assert get_in(evaluation, ["result", "policy_result", "action"]) == "require_review"
+
+    assert {:ok, malformed} =
+             DuneSnippetRegistry.evaluate(%{
+               "source" => "\"not a policy result\"",
+               "input" => %{}
+             })
+
+    assert get_in(malformed, ["result", "policy_status"]) == "error"
+    assert get_in(malformed, ["result", "policy_result", "action"]) == "block"
+    assert get_in(malformed, ["result", "policy_result", "reason"]) == "invalid_result"
   end
 end

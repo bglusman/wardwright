@@ -49,6 +49,22 @@ that normalizes Dune success and failure structs into policy-engine result maps.
 This is intentionally small so callers can fail closed without binding the rest
 of Wardwright to Dune's API.
 
+A second spike adds `Wardwright.PolicySandbox.DuneSnippetRegistry`, a small
+registry of named snippets plus an evaluator for registry and ad hoc source.
+The registry is exposed through protected HTTP and MCP-shaped tools:
+
+- `GET /v1/policy-authoring/dune-snippets`
+- `POST /v1/policy-authoring/dune-snippets/evaluate`
+- `list_dune_snippets`
+- `evaluate_dune_snippet`
+
+The evaluator binds a JSON-like `input` map before executing source, normalizes
+successful map returns to `wardwright.policy_result.v1`, and turns sandbox
+failures or malformed returns into explicit fail-closed policy results. This is
+the first concrete version of the "snippet emulator" idea: an agent can draft
+or fork a snippet, run it against representative inputs, and show the exact
+policy action and trace before suggesting artifact changes.
+
 Executable tests currently verify:
 
 - deterministic policy-shaped map results can be returned
@@ -57,6 +73,8 @@ Executable tests currently verify:
 - CPU-heavy policy work can be stopped by `max_reductions`
 - large allocations can be stopped by `max_heap_size`
 - low wall-clock budgets stop slow allowed work by timeout or reductions
+- registry snippets are inspectable and evaluate against example inputs
+- ad hoc snippets can be tested, while malformed outputs fail closed
 
 One useful observation: recursive module-style code hit the memory cap before
 the reduction cap in an early test. This is acceptable fail-closed behavior, but
@@ -102,7 +120,8 @@ The BEAM prototype now has a common policy namespace for three execution paths:
 
 - primitive request governance in `Wardwright.Policy.Plan` and reusable
   primitive engine rules in `Wardwright.Policy.Engine`
-- Dune snippets through `Wardwright.PolicySandbox.Dune`
+- Dune snippets through `Wardwright.PolicySandbox.Dune` and
+  `Wardwright.PolicySandbox.DuneSnippetRegistry`
 - WASM through `Wardwright.PolicySandbox.Wasm`
 
 The WASM path is intentionally fail-closed until a runtime dependency and fuel

@@ -45,7 +45,9 @@ defmodule Wardwright.MCPAuthoringTest do
     assert tool_names == [
              "activate_synthetic_model",
              "draft_synthetic_model",
+             "evaluate_dune_snippet",
              "explain_projection",
+             "list_dune_snippets",
              "propose_rule_change",
              "simulate_policy",
              "validate_policy_artifact"
@@ -81,6 +83,37 @@ defmodule Wardwright.MCPAuthoringTest do
 
     assert response.structured_content["schema"] == "wardwright.policy_validation.v1"
     assert response.structured_content["source"] == "current_config"
+  end
+
+  test "Dune snippet MCP tools list registry snippets and evaluate ad hoc source" do
+    assert {:reply, %Response{} = list_response, %Frame{}} =
+             WardwrightWeb.MCP.Tools.ListDuneSnippets.execute(%{}, Frame.new())
+
+    assert Enum.any?(
+             list_response.structured_content["data"],
+             &(&1["id"] == "route.private-context-local-only")
+           )
+
+    assert {:reply, %Response{} = eval_response, %Frame{}} =
+             WardwrightWeb.MCP.Tools.EvaluateDuneSnippet.execute(
+               %{
+                 "source" => """
+                 if input["risk"] == "high" do
+                   %{"action" => "require_review", "reason" => "high risk"}
+                 else
+                   %{"action" => "allow", "reason" => "low risk"}
+                 end
+                 """,
+                 "input" => %{"risk" => "high"}
+               },
+               Frame.new()
+             )
+
+    assert get_in(eval_response.structured_content, [
+             "result",
+             "policy_result",
+             "action"
+           ]) == "require_review"
   end
 
   test "draft synthetic model tool returns a callable model artifact" do
@@ -199,7 +232,9 @@ defmodule Wardwright.MCPAuthoringTest do
     assert tool_names == [
              "activate_synthetic_model",
              "draft_synthetic_model",
+             "evaluate_dune_snippet",
              "explain_projection",
+             "list_dune_snippets",
              "propose_rule_change",
              "simulate_policy",
              "validate_policy_artifact"

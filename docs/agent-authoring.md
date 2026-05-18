@@ -126,6 +126,38 @@ Sandboxed engines such as Dune or WASM require scenario evidence before they can
 be treated as reviewed because the projection may not explain every branch
 statically.
 
+## Try Dune Snippets
+
+Use `list_dune_snippets` when exploring whether an existing behavior would be
+clearer as inspectable local code than as several structured fields. The current
+registry is a spike and includes small examples for private route gating,
+history-count state escalation, and cross-tool sequence review.
+
+Use `evaluate_dune_snippet` before proposing any Dune-backed policy. It accepts
+either:
+
+- `snippet_id` plus an `input` map for a built-in registry snippet
+- ad hoc `source` plus an `input` map for code the agent is drafting
+
+The snippet receives a JSON-like map named `input` and should return a
+policy-shaped map such as:
+
+```elixir
+%{
+  "action" => "require_review",
+  "reason" => "shell_without_recent_browser_context",
+  "trace" => [%{"rule" => "browser_before_shell", "result" => false}]
+}
+```
+
+Malformed return values, restricted APIs, timeout, reduction exhaustion, and
+memory exhaustion all return a fail-closed `block` result. Treat that as useful
+review evidence, not as permission to activate the snippet.
+
+Dune snippets are a local/trusted advanced authoring path. Do not present them
+as safe for third-party policy packages or marketplace rules; those still need a
+harder boundary such as WASM or an isolated sidecar.
+
 ## Activate Only After Review
 
 Use `activate_synthetic_model` only after explicit user approval. Activation
