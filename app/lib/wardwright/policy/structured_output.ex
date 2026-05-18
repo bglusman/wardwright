@@ -145,30 +145,76 @@ defmodule Wardwright.Policy.StructuredOutput do
         not Map.has_key?(parsed, key) or property_valid?(parsed[key], property_schema)
       end)
 
-    required_ok? and additional_ok? and properties_ok?
+    :wardwright@structured_validation_core.object_schema_valid(
+      required_ok?,
+      additional_ok?,
+      properties_ok?
+    )
   end
 
   defp schema_valid?(_parsed, _schema), do: false
 
   defp property_valid?(_value, nil), do: false
 
-  defp property_valid?(value, %{"type" => "string"} = schema),
-    do:
-      is_binary(value) and String.length(value) >= Map.get(schema, "minLength", 0) and
-        enum_valid?(value, schema)
+  defp property_valid?(value, %{"type" => "string"} = schema) do
+    :wardwright@structured_validation_core.string_property_valid(
+      is_binary(value),
+      if(is_binary(value), do: String.length(value), else: 0),
+      string_min_length(schema),
+      enum_valid?(value, schema)
+    )
+  end
 
-  defp property_valid?(value, %{"type" => "number"} = schema),
-    do:
-      is_number(value) and value >= Map.get(schema, "minimum", value) and
-        value <= Map.get(schema, "maximum", value)
+  defp property_valid?(value, %{"type" => "number"} = schema) do
+    minimum = number_minimum(schema, value)
+    maximum = number_maximum(schema, value)
 
-  defp property_valid?(value, %{"type" => "array", "items" => %{"type" => "string"}}),
-    do: is_list(value) and Enum.all?(value, &is_binary/1)
+    :wardwright@structured_validation_core.number_property_valid(
+      is_number(value),
+      is_number(value) and value >= minimum,
+      is_number(value) and value <= maximum
+    )
+  end
+
+  defp property_valid?(value, %{"type" => "array", "items" => %{"type" => "string"}}) do
+    :wardwright@structured_validation_core.string_array_property_valid(
+      is_list(value),
+      is_list(value) and Enum.all?(value, &is_binary/1)
+    )
+  end
 
   defp property_valid?(_value, _schema), do: false
 
   defp enum_valid?(value, %{"enum" => allowed}), do: value in allowed
   defp enum_valid?(_value, _schema), do: true
+
+  defp string_min_length(schema) do
+    case Map.fetch(schema, "minLength") do
+      {:ok, value} -> value
+      :error -> 0
+    end
+  end
+
+  defp number_minimum(schema, default) do
+    case Map.fetch(schema, "minimum") do
+      {:ok, value} -> value
+      :error -> default
+    end
+  end
+
+  defp number_maximum(schema, default) do
+    case Map.fetch(schema, "maximum") do
+      {:ok, value} -> value
+      :error -> default
+    end
+  end
+
+  defp semantic_pattern(rule) do
+    case Map.fetch(rule, "pattern") do
+      {:ok, value} -> to_string(value)
+      :error -> ""
+    end
+  end
 
   defp validate_semantic_rules(parsed, rules) when is_list(rules) do
     Enum.reduce_while(rules, :ok, fn rule, :ok ->
@@ -182,7 +228,11 @@ defmodule Wardwright.Policy.StructuredOutput do
 
   defp semantic_rule_valid?(parsed, %{"kind" => "json_path_number", "path" => path} = rule) do
     value = json_pointer(parsed, path)
-    is_number(value) and compare_number(value, rule)
+
+    :wardwright@structured_validation_core.semantic_number_rule_valid(
+      is_number(value),
+      is_number(value) and compare_number(value, rule)
+    )
   end
 
   defp semantic_rule_valid?(
@@ -191,13 +241,22 @@ defmodule Wardwright.Policy.StructuredOutput do
        ) do
     case json_pointer(parsed, path) do
       value when is_binary(value) ->
-        not String.contains?(
-          String.downcase(value),
-          rule |> Map.get("pattern", "") |> to_string() |> String.downcase()
+        contains_pattern? =
+          String.contains?(
+            String.downcase(value),
+            rule |> semantic_pattern() |> String.downcase()
+          )
+
+        :wardwright@structured_validation_core.semantic_string_not_contains_valid(
+          true,
+          contains_pattern?
         )
 
       _ ->
-        true
+        :wardwright@structured_validation_core.semantic_string_not_contains_valid(
+          false,
+          false
+        )
     end
   end
 

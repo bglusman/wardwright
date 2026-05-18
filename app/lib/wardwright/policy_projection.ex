@@ -57,17 +57,8 @@ defmodule Wardwright.PolicyProjection do
 
   def pattern_ids, do: Enum.map(@patterns, &Map.fetch!(&1, "id"))
 
-  def state_ids("tts-retry"), do: ["observing", "guarding", "retrying", "recording"]
-
-  def state_ids("stream-rewrite-state"),
-    do: ["observing", "rewriting", "review_required", "recording"]
-
   def state_ids(pattern_id) when is_binary(pattern_id) do
-    if pattern_id in pattern_ids() do
-      ["active"]
-    else
-      []
-    end
+    :wardwright@projection_core.state_ids(pattern_id, pattern_id in pattern_ids())
   end
 
   def pattern(pattern_id) do
@@ -1148,10 +1139,15 @@ defmodule Wardwright.PolicyProjection do
     |> Wardwright.Policy.Action.normalize(rule: rule)
   end
 
-  defp default_projected_action(%{"engine" => engine}) when engine not in [nil, ""],
-    do: "engine_result"
+  defp default_projected_action(rule) do
+    engine = Map.get(rule, "engine")
 
-  defp default_projected_action(_rule), do: "restrict_routes"
+    :wardwright@projection_core.route_action("", engine not in [nil, ""])
+    |> case do
+      "engine_decision" -> "engine_result"
+      action -> action
+    end
+  end
 
   defp request_governance_kind(%{"engine" => engine}) when engine not in [nil, ""],
     do: "policy_engine"
@@ -1180,10 +1176,16 @@ defmodule Wardwright.PolicyProjection do
   end
 
   defp request_governance_confidence(%{"engine" => engine}) when engine not in [nil, ""] do
-    if is_map(engine) or engine == "hybrid", do: "inferred", else: "opaque"
+    if is_map(engine) or engine == "hybrid" do
+      "inferred"
+    else
+      :wardwright@projection_core.route_confidence(true)
+    end
   end
 
-  defp request_governance_confidence(_rule), do: "exact"
+  defp request_governance_confidence(_rule) do
+    :wardwright@projection_core.route_confidence(false)
+  end
 
   defp request_governance_reads(%{"kind" => "history_threshold"}),
     do: ["request.messages", "policy_cache.session"]
@@ -1233,20 +1235,14 @@ defmodule Wardwright.PolicyProjection do
     )
   end
 
-  defp default_tool_action(%{"kind" => "tool_loop_threshold"}), do: "fail_closed"
-
-  defp default_tool_action(%{@kind_key => @tool_sequence_kind, @transition_to_key => _state}),
-    do: @state_transition_action
-
-  defp default_tool_action(%{
-         @kind_key => @tool_sequence_kind,
-         @then_key => %{@action_key => action}
-       }),
-       do: action
-
-  defp default_tool_action(%{"kind" => "tool_result_guard"}), do: "review_result"
-  defp default_tool_action(%{"kind" => "tool_denylist"}), do: "deny_tool"
-  defp default_tool_action(_rule), do: "constrain_tools"
+  defp default_tool_action(rule) do
+    :wardwright@projection_core.tool_action(
+      Map.get(rule, @kind_key, ""),
+      Map.get(rule, @action_key, ""),
+      get_in(rule, [@then_key, @action_key]) || "",
+      Map.get(rule, @transition_to_key, "")
+    )
+  end
 
   defp tool_governance_summary(rule, action) do
     "#{action} when #{tool_match_summary(rule)}"
@@ -1492,28 +1488,26 @@ defmodule Wardwright.PolicyProjection do
     ]
   end
 
-  defp route_effect_target(%{"action" => "restrict_routes"}), do: "route"
-
-  defp route_effect_target(%{"action" => action}) when action in ["switch_model", "reroute"],
-    do: "route"
-
-  defp route_effect_target(%{"action" => "block"}), do: "request"
-  defp route_effect_target(_action), do: "policy"
-
-  defp tool_rule_phase(rule) do
-    cond do
-      tool_loop_rule?(rule) -> "tool.loop_governing"
-      tool_result_rule?(rule) -> "tool.result_interpreting"
-      true -> "tool.planning"
-    end
+  defp route_effect_target(action) do
+    action = Map.get(action, "action", "")
+    :wardwright@projection_core.route_effect_target(action)
   end
 
-  defp tool_effect_target(action) when action in ["deny_tool", "constrain_tools"], do: "tool"
-  defp tool_effect_target(action) when action in ["fail_closed", "block"], do: "request"
-  defp tool_effect_target(_action), do: "policy"
+  defp tool_rule_phase(rule) do
+    :wardwright@projection_core.tool_rule_phase(
+      tool_loop_rule?(rule),
+      tool_result_rule?(rule)
+    )
+  end
 
-  defp effect_confidence("primitive"), do: "exact"
-  defp effect_confidence(_source_type), do: "inferred"
+  defp tool_effect_target(action) do
+    :wardwright@projection_core.tool_effect_target(action)
+  end
+
+  defp effect_confidence(source_type) do
+    source_type = to_string(source_type || "")
+    :wardwright@projection_core.effect_confidence(source_type)
+  end
 
   defp effect(id, node_id, phase, effect, target, confidence) do
     %Contract.Effect{
@@ -3050,9 +3044,14 @@ defmodule Wardwright.PolicyProjection do
     |> put_string("source", "fixture")
   end
 
-  defp tool_context_phase("tool.result_interpreting"), do: "result_interpretation"
-  defp tool_context_phase("tool.loop_governing"), do: "loop_governance"
-  defp tool_context_phase(phase), do: String.replace_prefix(phase, "tool.", "")
+  defp tool_context_phase(phase) do
+    case phase do
+      "tool.result_interpreting" -> :wardwright@projection_core.tool_context_phase(phase)
+      "tool.loop_governing" -> :wardwright@projection_core.tool_context_phase(phase)
+      "tool.planning" -> :wardwright@projection_core.tool_context_phase(phase)
+      phase -> String.replace_prefix(phase, "tool.", "")
+    end
+  end
 
   defp put_string(map, key, value), do: Map.put(map, key, value)
 
