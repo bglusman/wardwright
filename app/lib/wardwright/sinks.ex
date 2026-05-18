@@ -5,6 +5,7 @@ defmodule Wardwright.Sinks do
 
   @default_history_limit 100
   @default_timeout_ms 1_000
+  @supported_sink_kinds ["memory_alert", "jsonl_file", "webhook"]
 
   def start_link(_opts) do
     Agent.start_link(fn -> initial_state(Wardwright.default_config()["sinks"]) end,
@@ -33,7 +34,8 @@ defmodule Wardwright.Sinks do
 
   def alert_results(results) when is_list(results) do
     Enum.filter(results, fn result ->
-      result["event_type"] == "policy.alert" and result["kind"] == "memory_alert"
+      result["event_type"] == "policy.alert" and
+        (result["kind"] == "memory_alert" or result["outcome"] == "failed_closed")
     end)
   end
 
@@ -87,10 +89,11 @@ defmodule Wardwright.Sinks do
 
   def normalize_config(config, alert_delivery_config \\ %{})
 
-  def normalize_config(sinks, _alert_delivery_config) when is_list(sinks) do
+  def normalize_config(sinks, alert_delivery_config) when is_list(sinks) do
     sinks
     |> Enum.map(&normalize_sink/1)
     |> Enum.reject(&is_nil/1)
+    |> apply_legacy_alert_delivery(alert_delivery_config)
   end
 
   def normalize_config(_sinks, alert_delivery_config) do
@@ -253,11 +256,13 @@ defmodule Wardwright.Sinks do
   end
 
   defp record_result(sink_state, event, result) do
+    seen_key = Map.get(result, "_seen_key")
+    queue_key = Map.get(result, "_queue_key")
     result = Map.drop(result, ["_queue_key", "_seen_key"])
 
     sink_state
-    |> maybe_mark_seen(Map.get(result, "idempotency_key"))
-    |> maybe_enqueue(Map.get(result, "idempotency_key"), result["outcome"])
+    |> maybe_mark_seen(seen_key)
+    |> maybe_enqueue(queue_key, result["outcome"])
     |> Map.update!(:outcomes, fn outcomes ->
       Map.update(outcomes, result["outcome"], 1, &(&1 + 1))
     end)
@@ -502,7 +507,7 @@ defmodule Wardwright.Sinks do
     kind = config |> Map.get("kind", "") |> to_string() |> String.trim()
     id = config |> Map.get("id", default_sink_id(kind)) |> to_string() |> String.trim()
 
-    if id == "" or kind == "" do
+    if id == "" or kind not in @supported_sink_kinds do
       nil
     else
       %{
@@ -516,6 +521,27 @@ defmodule Wardwright.Sinks do
   end
 
   defp normalize_sink(_), do: nil
+
+  defp apply_legacy_alert_delivery(sinks, alert_delivery_config) do
+    legacy_sink = legacy_alert_sink(alert_delivery_config)
+    default_delivery = normalize_alert_delivery(%{})
+
+    if legacy_sink["delivery"] == default_delivery do
+      sinks
+    else
+      apply_legacy_alert_delivery_override(sinks, legacy_sink)
+    end
+  end
+
+  defp apply_legacy_alert_delivery_override(sinks, legacy_sink) do
+    Enum.map(sinks, fn
+      %{"id" => "policy-alerts", "kind" => "memory_alert"} = sink ->
+        Map.put(sink, "delivery", legacy_sink["delivery"])
+
+      sink ->
+        sink
+    end)
+  end
 
   defp normalize_select(select, kind) when is_map(select) do
     types =

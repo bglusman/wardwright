@@ -921,9 +921,7 @@ defmodule Wardwright.Router do
   end
 
   defp cors(conn, _opts) do
-    if String.starts_with?(conn.request_path, "/admin/") do
-      conn
-    else
+    if public_cors_path?(conn.request_path) do
       conn
       |> put_resp_header("access-control-allow-origin", "*")
       |> put_resp_header("access-control-allow-methods", "GET, POST, DELETE, OPTIONS")
@@ -935,8 +933,15 @@ defmodule Wardwright.Router do
         "access-control-expose-headers",
         "X-Wardwright-Receipt-Id, X-Wardwright-Selected-Model"
       )
+    else
+      conn
     end
   end
+
+  defp public_cors_path?("/v1/models"), do: true
+  defp public_cors_path?("/v1/wardwright/models"), do: true
+  defp public_cors_path?("/v1/chat/completions"), do: true
+  defp public_cors_path?(_path), do: false
 
   defp error(conn, status, message, type, code) do
     json(conn, status, %{

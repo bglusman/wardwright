@@ -26,10 +26,6 @@ defmodule WardwrightWeb.Router do
     plug(WardwrightWeb.ProtectedAccess)
   end
 
-  pipeline :protected_browser do
-    plug(WardwrightWeb.ProtectedAccess)
-  end
-
   scope "/", WardwrightWeb do
     pipe_through([:browser, :protected_browser])
 

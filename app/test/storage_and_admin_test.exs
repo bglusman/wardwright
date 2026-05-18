@@ -412,10 +412,18 @@ defmodule Wardwright.StorageAndAdminTest do
     assert Jason.decode!(relisted.resp_body)["data"] == []
   end
 
-  test "admin API does not emit wildcard CORS headers" do
+  test "protected APIs do not emit wildcard CORS headers" do
     conn = call(:get, "/admin/model-api-keys")
     assert conn.status == 200
     assert Plug.Conn.get_resp_header(conn, "access-control-allow-origin") == []
+
+    receipts = call(:get, "/v1/receipts")
+    assert receipts.status == 200
+    assert Plug.Conn.get_resp_header(receipts, "access-control-allow-origin") == []
+
+    policy_authoring = call(:get, "/v1/policy-authoring/tools")
+    assert policy_authoring.status == 200
+    assert Plug.Conn.get_resp_header(policy_authoring, "access-control-allow-origin") == []
 
     public = call(:get, "/v1/models")
     assert Plug.Conn.get_resp_header(public, "access-control-allow-origin") == ["*"]

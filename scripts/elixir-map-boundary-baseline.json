@@ -309,11 +309,11 @@
       }
     },
     "app/lib/wardwright/sinks.ex": {
-      "total": 159,
+      "total": 165,
       "patterns": {
-        "string_key_entry": 73,
-        "string_key_access": 47,
-        "map_call_string_key": 29,
+        "string_key_entry": 75,
+        "string_key_access": 50,
+        "map_call_string_key": 30,
         "get_in_string_path": 10
       }
     },
