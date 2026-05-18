@@ -9,7 +9,7 @@ defmodule WardwrightWeb.ModelAccessProjection do
 
   def build(config, provider_statuses, origin \\ "http://127.0.0.1:8787") do
     origin = normalize_origin(origin)
-    synthetic_model = Map.get(config, "synthetic_model", Wardwright.synthetic_model())
+    model_id = Map.get(config, "model_id", Wardwright.model_id())
 
     %{
       "service" => %{
@@ -17,18 +17,20 @@ defmodule WardwrightWeb.ModelAccessProjection do
         "openai_base_url" => "#{origin}/v1",
         "chat_completions_url" => "#{origin}/v1/chat/completions",
         "models_url" => "#{origin}/v1/models",
-        "synthetic_models_url" => "#{origin}/v1/synthetic/models",
+        "wardwright_models_url" => "#{origin}/v1/wardwright/models",
         "mcp_url" => "#{origin}/mcp",
         "tools_command" => "wardwright tools"
       },
-      "synthetic_models" => [
+      "wardwright_models" => [
         %{
-          "id" => synthetic_model,
-          "agent_model_ids" => [synthetic_model, "wardwright/#{synthetic_model}"],
-          "active_version" => Map.get(config, "version", Wardwright.synthetic_version()),
+          "id" => model_id,
+          "agent_model_ids" => [model_id, "wardwright/#{model_id}"],
+          "active_version" => Map.get(config, "version", Wardwright.model_version()),
           "route_type" => root_route_type(config),
           "route_root" => Map.get(config, "route_root", "dispatcher.prompt_length"),
           "target_models" => config |> Map.get("targets", []) |> Enum.map(& &1["model"]),
+          "provider_target_models" =>
+            config |> Wardwright.provider_targets() |> Enum.map(& &1["model"]),
           "chat_completions_url" => "#{origin}/v1/chat/completions",
           "openai_base_url" => "#{origin}/v1"
         }
@@ -44,7 +46,7 @@ defmodule WardwrightWeb.ModelAccessProjection do
       end)
 
     config
-    |> Map.get("targets", [])
+    |> Wardwright.provider_targets()
     |> Enum.map(fn target ->
       provider = target["model"] |> String.split("/", parts: 2) |> List.first()
       {kind, base_url} = provider_kind_and_base_url(provider, target)

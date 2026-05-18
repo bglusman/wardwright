@@ -1,24 +1,24 @@
 openapi: 3.1.0
 info:
-  title: Wardwright Synthetic Model Platform API
+  title: Wardwright Model Middleware API
   version: 0.1.0-draft
   description: |
     Draft contract for backend and frontend prototypes. The serving surface is
-    OpenAI-compatible where possible, with additional synthetic-model,
+    OpenAI-compatible where possible, with additional Wardwright model,
     simulation, receipt, and admin endpoints.
 servers:
   - url: http://127.0.0.1:8787
     description: Local prototype server
 tags:
   - name: OpenAI Compatible
-  - name: Synthetic Models
+  - name: Wardwright Models
   - name: Receipts
   - name: Admin
 paths:
   /v1/models:
     get:
       tags: [OpenAI Compatible]
-      summary: List public synthetic models
+      summary: List public Wardwright models
       responses:
         "200":
           description: OpenAI-compatible model list
@@ -29,7 +29,7 @@ paths:
   /v1/chat/completions:
     post:
       tags: [OpenAI Compatible]
-      summary: Execute an OpenAI-compatible chat completion through a synthetic model
+      summary: Execute an OpenAI-compatible chat completion through a Wardwright model
       parameters:
         - $ref: "#/components/parameters/TenantId"
         - $ref: "#/components/parameters/ApplicationId"
@@ -65,13 +65,13 @@ paths:
           $ref: "#/components/responses/Error"
         "502":
           $ref: "#/components/responses/Error"
-  /v1/synthetic/models:
+  /v1/wardwright/models:
     get:
-      tags: [Synthetic Models]
-      summary: List synthetic models with active versions
+      tags: [Wardwright Models]
+      summary: List Wardwright models with active versions
       responses:
         "200":
-          description: Synthetic model summaries
+          description: Wardwright model summaries
           content:
             application/json:
               schema:
@@ -81,29 +81,10 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: "#/components/schemas/SyntheticModelSummary"
-  /v1/synthetic/models/{model_id}:
-    get:
-      tags: [Synthetic Models]
-      summary: Get a synthetic model definition
-      parameters:
-        - name: model_id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Synthetic model definition
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SyntheticModel"
-        "404":
-          $ref: "#/components/responses/Error"
-  /v1/synthetic/simulate:
+                      $ref: "#/components/schemas/WardwrightModelSummary"
+  /v1/wardwright/simulate:
     post:
-      tags: [Synthetic Models]
+      tags: [Wardwright Models]
       summary: Simulate route selection without calling providers
       parameters:
         - $ref: "#/components/parameters/TenantId"
@@ -259,13 +240,13 @@ paths:
                 $ref: "#/components/schemas/RuntimeStatus"
         "403":
           $ref: "#/components/responses/ProtectedEndpoint"
-  /admin/synthetic-models:
+  /admin/wardwright-models:
     get:
       tags: [Admin]
-      summary: List full synthetic model admin records
+      summary: List full Wardwright model admin records
       responses:
         "200":
-          description: Synthetic model records
+          description: Wardwright model records
           content:
             application/json:
               schema:
@@ -275,7 +256,7 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: "#/components/schemas/SyntheticModel"
+                      $ref: "#/components/schemas/WardwrightModel"
         "403":
           $ref: "#/components/responses/ProtectedEndpoint"
   /admin/policy-alerts:
@@ -297,7 +278,7 @@ paths:
       summary: Prototype-only dynamic model definition endpoint
       description: |
         Non-production endpoint used by property/fuzz tests to install generated
-        synthetic model definitions into runnable prototypes. Disabled unless
+        Wardwright model definitions into runnable prototypes. Disabled unless
         the runtime explicitly enables `allow_test_config` or
         `WARDWRIGHT_ALLOW_TEST_CONFIG=1`.
       requestBody:
@@ -313,10 +294,10 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [status, synthetic_model]
+                required: [status, model_id]
                 properties:
                   status: { type: string }
-                  synthetic_model: { type: string }
+                  model_id: { type: string }
                   targets:
                     type: array
                     items:
@@ -396,7 +377,7 @@ components:
       properties:
         model:
           type: string
-          description: Synthetic model ID, optionally prefixed as wardwright/{id}
+          description: Wardwright model ID, optionally prefixed as wardwright/{id}
         messages:
           type: array
           items:
@@ -447,7 +428,7 @@ components:
         usage:
           type: object
           additionalProperties: true
-    SyntheticModelSummary:
+    WardwrightModelSummary:
       type: object
       required: [id, active_version, route_type, status]
       properties:
@@ -459,7 +440,7 @@ components:
         traffic_24h: { type: integer }
         fallback_rate: { type: number }
         stream_trigger_count_24h: { type: integer }
-    SyntheticModel:
+    WardwrightModel:
       type: object
       required: [id, active_version, route_graph]
       properties:
@@ -612,11 +593,11 @@ components:
           enum: [trusted_auth, header, body_metadata, provider_key, derived_anonymous]
     ReceiptSummary:
       type: object
-      required: [receipt_id, synthetic_model, synthetic_version, status, caller]
+      required: [receipt_id, model_id, model_version, status, caller]
       properties:
         receipt_id: { type: string }
-        synthetic_model: { type: string }
-        synthetic_version: { type: string }
+        model_id: { type: string }
+        model_version: { type: string }
         selected_model: { type: string }
         status: { type: string }
         stream_trigger_count: { type: integer }
@@ -631,15 +612,15 @@ components:
           $ref: "#/components/schemas/CallerContext"
     Receipt:
       type: object
-      required: [receipt_schema, receipt_id, synthetic_model, synthetic_version, caller, decision, attempts, final]
+      required: [receipt_schema, receipt_id, model_id, model_version, caller, decision, attempts, final]
       properties:
         receipt_schema:
           type: string
           const: v1
         receipt_id: { type: string }
         run_id: { type: string }
-        synthetic_model: { type: string }
-        synthetic_version: { type: string }
+        model_id: { type: string }
+        model_version: { type: string }
         caller:
           $ref: "#/components/schemas/CallerContext"
         request:
@@ -768,11 +749,11 @@ components:
             code: { type: string }
     TestModelConfig:
       type: object
-      required: [synthetic_model, targets]
+      required: [model_id, targets]
       properties:
-        synthetic_model:
+        model_id:
           type: string
-          description: Unprefixed synthetic model ID.
+          description: Unprefixed Wardwright model ID.
         version:
           type: string
         targets:

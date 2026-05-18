@@ -34,9 +34,10 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
 
     checks =
       []
-      |> validate_synthetic_model(artifact)
+      |> validate_model_id(artifact)
       |> validate_targets(artifact)
       |> validate_routes(artifact)
+      |> validate_model_graph(artifact)
       |> validate_governance(artifact)
       |> validate_stream_rules(artifact)
       |> validate_structured_output(artifact)
@@ -46,15 +47,19 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
     result(source, checks)
   end
 
-  defp validate_synthetic_model(checks, artifact) do
-    synthetic_model = artifact |> Map.get("synthetic_model", "") |> to_string() |> String.trim()
+  defp validate_model_id(checks, artifact) do
+    model_id =
+      artifact
+      |> Map.get("model_id", Map.get(artifact, "model_id", ""))
+      |> to_string()
+      |> String.trim()
 
     cond do
-      synthetic_model == "" ->
-        error(checks, "synthetic_model", "synthetic_model must not be empty")
+      model_id == "" ->
+        error(checks, "model_id", "model_id must not be empty")
 
-      String.contains?(synthetic_model, "/") ->
-        error(checks, "synthetic_model", "synthetic_model must be unprefixed")
+      String.contains?(model_id, "/") ->
+        error(checks, "model_id", "model_id must be unprefixed")
 
       true ->
         checks
@@ -80,6 +85,9 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
     model = target |> Map.get("model", "") |> to_string() |> String.trim()
     context_window = Map.get(target, "context_window")
 
+    target_kind =
+      target |> Map.get("target_kind", Map.get(target, "kind", "provider")) |> to_string()
+
     checks =
       cond do
         model == "" ->
@@ -101,6 +109,13 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
           "targets[].context_window",
           "target #{model} context_window must be positive"
         )
+      end
+
+    checks =
+      if target_kind == "wardwright_model" and not is_map(Map.get(target, "artifact")) do
+        error(checks, "targets[].artifact", "model target #{model} requires artifact")
+      else
+        checks
       end
 
     {checks, MapSet.put(seen, model)}
@@ -235,9 +250,26 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
 
   defp validate_route_action(rule, checks, artifact) do
     case Map.get(rule, "action") do
-      action when action in ["restrict_routes", "switch_model", "reroute"] ->
+      "restrict_routes" ->
         allowed = route_action_targets(rule)
-        known = target_models(artifact)
+        known = route_action_exact_targets(artifact)
+        provider_prefixes = route_action_provider_prefixes(artifact)
+
+        Enum.reduce(allowed, checks, fn model, checks ->
+          if MapSet.member?(known, model) or MapSet.member?(provider_prefixes, model) do
+            checks
+          else
+            error(
+              checks,
+              "governance.allowed_targets",
+              "route action references unknown target #{model}"
+            )
+          end
+        end)
+
+      action when action in ["switch_model", "reroute"] ->
+        allowed = route_action_targets(rule)
+        known = route_action_exact_targets(artifact)
 
         Enum.reduce(allowed, checks, fn model, checks ->
           if MapSet.member?(known, model) do
@@ -255,6 +287,85 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
         checks
     end
   end
+
+  defp validate_model_graph(checks, artifact) do
+    case model_graph_cycle(artifact, MapSet.new(), []) do
+      {:cycle, model_id, path} ->
+        error(
+          checks,
+          "model_graph",
+          "model graph cycle detected at #{model_id} through #{Enum.join(path, " -> ")}"
+        )
+
+      :ok ->
+        validate_nested_model_artifacts(checks, artifact)
+    end
+  end
+
+  defp validate_nested_model_artifacts(checks, artifact) do
+    artifact
+    |> list_field("targets")
+    |> Enum.reduce(checks, fn target, checks ->
+      nested = Map.get(target, "artifact")
+
+      if wardwright_model_target?(target) and is_map(nested) do
+        checks
+        |> add_nested_model_errors(target, nested)
+        |> validate_nested_model_artifacts(nested)
+      else
+        checks
+      end
+    end)
+  end
+
+  defp add_nested_model_errors(checks, target, nested) do
+    nested_checks =
+      []
+      |> validate_model_id(nested)
+      |> validate_targets(nested)
+      |> validate_routes(nested)
+
+    nested_checks
+    |> entries(:error)
+    |> Enum.reduce(checks, fn entry, checks ->
+      error(
+        checks,
+        "model_graph",
+        "model target #{target["model"]}: #{entry["message"]}"
+      )
+    end)
+  end
+
+  defp model_graph_cycle(artifact, visited, path) when is_map(artifact) do
+    model_id =
+      artifact
+      |> Map.get("model_id", Map.get(artifact, "model_id", "anonymous-model"))
+      |> to_string()
+
+    if MapSet.member?(visited, model_id) do
+      {:cycle, model_id, path ++ [model_id]}
+    else
+      visited = MapSet.put(visited, model_id)
+      path = path ++ [model_id]
+
+      artifact
+      |> list_field("targets")
+      |> Enum.reduce_while(:ok, fn target, :ok ->
+        nested = Map.get(target, "artifact")
+
+        if wardwright_model_target?(target) and is_map(nested) do
+          case model_graph_cycle(nested, visited, path) do
+            :ok -> {:cont, :ok}
+            cycle -> {:halt, cycle}
+          end
+        else
+          {:cont, :ok}
+        end
+      end)
+    end
+  end
+
+  defp model_graph_cycle(_artifact, _visited, _path), do: :ok
 
   defp validate_stream_rules(checks, artifact) do
     case Map.get(artifact, "stream_rules", []) do
@@ -458,11 +569,79 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
     |> MapSet.new()
   end
 
+  defp route_action_exact_targets(artifact) do
+    artifact
+    |> target_models()
+    |> MapSet.union(provider_target_models(artifact, MapSet.new(), 0))
+  end
+
+  defp provider_target_models(_artifact, _visited, depth) when depth > 8, do: MapSet.new()
+
+  defp provider_target_models(artifact, visited, depth) do
+    model_id =
+      artifact
+      |> Map.get("model_id", "anonymous-model")
+      |> to_string()
+
+    visited = MapSet.put(visited, model_id)
+
+    artifact
+    |> list_field("targets")
+    |> Enum.reduce(MapSet.new(), fn
+      target, acc when is_map(target) ->
+        nested = Map.get(target, "artifact")
+        ref_id = model_graph_ref_id(target, nested)
+
+        cond do
+          wardwright_model_target?(target) and is_map(nested) and
+              not MapSet.member?(visited, ref_id) ->
+            MapSet.union(acc, provider_target_models(nested, visited, depth + 1))
+
+          wardwright_model_target?(target) ->
+            acc
+
+          is_binary(target["model"]) ->
+            MapSet.put(acc, target["model"])
+
+          true ->
+            acc
+        end
+
+      _target, acc ->
+        acc
+    end)
+  end
+
+  defp route_action_provider_prefixes(artifact) do
+    artifact
+    |> provider_target_models(MapSet.new(), 0)
+    |> Enum.flat_map(fn model ->
+      case String.split(model, "/", parts: 2) do
+        [provider, _model] -> [provider]
+        _other -> []
+      end
+    end)
+    |> MapSet.new()
+  end
+
+  defp model_graph_ref_id(target, artifact) when is_map(artifact) do
+    artifact
+    |> Map.get("model_id", Map.get(target, "model", "anonymous-model"))
+    |> to_string()
+  end
+
+  defp model_graph_ref_id(target, _artifact), do: target |> Map.get("model", "") |> to_string()
+
   defp route_action_targets(rule) do
     rule
     |> Map.get("allowed_targets", List.wrap(Map.get(rule, "target_model", [])))
     |> List.wrap()
     |> Enum.filter(&is_binary/1)
+  end
+
+  defp wardwright_model_target?(target) when is_map(target) do
+    Map.get(target, "target_kind") == "wardwright_model" or
+      Map.get(target, "kind") == "wardwright_model" or is_map(Map.get(target, "artifact"))
   end
 
   defp positive_integer?(value), do: is_integer(value) and value > 0

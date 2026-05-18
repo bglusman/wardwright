@@ -71,7 +71,7 @@ into Wardwright-specific constraints.
 ## Scope Rules
 
 - Every new capability should map to one of the current product loops:
-  synthetic model routing, governance, receipts, simulation/projection, policy
+  Wardwright model routing, governance, receipts, simulation/projection, policy
   authoring, or runtime visibility.
 - Treat "easy to add" as a warning, not a reason. If the feature adds another
   branch to a central dispatcher or shared state container, stop and re-check

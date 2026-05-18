@@ -24,7 +24,7 @@ defmodule Wardwright.LiveProviderSmokeTest do
   defp smoke_target!(target) do
     config =
       unit_policy_config()
-      |> Map.put("synthetic_model", "live-smoke")
+      |> Map.put("model_id", "live-smoke")
       |> Map.put("version", "live-provider-smoke")
       |> Map.put("targets", [target.config])
       |> Map.put("governance", [])

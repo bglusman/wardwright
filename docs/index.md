@@ -1,30 +1,22 @@
 ---
 layout: default
 title: Wardwright
-description: Synthetic model contracts, governance, and receipts for agentic workflows.
+description: LLM model middleware, governance, and receipts for agentic workflows.
 ---
 
 <section class="hero">
-  <p class="eyebrow">Synthetic model platform</p>
+  <p class="eyebrow">LLM model middleware</p>
   <h1>Wardwright</h1>
   <p class="lede">
-    Wardwright is a control plane for agent-facing model behavior. Agents call a
-    stable model name; operators define the route graph, policy, caller
-    traceability, prompt transforms, alert hooks, and receipts behind that name.
+    Agents call a stable OpenAI-compatible model name. Wardwright owns the
+    model graph, policy checks, provider routing, stream retries and rewrites,
+    tool controls, simulations, and receipts behind that name.
   </p>
   <div class="actions">
     <a class="button" href="#install">Install</a>
-    <a class="button" href="vision.html">Read the Vision</a>
-    <a class="button secondary" href="synthetic-models.html">Synthetic Models</a>
-    <a class="button secondary" href="use-cases.html">Use Cases</a>
     <a class="button secondary" href="workbench.html">Policy Workbench</a>
-    <a class="button secondary" href="feature-spikes.html">Feature Spikes</a>
-    <a class="button secondary" href="architecture-review-tasks.html">Architecture Tasks</a>
-    <a class="button secondary" href="architecture-ratchets.html">Architecture Ratchets</a>
-    <a class="button secondary" href="policy-workbench-implementation-plan.html">Workbench Plan</a>
-    <a class="button secondary" href="tool-context-policy.html">Tool Policy</a>
-    <a class="button secondary" href="provider-credentials.html">Provider Credentials</a>
-    <a class="button secondary" href="packaging.html">Packaging</a>
+    <a class="button secondary" href="wardwright-models.html">Model Middleware</a>
+    <a class="button secondary" href="agent-authoring.html">Agent Authoring</a>
     <a class="button secondary" href="https://github.com/bglusman/wardwright">GitHub</a>
   </div>
 </section>
@@ -32,10 +24,8 @@ description: Synthetic model contracts, governance, and receipts for agentic wor
 <div class="notice">
   <strong>Status:</strong> Wardwright is early but installable. The prepared
   <code>v0.0.5</code> release publishes native macOS and Linux artifacts, a
-  Homebrew formula, the active BEAM implementation, shared contracts, and
-  a policy workbench with starter model examples, simulation playback, and
-  local Dune snippet authoring for agents. See the [Backend Selection
-  Decision](backend-selection-decision.html) for the pruning rationale.
+  Homebrew formula, an OpenAI-compatible gateway, and a policy workbench with
+  simulation playback and starter model examples.
 </div>
 
 ## Install
@@ -60,121 +50,77 @@ WARDWRIGHT_BIND=127.0.0.1:8787 \
 ~/.local/bin/wardwright serve
 ```
 
-For a pinned release, pass `--version v0.0.5` to the installer:
+Set `WARDWRIGHT_ADMIN_TOKEN` before exposing Wardwright beyond loopback. See
+[Packaging](packaging.html) for manual archive install steps and service
+details.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.5
-```
+## What Wardwright Adds
 
-The Linux installer verifies the release archive against published SHA-256
-checksums before installing. Set `WARDWRIGHT_ADMIN_TOKEN` before exposing
-Wardwright beyond loopback. See [Packaging](packaging.html) for manual archive
-install steps, release targets, and service details.
+Wardwright is a narrow control point between agent code and concrete model
+providers.
+
+<div class="grid">
+  <div class="card">
+    <h3>Stable Model IDs</h3>
+    <p>Expose names such as <code>coding-balanced</code> while Wardwright owns
+    the model graph and policy behind them.</p>
+  </div>
+  <div class="card">
+    <h3>Model Composition</h3>
+    <p>Route to provider targets, delegate through other Wardwright models, and
+    keep context-window and fallback choices explicit.</p>
+  </div>
+  <div class="card">
+    <h3>Policy And Repair</h3>
+    <p>Apply request, route, stream, output, history, alert, and tool controls,
+    including bounded stream retries and rewrites.</p>
+  </div>
+  <div class="card">
+    <h3>Receipts</h3>
+    <p>Record caller provenance, selected routes, provider attempts, policy
+    actions, and final status for each run.</p>
+  </div>
+</div>
+
+## Policy Workbench
+
+The installed app includes a workbench at `/policies` for visualizing and
+simulating Wardwright models before using them behind real traffic. Load an
+example or local model, edit the simulated request, model output, and relevant
+history, then step through the resulting policy run.
+
+<figure>
+  <img src="assets/workbench/stream-retry-simulator.png" alt="Wardwright policy workbench showing a stream retry simulation">
+  <figcaption>The simulator can replay stream governance, including the raw model stream, held/released output, retry attempts, and receipt evidence.</figcaption>
+</figure>
+
+Fresh installs include starter examples for output contracts, route/model
+composition, stream repair and session state, plus tool/workflow control.
+Locally authored models use the same workbench path when they expose a supported
+projection.
+
+See [Policy Workbench](workbench.html) for screenshots and examples. External
+agents can use `wardwright tools`, `/mcp`, and the protected authoring APIs; see
+[Agent Authoring](agent-authoring.html) for the review workflow.
 
 ## Provider Credentials
 
 Wardwright can call local Ollama without credentials. OpenAI-compatible provider
-targets can reference secrets through `credential_fnox_key` or `credential_env`;
-the preferred local path is fnox, with Wardwright resolving credentials by
-calling `fnox get KEY` at request time. Fnox is not bundled with Wardwright, and
-it does not authenticate who may use Wardwright. Keep real provider credentials
-on loopback-only instances or behind a trusted auth boundary. See
+targets can reference secrets through `credential_fnox_key` or `credential_env`.
+Fnox is a secret lookup path, not Wardwright authentication; keep real provider
+credentials on loopback-only instances or behind a trusted auth boundary. See
 [Provider Credentials](provider-credentials.html).
 
-## What Wardwright Adds
+## Current Runtime
 
-LLM agents often fail in ways that are easy to miss: repeated tool loops,
-partial success treated as completion, malformed structured output, runaway
-context growth, unclear model/provider selection, and weak visibility into who
-or what triggered a run.
+The active app is a Phoenix/LiveView service. Elixir owns runtime plumbing,
+provider calls, HTTP/API boundaries, receipts, and the UI. Gleam is used for
+correctness-heavy pure policy logic where the boundary is stable.
 
-Wardwright adds a narrow control point between agent code and concrete model
-providers. It is not primarily a security product. Security policies are one
-useful family of examples, but the larger goal is controlled experimentation
-and runtime visibility for constrained agentic workflows.
+Current capabilities include:
 
-<div class="grid">
-  <div class="card">
-    <h3>Synthetic Models</h3>
-    <p>Stable public model IDs such as <code>coding-balanced</code> resolve to
-    versioned route graphs and policy bundles.</p>
-  </div>
-  <div class="card">
-    <h3>Governance</h3>
-    <p>Built-in and programmable rules can transform requests, select routes,
-    validate output, retry, alert, or later require explicit human approval.</p>
-  </div>
-  <div class="card">
-    <h3>Receipts</h3>
-    <p>Every run can produce a structured explanation of caller provenance,
-    provider attempts, policy actions, costs, and final status.</p>
-  </div>
-  <div class="card">
-    <h3>OpenAI-Compatible</h3>
-    <p>Existing clients can call Wardwright through ordinary chat-completion APIs
-    while Wardwright owns the behavior behind the model name.</p>
-  </div>
-</div>
-
-## Current Focus
-
-The active prototype started by comparing Go, Rust, and Elixir backends against
-the same HTTP contract, storage contract, BDD scenarios, and property-style
-probes. That comparison has served its purpose. The live codebase now keeps the
-Elixir backend as the primary runtime, with Gleam used for correctness-heavy
-pure business logic and LiveView for the operator UI. The old Go and Rust
-backends remain available in git history, but they are no longer part of the
-current tree or verification gate.
-
-The current installable build includes the OpenAI-compatible gateway surface,
-synthetic model routing, stream-policy retries/rewrites, tool-context policy
-hooks, policy history/cache state, protected authoring APIs, receipts, and an
-initial LiveView workbench for policy diagrams, simulation playback, recipe
-selection, and tool-governance demos.
-
-## Policy Workbench
-
-The installed app comes with a workbench at `/policies` for visualizing and
-simulating synthetic models before they are used behind real traffic. It loads
-seeded and locally authored examples, lets operators edit a scenario, and shows
-the route, state, retry, rewrite, tool, and receipt effects produced by that
-run.
-
-<figure>
-  <img src="assets/workbench/stream-retry-simulator.png" alt="Wardwright policy workbench showing a stream retry simulation">
-  <figcaption>The simulator can replay retry-oriented stream governance, including the raw model stream, held/released output, and receipt evidence.</figcaption>
-</figure>
-
-The `v0.0.5` package seeds example collections for output contracts,
-route/model composition, stream repair and session state, plus tool/workflow
-control. Models you create locally and store in the configured workspace recipe
-directory use the same workbench path when they expose a supported projection.
-Agents can also save, evaluate, compose, and delete local Dune snippets through
-the protected MCP/API authoring surface.
-See the [Policy Workbench](workbench.html) page for screenshots and the current
-example catalog. External agents can use the local MCP/API authoring surface;
-the [Agent Authoring Guide](agent-authoring.html) describes the expected
-inspect, simulate, draft, validate, review, and activate workflow.
-
-Near-term work:
-
-1. Harden the policy workbench so projections and simulations are generated from
-   persisted policy artifacts, compiled plans, and receipts.
-2. Expand alert sinks and durable delivery/dead-letter semantics.
-3. Add file-backed durable storage for model definitions and receipts, with
-   Mnesia/SQL providers gated on concrete query, replication, or concurrency
-   needs.
-4. Broaden PubSub-backed visibility for model/session/receipt/policy events so
-   LiveView and cluster nodes get near-real-time views without owning session
-   state.
-5. Use Dune-backed BEAM snippets for trusted local programmable policy only
-   where structured primitives are insufficient.
-6. Require WASM, a sidecar, or a hosted policy service for externally shared or
-   otherwise untrusted programmable policy.
-
-## Name
-
-Wardwright is the tentative product name. The old working name, Ingary, was easy
-to confuse and hard to remember. Code identifiers, protocol examples, and the
-repository name now use `wardwright`; public project pages now use
-`wardwright.dev`.
+- OpenAI-compatible `/v1/chat/completions` and `/v1/models` endpoints.
+- Wardwright model routing with provider targets and route-DAG delegation.
+- Request, route, stream, output, history, alert, and tool policy behavior.
+- Protected authoring APIs, MCP, receipts, simulations, and admin status.
+- Workspace recipe loading for seeded and local model examples.

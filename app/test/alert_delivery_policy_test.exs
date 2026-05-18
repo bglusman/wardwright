@@ -165,7 +165,7 @@ defmodule Wardwright.AlertDeliveryPolicyTest do
     assert call(:post, "/__test/config", config).status == 200
 
     simulated =
-      call(:post, "/v1/synthetic/simulate", %{
+      call(:post, "/v1/wardwright/simulate", %{
         request: %{
           model: "unit-model",
           messages: [%{role: "user", content: "alert me"}]

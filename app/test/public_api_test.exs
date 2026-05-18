@@ -8,7 +8,7 @@ defmodule Wardwright.PublicApiTest do
     assert Enum.map(body["data"], & &1["id"]) == ["coding-balanced", "wardwright/coding-balanced"]
   end
 
-  test "public synthetic model discovery omits policy internals" do
+  test "public Wardwright model discovery omits policy internals" do
     config =
       unit_policy_config()
       |> Map.put("prompt_transforms", %{"preamble" => "private operator prompt"})
@@ -18,7 +18,7 @@ defmodule Wardwright.PublicApiTest do
 
     assert call(:post, "/__test/config", config).status == 200
 
-    conn = call(:get, "/v1/synthetic/models")
+    conn = call(:get, "/v1/wardwright/models")
     assert conn.status == 200
 
     [model] = Jason.decode!(conn.resp_body)["data"]
@@ -32,30 +32,49 @@ defmodule Wardwright.PublicApiTest do
     refute Map.has_key?(model, "structured_output")
   end
 
-  test "admin synthetic model endpoint keeps full policy record behind protection" do
+  test "public Wardwright model discovery uses middleware terminology" do
+    config = unit_policy_config()
+    assert call(:post, "/__test/config", config).status == 200
+
+    conn = call(:get, "/v1/wardwright/models")
+    assert conn.status == 200
+
+    [model] = Jason.decode!(conn.resp_body)["data"]
+    assert model["id"] == "unit-model"
+    assert model["model_id"] == "unit-model"
+    assert model["public_model_id"] == "unit-model"
+  end
+
+  test "admin Wardwright model endpoint keeps full policy record behind protection" do
     config =
       unit_policy_config()
       |> Map.put("prompt_transforms", %{"preamble" => "private operator prompt"})
 
     assert call(:post, "/__test/config", config).status == 200
 
-    rejected = call(:get, "/admin/synthetic-models", nil, [], {203, 0, 113, 10})
+    rejected = call(:get, "/admin/wardwright-models", nil, [], {203, 0, 113, 10})
     assert rejected.status == 403
 
-    local = call(:get, "/admin/synthetic-models")
+    local = call(:get, "/admin/wardwright-models")
     assert local.status == 200
 
     [model] = Jason.decode!(local.resp_body)["data"]
     assert model["prompt_transforms"] == %{"preamble" => "private operator prompt"}
     assert is_list(model["governance"])
     assert is_map(model["route_graph"])
+
+    wardwright_models = call(:get, "/admin/wardwright-models")
+    assert wardwright_models.status == 200
+
+    assert get_in(Jason.decode!(wardwright_models.resp_body), ["data", Access.at(0), "id"]) ==
+             model["id"]
   end
 
   test "protected model access endpoint lists agent endpoints and provider raw models" do
     config =
       unit_policy_config()
-      |> Map.put("synthetic_model", Wardwright.synthetic_model())
-      |> Map.put("version", Wardwright.synthetic_version())
+      |> Map.put("model_id", Wardwright.model_id())
+      |> Map.put("version", Wardwright.model_version())
       |> Map.put("targets", [
         %{
           "model" => Wardwright.local_model(),
@@ -83,10 +102,11 @@ defmodule Wardwright.PublicApiTest do
     assert body["service"]["mcp_url"] =~ "/mcp"
     assert body["service"]["tools_command"] == "wardwright tools"
 
-    [model] = body["synthetic_models"]
+    [model] = body["wardwright_models"]
     assert model["id"] == "coding-balanced"
     assert "coding-balanced" in model["agent_model_ids"]
     assert "wardwright/coding-balanced" in model["agent_model_ids"]
+    refute Map.has_key?(body, "model_ids")
 
     raw_models = Enum.map(body["provider_models"], & &1["target_model_id"])
     assert Wardwright.local_model() in raw_models
@@ -117,8 +137,8 @@ defmodule Wardwright.PublicApiTest do
     assert "evaluate_dune_snippet" in tool_names
     assert "save_dune_snippet" in tool_names
     assert "delete_dune_snippet" in tool_names
-    assert "draft_synthetic_model" in tool_names
-    assert "activate_synthetic_model" in tool_names
+    assert "draft_wardwright_model" in tool_names
+    assert "activate_wardwright_model" in tool_names
     assert "record_scenario" in tool_names
     assert "import_receipt_scenario" in tool_names
     assert "export_regression_pack" in tool_names
@@ -274,9 +294,9 @@ defmodule Wardwright.PublicApiTest do
     assert missing.status == 400
   end
 
-  test "protected policy authoring API drafts and activates synthetic models" do
+  test "protected policy authoring API drafts and activates Wardwright models" do
     draft_body = %{
-      "synthetic_model" => "support-router",
+      "model_id" => "support-router",
       "version" => "draft-test",
       "targets" => [
         %{"model" => "local/small", "context_window" => 1024},
@@ -300,7 +320,7 @@ defmodule Wardwright.PublicApiTest do
     rejected =
       call(
         :post,
-        "/v1/policy-authoring/synthetic-models/draft",
+        "/v1/policy-authoring/wardwright-models/draft",
         draft_body,
         [],
         {203, 0, 113, 10}
@@ -308,11 +328,11 @@ defmodule Wardwright.PublicApiTest do
 
     assert rejected.status == 403
 
-    draft = call(:post, "/v1/policy-authoring/synthetic-models/draft", draft_body)
+    draft = call(:post, "/v1/policy-authoring/wardwright-models/draft", draft_body)
     assert draft.status == 200
 
     draft_payload = Jason.decode!(draft.resp_body)
-    assert get_in(draft_payload, ["artifact", "synthetic_model"]) == "support-router"
+    assert get_in(draft_payload, ["artifact", "model_id"]) == "support-router"
     assert get_in(draft_payload, ["artifact", "route_root"]) == "dispatcher.context-fit"
 
     assert get_in(draft_payload, ["access", "model_ids"]) == [
@@ -322,7 +342,7 @@ defmodule Wardwright.PublicApiTest do
 
     assert get_in(draft_payload, ["validation", "errors"]) == []
 
-    activated = call(:post, "/v1/policy-authoring/synthetic-models", draft_body)
+    activated = call(:post, "/v1/policy-authoring/wardwright-models", draft_body)
     assert activated.status == 201
 
     assert %{"data" => [%{"id" => "support-router"}, %{"id" => "wardwright/support-router"}]} =
@@ -533,8 +553,8 @@ defmodule Wardwright.PublicApiTest do
     receipt = %{
       "receipt_id" => "receipt_import_1",
       "created_at" => 1_800_000_123,
-      "synthetic_model" => "unit-model",
-      "synthetic_version" => "2026-05-13.mock",
+      "model_id" => "unit-model",
+      "model_version" => "2026-05-13.mock",
       "final" => %{
         "status" => "completed",
         "stream_policy" => %{
@@ -722,6 +742,89 @@ defmodule Wardwright.PublicApiTest do
     malformed_body = Jason.decode!(malformed.resp_body)
     assert malformed_body["verdict"] == "invalid"
     assert Enum.any?(malformed_body["errors"], &(&1["path"] == "dispatchers"))
+
+    nested_bad_route =
+      unit_policy_config()
+      |> Map.put("targets", [
+        %{
+          "model" => "broken-child",
+          "target_kind" => "wardwright_model",
+          "context_window" => 4_096,
+          "artifact" => %{
+            "model_id" => "broken-child",
+            "version" => "unit-version",
+            "targets" => [
+              %{"model" => "local/final", "context_window" => 4_096}
+            ],
+            "route_root" => "missing-route",
+            "dispatchers" => [%{"id" => "other-route", "models" => ["local/final"]}]
+          }
+        }
+      ])
+      |> Map.put("route_root", "outer-route")
+      |> Map.put("dispatchers", [
+        %{"id" => "outer-route", "models" => ["broken-child"]}
+      ])
+
+    nested = call(:post, "/v1/policy-authoring/validate", %{"artifact" => nested_bad_route})
+    assert nested.status == 200
+
+    nested_body = Jason.decode!(nested.resp_body)
+    assert nested_body["verdict"] == "invalid"
+
+    assert Enum.any?(
+             nested_body["errors"],
+             &(&1["path"] == "model_graph" and
+                 &1["message"] =~ "model target broken-child: route_root")
+           )
+
+    nested_forced_provider =
+      unit_policy_config()
+      |> Map.put("targets", [
+        %{
+          "model" => "child-router",
+          "target_kind" => "wardwright_model",
+          "context_window" => 4_096,
+          "artifact" => %{
+            "model_id" => "child-router",
+            "version" => "unit-version",
+            "targets" => [
+              %{"model" => "local/final", "context_window" => 4_096}
+            ],
+            "route_root" => "child-route",
+            "dispatchers" => [%{"id" => "child-route", "models" => ["local/final"]}]
+          }
+        }
+      ])
+      |> Map.put("route_root", "outer-route")
+      |> Map.put("dispatchers", [
+        %{"id" => "outer-route", "models" => ["child-router"]}
+      ])
+      |> Map.put("governance", [
+        %{
+          "id" => "force-child-provider",
+          "kind" => "route_gate",
+          "action" => "switch_model",
+          "target_model" => "local/final"
+        },
+        %{
+          "id" => "allow-child-provider-prefix",
+          "kind" => "route_gate",
+          "action" => "restrict_routes",
+          "allowed_targets" => ["local"]
+        }
+      ])
+
+    nested_forced =
+      call(:post, "/v1/policy-authoring/validate", %{"artifact" => nested_forced_provider})
+
+    assert nested_forced.status == 200
+    nested_forced_body = Jason.decode!(nested_forced.resp_body)
+
+    refute Enum.any?(
+             nested_forced_body["errors"],
+             &(&1["path"] == "governance.allowed_targets")
+           )
   end
 
   test "chat completion records caller headers and selected model" do
@@ -755,7 +858,7 @@ defmodule Wardwright.PublicApiTest do
       }
     }
 
-    conn = call(:post, "/v1/synthetic/simulate", request)
+    conn = call(:post, "/v1/wardwright/simulate", request)
     assert conn.status == 200
 
     body = Jason.decode!(conn.resp_body)

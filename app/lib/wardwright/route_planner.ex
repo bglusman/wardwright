@@ -1,21 +1,37 @@
 defmodule Wardwright.RoutePlanner do
   @moduledoc """
-  Pure synthetic-model route planning.
+  Pure Wardwright model route planning.
 
-  The planner keeps Calciforge's selector vocabulary explicit:
+  The current low-level route nodes are intentionally small:
 
-  * dispatchers choose the smallest eligible context window
-  * cascades keep declaration-order fallback plans
-  * alloys blend equivalent models by deterministic-all, weighted, or
+  * context-fit nodes choose the smallest eligible context window
+  * ordered fallback nodes keep declaration-order fallback plans
+  * blended route nodes choose by deterministic-all, weighted, or
     round-robin-style selection
+
+  A selector target can also delegate to another embedded Wardwright model
+  artifact. That first implementation is route-DAG composition: the nested
+  artifact contributes route selection and lineage, but its request/output
+  policies do not yet wrap the outer policy execution.
   """
 
+  alias Wardwright.ModelGraph
+
+  @max_route_dag_depth ModelGraph.max_depth()
+
   def select(config, estimated_prompt_tokens, attrs \\ %{}) when is_map(config) do
+    select_config(config, estimated_prompt_tokens, attrs, MapSet.new())
+  end
+
+  defp select_config(config, estimated_prompt_tokens, attrs, visited) do
     targets =
       config
-      |> Map.get("targets", [])
+      |> ModelGraph.targets()
       |> filter_targets(Map.get(attrs, "allowed_targets"))
       |> target_index()
+
+    forced_targets =
+      Map.merge(provider_target_index(config, Map.get(attrs, "allowed_targets")), targets)
 
     forced_model = Map.get(attrs, "forced_model")
 
@@ -25,16 +41,37 @@ defmodule Wardwright.RoutePlanner do
         |> root_selector()
         |> select_selector(config, targets, max(1, estimated_prompt_tokens), attrs)
       else
-        select_forced_model(forced_model, config, targets, max(1, estimated_prompt_tokens), attrs)
+        select_forced_model(
+          forced_model,
+          config,
+          targets,
+          forced_targets,
+          max(1, estimated_prompt_tokens),
+          attrs
+        )
       end
 
     decision
+    |> resolve_model_graph_target(
+      config,
+      targets,
+      max(1, estimated_prompt_tokens),
+      attrs,
+      visited
+    )
     |> Map.put(:estimated_prompt_tokens, max(1, estimated_prompt_tokens))
     |> Map.put(:policy_route_constraints, route_constraints(attrs))
   end
 
   def validate(config) when is_map(config) do
-    targets = target_index(Map.get(config, "targets", []))
+    with :ok <- validate_local_config(config),
+         :ok <- validate_model_graph(config, MapSet.new(), 0) do
+      :ok
+    end
+  end
+
+  defp validate_local_config(config) when is_map(config) do
+    targets = target_index(ModelGraph.targets(config))
 
     with :ok <- validate_root(config),
          :ok <- validate_selectors("alloy", Map.get(config, "alloys", []), targets),
@@ -42,6 +79,94 @@ defmodule Wardwright.RoutePlanner do
          :ok <- validate_selectors("dispatcher", Map.get(config, "dispatchers", []), targets) do
       :ok
     end
+  end
+
+  defp resolve_model_graph_target(decision, config, targets, estimated, attrs, visited) do
+    decision = Map.put_new(decision, :route_lineage, [ModelGraph.lineage_step(config, decision)])
+
+    cond do
+      decision.route_blocked ->
+        decision
+
+      target = Map.get(targets, decision.selected_model) ->
+        if ModelGraph.wardwright_model_target?(target) do
+          resolve_wardwright_target(decision, config, target, estimated, attrs, visited)
+        else
+          decision
+        end
+
+      true ->
+        decision
+    end
+  end
+
+  defp resolve_wardwright_target(decision, config, target, estimated, attrs, visited) do
+    artifact = ModelGraph.target_artifact(target)
+    ref_id = ModelGraph.ref_id(target, artifact)
+
+    cond do
+      not is_map(artifact) ->
+        blocked_graph_decision(
+          decision,
+          config,
+          "model target #{inspect(ModelGraph.target_model(target))} is missing an embedded artifact"
+        )
+
+      MapSet.size(visited) >= @max_route_dag_depth ->
+        blocked_graph_decision(
+          decision,
+          config,
+          "model graph exceeded max depth #{@max_route_dag_depth}"
+        )
+
+      MapSet.member?(visited, ref_id) ->
+        blocked_graph_decision(
+          decision,
+          config,
+          "model graph cycle detected at #{inspect(ref_id)}"
+        )
+
+      true ->
+        nested = select_config(artifact, estimated, attrs, MapSet.put(visited, ref_id))
+
+        nested
+        |> Map.put(:route_type, "model_graph")
+        |> Map.put(:route_id, "#{decision.route_id} -> #{nested.route_id}")
+        |> Map.put(:combine_strategy, "route_dag_delegate")
+        |> Map.put(:fallback_used, decision.fallback_used or nested.fallback_used)
+        |> Map.put(:skipped, Map.get(decision, :skipped, []) ++ Map.get(nested, :skipped, []))
+        |> Map.put(:reason, graph_reason(nested, target))
+        |> Map.put(
+          :rule,
+          "delegate through a Wardwright model route graph, then call the selected provider target"
+        )
+        |> Map.put(
+          :route_lineage,
+          [
+            ModelGraph.lineage_step(config, decision, ModelGraph.delegated_to_extra(target))
+          ] ++
+            Map.get(nested, :route_lineage, [])
+        )
+    end
+  end
+
+  defp blocked_graph_decision(decision, config, reason) do
+    decision
+    |> Map.put(:route_type, "model_graph")
+    |> Map.put(:combine_strategy, "route_dag_delegate")
+    |> Map.put(:route_blocked, true)
+    |> Map.put(:selected_model, "unconfigured/no-target")
+    |> Map.put(:selected_provider, "unconfigured")
+    |> Map.put(:selected_context_window, nil)
+    |> Map.put(:selected_models, [])
+    |> Map.put(:fallback_models, [])
+    |> Map.put(:reason, reason)
+    |> Map.put(:rule, "reject invalid Wardwright model route graph")
+    |> Map.put(:route_lineage, [ModelGraph.lineage_step(config, decision)])
+  end
+
+  defp graph_reason(nested, target) do
+    "delegated through #{ModelGraph.target_model(target)}: #{nested.reason}"
   end
 
   defp root_selector(config) do
@@ -56,7 +181,7 @@ defmodule Wardwright.RoutePlanner do
   defp select_selector("__targets_dispatcher__", config, targets, estimated, _attrs) do
     dispatcher = %{
       "id" => "dispatcher.prompt_length",
-      "models" => config |> Map.get("targets", []) |> Enum.map(& &1["model"])
+      "models" => config |> ModelGraph.targets() |> Enum.map(&ModelGraph.target_model/1)
     }
 
     select_dispatcher(dispatcher, targets, estimated)
@@ -99,11 +224,11 @@ defmodule Wardwright.RoutePlanner do
     })
   end
 
-  defp select_forced_model(model, config, targets, estimated, attrs) do
-    forced = targets |> Map.get(model) |> forced_target_for_core()
+  defp select_forced_model(model, config, targets, forced_targets, estimated, attrs) do
+    forced = forced_targets |> Map.get(model) |> forced_target_for_core()
 
     skipped_targets =
-      targets
+      forced_targets
       |> Map.delete(model)
       |> Map.values()
       |> Enum.map(&target_for_core/1)
@@ -118,17 +243,17 @@ defmodule Wardwright.RoutePlanner do
       fallback_used: false,
       rule: "apply policy route override before provider selection"
     })
-    |> maybe_forced_fallback(model, config, targets, estimated, attrs)
+    |> maybe_forced_fallback(model, config, targets, forced_targets, estimated, attrs)
   end
 
-  defp maybe_forced_fallback(decision, model, config, targets, estimated, attrs) do
+  defp maybe_forced_fallback(decision, model, config, targets, forced_targets, estimated, attrs) do
     if decision.route_blocked == true and allow_fallback?(attrs) do
       select_forced_fallback(
         config,
         targets,
         estimated,
         attrs,
-        forced_failure_skips(model, Map.get(targets, model), estimated),
+        forced_failure_skips(model, Map.get(forced_targets, model), estimated),
         decision.reason
       )
     else
@@ -414,12 +539,21 @@ defmodule Wardwright.RoutePlanner do
   defp largest_known_model(targets) do
     targets
     |> Map.values()
-    |> Enum.sort_by(fn target -> {target["context_window"], target["model"]} end)
+    |> Enum.sort_by(fn target ->
+      {ModelGraph.target_context_window(target), ModelGraph.target_model(target)}
+    end)
     |> List.last()
   end
 
   defp target_index(targets) do
-    Map.new(targets, fn target -> {target["model"], target} end)
+    Map.new(targets, fn target -> {ModelGraph.target_model(target), target} end)
+  end
+
+  defp provider_target_index(config, allowed_targets) do
+    config
+    |> ModelGraph.provider_targets()
+    |> filter_targets(allowed_targets)
+    |> target_index()
   end
 
   defp filter_targets(targets, allowed_targets) when is_list(allowed_targets) do
@@ -439,8 +573,16 @@ defmodule Wardwright.RoutePlanner do
   defp filter_targets(targets, _allowed_targets), do: targets
 
   defp target_allowed?(target, allowed_targets) do
-    model = target["model"]
-    provider = model |> String.split("/", parts: 2) |> List.first()
+    if ModelGraph.wardwright_model_target?(target) do
+      true
+    else
+      provider_target_allowed?(target, allowed_targets)
+    end
+  end
+
+  defp provider_target_allowed?(target, allowed_targets) do
+    model = ModelGraph.target_model(target)
+    provider = ModelGraph.provider_prefix(model)
 
     Enum.any?(allowed_targets, fn allowed ->
       allowed == model or allowed == provider or String.starts_with?(model, allowed <> "/")
@@ -547,6 +689,53 @@ defmodule Wardwright.RoutePlanner do
     |> case do
       nil -> :ok
       model -> {:error, "#{kind} #{selector["id"]} references unknown target #{model}"}
+    end
+  end
+
+  defp validate_model_graph(config, visited, depth) do
+    model_id = ModelGraph.model_id(config)
+
+    cond do
+      depth > @max_route_dag_depth ->
+        {:error, "model graph exceeds max depth #{@max_route_dag_depth}"}
+
+      model_id != "" and MapSet.member?(visited, model_id) ->
+        {:error, "model graph cycle detected at #{model_id}"}
+
+      true ->
+        visited = if model_id == "", do: visited, else: MapSet.put(visited, model_id)
+
+        config
+        |> ModelGraph.targets()
+        |> Enum.reduce_while(:ok, fn target, :ok ->
+          if ModelGraph.wardwright_model_target?(target) do
+            validate_model_graph_target(target, visited, depth)
+          else
+            {:cont, :ok}
+          end
+        end)
+    end
+  end
+
+  defp validate_model_graph_target(target, visited, depth) do
+    artifact = ModelGraph.target_artifact(target)
+    ref_id = ModelGraph.ref_id(target, artifact)
+
+    cond do
+      not is_map(artifact) ->
+        {:halt, {:error, "model target #{ModelGraph.target_model(target)} must include artifact"}}
+
+      MapSet.member?(visited, ref_id) ->
+        {:halt, {:error, "model graph cycle detected at #{ref_id}"}}
+
+      true ->
+        case validate_local_config(artifact) do
+          :ok ->
+            {:cont, validate_model_graph(artifact, visited, depth + 1)}
+
+          {:error, message} ->
+            {:halt, {:error, "model target #{ModelGraph.target_model(target)}: #{message}"}}
+        end
     end
   end
 

@@ -193,7 +193,7 @@ defmodule Wardwright.GleamPolicyCoreTest do
 
   test "route core classifies route strategies and reasons" do
     config = %{
-      "synthetic_model" => "unit-model",
+      "model_id" => "unit-model",
       "version" => "unit-version",
       "targets" => [
         %{"model" => "small/model", "context_window" => 16},
@@ -257,7 +257,7 @@ defmodule Wardwright.GleamPolicyCoreTest do
     assert %{route_type: "dispatcher", selected_model: "medium/model"} =
              Wardwright.RoutePlanner.select(
                %{
-                 "synthetic_model" => "unit-model",
+                 "model_id" => "unit-model",
                  "version" => "unit-version",
                  "targets" => [
                    %{"model" => "small/model", "context_window" => 16},
@@ -478,7 +478,7 @@ defmodule Wardwright.GleamPolicyCoreTest do
   defp route_forced_model_context_block do
     Wardwright.RoutePlanner.select(
       %{
-        "synthetic_model" => "unit-model",
+        "model_id" => "unit-model",
         "version" => "unit-version",
         "targets" => [
           %{"model" => "small/model", "context_window" => 16},
@@ -638,7 +638,7 @@ defmodule Wardwright.GleamPolicyCoreTest do
 
   defp projection_results do
     config = %{
-      "synthetic_model" => "unit-model",
+      "model_id" => "unit-model",
       "version" => "unit-version",
       "governance" => [
         %{"id" => "private-route", "kind" => "route_gate", "allowed_targets" => ["local/model"]},

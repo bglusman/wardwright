@@ -101,7 +101,7 @@ different problems.
 
 Fnox protects credential material at rest and keeps raw secrets out of model
 artifacts, logs, recipes, and git. It does not decide who may call a
-Wardwright-hosted synthetic model. If an untrusted caller can reach
+Wardwright-hosted Wardwright model. If an untrusted caller can reach
 `/v1/chat/completions`, they may be able to spend or use whatever provider
 credentials Wardwright is configured to use, even though they cannot read the
 secret value directly.
@@ -118,5 +118,5 @@ For `v0.0.5`:
 
 Before Wardwright is suitable for shared or remote use with real provider
 credentials, the project needs an explicit authorization model for who can call
-which synthetic models, who can configure providers, and how those decisions are
+which Wardwright models, who can configure providers, and how those decisions are
 audited.

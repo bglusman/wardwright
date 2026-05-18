@@ -22,7 +22,7 @@ defmodule Wardwright.RoutePolicyTest do
     assert call(:post, "/__test/config", config).status == 200
 
     conn =
-      call(:post, "/v1/synthetic/simulate", %{
+      call(:post, "/v1/wardwright/simulate", %{
         request: %{
           model: "unit-model",
           messages: [%{role: "user", content: "private notes, summarize briefly"}]
@@ -100,7 +100,7 @@ defmodule Wardwright.RoutePolicyTest do
     assert call(:post, "/__test/config", config).status == 200
 
     conn =
-      call(:post, "/v1/synthetic/simulate", %{
+      call(:post, "/v1/wardwright/simulate", %{
         request: %{
           model: "unit-model",
           messages: [%{role: "user", content: "hard proof"}]
@@ -259,7 +259,7 @@ defmodule Wardwright.RoutePolicyTest do
     assert call(:post, "/__test/config", config).status == 200
 
     conn =
-      call(:post, "/v1/synthetic/simulate", %{
+      call(:post, "/v1/wardwright/simulate", %{
         request: %{
           model: "unit-model",
           messages: [%{role: "user", content: "small request"}]
@@ -317,7 +317,7 @@ defmodule Wardwright.RoutePolicyTest do
     assert call(:post, "/__test/config", config).status == 200
 
     conn =
-      call(:post, "/v1/synthetic/simulate", %{
+      call(:post, "/v1/wardwright/simulate", %{
         request: %{
           model: "unit-model",
           messages: [%{role: "user", content: "private working notes"}]

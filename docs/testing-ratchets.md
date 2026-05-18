@@ -16,7 +16,7 @@ under review, or broad files become a dumping ground for unrelated changes.
 - Name test files by behavior boundary: route policy, stream retry, provider
   transport, policy cache, storage/admin, LiveView projection, and similar.
 - Keep shared router setup in `app/test_support/router_case.ex`. Do not
-  duplicate request helpers or base synthetic model fixtures in individual test
+  duplicate request helpers or base Wardwright model fixtures in individual test
   files.
 - If a test file grows past roughly 500 lines, split it by user-visible behavior
   before adding more cases.

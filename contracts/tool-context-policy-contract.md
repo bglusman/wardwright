@@ -3,7 +3,7 @@
 Status: implemented prototype
 
 Wardwright normalizes request-visible tool facts before policy planning,
-receipts, history, or UI projection consume them. The same public synthetic
+receipts, history, or UI projection consume them. The same public Wardwright
 model can therefore route or govern differently when a request is planning,
 repairing, looping on, or interpreting a tool call.
 

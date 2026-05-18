@@ -10,9 +10,9 @@ to compare implementation cost, correctness, testability, and runtime fit
 against the same contracts. That comparison has now served its purpose. The live
 implementation should focus on **Elixir plus Gleam on the BEAM**.
 
-The project was called Ingary during the bakeoff. Wardwright is the tentative
-product name going forward. Repository, API namespace, and Elixir module names
-now use Wardwright; GitHub Pages is configured for `wardwright.dev`.
+The project was called Ingary during the bakeoff. The active product, repository,
+API namespace, and Elixir module names now use Wardwright; GitHub Pages is
+configured for `wardwright.dev`.
 
 ## Decision
 

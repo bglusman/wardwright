@@ -37,7 +37,7 @@
   },
   "isolation_behavior": {
     "implemented": true,
-    "shape": "Application supervises Registry plus DynamicSupervisor pairs for model runtimes and session runtimes. Chat completions execute through a session runtime keyed by synthetic model and session id.",
+    "shape": "Application supervises Registry plus DynamicSupervisor pairs for model runtimes and session runtimes. Chat completions execute through a session runtime keyed by Wardwright model and session id.",
     "native_test": "A deliberately crashed session process is replaced and does not break another session under the same model.",
     "limitations": [
       "The structured-output loop is still synchronous inside the session process.",

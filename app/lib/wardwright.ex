@@ -1,20 +1,20 @@
 defmodule Wardwright do
   @moduledoc """
-  Minimal Wardwright synthetic-model mock.
+  Minimal Wardwright model middleware runtime.
 
-  The prototype is intentionally small: one public synthetic model, mock route
-  selection by estimated prompt length, and in-memory receipts.
+  The prototype is intentionally small: one public Wardwright model endpoint,
+  model-graph route selection, policy evaluation, and in-memory receipts.
   """
 
-  @synthetic_model "coding-balanced"
-  @synthetic_version "2026-05-13.mock"
+  @model_id "coding-balanced"
+  @model_version "2026-05-13.mock"
   @local_model "local/qwen-coder"
   @managed_model "managed/kimi-k2.6"
   @local_context_window 32_768
   @managed_context_window 262_144
 
-  def synthetic_model, do: @synthetic_model
-  def synthetic_version, do: @synthetic_version
+  def model_id, do: @model_id
+  def model_version, do: @model_version
   def local_model, do: @local_model
   def managed_model, do: @managed_model
   def local_context_window, do: @local_context_window
@@ -22,8 +22,8 @@ defmodule Wardwright do
 
   def default_config do
     %{
-      "synthetic_model" => @synthetic_model,
-      "version" => @synthetic_version,
+      "model_id" => @model_id,
+      "version" => @model_version,
       "targets" => [
         %{"model" => @local_model, "context_window" => @local_context_window},
         %{"model" => @managed_model, "context_window" => @managed_context_window}
@@ -75,13 +75,13 @@ defmodule Wardwright do
 
   def normalize_model(model) when is_binary(model) do
     model = String.trim(model)
-    synthetic_model = current_config()["synthetic_model"]
+    model_id = current_config()["model_id"]
 
     case model do
-      ^synthetic_model -> {:ok, synthetic_model}
-      "wardwright/" <> ^synthetic_model -> {:ok, synthetic_model}
+      ^model_id -> {:ok, model_id}
+      "wardwright/" <> ^model_id -> {:ok, model_id}
       "" -> {:error, "model is required"}
-      other -> {:error, "unknown synthetic model #{inspect(other)}"}
+      other -> {:error, "unknown Wardwright model #{inspect(other)}"}
     end
   end
 
@@ -93,6 +93,10 @@ defmodule Wardwright do
 
   def select_route(estimated_prompt_tokens, attrs) when is_map(attrs) do
     Wardwright.RoutePlanner.select(current_config(), estimated_prompt_tokens, attrs)
+  end
+
+  def provider_targets(config \\ current_config()) when is_map(config) do
+    Wardwright.ModelGraph.provider_targets(config)
   end
 
   def estimate_prompt_tokens(messages) when is_list(messages) do
@@ -120,7 +124,7 @@ defmodule Wardwright do
 
   defp content_length(value), do: byte_size(Jason.encode!(value))
 
-  def synthetic_model_record do
+  def model_record do
     config = current_config()
 
     targets =
@@ -143,10 +147,11 @@ defmodule Wardwright do
         end)
 
     %{
-      "id" => config["synthetic_model"],
-      "public_model_id" => config["synthetic_model"],
+      "id" => config["model_id"],
+      "model_id" => config["model_id"],
+      "public_model_id" => config["model_id"],
       "active_version" => config["version"],
-      "description" => "Mock coding assistant synthetic model with composable route selectors.",
+      "description" => "Mock coding assistant Wardwright model with composable route selectors.",
       "public_namespace" => "flat",
       "route_type" => root_route_type(config),
       "status" => "active",
@@ -168,14 +173,15 @@ defmodule Wardwright do
     }
   end
 
-  def synthetic_model_summary do
+  def model_summary do
     config = current_config()
 
     %{
-      "id" => config["synthetic_model"],
-      "public_model_id" => config["synthetic_model"],
+      "id" => config["model_id"],
+      "model_id" => config["model_id"],
+      "public_model_id" => config["model_id"],
       "active_version" => config["version"],
-      "description" => "Mock coding assistant synthetic model with composable route selectors.",
+      "description" => "Mock coding assistant Wardwright model with composable route selectors.",
       "public_namespace" => "flat",
       "route_type" => root_route_type(config),
       "status" => "active"
@@ -249,7 +255,7 @@ defmodule Wardwright do
 
   def providers do
     current_config()
-    |> Map.get("targets", [])
+    |> provider_targets()
     |> Enum.reduce(%{}, fn target, acc ->
       provider = target["model"] |> String.split("/", parts: 2) |> List.first()
       Map.put_new(acc, provider, target)
@@ -284,7 +290,7 @@ defmodule Wardwright do
 
     target =
       current_config()
-      |> Map.get("targets", [])
+      |> provider_targets()
       |> Enum.find(fn target -> target["model"] == selected_model end)
 
     case target do
@@ -310,7 +316,7 @@ defmodule Wardwright do
 
     target =
       current_config()
-      |> Map.get("targets", [])
+      |> provider_targets()
       |> Enum.find(fn target -> target["model"] == selected_model end)
 
     case target do
@@ -338,7 +344,7 @@ defmodule Wardwright do
 
     target =
       current_config()
-      |> Map.get("targets", [])
+      |> provider_targets()
       |> Enum.find(fn target -> target["model"] == selected_model end)
 
     case target do
@@ -567,25 +573,38 @@ defmodule Wardwright do
   end
 
   def normalize_config(config) do
+    model_id =
+      config
+      |> Map.get("model_id", "")
+      |> to_string()
+      |> String.trim()
+
     %{
-      "synthetic_model" =>
-        config |> Map.get("synthetic_model", "") |> to_string() |> String.trim(),
+      "model_id" => model_id,
       "version" =>
         config
-        |> Map.get("version", @synthetic_version)
+        |> Map.get("version", @model_version)
         |> to_string()
         |> String.trim()
         |> then(fn
-          "" -> @synthetic_version
+          "" -> @model_version
           version -> version
         end),
       "targets" =>
         config
         |> Map.get("targets", [])
         |> Enum.map(fn target ->
-          %{
+          normalized_target = %{
             "model" => target |> Map.get("model", "") |> to_string() |> String.trim(),
             "context_window" => integer_value(Map.get(target, "context_window")),
+            "target_kind" =>
+              target
+              |> Map.get(
+                "target_kind",
+                Map.get(target, "kind", Wardwright.ModelGraph.default_target_kind(target))
+              )
+              |> to_string()
+              |> String.trim(),
             "provider_kind" =>
               target |> Map.get("provider_kind", "") |> to_string() |> String.trim(),
             "provider_base_url" =>
@@ -608,6 +627,17 @@ defmodule Wardwright do
             "provider_timeout_ms" =>
               positive_integer(Map.get(target, "provider_timeout_ms"), 180_000)
           }
+
+          normalized_target =
+            case Wardwright.ModelGraph.target_artifact(target) do
+              artifact when is_map(artifact) ->
+                Map.put(normalized_target, "artifact", normalize_config(artifact))
+
+              _other ->
+                normalized_target
+            end
+
+          normalized_target
           |> Enum.reject(fn {_key, value} -> value == "" or value == [] end)
           |> Map.new()
         end),
@@ -708,13 +738,13 @@ defmodule Wardwright do
 
   defp normalize_policy_cache(_), do: %{"max_entries" => 64, "recent_limit" => 20}
 
-  defp validate_config(config = %{"synthetic_model" => synthetic_model, "targets" => targets}) do
+  defp validate_config(config = %{"model_id" => model_id, "targets" => targets}) do
     cond do
-      synthetic_model == "" ->
-        {:error, "synthetic_model must not be empty"}
+      model_id == "" ->
+        {:error, "model_id must not be empty"}
 
-      String.contains?(synthetic_model, "/") ->
-        {:error, "synthetic_model must be unprefixed"}
+      String.contains?(model_id, "/") ->
+        {:error, "model_id must be unprefixed"}
 
       targets == [] ->
         {:error, "targets must not be empty"}
@@ -729,14 +759,17 @@ defmodule Wardwright do
   defp validate_targets(targets) do
     Enum.reduce_while(targets, MapSet.new(), fn target, seen ->
       cond do
-        target["model"] == "" ->
+        Wardwright.ModelGraph.target_model(target) == "" ->
           {:halt, {:error, "target model must not be empty"}}
 
-        not is_integer(target["context_window"]) or target["context_window"] <= 0 ->
-          {:halt, {:error, "target #{target["model"]} context_window must be positive"}}
+        not is_integer(Wardwright.ModelGraph.target_context_window(target)) or
+            Wardwright.ModelGraph.target_context_window(target) <= 0 ->
+          {:halt,
+           {:error,
+            "target #{Wardwright.ModelGraph.target_model(target)} context_window must be positive"}}
 
-        MapSet.member?(seen, target["model"]) ->
-          {:halt, {:error, "duplicate target #{target["model"]}"}}
+        MapSet.member?(seen, Wardwright.ModelGraph.target_model(target)) ->
+          {:halt, {:error, "duplicate target #{Wardwright.ModelGraph.target_model(target)}"}}
 
         credential_reference?(target) and
             System.get_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS") != "1" ->
@@ -744,8 +777,14 @@ defmodule Wardwright do
            {:error,
             "credential references in __test/config require WARDWRIGHT_ALLOW_TEST_CREDENTIALS=1"}}
 
+        Wardwright.ModelGraph.wardwright_model_target?(target) and
+            not is_map(Wardwright.ModelGraph.target_artifact(target)) ->
+          {:halt,
+           {:error,
+            "model target #{Wardwright.ModelGraph.target_model(target)} must include artifact"}}
+
         true ->
-          {:cont, MapSet.put(seen, target["model"])}
+          {:cont, MapSet.put(seen, Wardwright.ModelGraph.target_model(target))}
       end
     end)
     |> case do

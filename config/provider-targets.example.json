@@ -1,5 +1,5 @@
 {
-  "synthetic_model": "coding-balanced",
+  "model_id": "coding-balanced",
   "version": "2026-05-14.example",
   "targets": [
     {

@@ -12,8 +12,8 @@ defmodule WardwrightWeb.MCPServer do
   Code.ensure_compiled!(WardwrightWeb.MCP.Tools.EvaluateDuneSnippet)
   Code.ensure_compiled!(WardwrightWeb.MCP.Tools.SaveDuneSnippet)
   Code.ensure_compiled!(WardwrightWeb.MCP.Tools.DeleteDuneSnippet)
-  Code.ensure_compiled!(WardwrightWeb.MCP.Tools.DraftSyntheticModel)
-  Code.ensure_compiled!(WardwrightWeb.MCP.Tools.ActivateSyntheticModel)
+  Code.ensure_compiled!(WardwrightWeb.MCP.Tools.DraftWardwrightModel)
+  Code.ensure_compiled!(WardwrightWeb.MCP.Tools.ActivateWardwrightModel)
   Code.ensure_compiled!(WardwrightWeb.MCP.Tools.ProposeRuleChange)
   Code.ensure_compiled!(WardwrightWeb.MCP.Tools.ValidatePolicyArtifact)
 
@@ -23,8 +23,8 @@ defmodule WardwrightWeb.MCPServer do
   component(WardwrightWeb.MCP.Tools.EvaluateDuneSnippet, name: "evaluate_dune_snippet")
   component(WardwrightWeb.MCP.Tools.SaveDuneSnippet, name: "save_dune_snippet")
   component(WardwrightWeb.MCP.Tools.DeleteDuneSnippet, name: "delete_dune_snippet")
-  component(WardwrightWeb.MCP.Tools.DraftSyntheticModel, name: "draft_synthetic_model")
-  component(WardwrightWeb.MCP.Tools.ActivateSyntheticModel, name: "activate_synthetic_model")
+  component(WardwrightWeb.MCP.Tools.DraftWardwrightModel, name: "draft_wardwright_model")
+  component(WardwrightWeb.MCP.Tools.ActivateWardwrightModel, name: "activate_wardwright_model")
   component(WardwrightWeb.MCP.Tools.ProposeRuleChange, name: "propose_rule_change")
   component(WardwrightWeb.MCP.Tools.ValidatePolicyArtifact, name: "validate_policy_artifact")
 end

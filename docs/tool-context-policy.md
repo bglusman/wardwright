@@ -142,7 +142,7 @@ then suddenly prepare a write-capable action such as `github.create_pull_request
 insecure plugin/tool design can turn untrusted inputs into severe downstream
 effects.
 
-Tool policy hypothesis: keep the same public synthetic model, but attach stricter
+Tool policy hypothesis: keep the same public Wardwright model, but attach stricter
 route, schema, audit, or approval rules only when the tool context implies write
 or external side effects.
 

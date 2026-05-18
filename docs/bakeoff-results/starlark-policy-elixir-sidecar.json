@@ -58,7 +58,7 @@
   ],
   "limitations": [
     "Regex helpers are not exposed yet; the covered history scenario uses literal substring matching from the visible fixture.",
-    "Only a prototype test endpoint is wired; synthetic chat/simulate routing is not governed by Starlark yet.",
+    "Only a prototype test endpoint is wired; wardwright chat/simulate routing is not governed by Starlark yet.",
     "The Port worker serializes policy evaluations and is not suitable for production concurrency without pooling or per-request workers.",
     "Timeout enforcement is at the process boundary rather than interpreter fuel/instruction counting.",
     "No AST/source-span metadata is returned."

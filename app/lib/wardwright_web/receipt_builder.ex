@@ -12,8 +12,8 @@ defmodule WardwrightWeb.ReceiptBuilder do
       "receipt_id" => receipt_id,
       "created_at" => created_at,
       "run_id" => get_in(caller, ["run_id", "value"]),
-      "synthetic_model" => model,
-      "synthetic_version" => Wardwright.current_config()["version"],
+      "model_id" => model,
+      "model_version" => Wardwright.current_config()["version"],
       "simulation" => status == "simulated",
       "caller" => caller,
       "request" => %{
@@ -38,6 +38,7 @@ defmodule WardwrightWeb.ReceiptBuilder do
         "fallback_used" => decision.fallback_used,
         "route_blocked" => decision.route_blocked,
         "policy_route_constraints" => decision.policy_route_constraints,
+        "route_lineage" => Map.get(decision, :route_lineage, []),
         "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
         "skipped" => decision.skipped,
         "reason" => decision.reason,

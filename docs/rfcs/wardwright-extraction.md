@@ -11,7 +11,7 @@ Project name: Wardwright
 
 ## Purpose
 
-Extract Calciforge's synthetic model idea into a standalone product and
+Extract Calciforge's Wardwright model idea into a standalone product and
 library named Wardwright. Calciforge should become the first consumer, but Wardwright must
 stand on its own as a lighter, less Calciforge-opinionated model control plane
 with an OpenAI-compatible HTTP API, a Rust API, provider-adapter boundaries,
@@ -22,7 +22,7 @@ The product should not present itself as another generic LLM gateway. That
 market already has credible projects and hosted products. The differentiated
 claim is:
 
-> Stable synthetic model contracts with explainable routing, bounded streaming
+> Stable Wardwright model contracts with explainable routing, bounded streaming
 > governance, and receipts for every routing and stream-policy decision.
 
 ## Latest Calciforge Context Reviewed
@@ -60,7 +60,7 @@ They should call stable names such as:
 - `json-extractor-cheap`
 - `premium-review`
 
-The synthetic model owns the evolving behavior behind that name:
+The Wardwright model owns the evolving behavior behind that name:
 
 - route graph
 - provider selection
@@ -117,7 +117,7 @@ Existing gateways already cover important pieces:
 Therefore the product should not compete on "we route and retry." It should
 compete on these sharper capabilities:
 
-- synthetic models as versioned contracts
+- Wardwright models as versioned contracts
 - route graph simulation before rollout
 - context-window-safe dispatch
 - stream governance before consumers see output
@@ -139,7 +139,7 @@ compete on these sharper capabilities:
 
 ## Core Concepts
 
-### Synthetic Model
+### Wardwright Model
 
 A stable public model ID that resolves to a route graph and stream policy.
 
@@ -179,11 +179,11 @@ class behavior is abort/retry/escalate before release.
 
 ### Receipt
 
-A structured, durable record of what the synthetic model did and why.
+A structured, durable record of what the Wardwright model did and why.
 
 Receipts must include:
 
-- requested synthetic model
+- requested Wardwright model
 - exact immutable route version
 - consuming application, agent, user, tenant, and session/run identifiers when
   supplied by the caller
@@ -208,7 +208,7 @@ Receipts must include:
         auth / caller / request context
                     |
                     v
-        synthetic route planner
+        wardwright route planner
                     |
                     v
        provider adapter execution layer
@@ -251,7 +251,7 @@ The Rust API should be embeddable by Calciforge or any other Rust host.
 Minimum API shape:
 
 ```rust
-let registry = SyntheticModelRegistry::from_config(config)?;
+let registry = WardwrightModelRegistry::from_config(config)?;
 let request = ModelRequest::from_openai_chat(chat_request)?;
 let plan = registry.plan("coding-balanced", &request, RequestContext::default())?;
 let result = executor.execute(plan, request).await?;
@@ -298,9 +298,9 @@ Required serving endpoints:
 GET  /v1/models
 POST /v1/chat/completions
 POST /v1/responses
-POST /v1/synthetic/simulate
-GET  /v1/synthetic/models
-GET  /v1/synthetic/models/{id}
+POST /v1/wardwright/simulate
+GET  /v1/wardwright/models
+GET  /v1/wardwright/models/{id}
 GET  /v1/receipts/{id}
 GET  /v1/runs/{run_id}/receipts
 ```
@@ -343,7 +343,7 @@ Research notes:
   <https://docs.litellm.ai/>.
 - Some agent runtimes will not pass useful identity metadata through
   OpenAI-compatible calls. For those, the product can still group by API key,
-  synthetic model, session header, source IP class if enabled, and request ID,
+  Wardwright model, session header, source IP class if enabled, and request ID,
   but it should label those dimensions as inferred or anonymous.
 
 The UI should never imply a consuming-user field is authoritative unless it came
@@ -356,10 +356,10 @@ Admin/control endpoints:
 ```text
 GET  /admin/providers
 POST /admin/providers
-GET  /admin/synthetic-models
-POST /admin/synthetic-models/{id}/drafts
-POST /admin/synthetic-models/{id}/versions/{version}/publish
-POST /admin/synthetic-models/{id}/versions/{version}/canary
+GET  /admin/wardwright-models
+POST /admin/wardwright-models/{id}/drafts
+POST /admin/wardwright-models/{id}/versions/{version}/publish
+POST /admin/wardwright-models/{id}/versions/{version}/canary
 POST /admin/simulate
 GET  /admin/receipts
 ```
@@ -418,7 +418,7 @@ The public model namespace is part of the product contract.
 
 Definitions:
 
-- **Synthetic model ID**: a stable public model name backed by route logic, for
+- **Wardwright model ID**: a stable public model name backed by route logic, for
   example `coding-balanced`.
 - **Concrete model ID**: an internal route target backed by a provider adapter,
   for example `local/qwen-coder` or `managed/kimi-k2.6`.
@@ -428,9 +428,9 @@ Definitions:
 
 Serving behavior:
 
-- `/v1/models` should list synthetic models by default.
+- `/v1/models` should list Wardwright models by default.
 - Admin endpoints may list concrete models and upstream mappings.
-- Receipts always include synthetic model, concrete model, provider adapter, and
+- Receipts always include Wardwright model, concrete model, provider adapter, and
   upstream model IDs.
 - Public clients should not need to know concrete model IDs unless the operator
   intentionally exposes them.
@@ -455,7 +455,7 @@ Non-goal:
 
 - Do not register every concrete model as a separate public provider/model by
   default. That makes Wardwright look like a provider catalog and weakens the
-  synthetic model abstraction.
+  Wardwright model abstraction.
 
 ### Topology A: Synthetic Platform In Front
 
@@ -466,13 +466,13 @@ client / agent
   -> model provider
 ```
 
-Use when the synthetic platform owns the public model contract and downstream
+Use when the wardwright platform owns the public model contract and downstream
 gateways own provider registries, virtual keys, provider credentials, or
 dashboards.
 
 Advantages:
 
-- Best fit for synthetic model contracts. Clients call `coding-balanced`
+- Best fit for Wardwright model contracts. Clients call `coding-balanced`
   directly.
 - Full route and stream-policy receipts at the product boundary.
 - The product can decide when to call a managed gateway, local model, or direct
@@ -483,7 +483,7 @@ Tradeoffs:
 
 - Must preserve enough downstream metadata for LiteLLM/Helicone dashboards to
   remain useful.
-- Downstream gateway may see the synthetic platform as one client unless caller
+- Downstream gateway may see the wardwright platform as one client unless caller
   metadata is forwarded.
 - Provider-specific features hidden behind the downstream gateway may be opaque.
 
@@ -491,7 +491,7 @@ Recommended default for the standalone product.
 
 Model namespace recommendation:
 
-- Public clients should usually see synthetic model IDs directly, such as
+- Public clients should usually see Wardwright model IDs directly, such as
   `coding-balanced`, `local-first-private`, or `json-extractor-cheap`.
 - Concrete model details stay hidden unless explicitly exposed through admin
   endpoints or receipts.
@@ -515,14 +515,14 @@ Advantages:
 
 - Fits organizations that already standardized on a gateway.
 - Existing auth, virtual keys, budgets, and gateway dashboards stay in front.
-- The synthetic platform can be adopted as one managed provider/route.
+- The wardwright platform can be adopted as one managed provider/route.
 
 Tradeoffs:
 
 - The front gateway may hide the original caller unless it forwards metadata.
 - Stream governance can still protect downstream consumers, but receipts may
   have weaker user/agent attribution.
-- Front-gateway retries or transformations may interfere with synthetic route
+- Front-gateway retries or transformations may interfere with wardwright route
   receipts unless disabled or coordinated.
 
 This topology should be supported, but docs should warn that caller
@@ -538,16 +538,16 @@ Compatibility note:
 
 Model namespace recommendation:
 
-- The front gateway should register the synthetic platform as one
+- The front gateway should register the wardwright platform as one
   OpenAI-compatible backend/provider.
 - Prefer a prefixed namespace such as `wardwright/coding-balanced` or
-  `synthetic/coding-balanced` when the front gateway's model namespace is
+  `wardwright/coding-balanced` when the front gateway's model namespace is
   shared with other providers.
 - A flat model name such as `coding-balanced` is acceptable when the operator
   controls the whole gateway namespace and there is no collision risk.
 - Avoid registering every concrete downstream model as a separate front-gateway
   provider unless the operator intentionally wants to expose implementation
-  details. The main product value is that synthetic models hide those details
+  details. The main product value is that Wardwright models hide those details
   behind a stable contract.
 
 ### Topology C: Sidecar / Embedded Library
@@ -558,7 +558,7 @@ application / Calciforge
   -> provider adapter / gateway
 ```
 
-Use when a host application wants synthetic routing without operating another
+Use when a host application wants wardwright routing without operating another
 HTTP service.
 
 Advantages:
@@ -600,11 +600,11 @@ Tradeoffs:
 The product should make topology an operator decision, but the docs should be
 opinionated:
 
-- Default recommendation: run the synthetic platform in front of managed
-  gateways when synthetic model behavior is the primary contract.
+- Default recommendation: run the wardwright platform in front of managed
+  gateways when Wardwright model behavior is the primary contract.
 - Enterprise recommendation: support running behind the organization's required
   gateway, but require metadata forwarding for useful caller traceability.
-- Namespace recommendation: expose synthetic models as the public unit. Use a
+- Namespace recommendation: expose Wardwright models as the public unit. Use a
   prefix such as `wardwright/` only when another gateway owns a larger shared model
   namespace.
 - Embedded recommendation: use the Rust API for Calciforge and other close
@@ -678,7 +678,7 @@ Limits:
 - max rule triggers
 - max retries
 - max escalations
-- max synthetic branch switches
+- max wardwright branch switches
 - max receipt event size
 
 ### Declarative Rules
@@ -722,7 +722,7 @@ The portable contract should define an engine-neutral policy ABI first:
 
 Starlark should be the first portable advanced policy language because model
 artifacts may outlive any one backend prototype. Keeping the policy code as
-data means the same synthetic model can run under Rust, Go, or Elixir, produce
+data means the same Wardwright model can run under Rust, Go, or Elixir, produce
 comparable receipts, and participate in the same artifact hub. The product
 contract still exposes a policy-engine ABI, not a promise that Starlark is the
 only possible implementation.
@@ -758,7 +758,7 @@ multi-tenant security boundary.
 
 Untrusted third-party policy should run through a sidecar, WASM runtime, or
 hosted policy service with explicit trust/provenance metadata. The same
-synthetic model manifest should declare which engines it requires and whether a
+Wardwright model manifest should declare which engines it requires and whether a
 policy is inspectable, opaque remote, or packaged binary.
 
 Declarative policy should cover common cases before programmable policy is
@@ -772,7 +772,7 @@ required:
 - bounded repair/retry with receipt annotations
 
 For the Elixir/Gleam path, runtime fault isolation should be a first-class
-architecture primitive rather than an implementation detail. Synthetic models
+architecture primitive rather than an implementation detail. Wardwright models
 should be represented by dynamically supervised model runtimes, and active
 caller/session/run state should live under dynamically supervised session
 runtimes below the owning model. A failure in one session's cache, stream
@@ -942,8 +942,8 @@ Example:
   "receipt_schema": "v1",
   "receipt_id": "example-receipt-id",
   "run_id": "example-run-id",
-  "synthetic_model": "coding-balanced",
-  "synthetic_version": "2026-05-13.1",
+  "model_id": "coding-balanced",
+  "model_version": "2026-05-13.1",
   "caller": {
     "tenant_id": { "value": "example-tenant", "source": "trusted_auth" },
     "application_id": { "value": "calciforge", "source": "header" },
@@ -1060,7 +1060,7 @@ can choose a schema that fits its database engine.
 
 Receipts and logs overlap but should remain separate product concepts.
 
-Receipts are durable product records that explain synthetic model behavior.
+Receipts are durable product records that explain Wardwright model behavior.
 They must be queryable by the UI, tied to model versions, governed by retention
 and privacy policy, and stable enough to support simulation, audit, and
 debugging.
@@ -1128,9 +1128,9 @@ Control-plane tables:
 - `providers`: provider adapter definitions and health metadata.
 - `concrete_models`: provider-owned models with capabilities, context windows,
   price hints, data-region constraints, and status.
-- `synthetic_models`: stable public model IDs and namespace settings.
-- `synthetic_model_versions`: immutable route graph and stream policy versions.
-- `synthetic_model_aliases`: optional public aliases and compatibility names.
+- `model_ids`: stable public model IDs and namespace settings.
+- `model_id_versions`: immutable route graph and stream policy versions.
+- `model_id_aliases`: optional public aliases and compatibility names.
 - `artifact_imports`: shared model artifact provenance, license, source digest,
   provider-role mappings, and review state.
 - `rollouts`: active/draft/canary state, percentages, predicates, and rollback
@@ -1140,7 +1140,7 @@ Receipt/event tables:
 
 - `receipts`: one row per live or simulated request with stable identifiers,
   caller dimensions, selected model, final status, latency, and links to the
-  exact synthetic model version.
+  exact Wardwright model version.
 - `receipt_events`: ordered state-machine events for planning, guards,
   attempts, retries, stream triggers, release/hold decisions, and finalization.
 - `provider_attempts`: normalized provider call attempts, failure classes,
@@ -1163,7 +1163,7 @@ Structured/indexed fields should include:
 - tenant ID, application ID, consuming agent ID, consuming user ID, session ID,
   run ID, and client request ID
 - source/provenance for each caller identifier
-- synthetic model ID and immutable version ID
+- Wardwright model ID and immutable version ID
 - route graph root, selected provider, selected concrete model, status,
   simulation/live flag, created timestamp, latency, token counts, and cost
 - stream trigger count, policy action, and "released to consumer" flags
@@ -1194,10 +1194,10 @@ JSON fields are appropriate for:
 The UI and API must efficiently support:
 
 - filter receipts by tenant, application, consuming agent, consuming user,
-  session, run, synthetic model, version, provider, concrete model, final
+  session, run, Wardwright model, version, provider, concrete model, final
   status, simulation/live, stream-policy action, and time range
 - group receipts by consuming agent and consuming user
-- show p50/p95/p99 latency by synthetic model version and provider
+- show p50/p95/p99 latency by Wardwright model version and provider
 - show fallback/escalation frequency by route graph node
 - show stream rules that triggered, whether content was released, and what
   transition happened next
@@ -1251,21 +1251,21 @@ upstream_model = "kimi/k2.6"
 context_window = 262144
 capabilities = ["chat", "tools", "long_context"]
 
-[[synthetic_models]]
+[[model_ids]]
 id = "coding-balanced"
 description = "Local-first coding model with cloud escalation."
 
-[synthetic_models.root]
+[model_ids.root]
 type = "dispatcher"
 strategy = "smallest_context_that_fits"
 
-[[synthetic_models.root.targets]]
+[[model_ids.root.targets]]
 model = "local/qwen-coder"
 
-[[synthetic_models.root.targets]]
+[[model_ids.root.targets]]
 model = "kimi/k2.6"
 
-[[synthetic_models.stream_rules]]
+[[model_ids.stream_rules]]
 id = "no-deprecated-client"
 event = "text_delta"
 match.regex = "OldClient\\("
@@ -1273,15 +1273,15 @@ action = "inject_reminder_and_retry"
 reminder = "Do not use OldClient. Use NewClient instead."
 ```
 
-## Shareable Synthetic Model Artifacts
+## Shareable Wardwright Model Artifacts
 
-Synthetic model definitions should be portable artifacts, not only local
+Wardwright model definitions should be portable artifacts, not only local
 database rows. This creates a path for examples, team reuse, version control,
 and a public or private hub.
 
 Artifact goals:
 
-- Export any synthetic model version as a self-contained manifest.
+- Export any Wardwright model version as a self-contained manifest.
 - Import a manifest into another deployment with provider mapping prompts.
 - Support Git-based review and change history.
 - Support a community hub for discovery, examples, ratings, discussions, and
@@ -1291,7 +1291,7 @@ Artifact goals:
 
 Manifest contents:
 
-- synthetic model ID and semantic version
+- Wardwright model ID and semantic version
 - route graph with abstract provider requirements
 - required model capabilities: context window, tools, JSON/schema support,
   multimodal support, locality/privacy tags
@@ -1315,7 +1315,7 @@ Example:
 
 ```toml
 [artifact]
-kind = "synthetic-model"
+kind = "wardwright-model"
 schema_version = "v1"
 id = "coding-balanced"
 version = "1.0.0"
@@ -1385,7 +1385,7 @@ Hub
 
 ```text
 +--------------------------------------------------------------------------------+
-| Synthetic Models                                             [New model] [Sim] |
+| Wardwright Models                                             [New model] [Sim] |
 +--------------------------------------------------------------------------------+
 | Filter: [all models...] Agent [all v] User [all v] Status [active v] Sort [...]|
 +--------------------------------------------------------------------------------+
@@ -1581,7 +1581,7 @@ Hub
 
 ```text
 +--------------------------------------------------------------------------------+
-| Synthetic Model Hub                                      [Import file] [Publish]|
+| Wardwright Model Hub                                      [Import file] [Publish]|
 +--------------------------------------------------------------------------------+
 | Search [coding agent................] Use case [all v] Trust [verified v]      |
 +--------------------------------------------------------------------------------+
@@ -1635,7 +1635,7 @@ Initial prototype pass:
 | Go clean backend | Standard-library `net/http` mock gateway | Strong fit for a boring deployable gateway with small operational footprint. Less compelling for deep policy/stream abstractions than Rust or Elixir. |
 | Elixir clean backend | Plug/Cowboy mock gateway with supervised in-memory receipts | Strong fit for stream governance, backpressure, supervision, provider lifecycles, and graceful degradation. Distribution and Calciforge embedding are weaker than Rust/Go. |
 | LiteLLM foundation spike | Config and namespace evaluation | Do not fork as the first foundation. Use as a downstream provider gateway and optionally as a front gateway that exposes `wardwright/*` models. |
-| TensorZero foundation spike | Config and adapter-contract evaluation | Do not fork as the first foundation. Use as an optional downstream/eval/observability engine while Wardwright owns synthetic model semantics and stream governance. |
+| TensorZero foundation spike | Config and adapter-contract evaluation | Do not fork as the first foundation. Use as an optional downstream/eval/observability engine while Wardwright owns Wardwright model semantics and stream governance. |
 | React frontend prototype | Vite/React/TypeScript mock UI | Good enough to validate catalog, simulator, receipts, caller provenance, provider list, and route graph assumptions against the OpenAPI contract. |
 
 Current backend bias:
@@ -1648,7 +1648,7 @@ Current backend bias:
 - Choose **Go** if the priority is a simple, conservative HTTP gateway with
   minimal runtime assumptions.
 - Do not start by forking LiteLLM or TensorZero. Integrate with them and borrow
-  architectural lessons, but keep the synthetic model contract, route receipts,
+  architectural lessons, but keep the Wardwright model contract, route receipts,
   caller provenance, shareable artifacts, and stream governance as Wardwright-owned
   semantics.
 
@@ -1671,7 +1671,7 @@ Exclude initially:
 
 - OpenAI-compatible `/v1/chat/completions`.
 - `/v1/models`.
-- `/v1/synthetic/simulate`.
+- `/v1/wardwright/simulate`.
 - SQLite receipt store.
 - OpenAI-compatible HTTP adapter.
 - Basic streaming normalization.
@@ -1718,12 +1718,12 @@ agent/security gateway:
 agent / channel
   -> Calciforge
   -> Calciforge provider adapter pointed at Wardwright /v1
-  -> Wardwright synthetic model
+  -> Wardwright model
   -> Wardwright downstream provider adapter or mock/local model
 ```
 
 This gives real Calciforge traffic to Wardwright without ripping out Calciforge's
-current synthetic model code immediately. It also keeps rollback simple: disable
+current Wardwright model code immediately. It also keeps rollback simple: disable
 the Wardwright provider route and return to Calciforge's existing model path.
 
 Requirements for that bridge:
@@ -1740,7 +1740,7 @@ Requirements for that bridge:
   until receipt semantics are explicit.
 
 Later, once Wardwright has durable storage, stream governance, and real provider
-adapters, Calciforge can delete its internal synthetic model implementation and
+adapters, Calciforge can delete its internal Wardwright model implementation and
 either keep calling Wardwright over HTTP or embed the Rust/core library if that
 becomes the lower-friction path.
 
@@ -1752,7 +1752,7 @@ becomes the lower-friction path.
 - Preserve OpenAI-compatible behavior for ordinary clients.
 - Accept and normalize caller context for tenant, consuming application,
   consuming agent, consuming user, session, run, and request tags.
-- Resolve requested synthetic models to route plans.
+- Resolve requested Wardwright models to route plans.
 - Reject route graphs with cycles.
 - Reject concrete models without declared context windows unless configured as
   unknown-capacity and excluded from fit-based dispatch.
@@ -1762,7 +1762,7 @@ becomes the lower-friction path.
 - Index receipts and logs by caller context so operators can filter by
   consuming agent, consuming user, session/run, tenant, model, route version, and
   provider.
-- Import and export synthetic model manifests without credentials or private
+- Import and export Wardwright model manifests without credentials or private
   deployment identifiers.
 - Import shareable artifacts as drafts only, with explicit provider-role
   mapping and validation before activation.
@@ -1818,7 +1818,7 @@ becomes the lower-friction path.
 - Storage migration tests from empty database and previous schema.
 - Caller context normalization and provenance labels for auth, headers,
   metadata, provider records, and anonymous fallback.
-- Synthetic model artifact schema validation, import, export, provider-role
+- Wardwright model artifact schema validation, import, export, provider-role
   mapping, and secret/private-identifier rejection.
 - Stream ring-buffer release math.
 - Declarative stream rule matching.
@@ -1858,7 +1858,7 @@ becomes the lower-friction path.
 - Simulator and live execution produce comparable decision records.
 - SQLite receipt persistence and retrieval.
 - SQLite receipt filtering by consuming agent, consuming user, session, run,
-  synthetic model, version, status, provider, concrete model, and time range.
+  Wardwright model, version, status, provider, concrete model, and time range.
 - Postgres migration and query compatibility for the same logical receipt
   schema before declaring the server deployment path stable.
 - Optional Redis loss/restart does not lose receipts, model definitions, or
@@ -1877,7 +1877,7 @@ becomes the lower-friction path.
 - Simulator compares active and draft versions.
 - Receipt explorer shows route and stream trigger timeline.
 - Receipt explorer filters by consuming agent, consuming user, session/run,
-  source/provenance, and synthetic model.
+  source/provenance, and Wardwright model.
 - Receipt explorer keeps list queries responsive against persisted receipt
   metadata without requiring prompt/completion capture.
 - Artifact hub browse/import/export/update flows land in draft mode and show
@@ -1936,10 +1936,10 @@ Hosted mode would add value by removing operator burden:
 - managed artifact hub/import flows
 - team auth, billing, and organization policy
 
-It also changes the marketplace story. In self-hosted mode, shared synthetic
+It also changes the marketplace story. In self-hosted mode, shared wardwright
 model artifacts should be inspectable by default: trust should come from tests,
 signatures, provenance, and reputation rather than opaque policy blobs. In a
-hosted marketplace, an author could offer a synthetic model as a hosted policy
+hosted marketplace, an author could offer a Wardwright model as a hosted policy
 service without disclosing complex policy implementation details to consumers.
 Receipts must make that explicit: policy was evaluated remotely, policy logic
 was opaque to the consuming operator, and the author/provider identity and
@@ -1962,7 +1962,7 @@ Rust crates, and UI.
 
 Useful associations:
 
-- synthetic models
+- Wardwright models
 - route receipts
 - model contracts
 - stream governance

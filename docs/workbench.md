@@ -1,16 +1,16 @@
 ---
 layout: default
 title: Policy Workbench
-description: Visualize, simulate, and refine Wardwright synthetic models.
+description: Visualize, simulate, and refine Wardwright model middleware.
 ---
 
 # Policy Workbench
 
 The Wardwright package includes a Phoenix LiveView workbench at `/policies`.
-It is meant for inspecting synthetic models before wiring them into production
-traffic: pick an example or local model, load a scenario, edit the simulated
-request, model output, and relevant history, then step through the resulting
-policy run.
+It is meant for inspecting Wardwright model middleware before wiring it into
+production traffic: pick an example or local model, load a scenario, edit the
+simulated request, model output, and relevant history, then step through the
+resulting policy run.
 
 The deterministic model artifact remains the source of truth. The workbench is
 the review surface for understanding how that artifact compiles into routes,
@@ -19,7 +19,7 @@ receipts.
 
 <figure>
   <img src="assets/workbench/route-composition-simulator.png" alt="Wardwright workbench showing the context-window dispatcher example with route and model composition details">
-  <figcaption>Route and model composition example: the simulator shows why a dispatcher chose a context-fit route and which larger routes remain available as fallbacks.</figcaption>
+  <figcaption>Route and model composition example: the simulator shows why the model graph chose a context-fit route and which larger routes remain available as fallbacks.</figcaption>
 </figure>
 
 ## Simulator
@@ -50,8 +50,8 @@ around the behaviors Wardwright is designed to make understandable:
 
 - **Output evidence and contracts:** incomplete-success detection and structured
   output repair gates.
-- **Route and model composition:** private-context route gates,
-  context-window dispatchers, and partial-alloy context ladders.
+- **Route and model composition:** private-context route gates, context-window
+  routing, partial-context model blends, and route-DAG delegation.
 - **Stream repair and session state:** time-travel stream retry and credential
   redaction/state escalation examples.
 - **Tool and workflow control:** repeated tool-call sequence detection and
@@ -66,7 +66,7 @@ around the behaviors Wardwright is designed to make understandable:
 
 The built-in examples are not special at runtime. The workbench reads policy
 recipes from the configured workspace directory, grouping folders as example
-collections. Locally authored synthetic models that use a supported projection
+collections. Locally authored Wardwright models that use a supported projection
 shape are displayed, simulated, and inspected through the same UI as the seeded
 examples.
 
@@ -93,9 +93,10 @@ inspect-simulate-draft-validate-review-activate loop.
 
 The first useful write path is intentionally narrow:
 
-- `draft_synthetic_model` builds and validates a synthetic-model artifact from
-  supplied target models, route selectors, governance rules, and stream rules.
-- `activate_synthetic_model` validates the same artifact and makes it the
+- `draft_wardwright_model` builds and validates a Wardwright model artifact from
+  supplied provider/model targets, route graph nodes, governance rules, and
+  stream rules.
+- `activate_wardwright_model` validates the same artifact and makes it the
   current local OpenAI-compatible model.
 - `propose_rule_change` returns a draft artifact with an appended, replaced, or
   removed governance or stream rule. It is draft-only and never applies changes.

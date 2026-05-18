@@ -163,7 +163,7 @@ it needs to call the provider. Environment-variable credentials via
 
 Credential storage and service authentication are separate. Fnox keeps raw
 provider keys out of artifacts and logs, but it does not decide who may call a
-synthetic model. Do not configure real provider credentials on a Wardwright
+Wardwright model. Do not configure real provider credentials on a Wardwright
 instance reachable by untrusted users unless the service is bound behind a
 trusted authentication boundary. See [Provider Credentials](provider-credentials.html).
 

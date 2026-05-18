@@ -91,7 +91,7 @@ defmodule Wardwright.ProviderCapabilities do
   def for_provider(_kind, _credential_source) do
     %__MODULE__{
       endpoint_shape: "wardwright_mock",
-      stream_format: "synthetic_chunks",
+      stream_format: "wardwright_chunks",
       auth_scheme: "none",
       cancellation_mechanism: "local_task",
       cancellation_confidence: "deterministic_local"

@@ -33,8 +33,8 @@ defmodule Wardwright.ReceiptStore do
     Wardwright.Runtime.Events.publish(Wardwright.Runtime.Events.topic(:receipts), %{
       "type" => "receipt.stored",
       "receipt_id" => receipt["receipt_id"],
-      "synthetic_model" => receipt["synthetic_model"],
-      "synthetic_version" => receipt["synthetic_version"],
+      "model_id" => receipt["model_id"],
+      "model_version" => receipt["model_version"],
       "session_id" => sourced_value(receipt, ["caller", "session_id"]),
       "run_id" => sourced_value(receipt, ["caller", "run_id"]) || receipt["run_id"],
       "status" => get_in(receipt, ["final", "status"]),
@@ -97,8 +97,8 @@ defmodule Wardwright.ReceiptStore do
       "receipt_id" => receipt["receipt_id"],
       "created_at" => receipt["created_at"],
       "receipt_schema" => receipt["receipt_schema"],
-      "synthetic_model" => receipt["synthetic_model"],
-      "synthetic_version" => receipt["synthetic_version"],
+      "model_id" => receipt["model_id"],
+      "model_version" => receipt["model_version"],
       "caller" => receipt["caller"] || %{},
       "tenant_id" => sourced_value(receipt, ["caller", "tenant_id"]),
       "application_id" => sourced_value(receipt, ["caller", "application_id"]),
@@ -130,7 +130,7 @@ defmodule Wardwright.ReceiptStore do
     Enum.all?(filters, fn
       {"model", value} ->
         with {:ok, model} <- Wardwright.normalize_model(value) do
-          summary["synthetic_model"] == model
+          summary["model_id"] == model
         else
           _ -> false
         end
@@ -152,8 +152,8 @@ defmodule Wardwright.ReceiptStore do
              "consuming_user_id",
              "session_id",
              "run_id",
-             "synthetic_model",
-             "synthetic_version",
+             "model_id",
+             "model_version",
              "selected_provider",
              "selected_model",
              "status",

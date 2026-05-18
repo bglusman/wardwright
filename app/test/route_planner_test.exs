@@ -4,7 +4,7 @@ defmodule Wardwright.RoutePlannerTest do
   test "dispatcher selects the smallest fitting model and preserves larger fallbacks" do
     {:ok, _config} =
       Wardwright.put_config(%{
-        "synthetic_model" => "unit-model",
+        "model_id" => "unit-model",
         "version" => "unit-version",
         "targets" => [
           %{"model" => "small/model", "context_window" => 16},
@@ -29,7 +29,7 @@ defmodule Wardwright.RoutePlannerTest do
   test "cascade keeps declaration order while skipping oversized targets" do
     {:ok, _config} =
       Wardwright.put_config(%{
-        "synthetic_model" => "unit-model",
+        "model_id" => "unit-model",
         "version" => "unit-version",
         "targets" => [
           %{"model" => "fast/model", "context_window" => 16},
@@ -57,7 +57,7 @@ defmodule Wardwright.RoutePlannerTest do
   test "partial alloys use overlapping constituents until smaller contexts stop fitting" do
     {:ok, _config} =
       Wardwright.put_config(%{
-        "synthetic_model" => "unit-model",
+        "model_id" => "unit-model",
         "version" => "unit-version",
         "targets" => [
           %{"model" => "local/qwen", "context_window" => 32},
@@ -94,7 +94,7 @@ defmodule Wardwright.RoutePlannerTest do
   test "weighted alloys respect weights and expose the selected plan in receipts" do
     {:ok, _config} =
       Wardwright.put_config(%{
-        "synthetic_model" => "unit-model",
+        "model_id" => "unit-model",
         "version" => "unit-version",
         "targets" => [
           %{"model" => "cheap/model", "context_window" => 128},
@@ -115,7 +115,7 @@ defmodule Wardwright.RoutePlannerTest do
       })
 
     conn =
-      call(:post, "/v1/synthetic/simulate", %{
+      call(:post, "/v1/wardwright/simulate", %{
         request: %{
           model: "unit-model",
           messages: [%{role: "user", content: "small prompt"}]
@@ -129,5 +129,114 @@ defmodule Wardwright.RoutePlannerTest do
     assert get_in(receipt, ["decision", "strategy"]) == "weighted"
     assert get_in(receipt, ["decision", "selected_model"]) == "strong/model"
     assert get_in(receipt, ["decision", "selected_models"]) == ["strong/model", "cheap/model"]
+  end
+
+  test "model graph targets delegate through another Wardwright model to a concrete provider" do
+    {:ok, _config} =
+      Wardwright.put_config(model_graph_config())
+
+    assert %{
+             route_type: "model_graph",
+             combine_strategy: "route_dag_delegate",
+             selected_model: "canned/final",
+             selected_provider: "canned",
+             route_lineage: [
+               %{"model" => "outer-model", "delegated_to" => "policy-safe-writer"},
+               %{"model" => "policy-safe-writer", "selected_model" => "canned/final"}
+             ]
+           } = Wardwright.select_route(32)
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        model: "outer-model",
+        messages: [%{role: "user", content: "hello"}]
+      })
+
+    assert conn.status == 200
+    body = Jason.decode!(conn.resp_body)
+
+    assert get_in(body, ["choices", Access.at(0), "message", "content"]) ==
+             "nested provider response"
+
+    assert get_in(body, ["wardwright", "selected_model"]) == "canned/final"
+  end
+
+  test "route policy can force a concrete provider inside a delegated Wardwright model" do
+    {:ok, _config} = Wardwright.put_config(model_graph_config())
+
+    assert %{
+             route_type: "policy_override",
+             selected_model: "canned/final",
+             selected_provider: "canned",
+             route_blocked: false
+           } =
+             Wardwright.select_route(32, %{
+               "forced_model" => "canned/final",
+               "allowed_targets" => ["canned"]
+             })
+  end
+
+  test "model graph validation rejects cycles before activation" do
+    assert {:error, "model graph cycle detected at loop-model"} =
+             Wardwright.put_config(%{
+               "model_id" => "loop-model",
+               "version" => "unit-version",
+               "targets" => [
+                 %{
+                   "model" => "loop-model",
+                   "target_kind" => "wardwright_model",
+                   "context_window" => 4_096,
+                   "artifact" => %{
+                     "model_id" => "loop-model",
+                     "version" => "inner-version",
+                     "targets" => [
+                       %{"model" => "local/final", "context_window" => 4_096}
+                     ],
+                     "route_root" => "inner-route",
+                     "dispatchers" => [
+                       %{"id" => "inner-route", "models" => ["local/final"]}
+                     ]
+                   }
+                 }
+               ],
+               "route_root" => "outer-route",
+               "dispatchers" => [
+                 %{"id" => "outer-route", "models" => ["loop-model"]}
+               ]
+             })
+  end
+
+  defp model_graph_config do
+    %{
+      "model_id" => "outer-model",
+      "version" => "outer-version",
+      "targets" => [
+        %{
+          "model" => "policy-safe-writer",
+          "target_kind" => "wardwright_model",
+          "context_window" => 4_096,
+          "artifact" => %{
+            "model_id" => "policy-safe-writer",
+            "version" => "inner-version",
+            "targets" => [
+              %{
+                "model" => "canned/final",
+                "provider_kind" => "canned_sequence",
+                "context_window" => 8_192,
+                "canned_outputs" => ["nested provider response"]
+              }
+            ],
+            "route_root" => "inner-context-fit",
+            "dispatchers" => [
+              %{"id" => "inner-context-fit", "models" => ["canned/final"]}
+            ]
+          }
+        }
+      ],
+      "route_root" => "outer-delegates",
+      "dispatchers" => [
+        %{"id" => "outer-delegates", "models" => ["policy-safe-writer"]}
+      ]
+    }
   end
 end

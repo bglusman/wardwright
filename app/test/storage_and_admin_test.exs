@@ -26,7 +26,7 @@ defmodule Wardwright.StorageAndAdminTest do
 
     {:ok, _config} =
       Wardwright.put_config(%{
-        "synthetic_model" => "coding-balanced",
+        "model_id" => "coding-balanced",
         "version" => "2026-05-13.mock",
         "targets" => [
           %{
@@ -51,7 +51,7 @@ defmodule Wardwright.StorageAndAdminTest do
   test "provider capabilities describe stream contract differences by provider kind" do
     {:ok, _config} =
       Wardwright.put_config(%{
-        "synthetic_model" => "coding-balanced",
+        "model_id" => "coding-balanced",
         "version" => "2026-05-13.mock",
         "targets" => [
           %{"model" => "ollama/llama-test", "context_window" => 128_000},
@@ -69,7 +69,7 @@ defmodule Wardwright.StorageAndAdminTest do
 
     assert get_in(providers, ["ollama", "capabilities", "stream_format"]) == "ollama_ndjson"
     assert get_in(providers, ["openai", "capabilities", "stream_format"]) == "openai_sse"
-    assert get_in(providers, ["local", "capabilities", "stream_format"]) == "synthetic_chunks"
+    assert get_in(providers, ["local", "capabilities", "stream_format"]) == "wardwright_chunks"
 
     assert get_in(providers, ["openai", "capabilities", "schema"]) ==
              "wardwright.provider_capabilities.v1"
@@ -277,8 +277,8 @@ defmodule Wardwright.StorageAndAdminTest do
                "receipt_id" => "rcpt_z",
                "created_at" => 1_800_000_001,
                "receipt_schema" => "v1",
-               "synthetic_model" => "coding-balanced",
-               "synthetic_version" => "2026-05-13.mock",
+               "model_id" => "coding-balanced",
+               "model_version" => "2026-05-13.mock",
                "caller" => %{
                  "tenant_id" => %{"value" => "tenant-a", "source" => "header"},
                  "application_id" => %{"value" => "app-a", "source" => "header"},
@@ -313,8 +313,8 @@ defmodule Wardwright.StorageAndAdminTest do
       "tenant_id" => "tenant-a",
       "application_id" => "app-a",
       "consuming_agent_id" => "agent-b",
-      "synthetic_model" => "coding-balanced",
-      "synthetic_version" => "2026-05-13.mock",
+      "model_id" => "coding-balanced",
+      "model_version" => "2026-05-13.mock",
       "selected_provider" => "managed",
       "selected_model" => "managed/kimi-k2.6",
       "status" => "simulated",

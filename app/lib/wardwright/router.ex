@@ -25,14 +25,14 @@ defmodule Wardwright.Router do
   end
 
   get "/v1/models" do
-    synthetic_model = Wardwright.synthetic_model_record()["id"]
+    model_id = Wardwright.model_record()["id"]
 
     json(conn, 200, %{
       "object" => "list",
       "data" => [
-        %{"id" => synthetic_model, "object" => "model", "owned_by" => "wardwright"},
+        %{"id" => model_id, "object" => "model", "owned_by" => "wardwright"},
         %{
-          "id" => "wardwright/#{synthetic_model}",
+          "id" => "wardwright/#{model_id}",
           "object" => "model",
           "owned_by" => "wardwright"
         }
@@ -40,8 +40,8 @@ defmodule Wardwright.Router do
     })
   end
 
-  get "/v1/synthetic/models" do
-    json(conn, 200, %{"data" => [Wardwright.synthetic_model_summary()]})
+  get "/v1/wardwright/models" do
+    json(conn, 200, %{"data" => [Wardwright.model_summary()]})
   end
 
   post "/v1/chat/completions" do
@@ -105,7 +105,7 @@ defmodule Wardwright.Router do
     end
   end
 
-  post "/v1/synthetic/simulate" do
+  post "/v1/wardwright/simulate" do
     with {:ok, body} <- require_json_object(conn.body_params),
          {:ok, request} <- require_json_object(Map.get(body, "request")),
          request = override_model(request, Map.get(body, "model")),
@@ -167,8 +167,8 @@ defmodule Wardwright.Router do
           "status",
           "tenant_id",
           "application_id",
-          "synthetic_model",
-          "synthetic_version",
+          "model_id",
+          "model_version",
           "selected_provider",
           "selected_model",
           "simulation",
@@ -361,13 +361,13 @@ defmodule Wardwright.Router do
     end
   end
 
-  post "/v1/policy-authoring/synthetic-models/draft" do
+  post "/v1/policy-authoring/wardwright-models/draft" do
     with :ok <- require_protected_access(conn),
          {:ok, body} <- require_json_object(conn.body_params) do
       json(
         conn,
         200,
-        WardwrightWeb.PolicyAuthoringDrafts.synthetic_model_draft(body, request_origin(conn))
+        WardwrightWeb.PolicyAuthoringDrafts.wardwright_model_draft(body, request_origin(conn))
       )
     else
       {:error, :protected, message} ->
@@ -378,11 +378,11 @@ defmodule Wardwright.Router do
     end
   end
 
-  post "/v1/policy-authoring/synthetic-models" do
+  post "/v1/policy-authoring/wardwright-models" do
     with :ok <- require_protected_access(conn),
          {:ok, body} <- require_json_object(conn.body_params),
          {:ok, result} <-
-           WardwrightWeb.PolicyAuthoringDrafts.activate_synthetic_model(
+           WardwrightWeb.PolicyAuthoringDrafts.activate_wardwright_model(
              body,
              request_origin(conn)
            ) do
@@ -554,9 +554,9 @@ defmodule Wardwright.Router do
     end
   end
 
-  get "/admin/synthetic-models" do
+  get "/admin/wardwright-models" do
     with :ok <- require_protected_access(conn) do
-      json(conn, 200, %{"data" => [Wardwright.synthetic_model_record()]})
+      json(conn, 200, %{"data" => [Wardwright.model_record()]})
     else
       {:error, :protected, message} ->
         error(conn, 403, message, "forbidden", "protected_endpoint")
@@ -572,7 +572,7 @@ defmodule Wardwright.Router do
 
         json(conn, 200, %{
           "status" => "ok",
-          "synthetic_model" => config["synthetic_model"],
+          "model_id" => config["model_id"],
           "targets" => config["targets"]
         })
       else

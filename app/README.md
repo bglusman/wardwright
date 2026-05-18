@@ -1,7 +1,7 @@
 # Wardwright App
 
-Elixir/LiveView implementation of the Wardwright synthetic model platform contract.
-It serves the OpenAI-compatible gateway surface, synthetic-model routing,
+Elixir/LiveView implementation of the Wardwright model middleware contract.
+It serves the OpenAI-compatible gateway surface, Wardwright model routing,
 stream policy, receipts, protected authoring APIs, and the LiveView policy
 workbench. Tests still rely heavily on mock providers, but the runtime boundary
 is shaped for real provider adapters and local Ollama/OpenAI-compatible targets.
@@ -53,9 +53,9 @@ mise exec -- mix test
 ## Implemented Surface
 
 - `GET /v1/models`
-- `GET /v1/synthetic/models` returns public model summaries only.
+- `GET /v1/wardwright/models` returns public model summaries only.
 - `POST /v1/chat/completions`
-- `POST /v1/synthetic/simulate`
+- `POST /v1/wardwright/simulate`
 - `GET /v1/policy-authoring/tools`
 - `GET /v1/policy-authoring/projections/{pattern}`
 - `GET /v1/policy-authoring/simulations/{pattern}`
@@ -66,10 +66,10 @@ mise exec -- mix test
 - `GET /admin/providers`
 - `GET /admin/storage`
 - `GET /admin/runtime`
-- `GET /admin/synthetic-models`
+- `GET /admin/wardwright-models`
 - `GET /policies`
 
-The public synthetic model is available as both `coding-balanced` and
+The public Wardwright model is available as both `coding-balanced` and
 `wardwright/coding-balanced`. Requests are routed by a simple prompt-length
 estimate: prompts at or below 32,768 estimated tokens select
 `local/qwen-coder`; larger prompts select `managed/kimi-k2.6`. Chat and
@@ -77,8 +77,8 @@ simulation calls write in-memory receipts and publish runtime visibility events
 through Phoenix PubSub. Caller context is extracted from `X-Wardwright-*` and
 `X-Client-Request-Id` headers first, then from request `metadata`.
 
-Detailed synthetic-model records include route graphs, prompt transforms, and
-governance policy internals; read them through `/admin/synthetic-models`.
+Detailed Wardwright model records include route graphs, prompt transforms, and
+governance policy internals; read them through `/admin/wardwright-models`.
 Prototype-sensitive endpoints are restricted to loopback callers unless
 `WARDWRIGHT_ADMIN_TOKEN` or `config :wardwright, :admin_token` is set and the
 request provides `Authorization: Bearer <token>` or
@@ -86,7 +86,7 @@ request provides `Authorization: Bearer <token>` or
 and policy-cache read/write APIs. This is intended for a homelab or
 single-operator deployment shape. It is not a full multi-user auth system:
 provider API keys should stay behind fnox-backed secret lookup or development
-environment variables, while decisions about who may use a synthetic model,
+environment variables, while decisions about who may use a Wardwright model,
 configure a provider, or enter through SSO depend on the eventual deployment
 topology. Fnox is not bundled by the app; targets that use `credential_fnox_key`
 expect `fnox get KEY` to work on the host.
