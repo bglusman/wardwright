@@ -294,6 +294,37 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ ~s(src="/assets/wardwright_live.js")
   end
 
+  test "workbench rejects remote browser access without an admin token" do
+    conn =
+      build_conn()
+      |> Map.put(:remote_ip, {203, 0, 113, 10})
+      |> get("/policies/route-privacy/diagram")
+
+    assert conn.status == 403
+    assert %{"error" => %{"code" => "protected_endpoint"}} = Jason.decode!(conn.resp_body)
+  end
+
+  test "workbench accepts remote browser access with a configured admin bearer token" do
+    previous = Application.get_env(:wardwright, :admin_token)
+    Application.put_env(:wardwright, :admin_token, "workbench-review-token")
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:wardwright, :admin_token, previous),
+        else: Application.delete_env(:wardwright, :admin_token)
+    end)
+
+    conn =
+      build_conn()
+      |> Map.put(:remote_ip, {203, 0, 113, 10})
+      |> Plug.Conn.put_req_header("authorization", "Bearer workbench-review-token")
+      |> get("/policies/route-privacy/diagram")
+
+    html = html_response(conn, 200)
+    assert html =~ "Policy projection graph"
+    assert html =~ "Private context route gate"
+  end
+
   test "LiveView client assets are served without an npm build step" do
     conn = get(build_conn(), "/assets/wardwright_live.js")
     assert response(conn, 200) =~ "new window.LiveView.LiveSocket"

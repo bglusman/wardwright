@@ -14,6 +14,10 @@ defmodule WardwrightWeb.Router do
     plug(:put_secure_browser_headers)
   end
 
+  pipeline :protected_browser do
+    plug(WardwrightWeb.ProtectedAccess)
+  end
+
   pipeline :api do
     plug(:accepts, ["json"])
   end
@@ -27,7 +31,7 @@ defmodule WardwrightWeb.Router do
   end
 
   scope "/", WardwrightWeb do
-    pipe_through(:browser)
+    pipe_through([:browser, :protected_browser])
 
     live("/", PolicyProjectionLive, :index)
     live("/policies", PolicyProjectionLive, :index)
