@@ -2,6 +2,15 @@ defmodule Wardwright.GleamPolicyCoreTest do
   use ExUnit.Case, async: true
 
   Code.require_file("../src/wardwright/elixir_reference/policy_core_reference.exs", __DIR__)
+  alias Wardwright.ElixirReference.ActionCore, as: ActionCoreReference
+  alias Wardwright.ElixirReference.AlertCore, as: AlertCoreReference
+  alias Wardwright.ElixirReference.PlanCore, as: PlanCoreReference
+  alias Wardwright.ElixirReference.ProjectionCore, as: ProjectionCoreReference
+  alias Wardwright.ElixirReference.RouteCore, as: RouteCoreReference
+  alias Wardwright.ElixirReference.StreamCore, as: StreamCoreReference
+  alias Wardwright.ElixirReference.StructuredCore, as: StructuredCoreReference
+  alias Wardwright.ElixirReference.StructuredValidationCore, as: StructuredValidationCoreReference
+  alias Wardwright.ElixirReference.ToolContextCore, as: ToolContextCoreReference
   alias Wardwright.PolicyCoreReference
 
   test "structured core classifies successful guard-loop outcomes" do
@@ -307,6 +316,9 @@ defmodule Wardwright.GleamPolicyCoreTest do
   end
 
   test "Gleam cores stay equivalent to executable Elixir reference documentation" do
+    assert :wardwright@structured_core.guard_action() ==
+             StructuredCoreReference.guard_action()
+
     assert :wardwright@structured_core.success_status(2) ==
              PolicyCoreReference.success_status(2)
 
@@ -335,6 +347,79 @@ defmodule Wardwright.GleamPolicyCoreTest do
     assert :wardwright@plan_core.within_wall_clock_window(true, 50, 120, 60) == false
     assert :wardwright@plan_core.event_after(120, 0, 100, 99)
 
+    assert Wardwright.Policy.AlertCore.decide_enqueue(
+             %{"capacity" => 1, "on_full" => "fail_closed"},
+             1,
+             false,
+             %{"idempotency_key" => "key-1", "rule_id" => "alert-rule", "session_id" => "s1"}
+           ).status ==
+             AlertCoreReference.decide_enqueue(
+               %{capacity: 1, on_full: :fail_closed},
+               1,
+               false,
+               %{idempotency_key: "key-1", rule_id: "alert-rule", session_id: "s1"}
+             ).status
+
+    assert Wardwright.Policy.AlertCore.terminal?(:dead_lettered) ==
+             AlertCoreReference.terminal?(:dead_lettered)
+
+    assert :wardwright@structured_validation_core.object_schema_valid(true, true, false) ==
+             StructuredValidationCoreReference.object_schema_valid?(true, true, false)
+
+    assert :wardwright@structured_validation_core.string_property_valid(true, 4, 3, true) ==
+             StructuredValidationCoreReference.string_property_valid?(true, 4, 3, true)
+
+    assert :wardwright@structured_validation_core.number_property_valid(true, true, false) ==
+             StructuredValidationCoreReference.number_property_valid?(true, true, false)
+
+    assert :wardwright@structured_validation_core.string_array_property_valid(true, false) ==
+             StructuredValidationCoreReference.string_array_property_valid?(true, false)
+
+    assert :wardwright@structured_validation_core.semantic_number_rule_valid(true, true) ==
+             StructuredValidationCoreReference.semantic_number_rule_valid?(true, true)
+
+    assert :wardwright@structured_validation_core.semantic_string_not_contains_valid(true, true) ==
+             StructuredValidationCoreReference.semantic_string_not_contains_valid?(true, true)
+
+    assert :wardwright@projection_core.state_ids("tts-retry", true) ==
+             ProjectionCoreReference.state_ids("tts-retry", true)
+
+    assert :wardwright@projection_core.route_action("", true) ==
+             ProjectionCoreReference.route_action("", true)
+
+    assert :wardwright@projection_core.tool_action("tool_sequence", "", "deny_tool", "") ==
+             ProjectionCoreReference.tool_action("tool_sequence", "", "deny_tool", "")
+
+    assert :wardwright@projection_core.tool_rule_phase(false, true) ==
+             ProjectionCoreReference.tool_rule_phase(false, true)
+
+    assert :wardwright@projection_core.tool_context_phase("tool.loop_governing") ==
+             ProjectionCoreReference.tool_context_phase("tool.loop_governing")
+
+    assert :wardwright@route_core.normalize_alloy_strategy("all") ==
+             RouteCoreReference.normalize_alloy_strategy("all")
+
+    assert :wardwright@route_core.default_root("", "dispatcher.a", "cascade.a", "alloy.a") ==
+             RouteCoreReference.default_root("", "dispatcher.a", "cascade.a", "alloy.a")
+
+    assert :wardwright@route_core.validate_strategy("round_robin") ==
+             RouteCoreReference.validate_strategy("round_robin")
+
+    assert :wardwright@route_core.forced_fallback_reason("policy forced selected model") ==
+             RouteCoreReference.forced_fallback_reason("policy forced selected model")
+
+    assert :wardwright@tool_context_core.inferred_phase(false, true, false) ==
+             ToolContextCoreReference.inferred_phase(false, true, false)
+
+    assert :wardwright@tool_context_core.inferred_confidence(false, false, 1, false) ==
+             ToolContextCoreReference.inferred_confidence(false, false, 1, false)
+
+    assert :wardwright@tool_context_core.default_namespace(false, "function") ==
+             ToolContextCoreReference.default_namespace(false, "function")
+
+    assert :wardwright@tool_context_core.list_matches(["shell.exec"], "shell.exec") ==
+             ToolContextCoreReference.list_matches?(["shell.exec"], "shell.exec")
+
     for {action, scope} <- [
           {"rewrite", "stream_window"},
           {"rewrite_chunk", "chunk"},
@@ -344,8 +429,14 @@ defmodule Wardwright.GleamPolicyCoreTest do
           {"annotate", "chunk"}
         ] do
       assert :wardwright@stream_core.action_tag(action, scope) ==
-               PolicyCoreReference.stream_action_tag(action, scope)
+               StreamCoreReference.action_tag(action, scope)
     end
+
+    assert :wardwright@stream_core.terminal_status("retry_with_reminder") ==
+             StreamCoreReference.terminal_status("retry_with_reminder")
+
+    assert :wardwright@stream_core.release_budget(10, 16) ==
+             StreamCoreReference.release_budget(10, 16)
 
     for {kind, action} <- [
           {"route_gate", "restrict_routes"},
@@ -354,19 +445,19 @@ defmodule Wardwright.GleamPolicyCoreTest do
           {"custom", "unknown"}
         ] do
       assert :wardwright@action_core.phase(kind, action) ==
-               PolicyCoreReference.action_phase(kind, action)
+               ActionCoreReference.phase(kind, action)
 
       assert :wardwright@action_core.effect_type(action) ==
-               PolicyCoreReference.action_effect_type(action)
+               ActionCoreReference.effect_type(action)
 
       assert :wardwright@action_core.conflict_key(action) ==
-               PolicyCoreReference.action_conflict_key(action)
+               ActionCoreReference.conflict_key(action)
 
       assert :wardwright@action_core.conflict_policy(action) ==
-               PolicyCoreReference.action_conflict_policy(action)
+               ActionCoreReference.conflict_policy(action)
 
       assert :wardwright@action_core.default_priority(action) ==
-               PolicyCoreReference.action_default_priority(action)
+               ActionCoreReference.default_priority(action)
     end
 
     assert :wardwright@action_core.result_action("ok", false, 0) ==
@@ -374,6 +465,14 @@ defmodule Wardwright.GleamPolicyCoreTest do
 
     assert :wardwright@action_core.result_action("error", false, 0) ==
              PolicyCoreReference.result_action("error", false, 0)
+
+    assert :wardwright@action_core.conflict_resolution("ordered") ==
+             ActionCoreReference.conflict_resolution("ordered")
+
+    assert :wardwright@action_core.conflict_summary("terminal_decision", "ordered") ==
+             ActionCoreReference.conflict_summary("terminal_decision", "ordered")
+
+    assert PlanCoreReference.threshold_decision(-1, 0) == {:not_triggered, 0, 1}
   end
 
   defp route_forced_model_context_block do

@@ -10,9 +10,10 @@ Gleam is compiled inside the same Mix project for small, correctness-heavy
 policy decisions. Elixir keeps ownership of HTTP, Phoenix, processes, PubSub,
 and mutable state; Gleam modules under `src/wardwright` own pure structured
 output, history-threshold, and alert-queue classifications behind Elixir wrapper
-modules in `lib/wardwright/policy`. Elixir mirrors for selected pure cores live
-under `src/wardwright/elixir_reference` as test-loaded executable documentation;
-they are not compiled into runtime paths.
+modules in `lib/wardwright/policy`. Elixir mirrors for the Gleam cores live
+under `src/wardwright/elixir_reference` as one `.exs` reference module per core;
+tests load them as executable documentation, but they are not compiled into
+runtime paths.
 
 ## Run
 
