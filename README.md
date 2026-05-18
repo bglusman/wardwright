@@ -89,6 +89,24 @@ wardwright tools --json
 See [Packaging](docs/packaging.md) for release targets, manual archive install
 steps, and service details.
 
+## Policy Workbench
+
+The installed service includes a LiveView policy workbench at `/policies`.
+It is a simulator for synthetic models: load a seeded or local example, edit the
+simulated caller input, backend model output, and relevant history, then step
+through route selection, state transitions, stream retries, rewrites, tool
+decisions, and receipt events.
+
+![Wardwright policy workbench showing context-window dispatcher simulation](docs/assets/workbench/route-composition-simulator.png)
+
+The `v0.0.4` starter examples are grouped around output contracts, route/model
+composition, stream repair/session state, and tool/workflow control. Locally
+authored models that use a supported projection shape are loaded from the same
+workspace recipe directory and use the same simulator.
+
+See [Policy Workbench](docs/workbench.md) for screenshots and the current
+example catalog.
+
 ## Current Contents
 
 - `contracts/openapi.yaml` - draft HTTP/OpenAI-compatible contract.

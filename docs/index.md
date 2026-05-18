@@ -17,6 +17,7 @@ description: Synthetic model contracts, governance, and receipts for agentic wor
     <a class="button" href="vision.html">Read the Vision</a>
     <a class="button secondary" href="synthetic-models.html">Synthetic Models</a>
     <a class="button secondary" href="use-cases.html">Use Cases</a>
+    <a class="button secondary" href="workbench.html">Policy Workbench</a>
     <a class="button secondary" href="feature-spikes.html">Feature Spikes</a>
     <a class="button secondary" href="architecture-review-tasks.html">Architecture Tasks</a>
     <a class="button secondary" href="architecture-ratchets.html">Architecture Ratchets</a>
@@ -31,7 +32,7 @@ description: Synthetic model contracts, governance, and receipts for agentic wor
   <strong>Status:</strong> Wardwright is early but installable. The prepared
   <code>v0.0.4</code> release publishes native macOS and Linux artifacts, a
   Homebrew formula, the active BEAM implementation, shared contracts, and
-  clearer state-machine model visibility in the policy workbench. See the
+  a policy workbench with starter model examples and simulation playback. See the
   [Backend Selection Decision](backend-selection-decision.html) for the pruning
   rationale.
 </div>
@@ -119,6 +120,26 @@ synthetic model routing, stream-policy retries/rewrites, tool-context policy
 hooks, policy history/cache state, protected authoring APIs, receipts, and an
 initial LiveView workbench for policy diagrams, simulation playback, recipe
 selection, and tool-governance demos.
+
+## Policy Workbench
+
+The installed app comes with a workbench at `/policies` for visualizing and
+simulating synthetic models before they are used behind real traffic. It loads
+seeded and locally authored examples, lets operators edit a scenario, and shows
+the route, state, retry, rewrite, tool, and receipt effects produced by that
+run.
+
+<figure>
+  <img src="assets/workbench/stream-retry-simulator.png" alt="Wardwright policy workbench showing a stream retry simulation">
+  <figcaption>The simulator can replay retry-oriented stream governance, including the raw model stream, held/released output, and receipt evidence.</figcaption>
+</figure>
+
+The `v0.0.4` package seeds example collections for output contracts,
+route/model composition, stream repair and session state, plus tool/workflow
+control. Models you create locally and store in the configured workspace recipe
+directory use the same workbench path when they expose a supported projection.
+See the [Policy Workbench](workbench.html) page for screenshots and the current
+example catalog.
 
 Near-term work:
 

@@ -174,7 +174,8 @@ where the policy UI and validation story are useful enough to promote.
 - Release `v0.0.3` adds initial policy visualization, simulation playback, and
   the recipe catalog workbench boundary.
 - Release `v0.0.4` adds clearer model binding visibility in the state-machine
-  workbench and prepares the next package version.
+  workbench, seeded example collections, simulator screenshots/docs, and
+  prepares the next package version.
 - The first CI run may expose platform-specific Burrito, Zig, or NIF issues.
   macOS builds intentionally install Homebrew `zig@0.15` because upstream Zig
   0.15.2 can fail to link on newer macOS/Xcode combinations.
