@@ -50,7 +50,7 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
   defp validate_model_id(checks, artifact) do
     model_id =
       artifact
-      |> Map.get("model_id", Map.get(artifact, "model_id", ""))
+      |> Map.get("model_id", "")
       |> to_string()
       |> String.trim()
 
