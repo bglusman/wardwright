@@ -106,6 +106,12 @@ defmodule Wardwright.PolicyProjection do
     end)
   end
 
+  def simulation_inputs("ambiguous-success", "structured-output-repair-gate") do
+    structured_output_simulation_inputs()
+  end
+
+  def simulation_inputs(pattern_id, _recipe_id), do: simulation_inputs(pattern_id)
+
   def simulation_inputs do
     tts_simulation_inputs() ++
       stream_rewrite_simulation_inputs() ++
@@ -232,6 +238,39 @@ defmodule Wardwright.PolicyProjection do
     ]
   end
 
+  defp structured_output_simulation_inputs do
+    [
+      %{
+        "id" => "json-malformed-repair",
+        "title" => "JSON: malformed response gets repair feedback",
+        "description" =>
+          "The provider returns something JSON-like, but Wardwright cannot parse the promised contract.",
+        "relationship" => "direct",
+        "user_input" => "Return a structured deployment summary.",
+        "model_response" => ~s({"status":"done","artifact_id":)
+      },
+      %{
+        "id" => "json-missing-semantic-field",
+        "title" => "JSON: schema branch missing evidence",
+        "description" =>
+          "The JSON parses, but no accepted schema branch includes the evidence Wardwright promised.",
+        "relationship" => "direct",
+        "user_input" => "Return a structured deployment summary.",
+        "model_response" => ~s({"status":"done","summary":"Deployment finished."})
+      },
+      %{
+        "id" => "json-valid-alternate-schema",
+        "title" => "JSON: alternate accepted schema",
+        "description" =>
+          "The caller accepts more than one shape, and this response satisfies the receipt-style branch.",
+        "relationship" => "direct",
+        "user_input" => "Return a structured deployment summary.",
+        "model_response" =>
+          ~s({"result":{"state":"completed"},"evidence":{"artifact_id":"deploy-4938"}})
+      }
+    ]
+  end
+
   defp simulation_input_relationship("tts-retry", input_id)
        when input_id in ["split-old-client", "safe-stream"],
        do: "direct"
@@ -278,6 +317,29 @@ defmodule Wardwright.PolicyProjection do
 
     pattern_id
     |> evaluated_simulation(turn, config)
+    |> Map.put("artifact_hash", artifact_hash)
+    |> Map.put("scenario_source", "interactive")
+    |> Map.put("source", "interactive")
+  end
+
+  def simulate_recipe_turn(
+        pattern_id,
+        recipe_id,
+        user_input,
+        model_response,
+        history_context,
+        config \\ Wardwright.current_config()
+      ) do
+    artifact_hash = artifact(pattern(pattern_id), config)["artifact_hash"]
+
+    turn = %{
+      "user_input" => user_input || "",
+      "model_response" => model_response || "",
+      "history_context" => normalize_history_context(history_context)
+    }
+
+    pattern_id
+    |> evaluated_recipe_simulation(recipe_id, turn, config)
     |> Map.put("artifact_hash", artifact_hash)
     |> Map.put("scenario_source", "interactive")
     |> Map.put("source", "interactive")
@@ -1645,6 +1707,17 @@ defmodule Wardwright.PolicyProjection do
     |> List.first()
   end
 
+  defp evaluated_recipe_simulation(
+         "ambiguous-success",
+         "structured-output-repair-gate",
+         turn,
+         _config
+       ),
+       do: evaluated_structured_output_simulation(turn)
+
+  defp evaluated_recipe_simulation(pattern_id, _recipe_id, turn, config),
+    do: evaluated_simulation(pattern_id, turn, config)
+
   defp ambiguous_success_simulation_cases(_config) do
     [
       %{
@@ -1781,6 +1854,159 @@ defmodule Wardwright.PolicyProjection do
       }
     end
   end
+
+  defp evaluated_structured_output_simulation(turn) do
+    text = turn_response(turn)
+
+    case Jason.decode(text) do
+      {:error, _reason} ->
+        structured_output_retry_simulation(
+          turn,
+          "interactive-structured-output-malformed",
+          "Edited JSON triggers repair retry",
+          "Provider output is not parseable JSON for the promised synthetic model contract.",
+          "json parse failed",
+          "retry_with_validation_feedback"
+        )
+
+      {:ok, decoded} ->
+        if structured_output_has_evidence?(decoded) do
+          %{
+            "simulation_schema" => "wardwright.policy_simulation.v1",
+            "scenario_id" => "interactive-structured-output-valid",
+            "title" => "Edited JSON satisfies an accepted schema branch",
+            "engine_id" => "hybrid-output-review",
+            "input_summary" => summarize_turn(turn),
+            "expected_behavior" =>
+              "The parsed JSON satisfies one accepted branch of the synthetic model contract.",
+            "verdict" => "passed",
+            "trace" => [
+              trace(
+                "j1",
+                "output.finalizing",
+                "structured-output.parser",
+                "match",
+                "json parsed",
+                "response decoded as JSON",
+                "pass"
+              ),
+              trace(
+                "j2",
+                "output.finalizing",
+                "structured-output.schema-branch",
+                "state_read",
+                "accepted schema branch",
+                "artifact evidence field is present in an accepted output shape",
+                "pass"
+              ),
+              trace(
+                "j3",
+                "receipt.finalized",
+                "structured-output.receipt",
+                "receipt_event",
+                "contract recorded",
+                "selected schema branch and evidence path would be recorded",
+                "pass"
+              )
+            ],
+            "receipt_preview" => %{
+              "input" => turn,
+              "events" => [
+                %{
+                  "type" => "structured_output.accepted",
+                  "rule_id" => "structured-output-repair-gate"
+                }
+              ],
+              "final_status" => "completed"
+            }
+          }
+        else
+          structured_output_retry_simulation(
+            turn,
+            "interactive-structured-output-missing-evidence",
+            "Edited JSON parses but misses contract evidence",
+            "The JSON parses, but no accepted schema branch includes artifact evidence.",
+            "artifact evidence missing",
+            "retry_with_validation_feedback"
+          )
+        end
+    end
+  end
+
+  defp structured_output_retry_simulation(
+         turn,
+         scenario_id,
+         title,
+         expected_behavior,
+         match_detail,
+         action_label
+       ) do
+    %{
+      "simulation_schema" => "wardwright.policy_simulation.v1",
+      "scenario_id" => scenario_id,
+      "title" => title,
+      "engine_id" => "hybrid-output-review",
+      "input_summary" => summarize_turn(turn),
+      "expected_behavior" => expected_behavior,
+      "verdict" => "passed",
+      "trace" => [
+        trace(
+          "j1",
+          "output.finalizing",
+          "structured-output.parser",
+          "match",
+          match_detail,
+          "response does not satisfy the promised structured-output contract",
+          "warn"
+        ),
+        trace(
+          "j2",
+          "output.finalizing",
+          "structured-output.repair",
+          "action",
+          action_label,
+          "Wardwright would retry with validation feedback before accepting or blocking",
+          "warn"
+        ),
+        trace(
+          "j3",
+          "receipt.finalized",
+          "structured-output.receipt",
+          "receipt_event",
+          "repair evidence recorded",
+          "receipt records parse/schema failure and retry request",
+          "pass"
+        )
+      ],
+      "receipt_preview" => %{
+        "input" => turn,
+        "events" => [
+          %{
+            "type" => "structured_output.retry_requested",
+            "rule_id" => "structured-output-repair-gate"
+          }
+        ],
+        "final_status" => "retry_requested"
+      }
+    }
+  end
+
+  defp structured_output_has_evidence?(%{"artifact_id" => value}) when value not in [nil, ""],
+    do: true
+
+  defp structured_output_has_evidence?(%{"file_id" => value}) when value not in [nil, ""],
+    do: true
+
+  defp structured_output_has_evidence?(%{"download_id" => value}) when value not in [nil, ""],
+    do: true
+
+  defp structured_output_has_evidence?(%{"evidence" => evidence}) when is_map(evidence),
+    do: structured_output_has_evidence?(evidence)
+
+  defp structured_output_has_evidence?(%{"result" => result}) when is_map(result),
+    do: structured_output_has_evidence?(result)
+
+  defp structured_output_has_evidence?(_decoded), do: false
 
   defp route_privacy_simulation_cases(config) do
     rules = route_governance_rules(config)

@@ -46,7 +46,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     selected_recipe_id = selected_recipe["id"] || ""
     projection = Wardwright.PolicyProjection.projection(pattern_id)
     simulations = Wardwright.PolicyProjection.simulations(pattern_id)
-    simulation_inputs = Wardwright.PolicyProjection.simulation_inputs(pattern_id)
+
+    simulation_inputs =
+      Wardwright.PolicyProjection.simulation_inputs(pattern_id, selected_recipe_id)
+
     selected_simulation_input = default_simulation_input(simulation_inputs)
     simulation_user_input = simulation_field(selected_simulation_input, "user_input")
     simulation_model_response = simulation_field(selected_simulation_input, "model_response")
@@ -55,6 +58,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     selected_simulation =
       selected_simulation(
         pattern_id,
+        selected_recipe_id,
         simulations,
         simulation_user_input,
         simulation_model_response,
@@ -1584,14 +1588,22 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   defp rich_recipe?(_recipe), do: false
 
-  defp selected_simulation(_pattern_id, simulations, "", "", history_context)
+  defp selected_simulation(_pattern_id, _recipe_id, simulations, "", "", history_context)
        when history_context == %{} do
     List.first(simulations)
   end
 
-  defp selected_simulation(pattern_id, _simulations, user_input, model_response, history_context) do
-    Wardwright.PolicyProjection.simulate_turn_with_context(
+  defp selected_simulation(
+         pattern_id,
+         recipe_id,
+         _simulations,
+         user_input,
+         model_response,
+         history_context
+       ) do
+    Wardwright.PolicyProjection.simulate_recipe_turn(
       pattern_id,
+      recipe_id,
       user_input,
       model_response,
       history_context
@@ -1600,8 +1612,9 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   defp assign_interactive_simulation(socket, user_input, model_response, history_context) do
     simulation =
-      Wardwright.PolicyProjection.simulate_turn_with_context(
+      Wardwright.PolicyProjection.simulate_recipe_turn(
         socket.assigns.selected_pattern_id,
+        socket.assigns.selected_recipe_id,
         user_input,
         model_response,
         history_context

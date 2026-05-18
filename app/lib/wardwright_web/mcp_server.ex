@@ -6,6 +6,13 @@ defmodule WardwrightWeb.MCPServer do
     version: Mix.Project.config()[:version],
     capabilities: [:tools]
 
+  Code.ensure_compiled!(WardwrightWeb.MCP.Tools.ExplainProjection)
+  Code.ensure_compiled!(WardwrightWeb.MCP.Tools.SimulatePolicy)
+  Code.ensure_compiled!(WardwrightWeb.MCP.Tools.DraftSyntheticModel)
+  Code.ensure_compiled!(WardwrightWeb.MCP.Tools.ActivateSyntheticModel)
+  Code.ensure_compiled!(WardwrightWeb.MCP.Tools.ProposeRuleChange)
+  Code.ensure_compiled!(WardwrightWeb.MCP.Tools.ValidatePolicyArtifact)
+
   component(WardwrightWeb.MCP.Tools.ExplainProjection, name: "explain_projection")
   component(WardwrightWeb.MCP.Tools.SimulatePolicy, name: "simulate_policy")
   component(WardwrightWeb.MCP.Tools.DraftSyntheticModel, name: "draft_synthetic_model")

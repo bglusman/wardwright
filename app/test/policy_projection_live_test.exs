@@ -768,6 +768,36 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert active_recipe_link?(direct_html, "context-window-dispatcher")
   end
 
+  test "LiveView recipe selection changes ambiguous-success scenarios" do
+    {:ok, _artifact_view, artifact_html} =
+      live(build_conn(), "/policies/ambiguous-success/diagram/recipe/done-but-missing-artifact")
+
+    assert artifact_html =~ "Done, but missing artifact"
+    assert artifact_html =~ "Artifact: claim without artifact"
+    refute artifact_html =~ "JSON: malformed response gets repair feedback"
+
+    {:ok, view, structured_html} =
+      live(
+        build_conn(),
+        "/policies/ambiguous-success/diagram/recipe/structured-output-repair-gate"
+      )
+
+    assert structured_html =~ "Structured output repair gate"
+    assert structured_html =~ "JSON: malformed response gets repair feedback"
+    assert structured_html =~ "retry_with_validation_feedback"
+    refute structured_html =~ "Artifact: claim without artifact"
+
+    selected =
+      view
+      |> element("form[phx-change='select-simulation-input']")
+      |> render_change(%{"simulation_input" => "json-valid-alternate-schema"})
+
+    assert selected =~ "JSON: alternate accepted schema"
+    assert selected =~ "accepted schema branch"
+    assert selected =~ "contract recorded"
+    refute selected =~ "missing artifact alert"
+  end
+
   defp active_recipe_link?(html, recipe_id) do
     Regex.match?(
       ~r/<a(?=[^>]*class="active")(?=[^>]*href="\/policies\/route-privacy\/diagram\/recipe\/#{Regex.escape(recipe_id)}")[^>]*>/,
