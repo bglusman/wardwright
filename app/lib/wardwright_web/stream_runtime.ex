@@ -54,6 +54,7 @@ defmodule WardwrightWeb.StreamRuntime do
         "selected_model" => get_in(receipt, ["decision", "selected_model"]),
         "selected_provider" => get_in(receipt, ["decision", "selected_provider"])
       }
+      |> Map.merge(ReceiptBuilder.sink_usage(receipt))
     ])
 
     if acc.sent? do

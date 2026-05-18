@@ -35,6 +35,36 @@ defmodule WardwrightWeb.Telemetry do
         measurement: :utilization,
         tags: [:sink_id, :kind],
         description: "Current queued fraction for each Wardwright sink"
+      ),
+      counter("wardwright.model.requests.count",
+        event_name: [:wardwright, :model, :usage],
+        measurement: :count,
+        tags: [:selected_provider, :selected_model, :status, :simulation],
+        description: "Wardwright model requests finalized through receipt sink events"
+      ),
+      counter("wardwright.model.tokens.estimated_prompt",
+        event_name: [:wardwright, :model, :usage],
+        measurement: :estimated_prompt_tokens,
+        tags: [:selected_provider, :selected_model, :status, :simulation],
+        description: "Estimated prompt tokens for finalized Wardwright model requests"
+      ),
+      counter("wardwright.model.tokens.prompt",
+        event_name: [:wardwright, :model, :usage],
+        measurement: :prompt_tokens,
+        tags: [:selected_provider, :selected_model, :status, :simulation],
+        description: "Provider-reported prompt tokens for finalized Wardwright model requests"
+      ),
+      counter("wardwright.model.tokens.completion",
+        event_name: [:wardwright, :model, :usage],
+        measurement: :completion_tokens,
+        tags: [:selected_provider, :selected_model, :status, :simulation],
+        description: "Provider-reported completion tokens for finalized Wardwright model requests"
+      ),
+      counter("wardwright.model.tokens.total",
+        event_name: [:wardwright, :model, :usage],
+        measurement: :total_tokens,
+        tags: [:selected_provider, :selected_model, :status, :simulation],
+        description: "Provider-reported total tokens for finalized Wardwright model requests"
       )
     ]
   end

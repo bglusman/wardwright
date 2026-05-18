@@ -838,6 +838,7 @@ defmodule Wardwright.Router do
         "selected_model" => get_in(receipt, ["decision", "selected_model"]),
         "selected_provider" => get_in(receipt, ["decision", "selected_provider"])
       }
+      |> Map.merge(WardwrightWeb.ReceiptBuilder.sink_usage(receipt))
     ])
 
     :ok

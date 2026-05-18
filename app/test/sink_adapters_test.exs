@@ -103,6 +103,11 @@ defmodule Wardwright.SinkAdaptersTest do
     assert [:wardwright, :sinks, :queue_utilization] in metric_names
     assert [:wardwright, :sinks, :delivery, :count] in metric_names
     assert [:wardwright, :sinks, :delivery, :duration] in metric_names
+    assert [:wardwright, :model, :requests, :count] in metric_names
+    assert [:wardwright, :model, :tokens, :estimated_prompt] in metric_names
+    assert [:wardwright, :model, :tokens, :prompt] in metric_names
+    assert [:wardwright, :model, :tokens, :completion] in metric_names
+    assert [:wardwright, :model, :tokens, :total] in metric_names
   end
 
   test "sink delivery emits latency and queue utilization telemetry" do
@@ -158,6 +163,76 @@ defmodule Wardwright.SinkAdaptersTest do
     assert_receive {:sink_telemetry, [:wardwright, :sinks, :queue_depth],
                     %{depth: 1, capacity: 2, utilization: 0.5},
                     %{sink_id: "alerts", kind: "memory_alert"}}
+  end
+
+  test "receipt sink events emit simple model usage telemetry" do
+    test_pid = self()
+    handler_id = "model-usage-telemetry-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach(
+      handler_id,
+      [:wardwright, :model, :usage],
+      fn event, measurements, metadata, _config ->
+        send(test_pid, {:model_usage_telemetry, event, measurements, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn ->
+      :telemetry.detach(handler_id)
+      Wardwright.Sinks.reset()
+    end)
+
+    Wardwright.Sinks.configure([
+      %{
+        "id" => "jsonl-audit",
+        "kind" => "jsonl_file",
+        "select" => %{"types" => ["receipt.finalized"]},
+        "delivery" => %{
+          "path" =>
+            Path.join(System.tmp_dir!(), "wardwright-usage-#{System.unique_integer()}.jsonl")
+        }
+      }
+    ])
+
+    assert [
+             %{
+               "sink_id" => "jsonl-audit",
+               "kind" => "jsonl_file",
+               "event_type" => "receipt.finalized",
+               "outcome" => "delivered"
+             }
+           ] =
+             Wardwright.Sinks.emit([
+               %{
+                 "type" => "receipt.finalized",
+                 "receipt_id" => "rcpt_usage_1",
+                 "status" => "completed",
+                 "simulation" => false,
+                 "selected_provider" => "managed",
+                 "selected_model" => "managed/kimi",
+                 "estimated_prompt_tokens" => 11,
+                 "prompt_tokens" => 12,
+                 "completion_tokens" => 7,
+                 "total_tokens" => 19
+               }
+             ])
+
+    assert_receive {:model_usage_telemetry, [:wardwright, :model, :usage], measurements,
+                    %{
+                      selected_provider: "managed",
+                      selected_model: "managed/kimi",
+                      status: "completed",
+                      simulation: false
+                    }}
+
+    assert measurements == %{
+             count: 1,
+             estimated_prompt_tokens: 11,
+             prompt_tokens: 12,
+             completion_tokens: 7,
+             total_tokens: 19
+           }
   end
 
   defp webhook_url do

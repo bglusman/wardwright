@@ -23,6 +23,7 @@ defmodule Wardwright.Sinks do
 
       Enum.reduce(events, {state, []}, fn raw_event, {state, results} ->
         event = event_envelope(raw_event, receipt_hint)
+        publish_receipt_usage_telemetry(event)
         {state, event_results} = deliver_event(state, event)
         {state, results ++ event_results}
       end)
@@ -403,7 +404,11 @@ defmodule Wardwright.Sinks do
           "simulation",
           "alert_count",
           "selected_model",
-          "selected_provider"
+          "selected_provider",
+          "estimated_prompt_tokens",
+          "prompt_tokens",
+          "completion_tokens",
+          "total_tokens"
         ])
       end
     end)
@@ -447,6 +452,34 @@ defmodule Wardwright.Sinks do
     do: depth / capacity
 
   defp queue_utilization(_depth, _capacity), do: 0.0
+
+  defp publish_receipt_usage_telemetry(%{"type" => "receipt.finalized"} = event) do
+    :telemetry.execute(
+      [:wardwright, :model, :usage],
+      %{
+        count: 1,
+        estimated_prompt_tokens: integer_payload_value(event, "estimated_prompt_tokens"),
+        prompt_tokens: integer_payload_value(event, "prompt_tokens"),
+        completion_tokens: integer_payload_value(event, "completion_tokens"),
+        total_tokens: integer_payload_value(event, "total_tokens")
+      },
+      %{
+        selected_model: payload_value(event, "selected_model"),
+        selected_provider: payload_value(event, "selected_provider"),
+        status: payload_value(event, "status"),
+        simulation: payload_value(event, "simulation")
+      }
+    )
+  end
+
+  defp publish_receipt_usage_telemetry(_event), do: :ok
+
+  defp integer_payload_value(event, key) do
+    case payload_value(event, key) do
+      value when is_integer(value) and value >= 0 -> value
+      _ -> 0
+    end
+  end
 
   defp publish_policy_alert_delivery(%{config: %{"kind" => "memory_alert"}} = sink_state, result) do
     if Process.whereis(Wardwright.PubSub) do
