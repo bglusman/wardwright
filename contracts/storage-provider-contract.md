@@ -73,6 +73,18 @@ The receipt writer should be modeled as an append path that can fan out to both:
 2. emit a redacted event/log representation to configured sinks
 3. update derived search indexes when configured
 
+The initial sink adapter contract is intentionally narrower than storage:
+
+- each sink declares an id, kind, explicit event-type selector, redaction level,
+  and independent delivery policy
+- default redaction is metadata-only; raw prompt, completion, or tool payload
+  export requires an explicit full-redaction opt-in
+- in-memory alert, JSONL file, and HTTP webhook sinks all consume the same
+  redacted event envelope
+- `/admin/sinks` exposes per-sink health, recent delivery results, and
+  backpressure counters, while `/admin/policy-alerts` remains a compatibility
+  view over the in-memory alert sink
+
 Storage failure and log-sink failure have different semantics. If durable
 receipt persistence is required, storage failure should fail closed or degrade
 according to explicit operator policy. Log-sink failure should usually degrade

@@ -239,6 +239,18 @@ defmodule WardwrightWeb.ReceiptBuilder do
     }
   end
 
+  def sink_usage(receipt) do
+    %{
+      "estimated_prompt_tokens" => get_in(receipt, ["decision", "estimated_prompt_tokens"]) || 0,
+      "prompt_tokens" =>
+        get_in(receipt, ["final", "provider_metadata", "usage", "prompt_tokens"]) || 0,
+      "completion_tokens" =>
+        get_in(receipt, ["final", "provider_metadata", "usage", "completion_tokens"]) || 0,
+      "total_tokens" =>
+        get_in(receipt, ["final", "provider_metadata", "usage", "total_tokens"]) || 0
+    }
+  end
+
   defp receipt_events(receipt_id, created_at, status, decision, called_provider) do
     [
       %{

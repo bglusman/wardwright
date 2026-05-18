@@ -44,6 +44,19 @@ defmodule WardwrightWeb.StreamRuntime do
       "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0
     })
 
+    Wardwright.Sinks.emit([
+      %{
+        "type" => "receipt.finalized",
+        "receipt_id" => receipt["receipt_id"],
+        "status" => get_in(receipt, ["final", "status"]),
+        "simulation" => false,
+        "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0,
+        "selected_model" => get_in(receipt, ["decision", "selected_model"]),
+        "selected_provider" => get_in(receipt, ["decision", "selected_provider"])
+      }
+      |> Map.merge(ReceiptBuilder.sink_usage(receipt))
+    ])
+
     if acc.sent? do
       acc.conn
     else

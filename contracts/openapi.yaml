@@ -272,6 +272,25 @@ paths:
                 $ref: "#/components/schemas/PolicyAlertStatus"
         "403":
           $ref: "#/components/responses/ProtectedEndpoint"
+  /admin/sinks:
+    get:
+      tags: [Admin]
+      summary: List configured sink health and recent delivery outcomes
+      responses:
+        "200":
+          description: Sink health records
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SinkStatus"
+        "403":
+          $ref: "#/components/responses/ProtectedEndpoint"
   /__test/config:
     post:
       tags: [Admin]
@@ -736,6 +755,68 @@ components:
             - object
             - "null"
           additionalProperties: true
+    SinkStatus:
+      type: object
+      required: [id, kind, select, redaction, queue_depth]
+      properties:
+        id: { type: string }
+        kind:
+          type: string
+          enum: [in_memory_alert_sink, jsonl_file, webhook]
+        select:
+          type: object
+          required: [types]
+          properties:
+            types:
+              type: array
+              items: { type: string }
+        redaction:
+          type: string
+          enum: [metadata, full]
+        capacity:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        on_full:
+          type:
+            - string
+            - "null"
+          enum: [drop, dead_letter, fail_closed, null]
+        queue_depth:
+          type: integer
+          minimum: 0
+        seen_count:
+          type: integer
+          minimum: 0
+        delivered_count:
+          type: integer
+          minimum: 0
+        queued_count:
+          type: integer
+          minimum: 0
+        dead_letter_count:
+          type: integer
+          minimum: 0
+        dropped_count:
+          type: integer
+          minimum: 0
+        failed_closed_count:
+          type: integer
+          minimum: 0
+        duplicate_suppressed_count:
+          type: integer
+          minimum: 0
+        last_result:
+          type:
+            - object
+            - "null"
+          additionalProperties: true
+        recent:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
     ErrorResponse:
       type: object
       required: [error]

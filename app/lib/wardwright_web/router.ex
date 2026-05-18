@@ -3,6 +3,7 @@ defmodule WardwrightWeb.Router do
 
   use Phoenix.Router, helpers: false
   import Phoenix.LiveView.Router
+  import Phoenix.LiveDashboard.Router
 
   pipeline :browser do
     plug(:accepts, ["html"])
@@ -21,6 +22,10 @@ defmodule WardwrightWeb.Router do
     plug(WardwrightWeb.ProtectedAccess)
   end
 
+  pipeline :protected_browser do
+    plug(WardwrightWeb.ProtectedAccess)
+  end
+
   scope "/", WardwrightWeb do
     pipe_through(:browser)
 
@@ -30,6 +35,15 @@ defmodule WardwrightWeb.Router do
     live("/policies/:pattern/:mode/recipe/:recipe", PolicyProjectionLive, :index)
     live("/policies/:pattern/:mode/step/:step", PolicyProjectionLive, :index)
     live("/policies/:pattern/:mode", PolicyProjectionLive, :index)
+  end
+
+  scope "/" do
+    pipe_through([:browser, :protected_browser])
+
+    live_dashboard("/dashboard",
+      metrics: WardwrightWeb.Telemetry,
+      metrics_history: {LiveDashboardHistory, :metrics_history, [__MODULE__]}
+    )
   end
 
   scope "/" do

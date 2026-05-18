@@ -42,6 +42,15 @@ defmodule Wardwright do
       "prompt_transforms" => %{},
       "structured_output" => nil,
       "alert_delivery" => %{"capacity" => 16, "on_full" => "dead_letter"},
+      "sinks" => [
+        %{
+          "id" => "policy-alerts",
+          "kind" => "memory_alert",
+          "select" => %{"types" => ["policy.alert"]},
+          "redaction" => "metadata",
+          "delivery" => %{"capacity" => 16, "on_full" => "dead_letter"}
+        }
+      ],
       "policy_cache" => %{"max_entries" => 64, "recent_limit" => 20},
       "governance" => [
         %{"id" => "prompt_transforms", "kind" => "request_transform", "action" => "transform"}
@@ -56,7 +65,7 @@ defmodule Wardwright do
   def reset_config do
     :persistent_term.put({__MODULE__, :config}, default_config())
     Wardwright.PolicyCache.configure(default_config()["policy_cache"])
-    Wardwright.Policy.AlertDelivery.configure(default_config()["alert_delivery"])
+    Wardwright.Sinks.configure(default_config()["sinks"])
     Wardwright.ProviderRuntime.reset()
   end
 
@@ -66,7 +75,7 @@ defmodule Wardwright do
     with :ok <- validate_config(config) do
       :persistent_term.put({__MODULE__, :config}, config)
       Wardwright.PolicyCache.configure(config["policy_cache"])
-      Wardwright.Policy.AlertDelivery.configure(config["alert_delivery"])
+      Wardwright.Sinks.configure(config["sinks"])
       {:ok, config}
     end
   end
@@ -657,6 +666,11 @@ defmodule Wardwright do
       "prompt_transforms" => Map.get(config, "prompt_transforms", %{}),
       "structured_output" => Map.get(config, "structured_output"),
       "alert_delivery" => normalize_alert_delivery(Map.get(config, "alert_delivery", %{})),
+      "sinks" =>
+        Wardwright.Sinks.normalize_config(
+          Map.get(config, "sinks"),
+          normalize_alert_delivery(Map.get(config, "alert_delivery", %{}))
+        ),
       "policy_cache" => normalize_policy_cache(Map.get(config, "policy_cache", %{})),
       "governance" => Map.get(config, "governance", [])
     }

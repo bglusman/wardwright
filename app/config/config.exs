@@ -11,6 +11,11 @@ config :wardwright, WardwrightWeb.Endpoint,
   pubsub_server: Wardwright.PubSub,
   live_view: [signing_salt: "wardwright-policy-projection-v1"]
 
+config :live_dashboard_history, LiveDashboardHistory,
+  router: WardwrightWeb.Router,
+  metrics: WardwrightWeb.Telemetry,
+  buffer_size: 120
+
 env_config = "#{config_env()}.exs"
 
 if File.exists?(Path.join(__DIR__, env_config)) do
