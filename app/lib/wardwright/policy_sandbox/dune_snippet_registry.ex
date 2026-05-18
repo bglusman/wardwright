@@ -287,37 +287,31 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
       |> Map.get("version", Map.get(session, :version, Wardwright.current_config()["version"]))
       |> string_value()
 
-    ttl_ms =
-      session
-      |> Map.get("ttl_ms", Map.get(session, :ttl_ms, @default_dune_ttl_ms))
-      |> positive_integer(@default_dune_ttl_ms)
+    with {:ok, ttl_ms} <- session_ttl_ms(session) do
+      cond do
+        model_id in [nil, ""] ->
+          {:error, "session.model_id is required for stateful Dune snippet evaluation."}
 
-    cond do
-      model_id in [nil, ""] ->
-        {:error, "session.model_id is required for stateful Dune snippet evaluation."}
+        session_id in [nil, ""] ->
+          {:error, "session.session_id is required for stateful Dune snippet evaluation."}
 
-      session_id in [nil, ""] ->
-        {:error, "session.session_id is required for stateful Dune snippet evaluation."}
+        version in [nil, ""] ->
+          {:error, "session.version is required for stateful Dune snippet evaluation."}
 
-      version in [nil, ""] ->
-        {:error, "session.version is required for stateful Dune snippet evaluation."}
+        key in [nil, ""] ->
+          {:error, "session.key must be a non-empty string when provided."}
 
-      key in [nil, ""] ->
-        {:error, "session.key must be a non-empty string when provided."}
-
-      ttl_ms > @max_dune_ttl_ms ->
-        {:error, "session.ttl_ms must be less than or equal to #{@max_dune_ttl_ms}."}
-
-      true ->
-        {:ok,
-         %{
-           model_id: model_id,
-           version: version,
-           session_id: session_id,
-           key: key,
-           ttl_ms: ttl_ms,
-           reset?: truthy?(Map.get(session, "reset", Map.get(session, :reset, false)))
-         }}
+        true ->
+          {:ok,
+           %{
+             model_id: model_id,
+             version: version,
+             session_id: session_id,
+             key: key,
+             ttl_ms: ttl_ms,
+             reset?: truthy?(Map.get(session, "reset", Map.get(session, :reset, false)))
+           }}
+      end
     end
   end
 
@@ -377,16 +371,34 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
   defp string_value(value) when is_binary(value), do: String.trim(value)
   defp string_value(_value), do: nil
 
-  defp positive_integer(value, _default) when is_integer(value) and value > 0, do: value
-
-  defp positive_integer(value, default) when is_binary(value) do
-    case Integer.parse(String.trim(value)) do
-      {integer, ""} when integer > 0 -> integer
-      _other -> default
+  defp session_ttl_ms(session) do
+    if Map.has_key?(session, "ttl_ms") or Map.has_key?(session, :ttl_ms) do
+      session
+      |> Map.get("ttl_ms", Map.get(session, :ttl_ms))
+      |> parse_ttl_ms()
+    else
+      {:ok, @default_dune_ttl_ms}
     end
   end
 
-  defp positive_integer(_value, default), do: default
+  defp parse_ttl_ms(value) when is_integer(value) and value > 0 do
+    bounded_ttl_ms(value)
+  end
+
+  defp parse_ttl_ms(value) when is_binary(value) do
+    case Integer.parse(String.trim(value)) do
+      {integer, ""} when integer > 0 -> bounded_ttl_ms(integer)
+      _other -> {:error, "session.ttl_ms must be a positive integer when provided."}
+    end
+  end
+
+  defp parse_ttl_ms(_value),
+    do: {:error, "session.ttl_ms must be a positive integer when provided."}
+
+  defp bounded_ttl_ms(value) when value <= @max_dune_ttl_ms, do: {:ok, value}
+
+  defp bounded_ttl_ms(_value),
+    do: {:error, "session.ttl_ms must be less than or equal to #{@max_dune_ttl_ms}."}
 
   defp truthy?(true), do: true
   defp truthy?("true"), do: true

@@ -314,4 +314,30 @@ defmodule Wardwright.PolicySandbox.DuneTest do
              "default-after-keyed"
            ]
   end
+
+  test "stateful Dune snippet sessions reject malformed ttl configuration" do
+    base_session = %{
+      "model_id" => "test-model",
+      "version" => "test-version",
+      "session_id" => "test-session-#{System.unique_integer([:positive])}"
+    }
+
+    assert {:error, "session.ttl_ms must be a positive integer when provided."} =
+             DuneSnippetRegistry.evaluate(%{
+               "source" => "%{\"action\" => \"allow\"}",
+               "session" => Map.put(base_session, "ttl_ms", "five minutes")
+             })
+
+    assert {:error, "session.ttl_ms must be a positive integer when provided."} =
+             DuneSnippetRegistry.evaluate(%{
+               "source" => "%{\"action\" => \"allow\"}",
+               "session" => Map.put(base_session, "ttl_ms", 0)
+             })
+
+    assert {:error, "session.ttl_ms must be less than or equal to 3600000."} =
+             DuneSnippetRegistry.evaluate(%{
+               "source" => "%{\"action\" => \"allow\"}",
+               "session" => Map.put(base_session, "ttl_ms", 3_600_001)
+             })
+  end
 end
