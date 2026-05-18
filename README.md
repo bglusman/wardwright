@@ -51,6 +51,28 @@ Set `WARDWRIGHT_ADMIN_TOKEN` before exposing Wardwright beyond loopback. See
 [Packaging](docs/packaging.md) for release targets, manual archive install
 steps, and service details.
 
+Then visit `http://127.0.0.1:8787/policies`. Set `BASIC_AUTH_PASSWORD` before
+exposing the workbench or protected control APIs beyond loopback; the Basic Auth
+username is always `admin`. Model calls remain governed separately by model
+access configuration.
+
+## Model Access
+
+Wardwright models are unkeyed by default. Operators can set a model to require a
+model-scoped API key, or set unkeyed models to internal-only composition:
+
+```json
+{
+  "requires_api_key": true,
+  "auth": { "unkeyed_model_access": "public" }
+}
+```
+
+Use the protected `/admin/model-api-keys` page to generate or revoke keys for
+the active model. Raw keys are shown once; Wardwright stores only a hash. Keep
+`WARDWRIGHT_SECRET_KEY_BASE` stable, or set `WARDWRIGHT_MODEL_API_KEY_HASH_SECRET`
+explicitly, so stored keys remain verifiable across restarts.
+
 ## Use With Agents
 
 The installed binary includes discovery commands for local agents and

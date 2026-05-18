@@ -62,6 +62,9 @@ defmodule Wardwright.CLI do
       WARDWRIGHT_ALLOWED_ORIGINS  Extra comma-separated LiveView origins
       WARDWRIGHT_SECRET_KEY_BASE  Stable Phoenix signing secret for services
       WARDWRIGHT_ADMIN_TOKEN      Optional token for protected local APIs
+      BASIC_AUTH_PASSWORD         Optional password for protected operator UI/APIs; user is admin
+      WARDWRIGHT_MODEL_API_KEY_STORE  Optional path for hashed model API keys
+      WARDWRIGHT_MODEL_API_KEY_HASH_SECRET  Optional stable secret for model API key hashes
     """
   end
 

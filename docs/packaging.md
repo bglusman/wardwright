@@ -143,9 +143,17 @@ proposals, validation, projection explanation, and simulation/scenario tools.
 The [Agent Authoring Guide](agent-authoring.html) explains when an agent should
 use each tool and which operations are draft-only versus write-capable.
 
-`WARDWRIGHT_ADMIN_TOKEN` remains optional for loopback-only use, but should be
-set for any deployment exposed beyond local operator access. For foreground
-testing without `brew services`, run:
+`WARDWRIGHT_ADMIN_TOKEN` remains optional for loopback-only use. For browser
+access to the operator workbench and protected control APIs beyond loopback, set
+`BASIC_AUTH_PASSWORD`; the Basic Auth username is always `admin`. This protects
+operator surfaces such as `/policies`, `/mcp`, `/admin/*`, receipts, and
+policy-authoring and simulation APIs. OpenAI-compatible model endpoints remain
+governed by model access configuration. Generated model API keys are stored
+hashed in `~/.wardwright/model-api-keys.json` unless
+`WARDWRIGHT_MODEL_API_KEY_STORE` points somewhere else. Keep
+`WARDWRIGHT_SECRET_KEY_BASE` stable, or set
+`WARDWRIGHT_MODEL_API_KEY_HASH_SECRET` explicitly, so stored keys remain
+verifiable across restarts. For foreground testing without `brew services`, run:
 
 ```bash
 WARDWRIGHT_SECRET_KEY_BASE="$(cat "$(brew --prefix)/etc/wardwright/secret_key_base")" \

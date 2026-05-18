@@ -15,6 +15,7 @@ defmodule Wardwright.Application do
     children =
       [
         Wardwright.ReceiptStore,
+        Wardwright.ModelApiKeyStore,
         Wardwright.PolicyScenarioStore,
         {DynamicSupervisor,
          strategy: :one_for_one, name: Wardwright.PolicyCache.SessionSupervisor},

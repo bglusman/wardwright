@@ -27,26 +27,34 @@ defmodule Wardwright.Router do
   get "/v1/models" do
     model_id = Wardwright.model_record()["id"]
 
-    json(conn, 200, %{
-      "object" => "list",
-      "data" => [
-        %{"id" => model_id, "object" => "model", "owned_by" => "wardwright"},
-        %{
-          "id" => "wardwright/#{model_id}",
-          "object" => "model",
-          "owned_by" => "wardwright"
-        }
-      ]
-    })
+    data =
+      if Wardwright.externally_callable?() do
+        [
+          %{"id" => model_id, "object" => "model", "owned_by" => "wardwright"},
+          %{
+            "id" => "wardwright/#{model_id}",
+            "object" => "model",
+            "owned_by" => "wardwright"
+          }
+        ]
+      else
+        []
+      end
+
+    json(conn, 200, %{"object" => "list", "data" => data})
   end
 
   get "/v1/wardwright/models" do
-    json(conn, 200, %{"data" => [Wardwright.model_summary()]})
+    data =
+      if Wardwright.externally_callable?(), do: [Wardwright.model_summary()], else: []
+
+    json(conn, 200, %{"data" => data})
   end
 
   post "/v1/chat/completions" do
     with {:ok, request} <- require_json_object(conn.body_params),
          {:ok, model} <- Wardwright.normalize_model(Map.get(request, "model")),
+         :ok <- require_model_access(conn, model),
          :ok <- require_messages(request) do
       request = apply_prompt_transforms(request)
       caller = WardwrightWeb.RequestContext.caller(conn, Map.get(request, "metadata", %{}))
@@ -103,12 +111,17 @@ defmodule Wardwright.Router do
         )
       end
     else
-      {:error, message} -> error(conn, 400, message, "invalid_request", "bad_request")
+      {:error, message} ->
+        error(conn, 400, message, "invalid_request", "bad_request")
+
+      {:error, :model_auth, status, message, code} ->
+        error(conn, status, message, model_auth_error_type(status), code)
     end
   end
 
   post "/v1/wardwright/simulate" do
-    with {:ok, body} <- require_json_object(conn.body_params),
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
          {:ok, request} <- require_json_object(Map.get(body, "request")),
          request = override_model(request, Map.get(body, "model")),
          {:ok, model} <- Wardwright.normalize_model(Map.get(request, "model")),
@@ -154,7 +167,11 @@ defmodule Wardwright.Router do
 
       json(conn, 200, %{"receipt" => receipt})
     else
-      {:error, message} -> error(conn, 400, message, "invalid_request", "bad_request")
+      {:error, message} ->
+        error(conn, 400, message, "invalid_request", "bad_request")
+
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
     end
   end
 
@@ -235,6 +252,47 @@ defmodule Wardwright.Router do
     else
       {:error, :protected, message} ->
         error(conn, 403, message, "forbidden", "protected_endpoint")
+    end
+  end
+
+  get "/admin/model-api-keys" do
+    with :ok <- require_protected_access(conn),
+         {:ok, model} <- optional_model(Map.get(conn.query_params, "model")) do
+      json(conn, 200, %{"data" => Wardwright.ModelApiKeyStore.list(model)})
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} ->
+        error(conn, 400, message, "invalid_request", "invalid_model_api_key")
+    end
+  end
+
+  post "/admin/model-api-keys" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, model} <- Wardwright.normalize_model(Map.get(body, "model")),
+         {:ok, key} <- Wardwright.ModelApiKeyStore.create(model, Map.get(body, "label", "")) do
+      json(conn, 201, %{"api_key" => key})
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} ->
+        error(conn, 400, message, "invalid_request", "invalid_model_api_key")
+    end
+  end
+
+  delete "/admin/model-api-keys/:key_id" do
+    with :ok <- require_protected_access(conn),
+         :ok <- Wardwright.ModelApiKeyStore.revoke(key_id) do
+      json(conn, 200, %{"deleted" => true, "id" => key_id})
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, :not_found} ->
+        error(conn, 404, "model API key not found", "not_found", "model_api_key_not_found")
     end
   end
 
@@ -747,45 +805,33 @@ defmodule Wardwright.Router do
 
   defp require_messages(_), do: {:error, "messages must not be empty"}
 
-  defp require_protected_access(conn) do
+  defp require_model_access(conn, model) do
     cond do
-      local_request?(conn) ->
-        :ok
+      Wardwright.model_requires_api_key?() ->
+        if Wardwright.ModelApiKeyStore.valid?(model, request_model_api_key(conn)) do
+          :ok
+        else
+          {:error, :model_auth, 401, "valid model API key required", "model_api_key_required"}
+        end
 
-      admin_token_valid?(conn) ->
-        :ok
-
-      Application.get_env(:wardwright, :allow_prototype_access, false) ->
-        :ok
+      Wardwright.unkeyed_model_access() == "internal" ->
+        {:error, :model_auth, 403, "model is only available for internal composition",
+         "model_internal"}
 
       true ->
-        {:error, :protected, "protected endpoint requires localhost or admin token"}
+        :ok
     end
   end
 
-  defp local_request?(%{remote_ip: {127, 0, 0, 1}}), do: true
-  defp local_request?(%{remote_ip: {0, 0, 0, 0, 0, 0, 0, 1}}), do: true
-  defp local_request?(_conn), do: false
+  defp optional_model(nil), do: {:ok, nil}
+  defp optional_model(""), do: {:ok, nil}
+  defp optional_model(model), do: Wardwright.normalize_model(model)
 
-  defp admin_token_valid?(conn) do
-    case {admin_token(), request_admin_token(conn)} do
-      {token, request_token} when is_binary(token) and is_binary(request_token) ->
-        Plug.Crypto.secure_compare(token, request_token)
+  defp model_auth_error_type(401), do: "unauthorized"
+  defp model_auth_error_type(403), do: "forbidden"
+  defp model_auth_error_type(_status), do: "invalid_request"
 
-      {_token, _request_token} ->
-        false
-    end
-  rescue
-    _error -> false
-  end
-
-  defp admin_token do
-    (Application.get_env(:wardwright, :admin_token) || System.get_env("WARDWRIGHT_ADMIN_TOKEN"))
-    |> WardwrightWeb.RequestContext.metadata_string()
-    |> WardwrightWeb.RequestContext.blank_to_nil()
-  end
-
-  defp request_admin_token(conn) do
+  defp request_model_api_key(conn) do
     conn
     |> get_req_header("authorization")
     |> List.first()
@@ -793,13 +839,26 @@ defmodule Wardwright.Router do
     |> case do
       nil ->
         conn
-        |> get_req_header("x-wardwright-admin-token")
+        |> get_req_header("x-wardwright-model-api-key")
         |> List.first()
         |> WardwrightWeb.RequestContext.metadata_string()
         |> WardwrightWeb.RequestContext.blank_to_nil()
 
       token ->
         token
+    end
+  end
+
+  defp require_protected_access(conn) do
+    if WardwrightWeb.ProtectedAccess.authorized?(conn, allow_prototype: true) do
+      :ok
+    else
+      message =
+        if WardwrightWeb.ProtectedAccess.basic_auth_configured?(),
+          do: "protected endpoint requires basic auth or admin token",
+          else: "protected endpoint requires localhost or admin token"
+
+      {:error, :protected, message}
     end
   end
 
@@ -862,17 +921,21 @@ defmodule Wardwright.Router do
   end
 
   defp cors(conn, _opts) do
-    conn
-    |> put_resp_header("access-control-allow-origin", "*")
-    |> put_resp_header("access-control-allow-methods", "GET, POST, OPTIONS")
-    |> put_resp_header(
-      "access-control-allow-headers",
-      "Authorization, Content-Type, X-Wardwright-Admin-Token, X-Wardwright-Tenant-Id, X-Wardwright-Application-Id, X-Wardwright-Agent-Id, X-Wardwright-User-Id, X-Wardwright-Session-Id, X-Wardwright-Run-Id, X-Client-Request-Id"
-    )
-    |> put_resp_header(
-      "access-control-expose-headers",
-      "X-Wardwright-Receipt-Id, X-Wardwright-Selected-Model"
-    )
+    if String.starts_with?(conn.request_path, "/admin/") do
+      conn
+    else
+      conn
+      |> put_resp_header("access-control-allow-origin", "*")
+      |> put_resp_header("access-control-allow-methods", "GET, POST, DELETE, OPTIONS")
+      |> put_resp_header(
+        "access-control-allow-headers",
+        "Authorization, Content-Type, X-Wardwright-Admin-Token, X-Wardwright-Model-Api-Key, X-Wardwright-Tenant-Id, X-Wardwright-Application-Id, X-Wardwright-Agent-Id, X-Wardwright-User-Id, X-Wardwright-Session-Id, X-Wardwright-Run-Id, X-Client-Request-Id"
+      )
+      |> put_resp_header(
+        "access-control-expose-headers",
+        "X-Wardwright-Receipt-Id, X-Wardwright-Selected-Model"
+      )
+    end
   end
 
   defp error(conn, status, message, type, code) do

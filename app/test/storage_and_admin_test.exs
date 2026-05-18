@@ -223,6 +223,13 @@ defmodule Wardwright.StorageAndAdminTest do
     for {method, path, body} <- [
           {:get, "/admin/storage", nil},
           {:get, "/v1/receipts", nil},
+          {:post, "/v1/wardwright/simulate",
+           %{
+             "request" => %{
+               "model" => "coding-balanced",
+               "messages" => [%{"role" => "user", "content" => "hello"}]
+             }
+           }},
           {:post, "/v1/policy-cache/events", %{"kind" => "request_text"}}
         ] do
       conn = call(method, path, body, [], remote_ip)
@@ -255,6 +262,71 @@ defmodule Wardwright.StorageAndAdminTest do
 
     assert conn.status == 200
     assert Jason.decode!(conn.resp_body)["kind"] == "memory"
+  end
+
+  test "protected prototype endpoints require basic auth when a basic auth password is configured" do
+    previous = Application.get_env(:wardwright, :basic_auth_password)
+    Application.put_env(:wardwright, :basic_auth_password, "admin-ui-password")
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:wardwright, :basic_auth_password, previous),
+        else: Application.delete_env(:wardwright, :basic_auth_password)
+    end)
+
+    local_rejected = call(:get, "/admin/storage")
+    assert local_rejected.status == 403
+
+    wrong_password =
+      call(
+        :get,
+        "/admin/storage",
+        nil,
+        [{"authorization", basic_auth("admin", "wrong-password")}]
+      )
+
+    assert wrong_password.status == 403
+
+    conn =
+      call(
+        :get,
+        "/admin/storage",
+        nil,
+        [{"authorization", basic_auth("admin", "admin-ui-password")}],
+        {203, 0, 113, 10}
+      )
+
+    assert conn.status == 200
+    assert Jason.decode!(conn.resp_body)["kind"] == "memory"
+  end
+
+  test "protected admin API creates lists and revokes model API keys without exposing hashes" do
+    created =
+      call(:post, "/admin/model-api-keys", %{
+        "model" => "coding-balanced",
+        "label" => "gateway-prod"
+      })
+
+    assert created.status == 201
+    body = Jason.decode!(created.resp_body)
+    key = body["api_key"]
+    assert key["key"] =~ "wwk_"
+    assert key["label"] == "gateway-prod"
+    refute Map.has_key?(key, "key_hash")
+
+    listed = call(:get, "/admin/model-api-keys?model=coding-balanced")
+    assert listed.status == 200
+    assert [listed_key] = Jason.decode!(listed.resp_body)["data"]
+    assert listed_key["id"] == key["id"]
+    assert listed_key["prefix"] == key["prefix"]
+    refute Map.has_key?(listed_key, "key")
+    refute Map.has_key?(listed_key, "key_hash")
+
+    deleted = call(:delete, "/admin/model-api-keys/#{key["id"]}")
+    assert deleted.status == 200
+
+    relisted = call(:get, "/admin/model-api-keys?model=coding-balanced")
+    assert Jason.decode!(relisted.resp_body)["data"] == []
   end
 
   test "receipt list is deterministic and returns storage summaries" do
@@ -396,4 +468,6 @@ defmodule Wardwright.StorageAndAdminTest do
     File.rm("#{path}.tmp")
     path
   end
+
+  defp basic_auth(username, password), do: "Basic " <> Base.encode64("#{username}:#{password}")
 end

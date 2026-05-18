@@ -8,6 +8,105 @@ defmodule Wardwright.PublicApiTest do
     assert Enum.map(body["data"], & &1["id"]) == ["coding-balanced", "wardwright/coding-balanced"]
   end
 
+  test "unkeyed internal models are hidden from public model discovery and external chat" do
+    config =
+      unit_policy_config()
+      |> Map.put("requires_api_key", false)
+      |> Map.put("auth", %{"unkeyed_model_access" => "internal"})
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    assert [] = call(:get, "/v1/models").resp_body |> Jason.decode!() |> Map.fetch!("data")
+
+    assert [] =
+             call(:get, "/v1/wardwright/models").resp_body |> Jason.decode!() |> Map.fetch!("data")
+
+    rejected =
+      call(:post, "/v1/chat/completions", %{
+        "model" => "unit-model",
+        "messages" => [%{"role" => "user", "content" => "hello"}]
+      })
+
+    assert rejected.status == 403
+    assert get_in(Jason.decode!(rejected.resp_body), ["error", "code"]) == "model_internal"
+  end
+
+  test "keyed models require valid model-scoped API keys" do
+    config = unit_policy_config() |> Map.put("requires_api_key", true)
+    assert call(:post, "/__test/config", config).status == 200
+
+    missing =
+      call(:post, "/v1/chat/completions", %{
+        "model" => "unit-model",
+        "messages" => [%{"role" => "user", "content" => "hello"}]
+      })
+
+    assert missing.status == 401
+    assert get_in(Jason.decode!(missing.resp_body), ["error", "code"]) == "model_api_key_required"
+
+    {:ok, created} = Wardwright.ModelApiKeyStore.create("unit-model", "test-client")
+
+    accepted =
+      call(
+        :post,
+        "/v1/chat/completions",
+        %{
+          "model" => "unit-model",
+          "messages" => [%{"role" => "user", "content" => "hello"}]
+        },
+        [{"authorization", "Bearer #{created["key"]}"}]
+      )
+
+    assert accepted.status == 200
+
+    assert :ok = Wardwright.ModelApiKeyStore.revoke(created["id"])
+
+    revoked =
+      call(
+        :post,
+        "/v1/chat/completions",
+        %{
+          "model" => "unit-model",
+          "messages" => [%{"role" => "user", "content" => "hello"}]
+        },
+        [{"authorization", "Bearer #{created["key"]}"}]
+      )
+
+    assert revoked.status == 401
+  end
+
+  test "model serving does not require basic auth when the model is public" do
+    previous = Application.get_env(:wardwright, :basic_auth_password)
+    Application.put_env(:wardwright, :basic_auth_password, "operator-password")
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:wardwright, :basic_auth_password, previous),
+        else: Application.delete_env(:wardwright, :basic_auth_password)
+    end)
+
+    config =
+      unit_policy_config()
+      |> Map.put("requires_api_key", false)
+      |> Map.put("auth", %{"unkeyed_model_access" => "public"})
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    conn =
+      call(
+        :post,
+        "/v1/chat/completions",
+        %{
+          "model" => "unit-model",
+          "messages" => [%{"role" => "user", "content" => "hello"}]
+        },
+        [],
+        {203, 0, 113, 10}
+      )
+
+    assert conn.status == 200
+  end
+
   test "public Wardwright model discovery omits policy internals" do
     config =
       unit_policy_config()
