@@ -51,17 +51,31 @@ defmodule Wardwright.Policy.Plan do
   @alert_async_action "alert_async"
   @annotate_action "annotate"
   @block_action "block"
+  @allow_fallback_key "allow_fallback"
+  @allowed_targets_key "allowed_targets"
   @default_cache_scope "session_id"
   @default_info_severity "info"
   @default_tool_sequence_id "tool-sequence"
+  @dune_engine "dune"
+  @engine_key "engine"
   @escalate_action "escalate"
   @events_window_key "events"
+  @match_key "match"
   @milliseconds_window_key "milliseconds"
   @ms_window_key "ms"
+  @policy_engine_kind "policy_engine"
+  @request_policy_message "request policy matched"
+  @request_rule_kinds ["request_guard", "request_transform", "receipt_annotation", "route_gate"]
+  @request_rule_snippet "primitive.request-rule-action"
+  @request_text_key "request_text"
   @restrict_routes_action "restrict_routes"
   @reroute_action "reroute"
+  @reminder_key "reminder"
+  @rule_key "rule"
   @schema_key "schema"
+  @source_key "source"
   @switch_model_action "switch_model"
+  @target_model_key "target_model"
   @tool_context_schema "wardwright.tool_context.v1"
   @turns_window_key "turns"
 
@@ -129,9 +143,8 @@ defmodule Wardwright.Policy.Plan do
       kind == "tool_sequence" ->
         apply_tool_sequence_rule(rule, caller, request, policy, opts)
 
-      kind in ["request_guard", "request_transform", "receipt_annotation", "route_gate"] &&
-          policy_rule_matches?(text, rule) ->
-        apply_primitive_governance_rule(rule, kind, request, policy)
+      kind in @request_rule_kinds ->
+        apply_dune_primitive_governance_rule(rule, text, request, policy)
 
       true ->
         {request, policy}
@@ -160,6 +173,48 @@ defmodule Wardwright.Policy.Plan do
       |> put_route_action_fields(rule)
       |> Wardwright.Policy.Action.normalize(rule: rule)
 
+    apply_policy_action_effect(action_record, rule, request, policy)
+  end
+
+  defp apply_dune_primitive_governance_rule(rule, text, request, policy) do
+    engine_rule =
+      rule
+      |> Map.merge(%{
+        @engine_key => @dune_engine,
+        @source_key => Wardwright.PolicySandbox.DuneSnippetRegistry.source!(@request_rule_snippet)
+      })
+
+    context = %{
+      @request_text_key => text,
+      @rule_key => rule
+    }
+
+    result = Wardwright.Policy.Engine.evaluate(engine_rule, context)
+
+    action_records =
+      result
+      |> engine_actions(rule)
+      |> Enum.map(&put_route_action_fields/1)
+
+    Enum.reduce(action_records, {request, policy}, fn action_record, {request, policy_acc} ->
+      apply_policy_action_effect(action_record, rule, request, policy_acc)
+    end)
+  end
+
+  defp apply_policy_action_effect(action_record, rule, request, policy) do
+    action = Map.get(action_record, @action_key, @annotate_action)
+    rule_id = Map.get(action_record, @rule_id_key, Map.get(rule, @id_key, "policy"))
+
+    message =
+      action_record
+      |> Map.get(@message_key, Map.get(rule, @message_key, @request_policy_message))
+      |> blank_to_nil() || @request_policy_message
+
+    severity =
+      action_record
+      |> Map.get(@severity_key, Map.get(rule, @severity_key, @default_info_severity))
+      |> blank_to_nil() || @default_info_severity
+
     case action do
       action when action in ["escalate", "alert_async"] ->
         event = %{
@@ -167,7 +222,8 @@ defmodule Wardwright.Policy.Plan do
           "rule_id" => rule_id,
           "message" => message,
           "severity" => severity,
-          "idempotency_key" => Map.get(rule, "idempotency_key")
+          "idempotency_key" =>
+            Map.get(action_record, @idempotency_key, Map.get(rule, @idempotency_key))
         }
 
         {request,
@@ -177,7 +233,10 @@ defmodule Wardwright.Policy.Plan do
          |> Map.update!("alert_count", &(&1 + 1))}
 
       action when action in ["inject_reminder_and_retry", "transform"] ->
-        reminder = rule |> Map.get("reminder", message) |> blank_to_nil() || message
+        reminder =
+          action_record
+          |> Map.get(@reminder_key, Map.get(rule, @reminder_key, message))
+          |> blank_to_nil() || message
 
         message_record = %{
           "role" => "system",
@@ -233,17 +292,8 @@ defmodule Wardwright.Policy.Plan do
       |> engine_actions(rule)
       |> Enum.map(&put_route_action_fields/1)
 
-    Enum.reduce(action_records, {request, policy}, fn action_record, {request, policy} ->
-      case action_record["action"] do
-        action when action in ["restrict_routes", "switch_model", "reroute"] ->
-          apply_route_action(request, policy, action_record)
-
-        "block" ->
-          apply_block_action(request, policy, action_record)
-
-        _ ->
-          {request, Map.update!(policy, "actions", &[action_record | &1])}
-      end
+    Enum.reduce(action_records, {request, policy}, fn action_record, {request, policy_acc} ->
+      apply_policy_action_effect(action_record, rule, request, policy_acc)
     end)
   end
 
@@ -262,25 +312,31 @@ defmodule Wardwright.Policy.Plan do
     value = if is_map(value), do: value, else: %{}
 
     %{
-      "rule_id" => Map.get(action, "rule_id", Map.get(rule, "id", "policy-engine")),
-      "kind" => Map.get(rule, "kind", "policy_engine"),
-      "action" => Map.get(action, "action", "annotate"),
-      "matched" => Map.get(action, "matched", true),
-      "message" =>
+      @rule_id_key => Map.get(action, @rule_id_key, Map.get(rule, @id_key, "policy-engine")),
+      @kind_key => Map.get(rule, @kind_key, @policy_engine_kind),
+      @action_key => Map.get(action, @action_key, @annotate_action),
+      @matched_key => Map.get(action, @matched_key, true),
+      @message_key =>
         Map.get(
           action,
-          "message",
+          @message_key,
           Map.get(action, "reason", Map.get(value, "reason", "policy engine matched"))
         ),
-      "severity" => Map.get(action, "severity", "info"),
-      "allowed_targets" => Map.get(action, "allowed_targets", Map.get(value, "allowed_targets")),
-      "target_model" =>
+      @severity_key => Map.get(action, @severity_key, @default_info_severity),
+      @allowed_targets_key =>
+        Map.get(action, @allowed_targets_key, Map.get(value, @allowed_targets_key)),
+      @target_model_key =>
         Map.get(
           action,
-          "target_model",
+          @target_model_key,
           Map.get(action, "model", Map.get(value, "target_model", Map.get(value, "model")))
         ),
-      "source" => Map.get(action, "source")
+      @allow_fallback_key =>
+        Map.get(action, @allow_fallback_key, Map.get(value, @allow_fallback_key)),
+      @reminder_key => Map.get(action, @reminder_key, Map.get(value, @reminder_key)),
+      @idempotency_key => Map.get(action, @idempotency_key, Map.get(value, @idempotency_key)),
+      @match_key => Map.get(action, @match_key, Map.get(value, @match_key)),
+      @source_key => Map.get(action, @source_key)
     }
     |> Enum.reject(fn {_key, value} -> value in [nil, "", []] end)
     |> Map.new()
@@ -975,18 +1031,6 @@ defmodule Wardwright.Policy.Plan do
       "observed_count" => count
     })
   end
-
-  defp policy_match?(_text, value) when value in [nil, ""], do: false
-
-  defp policy_match?(text, value) do
-    String.contains?(text, value |> metadata_string() |> String.downcase())
-  end
-
-  defp policy_rule_matches?(text, %{"regex" => regex}) when is_binary(regex) and regex != "" do
-    Wardwright.Policy.Regex.match?(text, regex)
-  end
-
-  defp policy_rule_matches?(text, rule), do: policy_match?(text, Map.get(rule, "contains"))
 
   defp request_text(messages) when is_list(messages) do
     Enum.map_join(messages, "\n", fn message ->

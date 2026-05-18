@@ -146,6 +146,84 @@ defmodule Wardwright.PolicySandbox.DuneTest do
            ] = get_in(evaluation, ["result", "policy_result", "actions"])
   end
 
+  test "request rule snippet preserves action metadata for host-side effects" do
+    assert {:ok, evaluation} =
+             DuneSnippetRegistry.evaluate(%{
+               "snippet_id" => "primitive.request-rule-action",
+               "input" => %{
+                 "request_text" => "Please return JSON for downstream automation.",
+                 "rule" => %{
+                   "id" => "json-reminder",
+                   "kind" => "request_transform",
+                   "regex" => "return\\s+json",
+                   "action" => "inject_reminder_and_retry",
+                   "message" => "request needs JSON guidance",
+                   "reminder" => "Return only valid JSON.",
+                   "severity" => "warning"
+                 }
+               }
+             })
+
+    assert get_in(evaluation, ["result", "policy_status"]) == "ok"
+
+    assert get_in(evaluation, ["result", "policy_result", "action"]) ==
+             "inject_reminder_and_retry"
+
+    assert [
+             %{
+               "rule_id" => "json-reminder",
+               "kind" => "request_transform",
+               "action" => "inject_reminder_and_retry",
+               "matched" => true,
+               "reminder" => "Return only valid JSON.",
+               "severity" => "warning",
+               "match" => %{"contains" => false, "regex" => true}
+             }
+           ] = get_in(evaluation, ["result", "policy_result", "actions"])
+  end
+
+  test "request rule snippet treats invalid regexes as non-matches" do
+    assert {:ok, evaluation} =
+             DuneSnippetRegistry.evaluate(%{
+               "snippet_id" => "primitive.request-rule-action",
+               "input" => %{
+                 "request_text" => "please block",
+                 "rule" => %{
+                   "id" => "bad-regex",
+                   "kind" => "request_guard",
+                   "regex" => "[",
+                   "action" => "block"
+                 }
+               }
+             })
+
+    assert get_in(evaluation, ["result", "policy_status"]) == "ok"
+    assert get_in(evaluation, ["result", "policy_result", "action"]) == "allow"
+    assert get_in(evaluation, ["result", "policy_result", "actions"]) == []
+  end
+
+  test "request rule snippet preserves metadata-compatible contains matching" do
+    assert {:ok, evaluation} =
+             DuneSnippetRegistry.evaluate(%{
+               "snippet_id" => "primitive.request-rule-action",
+               "input" => %{
+                 "request_text" => "Find account 4938 before routing.",
+                 "rule" => %{
+                   "id" => "numeric-account",
+                   "kind" => "request_guard",
+                   "contains" => 4938,
+                   "action" => "block"
+                 }
+               }
+             })
+
+    assert get_in(evaluation, ["result", "policy_status"]) == "ok"
+    assert get_in(evaluation, ["result", "policy_result", "action"]) == "block"
+
+    assert [%{"rule_id" => "numeric-account", "match" => %{"contains" => true}}] =
+             get_in(evaluation, ["result", "policy_result", "actions"])
+  end
+
   test "ad hoc snippets can be tested and malformed results fail closed" do
     assert {:ok, evaluation} =
              DuneSnippetRegistry.evaluate(%{

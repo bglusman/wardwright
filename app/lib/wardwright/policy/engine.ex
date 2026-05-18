@@ -89,6 +89,9 @@ defmodule Wardwright.Policy.Engine do
       "target_model",
       Map.get(value, "target_model", value[:target_model] || value[:model])
     )
+    |> Map.put("allow_fallback", Map.get(value, "allow_fallback", value[:allow_fallback]))
+    |> Map.put("reminder", Map.get(value, "reminder", value[:reminder]))
+    |> Map.put("idempotency_key", Map.get(value, "idempotency_key", value[:idempotency_key]))
   end
 
   defp normalize_dune_result(%{"status" => "ok"} = result),

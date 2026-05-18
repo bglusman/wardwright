@@ -67,6 +67,106 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
       """
     },
     %{
+      "id" => "primitive.request-rule-action",
+      "title" => "Request rule action",
+      "phase" => "request.review",
+      "description" =>
+        "Evaluate one request/route governance rule with contains or regex matching and emit a normalized action intent.",
+      "replaces_primitives" => [
+        "request_guard",
+        "request_transform",
+        "receipt_annotation",
+        "route_gate",
+        "contains_match",
+        "regex_match"
+      ],
+      "input_shape" => %{
+        "request_text" => "string",
+        "rule" =>
+          "{id?: string, kind: string, contains?: string, regex?: string, action?: string}"
+      },
+      "example_input" => %{
+        "request_text" => "please return json for the caller",
+        "rule" => %{
+          "id" => "json-reminder",
+          "kind" => "request_transform",
+          "contains" => "return json",
+          "action" => "inject_reminder_and_retry",
+          "reminder" => "Return only valid JSON."
+        }
+      },
+      "source" => """
+      text = String.downcase(input["request_text"] || "")
+      rule = input["rule"] || %{}
+
+      raw_contains = rule["contains"]
+      contains =
+        cond do
+          is_binary(raw_contains) -> String.downcase(String.trim(raw_contains))
+          is_integer(raw_contains) -> Integer.to_string(raw_contains)
+          is_float(raw_contains) -> Float.to_string(raw_contains)
+          true -> ""
+        end
+
+      contains_matched = contains != "" and String.contains?(text, contains)
+
+      regex = rule["regex"]
+      regex_matched =
+        if is_binary(regex) and regex != "" do
+          case Regex.compile(regex) do
+            {:ok, compiled} -> Regex.match?(compiled, text)
+            {:error, _reason} -> false
+          end
+        else
+          false
+        end
+
+      matched = contains_matched or regex_matched
+
+      if matched do
+        action = rule["action"] || "annotate"
+
+        %{
+          "action" => action,
+          "actions" => [
+            %{
+              "rule_id" => rule["id"] || "policy",
+              "kind" => rule["kind"] || "policy_engine",
+              "action" => action,
+              "matched" => true,
+              "message" => rule["message"] || "request policy matched",
+              "severity" => rule["severity"] || "info",
+              "allowed_targets" => rule["allowed_targets"],
+              "target_model" => rule["target_model"] || rule["model"],
+              "allow_fallback" => rule["allow_fallback"],
+              "reminder" => rule["reminder"],
+              "idempotency_key" => rule["idempotency_key"],
+              "match" => %{
+                "contains" => contains_matched,
+                "regex" => regex_matched
+              }
+            }
+          ],
+          "reason" => "request rule matched by Dune",
+          "trace" => [
+            %{"rule" => "request_contains", "result" => contains_matched},
+            %{"rule" => "request_regex", "result" => regex_matched}
+          ]
+        }
+      else
+        %{
+          "action" => "allow",
+          "actions" => [],
+          "reason" => "request rule did not match",
+          "trace" => [
+            %{"rule" => "request_contains", "result" => false},
+            %{"rule" => "request_regex", "result" => false}
+          ]
+        }
+      end
+      """
+    },
+    %{
       "id" => "route.private-context-local-only",
       "title" => "Private context route gate",
       "phase" => "route",

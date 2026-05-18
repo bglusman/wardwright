@@ -219,11 +219,15 @@ This is not a 0.0.4 requirement. The 0.0.4 requirement is that agents can create
 and modify local synthetic models through a documented, reviewable, reversible
 workflow.
 
-The first compatibility conversion is `primitive.request-contains-actions`.
-Agents should treat it as the canonical implementation of the old
-`engine: primitive` request-text contains matcher. Prefer proposing a Dune
-snippet directly for new policy unless the user is preserving an older artifact
-shape for compatibility.
+The first compatibility conversion is `primitive.request-contains-actions`,
+which implements the old `engine: primitive` request-text contains matcher. The
+next request-side conversion is `primitive.request-rule-action`, which evaluates
+one `request_guard`, `request_transform`, `receipt_annotation`, or `route_gate`
+rule with contains/regex matching and returns a normalized action intent. Host
+code still applies irreversible effects such as prompt mutation, route
+constraints, alert events, and blocks. Prefer proposing a Dune snippet directly
+for new policy unless the user is preserving an older artifact shape for
+compatibility.
 
 Related planning:
 
