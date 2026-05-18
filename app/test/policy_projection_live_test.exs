@@ -472,8 +472,8 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "/mcp"
     assert html =~ "wardwright tools"
     assert html =~ "wardwright admin"
-    assert html =~ "Simulation target"
-    assert html =~ "Changing this immediately selects the registered Wardwright model"
+    assert html =~ "Registered model workbench"
+    assert html =~ "Selecting a model leaves example preview"
     assert html =~ "Model Access"
     assert html =~ "href=\"/admin/model-api-keys\""
     assert html =~ "Manage access"
@@ -537,21 +537,27 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     {:ok, view, html} = live(build_conn(), "/policies/tts-retry/diagram?model=beta-workbench")
 
-    assert html =~ "Simulation target: <strong>beta-workbench</strong>"
+    assert html =~ "Registered model workbench:"
+    assert html =~ "<strong>beta-workbench</strong>"
     assert html =~ beta_hash
     assert html =~ "alpha-workbench"
     assert html =~ "beta-workbench"
     assert html =~ "model=beta-workbench"
+    refute html =~ "Choose a registered model"
 
     updated =
       view
       |> element("form.workbench_model_selector")
       |> render_change(%{"workbench_model" => "alpha-workbench"})
 
-    assert updated =~ "Simulation target: <strong>alpha-workbench</strong>"
+    assert updated =~ "Registered model workbench:"
+    assert updated =~ "<strong>alpha-workbench</strong>"
     assert updated =~ "model=alpha-workbench"
 
     assert updated =~
+             "/policies/stream-rewrite-state/diagram/recipe/credential-redaction-ladder"
+
+    refute updated =~
              "/policies/stream-rewrite-state/diagram/recipe/credential-redaction-ladder?model=alpha-workbench"
   end
 
@@ -754,7 +760,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Regex rewrite and state transition"
     assert html =~ "Example catalog"
     assert html =~ "Example scenarios"
-    assert html =~ "Examples change the story, scenario, and projection view."
+    assert html =~ "Examples are read-only previews."
     assert html =~ "Project examples"
     assert html =~ "wardwright.dev/recipes"
     assert html =~ "account redactor"
@@ -1057,6 +1063,8 @@ defmodule Wardwright.PolicyProjectionLiveTest do
       live(build_conn(), "/policies/route-privacy/diagram/recipe/context-window-dispatcher")
 
     assert active_recipe_link?(direct_html, "context-window-dispatcher")
+    assert direct_html =~ "Example preview:"
+    assert direct_html =~ "Choose a registered model"
   end
 
   test "LiveView recipe selection changes ambiguous-success scenarios" do

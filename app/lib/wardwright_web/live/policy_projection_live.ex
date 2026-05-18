@@ -22,19 +22,33 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   def handle_params(params, uri, socket) do
     socket = assign_projection(socket, params, uri)
 
-    if unsupported_pattern?(Map.get(params, "pattern")) do
-      {:noreply,
-       push_patch(socket,
-         to:
-           path(
-             socket.assigns.selected_pattern_id,
-             socket.assigns.mode,
-             socket.assigns.selected_recipe_source_id,
-             socket.assigns.selected_recipe_id
-           )
-       )}
-    else
-      {:noreply, socket}
+    cond do
+      unsupported_pattern?(Map.get(params, "pattern")) ->
+        {:noreply,
+         push_patch(socket,
+           to:
+             path(
+               socket.assigns.selected_pattern_id,
+               socket.assigns.mode,
+               socket.assigns.selected_recipe_source_id,
+               socket.assigns.selected_recipe_id
+             )
+         )}
+
+      Map.get(params, "recipe") not in [nil, ""] and Map.get(params, "model") not in [nil, ""] ->
+        {:noreply,
+         push_patch(socket,
+           to:
+             path(
+               socket.assigns.selected_pattern_id,
+               socket.assigns.mode,
+               socket.assigns.selected_recipe_source_id,
+               socket.assigns.selected_recipe_id
+             )
+         )}
+
+      true ->
+        {:noreply, socket}
     end
   end
 
@@ -46,6 +60,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     selected_model_config = selected_workbench_model_config(Map.get(params, "model"))
     selected_model_id = Wardwright.model_id(selected_model_config)
     recipe_catalog = recipe_catalog(recipe_source_id)
+    explicit_recipe? = Map.get(params, "recipe") not in [nil, ""]
     selected_recipe = selected_recipe(recipe_catalog, pattern_id, Map.get(params, "recipe"))
     selected_recipe_id = selected_recipe["id"] || ""
     projection = Wardwright.PolicyProjection.projection(pattern_id, selected_model_config)
@@ -93,6 +108,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     |> assign(:recipe_catalog, recipe_catalog)
     |> assign(:patterns, recipe_catalog["recipes"])
     |> assign(:recipe_groups, recipe_groups(recipe_catalog["recipes"], selected_recipe_id))
+    |> assign(:explicit_recipe?, explicit_recipe?)
     |> assign(:selected_recipe, selected_recipe)
     |> assign(:selected_recipe_id, selected_recipe_id)
     |> assign(:selected_pattern, Wardwright.PolicyProjection.pattern(pattern_id))
@@ -261,14 +277,17 @@ defmodule WardwrightWeb.PolicyProjectionLive do
            socket.assigns.selected_pattern_id,
            socket.assigns.mode,
            normalize_recipe_source(source_id),
-           nil,
-           socket.assigns.selected_model_id
+           nil
          )
      )}
   end
 
   def handle_event("select-recipe-source", %{"value" => source_id}, socket) do
     handle_event("select-recipe-source", %{"recipe_source" => source_id}, socket)
+  end
+
+  def handle_event("select-workbench-model", %{"workbench_model" => ""}, socket) do
+    {:noreply, socket}
   end
 
   def handle_event("select-workbench-model", %{"workbench_model" => model_id}, socket) do
@@ -279,7 +298,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
            socket.assigns.selected_pattern_id,
            socket.assigns.mode,
            socket.assigns.selected_recipe_source_id,
-           socket.assigns.selected_recipe_id,
+           nil,
            model_id
          )
      )}
@@ -686,19 +705,22 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         </a>
 
         <form class="workbench_model_selector" phx-change="select-workbench-model">
-          <label for="workbench_model">Simulation target</label>
+          <label for="workbench_model">Registered model workbench</label>
           <select id="workbench_model" name="workbench_model" phx-change="select-workbench-model">
+            <option :if={@explicit_recipe?} value="" selected disabled>
+              Choose a registered model
+            </option>
             <option
               :for={model <- @available_models}
               value={model["id"]}
-              selected={model["id"] == @selected_model_id}
+              selected={!@explicit_recipe? and model["id"] == @selected_model_id}
             >
               <%= model["id"] %>
             </option>
           </select>
           <small>
-            Changing this immediately selects the registered Wardwright model whose
-            current policy and routes are simulated.
+            Selecting a model leaves example preview and opens that model's
+            current policy, routes, and scenarios.
           </small>
         </form>
 
@@ -720,8 +742,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
         <h2 class="nav_heading">Example scenarios</h2>
         <p class="nav_note">
-          Examples change the story, scenario, and projection view. They do not
-          change the selected simulation target.
+          Examples are read-only previews. Opening one clears the registered
+          model workbench selection until you choose a model again.
         </p>
 
         <details :for={group <- @recipe_groups} class="recipe_group" open={group.open}>
@@ -731,7 +753,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           </summary>
           <.link
             :for={pattern <- group.recipes}
-            patch={path(pattern["pattern_id"], "diagram", @selected_recipe_source_id, pattern["id"], @selected_model_id)}
+            patch={path(pattern["pattern_id"], "diagram", @selected_recipe_source_id, pattern["id"])}
             class={if pattern["id"] == @selected_recipe_id, do: "active", else: ""}
           >
             <strong><%= pattern["title"] %></strong>
@@ -768,8 +790,14 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           <h1><%= @selected_recipe["title"] || @selected_pattern["title"] %></h1>
           <p><%= @selected_recipe["promise"] || @selected_pattern["promise"] %></p>
           <small class="editing_target_summary">
-            Simulation target: <strong><%= @selected_model_id %></strong>.
-            Example: <strong><%= @selected_recipe["title"] || @selected_pattern["title"] %></strong>.
+            <%= if @explicit_recipe? do %>
+              Example preview:
+              <strong><%= @selected_recipe["title"] || @selected_pattern["title"] %></strong>.
+              Choose a registered model from the left rail to leave preview mode.
+            <% else %>
+              Registered model workbench:
+              <strong><%= @selected_model_id %></strong>.
+            <% end %>
           </small>
         </div>
         <div class="engine_card">
