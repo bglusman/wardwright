@@ -9,9 +9,9 @@ defmodule Wardwright.PolicySandbox.Dune do
   """
 
   @default_opts [
-    timeout: 250,
-    max_reductions: 10_000,
-    max_heap_size: 100_000,
+    timeout: 1_000,
+    max_reductions: 100_000,
+    max_heap_size: 250_000,
     inspect_sort_maps: true
   ]
 

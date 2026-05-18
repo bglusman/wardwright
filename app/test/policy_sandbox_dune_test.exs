@@ -112,7 +112,10 @@ defmodule Wardwright.PolicySandbox.DuneTest do
              })
 
     assert evaluation["schema"] == "wardwright.dune_snippet_evaluation.v1"
-    assert get_in(evaluation, ["result", "policy_status"]) == "ok"
+
+    assert get_in(evaluation, ["result", "policy_status"]) == "ok",
+           "expected registry snippet to evaluate successfully, got: #{inspect(evaluation["result"], limit: :infinity)}"
+
     assert get_in(evaluation, ["result", "policy_result", "action"]) == "transition_state"
     assert get_in(evaluation, ["result", "policy_result", "to_state"]) == "review_required"
   end
