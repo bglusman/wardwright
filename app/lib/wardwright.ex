@@ -2,8 +2,8 @@ defmodule Wardwright do
   @moduledoc """
   Minimal Wardwright model middleware runtime.
 
-  The prototype is intentionally small: one public Wardwright model endpoint,
-  model-graph route selection, policy evaluation, and in-memory receipts.
+  The prototype is intentionally small: Wardwright model endpoints, model-graph
+  route selection, policy evaluation, and in-memory receipts.
   """
 
   @model_id "coding-balanced"
@@ -14,6 +14,7 @@ defmodule Wardwright do
   @managed_context_window 262_144
 
   def model_id, do: @model_id
+  def model_id(config) when is_map(config), do: Map.get(config, "model_id", @model_id)
   def model_version, do: @model_version
   def local_model, do: @local_model
   def managed_model, do: @managed_model
@@ -61,29 +62,51 @@ defmodule Wardwright do
   end
 
   def current_config do
-    :persistent_term.get({__MODULE__, :config}, default_config())
+    configs = current_configs()
+    active_model_id = :persistent_term.get({__MODULE__, :active_model_id}, @model_id)
+    Map.get(configs, active_model_id, default_config())
+  end
+
+  def current_configs do
+    :persistent_term.get({__MODULE__, :configs}, %{@model_id => default_config()})
+  end
+
+  def model_configs do
+    current_configs()
+    |> Map.values()
+    |> Enum.sort_by(&model_id/1)
+  end
+
+  def model_config(model) do
+    with {:ok, model_id} <- canonical_model_id(model),
+         {:ok, config} <- Map.fetch(current_configs(), model_id) do
+      {:ok, config}
+    else
+      :error -> {:error, "unknown Wardwright model #{inspect(model)}"}
+      {:error, message} -> {:error, message}
+    end
   end
 
   def load_persisted_config do
-    case Wardwright.SQLiteStore.load_active_model() do
-      {:ok, config} ->
-        install_config(config)
-        configure_runtime(config)
-        {:ok, config}
+    case Wardwright.SQLiteStore.list_active_models() do
+      {:ok, configs} when configs != [] ->
+        install_configs(configs)
+        Enum.each(configs, &configure_runtime/1)
+        {:ok, current_config()}
 
-      :error ->
+      _ ->
         config = default_config()
-        install_config(config)
+        install_configs([config])
         configure_runtime(config)
-        Wardwright.SQLiteStore.save_model_config(config)
+        Wardwright.SQLiteStore.save_model_config(config, replace_active: true)
         {:ok, config}
     end
   end
 
   def reset_config do
     config = default_config()
-    install_config(config)
-    Wardwright.SQLiteStore.save_model_config(config)
+    install_configs([config])
+    Wardwright.SQLiteStore.save_model_config(config, replace_active: true)
     Wardwright.PolicyCache.configure(default_config()["policy_cache"])
     Wardwright.Sinks.configure(default_config()["sinks"])
     Wardwright.ProviderRuntime.reset()
@@ -93,8 +116,8 @@ defmodule Wardwright do
     config = normalize_config(config)
 
     with :ok <- validate_config(config) do
-      install_config(config)
-      Wardwright.SQLiteStore.save_model_config(config)
+      install_configs([config])
+      Wardwright.SQLiteStore.save_model_config(config, replace_active: true)
       configure_runtime(config)
       {:ok, config}
     end
@@ -102,8 +125,34 @@ defmodule Wardwright do
 
   def put_config(_), do: {:error, "request body must be a JSON object"}
 
-  defp install_config(config) do
+  def put_model_config(config) when is_map(config) do
+    config = normalize_config(config)
+
+    with :ok <- validate_config(config) do
+      install_model_config(config)
+      Wardwright.SQLiteStore.save_model_config(config)
+      configure_runtime(config)
+      {:ok, config}
+    end
+  end
+
+  def put_model_config(_), do: {:error, "request body must be a JSON object"}
+
+  defp install_configs(configs) when is_list(configs) do
+    configs = Map.new(configs, &{model_id(&1), &1})
+    active_model_id = configs |> Map.keys() |> Enum.sort() |> List.first() || @model_id
+    active_config = Map.get(configs, active_model_id, default_config())
+    :persistent_term.put({__MODULE__, :config}, active_config)
+    :persistent_term.put({__MODULE__, :configs}, configs)
+    :persistent_term.put({__MODULE__, :active_model_id}, active_model_id)
+  end
+
+  defp install_model_config(config) do
+    model_id = model_id(config)
+    configs = Map.put(current_configs(), model_id, config)
     :persistent_term.put({__MODULE__, :config}, config)
+    :persistent_term.put({__MODULE__, :configs}, configs)
+    :persistent_term.put({__MODULE__, :active_model_id}, model_id)
   end
 
   defp configure_runtime(config) do
@@ -121,18 +170,22 @@ defmodule Wardwright do
   end
 
   def normalize_model(model) when is_binary(model) do
-    model = String.trim(model)
-    model_id = current_config()["model_id"]
-
-    case model do
-      ^model_id -> {:ok, model_id}
-      "wardwright/" <> ^model_id -> {:ok, model_id}
-      "" -> {:error, "model is required"}
-      other -> {:error, "unknown Wardwright model #{inspect(other)}"}
+    with {:ok, config} <- model_config(model) do
+      {:ok, model_id(config)}
     end
   end
 
   def normalize_model(_), do: {:error, "model is required"}
+
+  defp canonical_model_id(model) when is_binary(model) do
+    case String.trim(model) do
+      "" -> {:error, "model is required"}
+      "wardwright/" <> model_id -> {:ok, model_id}
+      model_id -> {:ok, model_id}
+    end
+  end
+
+  defp canonical_model_id(_), do: {:error, "model is required"}
 
   def model_requires_api_key?(config \\ current_config()),
     do: Map.get(config, "requires_api_key", false) == true
@@ -150,6 +203,11 @@ defmodule Wardwright do
 
   def select_route(estimated_prompt_tokens, attrs) when is_map(attrs) do
     Wardwright.RoutePlanner.select(current_config(), estimated_prompt_tokens, attrs)
+  end
+
+  def select_route(config, estimated_prompt_tokens, attrs)
+      when is_map(config) and is_map(attrs) do
+    Wardwright.RoutePlanner.select(config, estimated_prompt_tokens, attrs)
   end
 
   def provider_targets(config \\ current_config()) when is_map(config) do
@@ -182,7 +240,11 @@ defmodule Wardwright do
   defp content_length(value), do: byte_size(Jason.encode!(value))
 
   def model_record do
-    config = current_config()
+    model_record(current_config())
+  end
+
+  def model_record(config) when is_map(config) do
+    model_id = model_id(config)
 
     targets =
       config
@@ -204,9 +266,9 @@ defmodule Wardwright do
         end)
 
     %{
-      "id" => config["model_id"],
-      "model_id" => config["model_id"],
-      "public_model_id" => config["model_id"],
+      "id" => model_id,
+      "model_id" => model_id,
+      "public_model_id" => model_id,
       "active_version" => config["version"],
       "description" => "Mock coding assistant Wardwright model with composable route selectors.",
       "public_namespace" => "flat",
@@ -233,12 +295,16 @@ defmodule Wardwright do
   end
 
   def model_summary do
-    config = current_config()
+    model_summary(current_config())
+  end
+
+  def model_summary(config) when is_map(config) do
+    model_id = model_id(config)
 
     %{
-      "id" => config["model_id"],
-      "model_id" => config["model_id"],
-      "public_model_id" => config["model_id"],
+      "id" => model_id,
+      "model_id" => model_id,
+      "public_model_id" => model_id,
       "active_version" => config["version"],
       "description" => "Mock coding assistant Wardwright model with composable route selectors.",
       "public_namespace" => "flat",
@@ -246,6 +312,13 @@ defmodule Wardwright do
       "requires_api_key" => model_requires_api_key?(config),
       "status" => "active"
     }
+  end
+
+  def model_records, do: Enum.map(model_configs(), &model_record/1)
+  def model_summaries, do: Enum.map(model_configs(), &model_summary/1)
+
+  def externally_callable_model_configs do
+    Enum.filter(model_configs(), &externally_callable?/1)
   end
 
   defp selector_nodes(config, default_target_ids) do
@@ -314,13 +387,13 @@ defmodule Wardwright do
   end
 
   def providers do
-    current_config()
-    |> provider_targets()
+    model_configs()
+    |> Enum.flat_map(&provider_targets/1)
     |> Enum.reduce(%{}, fn target, acc ->
       provider = target["model"] |> String.split("/", parts: 2) |> List.first()
-      Map.put_new(acc, provider, target)
+      Map.put_new(acc, {provider, target["model"]}, target)
     end)
-    |> Enum.map(fn {provider, target} ->
+    |> Enum.map(fn {{provider, _model}, target} ->
       {kind, base_url} = provider_kind_and_base_url(provider, target)
 
       %{
@@ -339,17 +412,17 @@ defmodule Wardwright do
 
   def model_access(origin \\ "http://127.0.0.1:8787") do
     WardwrightWeb.ModelAccessProjection.build(
-      current_config(),
+      model_configs(),
       Wardwright.ProviderRuntime.providers_status(),
       origin
     )
   end
 
-  def complete_selected_model(selected_model, request) do
+  def complete_selected_model(selected_model, request, config) when is_map(config) do
     started = System.monotonic_time(:millisecond)
 
     target =
-      current_config()
+      config
       |> provider_targets()
       |> Enum.find(fn target -> target["model"] == selected_model end)
 
@@ -371,11 +444,11 @@ defmodule Wardwright do
     end
   end
 
-  def stream_selected_model(selected_model, request) do
+  def stream_selected_model(selected_model, request, config) when is_map(config) do
     started = System.monotonic_time(:millisecond)
 
     target =
-      current_config()
+      config
       |> provider_targets()
       |> Enum.find(fn target -> target["model"] == selected_model end)
 
@@ -398,12 +471,12 @@ defmodule Wardwright do
     end
   end
 
-  def stream_selected_model_each(selected_model, request, acc, chunk_fun)
-      when is_function(chunk_fun, 2) do
+  def stream_selected_model_each(selected_model, request, acc, chunk_fun, config)
+      when is_map(config) and is_function(chunk_fun, 2) do
     started = System.monotonic_time(:millisecond)
 
     target =
-      current_config()
+      config
       |> provider_targets()
       |> Enum.find(fn target -> target["model"] == selected_model end)
 

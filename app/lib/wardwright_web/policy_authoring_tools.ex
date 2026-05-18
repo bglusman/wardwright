@@ -72,9 +72,9 @@ defmodule WardwrightWeb.PolicyAuthoringTools do
         "activate_wardwright_model",
         "POST",
         "/v1/policy-authoring/wardwright-models",
-        "Validate and activate a Wardwright model artifact as the current local model so agents can call it through the OpenAI-compatible endpoint.",
+        "Validate and activate a Wardwright model artifact as a registered local model so agents can call it through the OpenAI-compatible endpoint.",
         "Use only after the user has reviewed the draft, validation output, and relevant simulations.",
-        "Write-capable. Requires protected local access and changes the current local model.",
+        "Write-capable. Requires protected local access and registers or updates one local model without replacing other active models.",
         "/agent-authoring.html#activate-only-after-review"
       ),
       tool(

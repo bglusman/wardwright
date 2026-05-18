@@ -25,28 +25,24 @@ defmodule Wardwright.Router do
   end
 
   get "/v1/models" do
-    model_id = Wardwright.model_record()["id"]
-
     data =
-      if Wardwright.externally_callable?() do
+      Wardwright.externally_callable_model_configs()
+      |> Enum.flat_map(fn config ->
+        model_id = config["model_id"]
+
         [
           %{"id" => model_id, "object" => "model", "owned_by" => "wardwright"},
-          %{
-            "id" => "wardwright/#{model_id}",
-            "object" => "model",
-            "owned_by" => "wardwright"
-          }
+          %{"id" => "wardwright/#{model_id}", "object" => "model", "owned_by" => "wardwright"}
         ]
-      else
-        []
-      end
+      end)
 
     json(conn, 200, %{"object" => "list", "data" => data})
   end
 
   get "/v1/wardwright/models" do
     data =
-      if Wardwright.externally_callable?(), do: [Wardwright.model_summary()], else: []
+      Wardwright.externally_callable_model_configs()
+      |> Enum.map(&Wardwright.model_summary/1)
 
     json(conn, 200, %{"data" => data})
   end
@@ -54,26 +50,27 @@ defmodule Wardwright.Router do
   post "/v1/chat/completions" do
     with {:ok, request} <- require_json_object(conn.body_params),
          {:ok, model} <- Wardwright.normalize_model(Map.get(request, "model")),
-         :ok <- require_model_access(conn, model),
+         {:ok, config} <- Wardwright.model_config(model),
+         :ok <- require_model_access(conn, model, config),
          :ok <- require_messages(request) do
-      request = apply_prompt_transforms(request)
+      request = apply_prompt_transforms(request, config)
       caller = WardwrightWeb.RequestContext.caller(conn, Map.get(request, "metadata", %{}))
       tool_context_opts = WardwrightWeb.RequestContext.tool_context_opts(conn)
       Wardwright.Policy.History.record_request(caller, request, tool_context_opts)
-      {request, policy} = apply_request_policies(request, caller, tool_context_opts)
+      {request, policy} = apply_request_policies(request, caller, tool_context_opts, config)
       {policy, fail_closed?} = deliver_policy_alerts(policy)
-      decision = route_decision(request, policy)
+      decision = route_decision(request, policy, config)
 
-      record_runtime_event(model, caller, "route.selected", %{
+      record_runtime_event(model, config, caller, "route.selected", %{
         "selected_model" => decision.selected_model,
         "selected_provider" => decision.selected_provider,
         "estimated_prompt_tokens" => decision.estimated_prompt_tokens
       })
 
       if Map.get(request, "stream") == true and not fail_closed? and not decision.route_blocked do
-        WardwrightWeb.StreamRuntime.run(conn, model, caller, request, decision, policy)
+        WardwrightWeb.StreamRuntime.run(conn, model, caller, request, decision, policy, config)
       else
-        provider = provider_outcome(request, decision, fail_closed?)
+        provider = provider_outcome(request, decision, fail_closed?, config)
         Wardwright.Policy.History.record_response(caller, provider.content)
 
         receipt =
@@ -84,13 +81,14 @@ defmodule Wardwright.Router do
             request,
             decision,
             provider.called_provider,
-            policy
+            policy,
+            config
           )
           |> WardwrightWeb.ReceiptBuilder.apply_provider_outcome(provider)
 
         Wardwright.ReceiptStore.insert(receipt)
 
-        record_runtime_event(model, caller, "receipt.finalized", %{
+        record_runtime_event(model, config, caller, "receipt.finalized", %{
           "receipt_id" => receipt["receipt_id"],
           "status" => get_in(receipt, ["final", "status"]),
           "simulation" => false,
@@ -125,16 +123,17 @@ defmodule Wardwright.Router do
          {:ok, request} <- require_json_object(Map.get(body, "request")),
          request = override_model(request, Map.get(body, "model")),
          {:ok, model} <- Wardwright.normalize_model(Map.get(request, "model")),
+         {:ok, config} <- Wardwright.model_config(model),
          :ok <- require_messages(request) do
-      request = apply_prompt_transforms(request)
+      request = apply_prompt_transforms(request, config)
       caller = WardwrightWeb.RequestContext.caller(conn, Map.get(request, "metadata", %{}))
       tool_context_opts = WardwrightWeb.RequestContext.tool_context_opts(conn)
       Wardwright.Policy.History.record_request(caller, request, tool_context_opts)
-      {request, policy} = apply_request_policies(request, caller, tool_context_opts)
+      {request, policy} = apply_request_policies(request, caller, tool_context_opts, config)
       {policy, fail_closed?} = deliver_policy_alerts(policy)
-      decision = route_decision(request, policy)
+      decision = route_decision(request, policy, config)
 
-      record_runtime_event(model, caller, "simulation.route_selected", %{
+      record_runtime_event(model, config, caller, "simulation.route_selected", %{
         "selected_model" => decision.selected_model,
         "selected_provider" => decision.selected_provider,
         "estimated_prompt_tokens" => decision.estimated_prompt_tokens
@@ -151,12 +150,13 @@ defmodule Wardwright.Router do
           request,
           decision,
           false,
-          policy
+          policy,
+          config
         )
 
       Wardwright.ReceiptStore.insert(receipt)
 
-      record_runtime_event(model, caller, "receipt.finalized", %{
+      record_runtime_event(model, config, caller, "receipt.finalized", %{
         "receipt_id" => receipt["receipt_id"],
         "status" => get_in(receipt, ["final", "status"]),
         "simulation" => true,
@@ -627,7 +627,7 @@ defmodule Wardwright.Router do
 
   get "/admin/wardwright-models" do
     with :ok <- require_protected_access(conn) do
-      json(conn, 200, %{"data" => [Wardwright.model_record()]})
+      json(conn, 200, %{"data" => Wardwright.model_records()})
     else
       {:error, :protected, message} ->
         error(conn, 403, message, "forbidden", "protected_endpoint")
@@ -720,8 +720,8 @@ defmodule Wardwright.Router do
   defp override_model(request, ""), do: request
   defp override_model(request, model), do: Map.put(request, "model", model)
 
-  defp apply_prompt_transforms(request) do
-    transforms = Wardwright.current_config()["prompt_transforms"] || %{}
+  defp apply_prompt_transforms(request, config) do
+    transforms = config["prompt_transforms"] || %{}
     messages = Map.get(request, "messages", [])
 
     messages =
@@ -750,9 +750,8 @@ defmodule Wardwright.Router do
     Map.put(request, "messages", messages)
   end
 
-  defp apply_request_policies(request, caller, opts),
-    do:
-      Wardwright.Policy.Plan.evaluate_request(request, caller, Wardwright.current_config(), opts)
+  defp apply_request_policies(request, caller, opts, config),
+    do: Wardwright.Policy.Plan.evaluate_request(request, caller, config, opts)
 
   defp deliver_policy_alerts(%{"events" => events} = policy) do
     alert_delivery = Wardwright.Policy.AlertDelivery.deliver(events)
@@ -793,13 +792,19 @@ defmodule Wardwright.Router do
     }
   end
 
-  defp provider_outcome(request, decision, false) when is_map(request) do
-    structured_config = Wardwright.current_config()["structured_output"]
+  defp provider_outcome(request, decision, true, _config),
+    do: provider_outcome(request, decision, true)
+
+  defp provider_outcome(request, %{route_blocked: true} = decision, false, _config),
+    do: provider_outcome(request, decision, false)
+
+  defp provider_outcome(request, decision, false, config) when is_map(request) do
+    structured_config = config["structured_output"]
 
     Wardwright.Policy.StructuredOutput.run(structured_config, fn attempt_index ->
       request
       |> Map.put("wardwright_attempt_index", attempt_index)
-      |> then(&Wardwright.complete_selected_model(decision.selected_model, &1))
+      |> then(&Wardwright.complete_selected_model(decision.selected_model, &1, config))
       |> Map.put_new(:structured_output, nil)
     end)
   end
@@ -809,16 +814,16 @@ defmodule Wardwright.Router do
 
   defp require_messages(_), do: {:error, "messages must not be empty"}
 
-  defp require_model_access(conn, model) do
+  defp require_model_access(conn, model, config) do
     cond do
-      Wardwright.model_requires_api_key?() ->
+      Wardwright.model_requires_api_key?(config) ->
         if Wardwright.ModelApiKeyStore.valid?(model, request_model_api_key(conn)) do
           :ok
         else
           {:error, :model_auth, 401, "valid model API key required", "model_api_key_required"}
         end
 
-      Wardwright.unkeyed_model_access() == "internal" ->
+      Wardwright.unkeyed_model_access(config) == "internal" ->
         {:error, :model_auth, 403, "model is only available for internal composition",
          "model_internal"}
 
@@ -866,13 +871,13 @@ defmodule Wardwright.Router do
   defp bearer_token("bearer " <> token), do: WardwrightWeb.RequestContext.blank_to_nil(token)
   defp bearer_token(_value), do: nil
 
-  defp route_decision(request, policy) do
+  defp route_decision(request, policy, config) do
     estimate = Wardwright.estimate_prompt_tokens(Map.get(request, "messages", []))
-    Wardwright.select_route(estimate, Map.get(policy, "route_constraints", %{}))
+    Wardwright.select_route(config, estimate, Map.get(policy, "route_constraints", %{}))
   end
 
-  defp record_runtime_event(model, caller, type, fields) do
-    version = Wardwright.current_config()["version"]
+  defp record_runtime_event(model, config, caller, type, fields) do
+    version = config["version"]
 
     case Wardwright.Runtime.record_session_event(
            model,

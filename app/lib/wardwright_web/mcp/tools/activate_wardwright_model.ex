@@ -1,10 +1,11 @@
 defmodule WardwrightWeb.MCP.Tools.ActivateWardwrightModel do
   @moduledoc """
-  Activate a validated Wardwright model artifact as the current local model.
+  Activate a validated Wardwright model artifact as a registered local model.
 
   Use this only after a draft artifact has been validated, simulated, and
-  approved by the user. Activation changes the current local model exposed
-  through the OpenAI-compatible /v1 endpoints.
+  approved by the user. Activation registers or updates one model exposed
+  through the OpenAI-compatible /v1 endpoints without replacing other registered
+  models.
   """
 
   use Hermes.Server.Component, type: :tool, annotations: %{read_only: false}

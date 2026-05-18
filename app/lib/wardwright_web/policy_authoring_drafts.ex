@@ -25,7 +25,7 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
     validation = PolicyArtifactValidator.validate(artifact, source: "draft")
 
     if validation["errors"] == [] do
-      case Wardwright.put_config(artifact) do
+      case Wardwright.put_model_config(artifact) do
         {:ok, config} ->
           {:ok,
            %{
@@ -266,7 +266,7 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
   defp next_steps(%{"errors" => []}) do
     [
       "Review validation warnings and coverage gaps.",
-      "POST the same body to /v1/policy-authoring/wardwright-models to activate it locally.",
+      "POST the same body to /v1/policy-authoring/wardwright-models to register or update it locally.",
       "Point an OpenAI-compatible agent at the returned openai_base_url and use one of the returned model_ids."
     ]
   end

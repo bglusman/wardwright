@@ -110,8 +110,7 @@ The release workflow updates the existing tap. Install on macOS with:
 ```bash
 brew tap bglusman/tap
 brew install wardwright
-brew services start wardwright
-open http://127.0.0.1:8787/policies
+wardwright admin
 ```
 
 The generated formula:
@@ -130,9 +129,18 @@ The same installed binary also exposes small operator/agent helper commands:
 ```bash
 wardwright --help
 wardwright serve
+wardwright admin
+wardwright admin access
 wardwright tools
 wardwright tools --json
 ```
+
+`wardwright admin` opens the operator workbench in the default browser. If the
+configured bind port is not responding, it starts `wardwright serve` in the
+background first. `wardwright admin access` opens model access controls
+directly. Homebrew users can still run Wardwright as a service with
+`brew services start wardwright`; the admin helper just removes the need to
+remember the local URL.
 
 `wardwright tools` prints MCP and policy-authoring API instructions for local
 agents. The JSON form is generated from the same registry used by the protected

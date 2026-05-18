@@ -4,29 +4,46 @@ defmodule WardwrightWeb.ModelApiKeysLive do
   use Phoenix.LiveView
 
   @impl true
-  def mount(_params, _session, socket) do
-    {:ok, assign_state(socket)}
+  def mount(params, _session, socket) do
+    {:ok, assign_state(socket, selected_model: requested_model(params))}
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply, assign_state(socket, selected_model: requested_model(params))}
   end
 
   @impl true
   def handle_event("create-key", %{"key" => params}, socket) do
-    model = Wardwright.current_config()["model_id"]
+    model = socket.assigns.model
 
     case Wardwright.ModelApiKeyStore.create(model, Map.get(params, "label", "")) do
-      {:ok, key} -> {:noreply, assign_state(socket, created_key: key)}
-      _ -> {:noreply, assign_state(socket, error: "Could not create API key.")}
+      {:ok, key} ->
+        {:noreply, assign_state(socket, selected_model: model, created_key: key)}
+
+      _ ->
+        {:noreply,
+         assign_state(socket, selected_model: model, error: "Could not create API key.")}
     end
   end
 
   @impl true
   def handle_event("revoke-key", %{"id" => id}, socket) do
     _ = Wardwright.ModelApiKeyStore.revoke(id)
-    {:noreply, assign_state(socket, status: "API key revoked.")}
+
+    {:noreply,
+     assign_state(socket, selected_model: socket.assigns.model, status: "API key revoked.")}
+  end
+
+  @impl true
+  def handle_event("select-model", %{"model" => model}, socket) do
+    {:noreply,
+     push_patch(socket, to: "/admin/model-api-keys?model=#{URI.encode_www_form(model)}")}
   end
 
   @impl true
   def handle_event("save-access", %{"access" => params}, socket) do
-    config = Wardwright.current_config()
+    config = socket.assigns.config
 
     updated_config =
       config
@@ -35,9 +52,13 @@ defmodule WardwrightWeb.ModelApiKeysLive do
         "unkeyed_model_access" => Map.get(params, "unkeyed_model_access", "public")
       })
 
-    case Wardwright.put_config(updated_config) do
-      {:ok, _config} -> {:noreply, assign_state(socket, status: "Model access saved.")}
-      {:error, message} -> {:noreply, assign_state(socket, error: message)}
+    case Wardwright.put_model_config(updated_config) do
+      {:ok, _config} ->
+        {:noreply,
+         assign_state(socket, selected_model: socket.assigns.model, status: "Model access saved.")}
+
+      {:error, message} ->
+        {:noreply, assign_state(socket, selected_model: socket.assigns.model, error: message)}
     end
   end
 
@@ -60,13 +81,13 @@ defmodule WardwrightWeb.ModelApiKeysLive do
           <span>Review policy definitions and model routing.</span>
         </a>
         <a class="active" href="/admin/model-api-keys">
-          <strong>Model API Keys</strong>
+          <strong>Model Access</strong>
           <span>Configure keyed and unkeyed model access.</span>
         </a>
       </nav>
 
       <div class="sidebar_footer">
-        <span>Active model</span>
+        <span>Selected model</span>
         <strong><%= @model %></strong>
         <span>Access</span>
         <code><%= if @requires_api_key, do: "keyed", else: @unkeyed_model_access %></code>
@@ -77,9 +98,9 @@ defmodule WardwrightWeb.ModelApiKeysLive do
       <header class="topbar">
         <div>
           <p class="eyebrow">Access control</p>
-          <h1>Model API Keys</h1>
+          <h1>Model Access</h1>
           <p>
-            Configure access for the active Wardwright model and manage its API keys.
+            Choose a Wardwright model, then configure API-key requirements and unkeyed access.
           </p>
         </div>
         <div class="topbar_actions">
@@ -103,7 +124,7 @@ defmodule WardwrightWeb.ModelApiKeysLive do
         <article class="panel model_summary_panel">
           <div class="panel_header">
             <div>
-              <h2>Active Model</h2>
+              <h2>Selected Model</h2>
               <p>
                 <code><%= @model %></code> is the model id agents call through the
                 OpenAI-compatible API.
@@ -111,6 +132,16 @@ defmodule WardwrightWeb.ModelApiKeysLive do
             </div>
             <span class="badge"><%= if @requires_api_key, do: "keyed", else: "unkeyed" %></span>
           </div>
+          <form id="model-selector-form" phx-change="select-model" class="stacked_form">
+            <label>
+              Model to edit
+              <select name="model">
+                <option :for={model <- @models} value={model["id"]} selected={model["id"] == @model}>
+                  <%= model["id"] %>
+                </option>
+              </select>
+            </label>
+          </form>
           <dl class="metrics">
             <div>
               <dt>Mode</dt>
@@ -239,11 +270,14 @@ defmodule WardwrightWeb.ModelApiKeysLive do
     """
   end
 
-  defp assign_state(socket, opts \\ []) do
-    config = Wardwright.current_config()
+  defp assign_state(socket, opts) do
+    models = Wardwright.model_summaries()
+    config = selected_config(Keyword.get(opts, :selected_model))
     model = config["model_id"]
 
     socket
+    |> assign(:config, config)
+    |> assign(:models, models)
     |> assign(:model, model)
     |> assign(:requires_api_key, Wardwright.model_requires_api_key?(config))
     |> assign(:unkeyed_model_access, Wardwright.unkeyed_model_access(config))
@@ -252,4 +286,16 @@ defmodule WardwrightWeb.ModelApiKeysLive do
     |> assign(:status, Keyword.get(opts, :status))
     |> assign(:error, Keyword.get(opts, :error))
   end
+
+  defp requested_model(%{"model" => model}) when is_binary(model), do: model
+  defp requested_model(_params), do: nil
+
+  defp selected_config(model) when is_binary(model) do
+    case Wardwright.model_config(model) do
+      {:ok, config} -> config
+      {:error, _message} -> Wardwright.current_config()
+    end
+  end
+
+  defp selected_config(_model), do: Wardwright.current_config()
 end

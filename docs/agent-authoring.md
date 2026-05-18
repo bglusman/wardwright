@@ -14,7 +14,7 @@ convenience UI, not a replacement for review, validation, and activation gates.
 
 The safe workflow is:
 
-1. Inspect the current model and projection.
+1. Inspect the target model and projection.
 2. Simulate representative scenarios.
 3. Draft a new model or propose a narrow rule change.
 4. Validate the artifact and explain every error or review gap.
@@ -99,7 +99,7 @@ reports success.
 
 ## Inspect Before You Edit
 
-Use `explain_projection` to understand the current model. A projection is the
+Use `explain_projection` to understand the target model. A projection is the
 review shape Wardwright can explain: route choices, state transitions, policy
 phases, effects, conflicts, and opaque regions.
 
@@ -241,7 +241,7 @@ harder boundary such as WASM or an isolated sidecar.
 ## Activate Only After Review
 
 Use `activate_wardwright_model` only after explicit user approval. Activation
-changes the current local model available through:
+registers or updates one local model available through:
 
 ```text
 POST /v1/chat/completions
@@ -249,7 +249,8 @@ GET /v1/models
 ```
 
 The activated model can be called with either `model-id` or
-`wardwright/model-id`.
+`wardwright/model-id`. Other registered models remain callable unless they are
+later removed or made internal-only.
 
 ## Mental Model
 

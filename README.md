@@ -20,8 +20,7 @@ prepared release is `v0.0.5`.
 ```bash
 brew tap bglusman/tap
 brew install wardwright
-brew services start wardwright
-open http://127.0.0.1:8787/policies
+wardwright admin
 ```
 
 For one-shot foreground testing instead of a service:
@@ -68,10 +67,11 @@ model-scoped API key, or set unkeyed models to internal-only composition:
 }
 ```
 
-Use the protected `/admin/model-api-keys` page to generate or revoke keys for
-the active model. Raw keys are shown once; Wardwright stores only a hash in the
-SQLite store at `~/.wardwright/wardwright.sqlite3` unless `WARDWRIGHT_SQLITE_STORE`
-points somewhere else. The same store persists the active model definition.
+Use the protected `/admin/model-api-keys` page to select a registered model and
+generate or revoke keys for that model. Raw keys are shown once; Wardwright
+stores only a hash in the SQLite store at `~/.wardwright/wardwright.sqlite3`
+unless `WARDWRIGHT_SQLITE_STORE` points somewhere else. The same store persists
+registered model definitions.
 Keep `WARDWRIGHT_SECRET_KEY_BASE` stable, or set
 `WARDWRIGHT_MODEL_API_KEY_HASH_SECRET` explicitly, so stored keys remain
 verifiable across restarts. To encrypt the SQLite store, provide
@@ -86,6 +86,7 @@ operators:
 ```bash
 wardwright --help
 wardwright serve
+wardwright admin
 wardwright tools
 wardwright tools --json
 ```
@@ -99,6 +100,10 @@ Wardwright exposes:
 
 See [Agent Authoring](docs/agent-authoring.md) for the review loop external
 agents should follow before activating a model.
+
+`wardwright admin` opens the workbench in your browser. If nothing is listening
+on the configured `WARDWRIGHT_BIND` port, it starts a local background service
+first. Use `wardwright admin access` to jump directly to model access controls.
 
 ## Provider Credentials
 

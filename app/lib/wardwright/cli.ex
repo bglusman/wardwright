@@ -1,7 +1,7 @@
 defmodule Wardwright.CLI do
   @moduledoc false
 
-  def run(argv, write_fun \\ &IO.puts/1) do
+  def run(argv, write_fun \\ &IO.puts/1, admin_fun \\ &Wardwright.CLI.Admin.open/2) do
     case argv do
       ["--version" | _] ->
         write_fun.(version())
@@ -24,6 +24,10 @@ defmodule Wardwright.CLI do
 
       ["start" | _] ->
         :start
+
+      ["admin" | rest] ->
+        status = admin_fun.(admin_path(rest), write_fun)
+        {:halt, status}
 
       ["tools", "--json" | _] ->
         WardwrightWeb.PolicyAuthoringTools.list()
@@ -53,6 +57,8 @@ defmodule Wardwright.CLI do
     Usage:
       wardwright                Print this help
       wardwright serve          Start the Wardwright HTTP service
+      wardwright admin          Open the operator workbench, starting it if needed
+      wardwright admin access   Open model access controls
       wardwright tools          Print policy-authoring MCP/API help for agents
       wardwright tools --json   Print machine-readable authoring tool metadata
       wardwright --version      Print the packaged app version
@@ -69,6 +75,10 @@ defmodule Wardwright.CLI do
       WARDWRIGHT_MODEL_API_KEY_HASH_SECRET  Optional stable secret for model API key hashes
     """
   end
+
+  defp admin_path(["access" | _]), do: "/admin/model-api-keys"
+  defp admin_path(["keys" | _]), do: "/admin/model-api-keys"
+  defp admin_path(_rest), do: "/policies"
 
   defp tools_help do
     tools = WardwrightWeb.PolicyAuthoringTools.cli_descriptions() |> Enum.join("\n")

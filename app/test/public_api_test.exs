@@ -203,6 +203,7 @@ defmodule Wardwright.PublicApiTest do
     assert body["service"]["openai_base_url"] =~ "/v1"
     assert body["service"]["chat_completions_url"] =~ "/v1/chat/completions"
     assert body["service"]["mcp_url"] =~ "/mcp"
+    assert body["service"]["admin_command"] == "wardwright admin"
     assert body["service"]["tools_command"] == "wardwright tools"
 
     [model] = body["wardwright_models"]
@@ -448,8 +449,98 @@ defmodule Wardwright.PublicApiTest do
     activated = call(:post, "/v1/policy-authoring/wardwright-models", draft_body)
     assert activated.status == 201
 
-    assert %{"data" => [%{"id" => "support-router"}, %{"id" => "wardwright/support-router"}]} =
-             call(:get, "/v1/models").resp_body |> Jason.decode!()
+    model_ids =
+      :get
+      |> call("/v1/models")
+      |> Map.fetch!(:resp_body)
+      |> Jason.decode!()
+      |> Map.fetch!("data")
+      |> Enum.map(& &1["id"])
+
+    assert "coding-balanced" in model_ids
+    assert "wardwright/coding-balanced" in model_ids
+    assert "support-router" in model_ids
+    assert "wardwright/support-router" in model_ids
+  end
+
+  test "multiple activated Wardwright models are callable with isolated routes and sessions" do
+    alpha =
+      unit_policy_config()
+      |> Map.put("model_id", "alpha-router")
+      |> Map.put("version", "alpha-v1")
+      |> Map.put("targets", [
+        %{"model" => "alpha/small", "context_window" => 64},
+        %{"model" => "alpha/large", "context_window" => 256}
+      ])
+
+    beta =
+      unit_policy_config()
+      |> Map.put("model_id", "beta-router")
+      |> Map.put("version", "beta-v1")
+      |> Map.put("targets", [
+        %{"model" => "beta/only", "context_window" => 512}
+      ])
+
+    assert {:ok, _alpha} = Wardwright.put_model_config(alpha)
+    assert {:ok, _beta} = Wardwright.put_model_config(beta)
+
+    model_ids =
+      :get
+      |> call("/v1/models")
+      |> Map.fetch!(:resp_body)
+      |> Jason.decode!()
+      |> Map.fetch!("data")
+      |> Enum.map(& &1["id"])
+
+    assert "alpha-router" in model_ids
+    assert "beta-router" in model_ids
+
+    alpha_conn =
+      call(
+        :post,
+        "/v1/chat/completions",
+        %{"model" => "alpha-router", "messages" => [%{"role" => "user", "content" => "hi"}]},
+        [{"x-wardwright-session-id", "alpha-session"}]
+      )
+
+    beta_conn =
+      call(
+        :post,
+        "/v1/chat/completions",
+        %{"model" => "beta-router", "messages" => [%{"role" => "user", "content" => "hi"}]},
+        [{"x-wardwright-session-id", "beta-session"}]
+      )
+
+    assert alpha_conn.status == 200
+    assert beta_conn.status == 200
+    assert get_resp_header(alpha_conn, "x-wardwright-selected-model") == ["alpha/small"]
+    assert get_resp_header(beta_conn, "x-wardwright-selected-model") == ["beta/only"]
+
+    status =
+      :get
+      |> call("/admin/runtime")
+      |> Map.fetch!(:resp_body)
+      |> Jason.decode!()
+
+    assert Enum.any?(
+             status["models"],
+             &(&1["model_id"] == "alpha-router" and &1["version"] == "alpha-v1")
+           )
+
+    assert Enum.any?(
+             status["models"],
+             &(&1["model_id"] == "beta-router" and &1["version"] == "beta-v1")
+           )
+
+    assert Enum.any?(
+             status["sessions"],
+             &(&1["model_id"] == "alpha-router" and &1["session_id"] == "alpha-session")
+           )
+
+    assert Enum.any?(
+             status["sessions"],
+             &(&1["model_id"] == "beta-router" and &1["session_id"] == "beta-session")
+           )
   end
 
   test "protected policy authoring API proposes rule changes without applying them" do

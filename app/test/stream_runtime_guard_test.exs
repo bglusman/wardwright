@@ -206,9 +206,15 @@ defmodule Wardwright.StreamRuntimeGuardTest do
     request = %{"model" => "unit-model", "stream" => true}
 
     {provider, acc} =
-      Wardwright.stream_selected_model_each("missing/model", request, [], fn chunk, acc ->
-        {:halt, acc ++ [chunk]}
-      end)
+      Wardwright.stream_selected_model_each(
+        "missing/model",
+        request,
+        [],
+        fn chunk, acc ->
+          {:halt, acc ++ [chunk]}
+        end,
+        unit_policy_config()
+      )
 
     assert provider.status == "cancelled"
     assert provider.called_provider == false

@@ -37,8 +37,7 @@ Wardwright publishes native binaries through GitHub Releases and Homebrew.
 ```bash
 brew tap bglusman/tap
 brew install wardwright
-brew services start wardwright
-open http://127.0.0.1:8787/policies
+wardwright admin
 ```
 
 ### Linux

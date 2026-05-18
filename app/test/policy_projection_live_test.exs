@@ -362,7 +362,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   test "model API key management page creates and revokes keys" do
     {:ok, view, html} = live(build_conn(), "/admin/model-api-keys")
 
-    assert html =~ "Model API Keys"
+    assert html =~ "Model Access"
     assert html =~ "coding-balanced"
     assert html =~ "Access Policy"
     assert html =~ "href=\"/policies\""
@@ -418,6 +418,40 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert Wardwright.unkeyed_model_access() == "public"
   end
 
+  test "model API key management page edits only the selected model" do
+    alpha =
+      Wardwright.default_config()
+      |> Map.put("model_id", "alpha-access")
+
+    beta =
+      Wardwright.default_config()
+      |> Map.put("model_id", "beta-access")
+
+    assert {:ok, _alpha} = Wardwright.put_config(alpha)
+    assert {:ok, _beta} = Wardwright.put_model_config(beta)
+
+    {:ok, view, html} = live(build_conn(), "/admin/model-api-keys?model=alpha-access")
+
+    assert html =~ "alpha-access"
+    assert html =~ "beta-access"
+
+    html =
+      view
+      |> form("#model-access-form", %{
+        "access" => %{"requires_api_key" => "true", "unkeyed_model_access" => "internal"}
+      })
+      |> render_submit()
+
+    assert html =~ "Model access saved."
+    assert {:ok, alpha_config} = Wardwright.model_config("alpha-access")
+    assert {:ok, beta_config} = Wardwright.model_config("beta-access")
+
+    assert Wardwright.model_requires_api_key?(alpha_config)
+    assert Wardwright.unkeyed_model_access(alpha_config) == "internal"
+    refute Wardwright.model_requires_api_key?(beta_config)
+    assert Wardwright.unkeyed_model_access(beta_config) == "public"
+  end
+
   test "LiveView client assets are served without an npm build step" do
     conn = get(build_conn(), "/assets/wardwright_live.js")
     assert response(conn, 200) =~ "new window.LiveView.LiveSocket"
@@ -437,8 +471,10 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Use your agent"
     assert html =~ "/mcp"
     assert html =~ "wardwright tools"
+    assert html =~ "wardwright admin"
     assert html =~ "Model Access"
     assert html =~ "href=\"/admin/model-api-keys\""
+    assert html =~ "Manage access"
     assert html =~ "/v1/chat/completions"
     assert html =~ "coding-balanced"
     assert html =~ "wardwright/coding-balanced"

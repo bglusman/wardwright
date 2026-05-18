@@ -16,12 +16,11 @@ Loopback access is allowed by default. If the workbench is exposed beyond local
 operator access, set `BASIC_AUTH_PASSWORD`; the Basic Auth username is always
 `admin`.
 
-The protected key page at `/admin/model-api-keys` can generate and revoke
-model-scoped API keys for the active model. Those keys authorize model calls
-only when the model artifact sets `requires_api_key` to `true`; unkeyed models
-remain public or internal-only according to `auth.unkeyed_model_access`.
-The same page can edit whether the active model is keyed or unkeyed, and the
-workbench sidebar links to it as model management.
+The protected key page at `/admin/model-api-keys` can select any registered
+model, generate and revoke model-scoped API keys for it, and edit whether that
+model is keyed or unkeyed. Those keys authorize model calls only when the model
+artifact sets `requires_api_key` to `true`; unkeyed models remain public or
+internal-only according to `auth.unkeyed_model_access`.
 
 The deterministic model artifact remains the source of truth. The workbench is
 the review surface for understanding how that artifact compiles into routes,
@@ -92,13 +91,16 @@ Wardwright does not yet ship an in-page policy-writing agent, but it already
 exposes tool discovery for external agents. After installing, run:
 
 ```bash
+wardwright admin
 wardwright tools
 wardwright tools --json
 ```
 
-The same registry backs the protected policy-authoring API and the MCP endpoint
-mounted at `/mcp`. Point a local agent at the Wardwright service, let it inspect
-the available tools, and use the workbench to review the policy it creates.
+`wardwright admin` opens the workbench and starts a local background service
+first if the configured bind port is not already responding. The same registry
+backs the protected policy-authoring API and the MCP endpoint mounted at
+`/mcp`. Point a local agent at the Wardwright service, let it inspect the
+available tools, and use the workbench to review the policy it creates.
 See the [Agent Authoring Guide](agent-authoring.html) for the expected
 inspect-simulate-draft-validate-review-activate loop.
 
@@ -107,8 +109,8 @@ The first useful write path is intentionally narrow:
 - `draft_wardwright_model` builds and validates a Wardwright model artifact from
   supplied provider/model targets, route graph nodes, governance rules, and
   stream rules.
-- `activate_wardwright_model` validates the same artifact and makes it the
-  current local OpenAI-compatible model.
+- `activate_wardwright_model` validates the same artifact and registers or
+  updates that local OpenAI-compatible model alongside other active models.
 - `propose_rule_change` returns a draft artifact with an appended, replaced, or
   removed governance or stream rule. It is draft-only and never applies changes.
 

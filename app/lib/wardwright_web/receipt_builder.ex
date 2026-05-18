@@ -3,7 +3,7 @@ defmodule WardwrightWeb.ReceiptBuilder do
 
   @tool_context_key "tool_context"
 
-  def build(status, model, caller, request, decision, called_provider, policy) do
+  def build(status, model, caller, request, decision, called_provider, policy, config) do
     receipt_id = "rcpt_" <> random_hex(8)
     created_at = System.system_time(:second)
 
@@ -13,7 +13,7 @@ defmodule WardwrightWeb.ReceiptBuilder do
       "created_at" => created_at,
       "run_id" => get_in(caller, ["run_id", "value"]),
       "model_id" => model,
-      "model_version" => Wardwright.current_config()["version"],
+      "model_version" => config["version"],
       "simulation" => status == "simulated",
       "caller" => caller,
       "request" => %{
@@ -22,8 +22,8 @@ defmodule WardwrightWeb.ReceiptBuilder do
         "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
         "stream" => Map.get(request, "stream", false),
         "message_count" => length(Map.get(request, "messages", [])),
-        "prompt_transforms" => Wardwright.current_config()["prompt_transforms"],
-        "structured_output" => Wardwright.current_config()["structured_output"],
+        "prompt_transforms" => config["prompt_transforms"],
+        "structured_output" => config["structured_output"],
         @tool_context_key => policy["tool_context"]
       },
       "decision" => %{
@@ -43,7 +43,7 @@ defmodule WardwrightWeb.ReceiptBuilder do
         "skipped" => decision.skipped,
         "reason" => decision.reason,
         "rule" => decision.rule,
-        "governance" => Wardwright.current_config()["governance"],
+        "governance" => config["governance"],
         @tool_context_key => policy["tool_context"] || Wardwright.ToolContext.normalize(request),
         "tool_policy_selectors" => policy["tool_policy_selectors"],
         "policy_actions" => policy["actions"],

@@ -6,10 +6,12 @@ defmodule WardwrightWeb.StreamRuntime do
   alias WardwrightWeb.ReceiptBuilder
   alias WardwrightWeb.RequestContext
 
-  def run(conn, model, caller, request, decision, policy) do
-    receipt = ReceiptBuilder.build("completed", model, caller, request, decision, false, policy)
+  def run(conn, model, caller, request, decision, policy, config) when is_map(config) do
+    receipt =
+      ReceiptBuilder.build("completed", model, caller, request, decision, false, policy, config)
+
     receipt_id = receipt["receipt_id"]
-    rules = Wardwright.current_config()["stream_rules"] || []
+    rules = config["stream_rules"] || []
 
     acc = %{
       conn:
@@ -23,7 +25,7 @@ defmodule WardwrightWeb.StreamRuntime do
     }
 
     {stream_policy, provider, acc} =
-      run_stream_runtime_attempt(request, decision, rules, 0, 0, 0, [], [], acc)
+      run_stream_runtime_attempt(request, decision, rules, config, 0, 0, 0, [], [], acc)
 
     provider =
       provider
@@ -37,7 +39,7 @@ defmodule WardwrightWeb.StreamRuntime do
     receipt = ReceiptBuilder.apply_provider_outcome(receipt, provider)
     Wardwright.ReceiptStore.insert(receipt)
 
-    record_runtime_event(model, caller, "receipt.finalized", %{
+    record_runtime_event(model, config, caller, "receipt.finalized", %{
       "receipt_id" => receipt["receipt_id"],
       "status" => get_in(receipt, ["final", "status"]),
       "simulation" => false,
@@ -72,6 +74,7 @@ defmodule WardwrightWeb.StreamRuntime do
          request,
          decision,
          rules,
+         config,
          active_retry_budget,
          attempt_index,
          retry_count,
@@ -85,7 +88,14 @@ defmodule WardwrightWeb.StreamRuntime do
       })
 
     {provider, stream_acc} =
-      stream_attempt_each(request, decision, attempt_index, stream_acc, &stream_runtime_chunk/2)
+      stream_attempt_each(
+        request,
+        decision,
+        attempt_index,
+        stream_acc,
+        &stream_runtime_chunk/2,
+        config
+      )
 
     provider = Map.put(provider, :selected_model, decision.selected_model)
 
@@ -131,7 +141,7 @@ defmodule WardwrightWeb.StreamRuntime do
         retry_count < retry_budget and not stream_acc.sent? ->
         {retry_request, reminder_injected?} = stream_retry_request(request, trigger_event)
 
-        case stream_retry_decision(decision, retry_request) do
+        case stream_retry_decision(decision, retry_request, config) do
           {:ok, retry_decision, route_event} ->
             retry_event = %{
               "type" => "attempt.retry_requested",
@@ -153,6 +163,7 @@ defmodule WardwrightWeb.StreamRuntime do
               retry_request,
               retry_decision,
               rules,
+              config,
               retry_budget,
               attempt_index + 1,
               retry_count + 1,
@@ -284,7 +295,7 @@ defmodule WardwrightWeb.StreamRuntime do
     end
   end
 
-  defp stream_retry_decision(decision, request) do
+  defp stream_retry_decision(decision, request, config) do
     case stream_retry_fit_error(decision, request) do
       nil ->
         {:ok, decision, nil}
@@ -292,7 +303,7 @@ defmodule WardwrightWeb.StreamRuntime do
       fit_error ->
         estimated = Wardwright.estimate_prompt_tokens(Map.get(request, "messages", []))
         attrs = Map.get(decision, :policy_route_constraints, %{})
-        retry_decision = Wardwright.select_route(estimated, attrs)
+        retry_decision = Wardwright.select_route(config, estimated, attrs)
 
         cond do
           retry_decision.route_blocked ->
@@ -326,7 +337,7 @@ defmodule WardwrightWeb.StreamRuntime do
     |> ReceiptBuilder.reject_blank()
   end
 
-  defp stream_attempt_each(request, decision, attempt_index, acc, chunk_fun) do
+  defp stream_attempt_each(request, decision, attempt_index, acc, chunk_fun, config) do
     mock_chunks =
       if allow_mock_stream_chunks?() do
         attempt_chunks = get_in(request, ["metadata", "mock_stream_attempt_chunks"])
@@ -370,7 +381,8 @@ defmodule WardwrightWeb.StreamRuntime do
           decision.selected_model,
           stream_request,
           acc,
-          chunk_fun
+          chunk_fun,
+          config
         )
     end
   end
@@ -566,8 +578,8 @@ defmodule WardwrightWeb.StreamRuntime do
     Application.get_env(:wardwright, :allow_mock_stream_chunks, false)
   end
 
-  defp record_runtime_event(model, caller, type, fields) do
-    version = Wardwright.current_config()["version"]
+  defp record_runtime_event(model, config, caller, type, fields) do
+    version = config["version"]
 
     case Wardwright.Runtime.record_session_event(
            model,

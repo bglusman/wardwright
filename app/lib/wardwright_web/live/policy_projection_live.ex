@@ -502,7 +502,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         <h2 class="nav_heading">Operator</h2>
         <a href="/admin/model-api-keys">
           <strong>Model Management</strong>
-          <span>Set keyed access and rotate model API keys.</span>
+          <span>Set keyed and unkeyed access for local models.</span>
         </a>
 
         <form class="recipe_source" phx-change="select-recipe-source" phx-submit="select-recipe-source">
@@ -639,7 +639,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             <p>Use these OpenAI-compatible endpoints and model IDs when pointing a local agent at Wardwright.</p>
           </div>
           <div class="topbar_actions">
-            <a class="button secondary" href="/admin/model-api-keys">Manage keys</a>
+            <a class="button secondary" href="/admin/model-api-keys">Manage access</a>
             <.badge value={"#{length(@model_access["provider_models"])} provider models"} />
           </div>
         </div>
@@ -657,6 +657,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
               <dd><code><%= @model_access["service"]["mcp_url"] %></code></dd>
               <dt>CLI help</dt>
               <dd><code><%= @model_access["service"]["tools_command"] %></code></dd>
+              <dt>Open UI</dt>
+              <dd><code><%= @model_access["service"]["admin_command"] %></code></dd>
             </dl>
           </article>
 
@@ -1536,7 +1538,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     p { color: #5e6b76; line-height: 1.45; }
     .panel { min-width: 0; margin-bottom: 18px; padding: 20px; border: 1px solid #d3dbe2; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgb(16 24 40 / 5%); }
     .panel_header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
-    .button { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 7px 12px; border: 1px solid #2f74b5; border-radius: 6px; color: #fff; background: #2f74b5; font: inherit; font-size: 13px; font-weight: 800; line-height: 1.2; cursor: pointer; }
+    .button { display: inline-flex; align-items: center; justify-content: center; max-width: 100%; min-height: 36px; padding: 7px 12px; border: 1px solid #2f74b5; border-radius: 6px; color: #fff; background: #2f74b5; font: inherit; font-size: 13px; font-weight: 800; line-height: 1.2; text-align: center; cursor: pointer; }
     .button:hover { border-color: #235b91; background: #235b91; }
     .button.secondary { border-color: #c5d0d9; color: #26323c; background: #fff; }
     .button.secondary:hover { border-color: #8fa1b2; background: #f3f6f8; }
@@ -1583,7 +1585,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .metrics dt { color: #66727c; font-size: 11px; font-weight: 900; text-transform: uppercase; }
     .metrics dd { min-width: 0; margin: 3px 0 0; color: #17202a; font-weight: 800; overflow-wrap: anywhere; }
     .stacked_form, .inline_form { display: grid; gap: 12px; min-width: 0; }
-    .inline_form { grid-template-columns: minmax(220px, 1fr) max-content; align-items: end; }
+    .inline_form { grid-template-columns: minmax(180px, 1fr) minmax(max-content, auto); align-items: end; }
     .inline_form label, .stacked_form label { display: grid; gap: 5px; min-width: 0; color: #4b5863; font-size: 13px; font-weight: 800; }
     .inline_form input { width: 100%; min-height: 36px; padding: 7px 9px; border: 1px solid #cbd5df; border-radius: 6px; color: #17202a; background: #fbfcfd; font: inherit; }
     .stacked_form fieldset { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px; border: 1px solid #d8e0e7; border-radius: 8px; background: #fbfcfd; }

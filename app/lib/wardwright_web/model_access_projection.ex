@@ -7,9 +7,11 @@ defmodule WardwrightWeb.ModelAccessProjection do
   of credential values.
   """
 
-  def build(config, provider_statuses, origin \\ "http://127.0.0.1:8787") do
+  def build(config_or_configs, provider_statuses, origin \\ "http://127.0.0.1:8787")
+
+  def build(configs, provider_statuses, origin) when is_list(configs) do
     origin = normalize_origin(origin)
-    model_id = Map.get(config, "model_id", Wardwright.model_id())
+    configs = Enum.sort_by(configs, &Map.get(&1, "model_id", ""))
 
     %{
       "service" => %{
@@ -19,23 +21,35 @@ defmodule WardwrightWeb.ModelAccessProjection do
         "models_url" => "#{origin}/v1/models",
         "wardwright_models_url" => "#{origin}/v1/wardwright/models",
         "mcp_url" => "#{origin}/mcp",
+        "admin_command" => "wardwright admin",
         "tools_command" => "wardwright tools"
       },
-      "wardwright_models" => [
-        %{
-          "id" => model_id,
-          "agent_model_ids" => [model_id, "wardwright/#{model_id}"],
-          "active_version" => Map.get(config, "version", Wardwright.model_version()),
-          "route_type" => root_route_type(config),
-          "route_root" => Map.get(config, "route_root", "dispatcher.prompt_length"),
-          "target_models" => config |> Map.get("targets", []) |> Enum.map(& &1["model"]),
-          "provider_target_models" =>
-            config |> Wardwright.provider_targets() |> Enum.map(& &1["model"]),
-          "chat_completions_url" => "#{origin}/v1/chat/completions",
-          "openai_base_url" => "#{origin}/v1"
-        }
-      ],
-      "provider_models" => provider_model_access_records(config, provider_statuses)
+      "wardwright_models" => Enum.map(configs, &wardwright_model_access_record(&1, origin)),
+      "provider_models" =>
+        configs
+        |> Enum.flat_map(&provider_model_access_records(&1, provider_statuses))
+        |> Enum.uniq_by(&{&1["target_model_id"], &1["provider_id"], &1["raw_model_id"]})
+    }
+  end
+
+  def build(config, provider_statuses, origin) when is_map(config) do
+    build([config], provider_statuses, origin)
+  end
+
+  defp wardwright_model_access_record(config, origin) do
+    model_id = Map.get(config, "model_id", Wardwright.model_id())
+
+    %{
+      "id" => model_id,
+      "agent_model_ids" => [model_id, "wardwright/#{model_id}"],
+      "active_version" => Map.get(config, "version", Wardwright.model_version()),
+      "route_type" => root_route_type(config),
+      "route_root" => Map.get(config, "route_root", "dispatcher.prompt_length"),
+      "target_models" => config |> Map.get("targets", []) |> Enum.map(& &1["model"]),
+      "provider_target_models" =>
+        config |> Wardwright.provider_targets() |> Enum.map(& &1["model"]),
+      "chat_completions_url" => "#{origin}/v1/chat/completions",
+      "openai_base_url" => "#{origin}/v1"
     }
   end
 
