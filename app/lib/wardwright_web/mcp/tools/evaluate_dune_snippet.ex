@@ -25,6 +25,11 @@ defmodule WardwrightWeb.MCP.Tools.EvaluateDuneSnippet do
     field(:limits, :map,
       description: "Optional timeout_ms, max_reductions, and max_heap_size evaluation limits."
     )
+
+    field(:session, :map,
+      description:
+        "Optional stateful Dune session config: model_id, session_id, optional version, key, ttl_ms, and reset. Omit for deterministic stateless evaluation."
+    )
   end
 
   @impl true

@@ -171,4 +171,147 @@ defmodule Wardwright.PolicySandbox.DuneTest do
     assert get_in(malformed, ["result", "policy_result", "action"]) == "block"
     assert get_in(malformed, ["result", "policy_result", "reason"]) == "invalid_result"
   end
+
+  test "stateful Dune snippet sessions preserve explicit policy-local bindings" do
+    session_id = "test-session-#{System.unique_integer([:positive])}"
+    model_id = "test-model"
+    version = "test-version"
+
+    assert {:ok, first} =
+             DuneSnippetRegistry.evaluate(%{
+               "source" => """
+               events = [input["event"]]
+
+               %{
+                 "action" => "allow",
+                 "count" => Enum.count(events),
+                 "events" => events
+               }
+               """,
+               "input" => %{"event" => "first"},
+               "session" => %{
+                 "model_id" => model_id,
+                 "version" => version,
+                 "session_id" => session_id,
+                 "ttl_ms" => 60_000
+               }
+             })
+
+    assert first["session"] == %{
+             "model_id" => model_id,
+             "version" => version,
+             "session_id" => session_id,
+             "key" => "default",
+             "status" => "new",
+             "reused" => false,
+             "ttl_ms" => 60_000
+           }
+
+    assert get_in(first, ["result", "policy_result", "count"]) == 1
+
+    assert {:ok, second} =
+             DuneSnippetRegistry.evaluate(%{
+               "source" => """
+               events = [input["event"] | events]
+
+               %{
+                 "action" => "allow",
+                 "count" => Enum.count(events),
+                 "events" => Enum.reverse(events)
+               }
+               """,
+               "input" => %{"event" => "second"},
+               "session" => %{
+                 "model_id" => model_id,
+                 "version" => version,
+                 "session_id" => session_id,
+                 "ttl_ms" => 60_000
+               }
+             })
+
+    assert second["session"]["status"] == "reused"
+    assert get_in(second, ["result", "policy_result", "count"]) == 2
+    assert get_in(second, ["result", "policy_result", "events"]) == ["first", "second"]
+
+    assert {:ok, reset} =
+             DuneSnippetRegistry.evaluate(%{
+               "source" => """
+               events = [input["event"]]
+               %{"action" => "allow", "count" => Enum.count(events), "events" => events}
+               """,
+               "input" => %{"event" => "reset"},
+               "session" => %{
+                 "model_id" => model_id,
+                 "version" => version,
+                 "session_id" => session_id,
+                 "reset" => true
+               }
+             })
+
+    assert reset["session"]["status"] == "reset"
+    assert get_in(reset, ["result", "policy_result", "count"]) == 1
+    assert get_in(reset, ["result", "policy_result", "events"]) == ["reset"]
+
+    assert {:ok, keyed_first} =
+             DuneSnippetRegistry.evaluate(%{
+               "source" => """
+               events = [input["event"]]
+               %{"action" => "allow", "count" => Enum.count(events), "events" => events}
+               """,
+               "input" => %{"event" => "tool-a-first"},
+               "session" => %{
+                 "model_id" => model_id,
+                 "version" => version,
+                 "session_id" => session_id,
+                 "key" => "tool-a"
+               }
+             })
+
+    assert keyed_first["session"]["status"] == "new"
+    assert get_in(keyed_first, ["result", "policy_result", "events"]) == ["tool-a-first"]
+
+    assert {:ok, keyed_second} =
+             DuneSnippetRegistry.evaluate(%{
+               "source" => """
+               events = [input["event"] | events]
+               %{"action" => "allow", "count" => Enum.count(events), "events" => Enum.reverse(events)}
+               """,
+               "input" => %{"event" => "tool-a-second"},
+               "session" => %{
+                 "model_id" => model_id,
+                 "version" => version,
+                 "session_id" => session_id,
+                 "key" => "tool-a"
+               }
+             })
+
+    assert keyed_second["session"]["status"] == "reused"
+
+    assert get_in(keyed_second, ["result", "policy_result", "events"]) == [
+             "tool-a-first",
+             "tool-a-second"
+           ]
+
+    assert {:ok, default_after_keyed} =
+             DuneSnippetRegistry.evaluate(%{
+               "source" => """
+               events = [input["event"] | events]
+               %{"action" => "allow", "count" => Enum.count(events), "events" => Enum.reverse(events)}
+               """,
+               "input" => %{"event" => "default-after-keyed"},
+               "session" => %{
+                 "model_id" => model_id,
+                 "version" => version,
+                 "session_id" => session_id
+               }
+             })
+
+    assert default_after_keyed["session"]["key"] == "default"
+    assert default_after_keyed["session"]["status"] == "reused"
+
+    assert get_in(default_after_keyed, ["result", "policy_result", "events"]) == [
+             "reset",
+             "default-after-keyed"
+           ]
+  end
 end

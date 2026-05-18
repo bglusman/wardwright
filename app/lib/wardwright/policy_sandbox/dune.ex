@@ -30,6 +30,25 @@ defmodule Wardwright.PolicySandbox.Dune do
   end
 
   def eval_snippet(source, input, opts \\ []) when is_binary(source) and is_list(opts) do
+    source
+    |> snippet_source(input)
+    |> eval_string(opts)
+    |> normalize_policy_result()
+  end
+
+  def eval_snippet_in_session(source, input, %Dune.Session{} = session, opts \\ [])
+      when is_binary(source) and is_list(opts) do
+    session =
+      Dune.Session.eval_string(
+        session,
+        snippet_source(source, input),
+        Keyword.merge(@default_opts, opts)
+      )
+
+    {session, session.last_result |> normalize_result() |> normalize_policy_result()}
+  end
+
+  defp snippet_source(source, input) do
     input = normalize_json_value(input)
 
     """
@@ -37,8 +56,6 @@ defmodule Wardwright.PolicySandbox.Dune do
 
     #{source}
     """
-    |> eval_string(opts)
-    |> normalize_policy_result()
   end
 
   defp normalize_policy_result(%{"status" => "ok", "value" => value} = result)

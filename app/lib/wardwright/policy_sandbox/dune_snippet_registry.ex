@@ -10,6 +10,9 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
   alias Wardwright.PolicySandbox.Dune, as: DuneSandbox
 
   @schema "wardwright.dune_snippet_registry.v1"
+  @default_dune_session_key "default"
+  @default_dune_ttl_ms 300_000
+  @max_dune_ttl_ms 3_600_000
 
   @snippets [
     %{
@@ -232,23 +235,105 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
       input = Map.get(params, "input", Map.get(snippet, "example_input", %{}))
       opts = evaluation_opts(Map.get(params, "limits", %{}))
 
-      result =
-        snippet
-        |> Map.fetch!("source")
-        |> DuneSandbox.eval_snippet(input, opts)
-
-      {:ok,
-       %{
-         "schema" => "wardwright.dune_snippet_evaluation.v1",
-         "snippet" => public_snippet(snippet),
-         "input" => input,
-         "result" => result,
-         "review_notes" => review_notes(snippet, result)
-       }}
+      with {:ok, {result, session_metadata}} <- evaluate_snippet(snippet, input, params, opts) do
+        {:ok,
+         %{
+           "schema" => "wardwright.dune_snippet_evaluation.v1",
+           "snippet" => public_snippet(snippet),
+           "input" => input,
+           "result" => result,
+           "review_notes" => review_notes(snippet, result)
+         }
+         |> put_session_metadata(session_metadata)}
+      end
     end
   end
 
   def evaluate(_params), do: {:error, "Dune snippet evaluation body must be an object."}
+
+  defp evaluate_snippet(snippet, input, params, opts) do
+    source = Map.fetch!(snippet, "source")
+
+    case Map.get(params, "session") do
+      session when is_map(session) ->
+        with {:ok, runtime} <- runtime_session(session) do
+          Wardwright.Runtime.eval_dune_snippet(
+            runtime.model_id,
+            runtime.version,
+            runtime.session_id,
+            source,
+            input,
+            Map.take(runtime, [:key, :ttl_ms, :reset?]),
+            opts
+          )
+        end
+
+      _session ->
+        {:ok, {DuneSandbox.eval_snippet(source, input, opts), nil}}
+    end
+  end
+
+  defp runtime_session(session) do
+    model_id = session |> Map.get("model_id", Map.get(session, :model_id)) |> string_value()
+    session_id = session |> Map.get("session_id", Map.get(session, :session_id)) |> string_value()
+
+    key =
+      session
+      |> Map.get("key", Map.get(session, :key, @default_dune_session_key))
+      |> string_value()
+
+    version =
+      session
+      |> Map.get("version", Map.get(session, :version, Wardwright.current_config()["version"]))
+      |> string_value()
+
+    ttl_ms =
+      session
+      |> Map.get("ttl_ms", Map.get(session, :ttl_ms, @default_dune_ttl_ms))
+      |> positive_integer(@default_dune_ttl_ms)
+
+    cond do
+      model_id in [nil, ""] ->
+        {:error, "session.model_id is required for stateful Dune snippet evaluation."}
+
+      session_id in [nil, ""] ->
+        {:error, "session.session_id is required for stateful Dune snippet evaluation."}
+
+      version in [nil, ""] ->
+        {:error, "session.version is required for stateful Dune snippet evaluation."}
+
+      key in [nil, ""] ->
+        {:error, "session.key must be a non-empty string when provided."}
+
+      ttl_ms > @max_dune_ttl_ms ->
+        {:error, "session.ttl_ms must be less than or equal to #{@max_dune_ttl_ms}."}
+
+      true ->
+        {:ok,
+         %{
+           model_id: model_id,
+           version: version,
+           session_id: session_id,
+           key: key,
+           ttl_ms: ttl_ms,
+           reset?: truthy?(Map.get(session, "reset", Map.get(session, :reset, false)))
+         }}
+    end
+  end
+
+  defp put_session_metadata(result, nil), do: result
+
+  defp put_session_metadata(result, metadata) do
+    Map.put(result, "session", %{
+      "model_id" => metadata.model_id,
+      "version" => metadata.version,
+      "session_id" => metadata.session_id,
+      "key" => metadata.key,
+      "status" => metadata.status,
+      "reused" => metadata.reused?,
+      "ttl_ms" => metadata.ttl_ms
+    })
+  end
 
   defp snippet_for(%{"source" => source} = params) when is_binary(source) do
     id = Map.get(params, "snippet_id", "ad_hoc.dune")
@@ -288,6 +373,26 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
     do: Keyword.put(opts, key, value)
 
   defp put_positive_integer(opts, _key, _value), do: opts
+
+  defp string_value(value) when is_binary(value), do: String.trim(value)
+  defp string_value(_value), do: nil
+
+  defp positive_integer(value, _default) when is_integer(value) and value > 0, do: value
+
+  defp positive_integer(value, default) when is_binary(value) do
+    case Integer.parse(String.trim(value)) do
+      {integer, ""} when integer > 0 -> integer
+      _other -> default
+    end
+  end
+
+  defp positive_integer(_value, default), do: default
+
+  defp truthy?(true), do: true
+  defp truthy?("true"), do: true
+  defp truthy?("1"), do: true
+  defp truthy?(1), do: true
+  defp truthy?(_value), do: false
 
   defp public_snippet(snippet) do
     Map.take(snippet, [

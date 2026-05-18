@@ -177,6 +177,44 @@ defmodule Wardwright.PublicApiTest do
     assert get_in(Jason.decode!(ad_hoc_eval.resp_body), ["result", "policy_result", "reason"]) ==
              "operator test"
 
+    session_id = "api-session-#{System.unique_integer([:positive])}"
+
+    session = %{
+      "model_id" => "api-model",
+      "version" => "api-version",
+      "session_id" => session_id
+    }
+
+    first_session_eval =
+      call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{
+        "source" => """
+        events = [input["event"]]
+        %{"action" => "allow", "count" => Enum.count(events)}
+        """,
+        "input" => %{"event" => "first"},
+        "session" => session
+      })
+
+    assert first_session_eval.status == 200
+    first_session_body = Jason.decode!(first_session_eval.resp_body)
+    assert first_session_body["session"]["status"] == "new"
+    assert get_in(first_session_body, ["result", "policy_result", "count"]) == 1
+
+    second_session_eval =
+      call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{
+        "source" => """
+        events = [input["event"] | events]
+        %{"action" => "allow", "count" => Enum.count(events)}
+        """,
+        "input" => %{"event" => "second"},
+        "session" => session
+      })
+
+    assert second_session_eval.status == 200
+    second_session_body = Jason.decode!(second_session_eval.resp_body)
+    assert second_session_body["session"]["status"] == "reused"
+    assert get_in(second_session_body, ["result", "policy_result", "count"]) == 2
+
     missing = call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{})
     assert missing.status == 400
   end

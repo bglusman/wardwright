@@ -65,6 +65,20 @@ the first concrete version of the "snippet emulator" idea: an agent can draft
 or fork a snippet, run it against representative inputs, and show the exact
 policy action and trace before suggesting artifact changes.
 
+A follow-up spike adds opt-in Dune session evaluation for authoring tools. A
+caller may pass `session: {"model_id": "...", "session_id": "...", "key":
+"default", "ttl_ms": 300000, "reset": false}` to reuse Dune bindings across
+snippet evaluations. Wardwright stores those Dune sessions inside the existing
+runtime GenServer for the selected model/session; `key` allows one runtime
+session to isolate multiple Dune sessions, for example one per tool call. This
+follows Dune's session model: successful evaluations update the session, while
+failed evaluations keep the prior state available for later instructions.
+Wardwright keeps this stateful mode out of default policy evaluation because it
+is an implicit second history store. Use it to prototype custom policy-local
+memory or compiled helpers, not as a replacement for explicit receipts, policy
+cache facts, or scenario inputs. Sessions are pruned by TTL and can be reset
+explicitly by the caller.
+
 The next maturation step converts the small reusable `engine: primitive`
 contains matcher into the registry snippet
 `primitive.request-contains-actions`. Existing primitive-engine artifacts still
@@ -83,6 +97,8 @@ Executable tests currently verify:
 - low wall-clock budgets stop slow allowed work by timeout or reductions
 - registry snippets are inspectable and evaluate against example inputs
 - ad hoc snippets can be tested, while malformed outputs fail closed
+- opt-in session-backed evaluation can preserve deliberate policy-local
+  bindings across invocations and can be reset
 - the legacy primitive contains engine is backed by a named Dune snippet and
   still emits the same policy actions through hybrid evaluation
 

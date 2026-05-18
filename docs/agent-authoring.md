@@ -138,6 +138,9 @@ either:
 
 - `snippet_id` plus an `input` map for a built-in registry snippet
 - ad hoc `source` plus an `input` map for code the agent is drafting
+- optional `session: {"model_id": "...", "session_id": "...", "key": "default",
+  "ttl_ms": 300000, "reset": false}` when deliberately testing stateful Dune
+  behavior across evaluations inside a Wardwright runtime session
 
 The snippet receives a JSON-like map named `input` and should return a
 policy-shaped map such as:
@@ -153,6 +156,16 @@ policy-shaped map such as:
 Malformed return values, restricted APIs, timeout, reduction exhaustion, and
 memory exhaustion all return a fail-closed `block` result. Treat that as useful
 review evidence, not as permission to activate the snippet.
+
+Stateful Dune evaluation is opt-in and should be rare. The stored Dune session
+lives in the existing Wardwright runtime GenServer for the selected
+`model_id`/`session_id`; `key` lets one runtime session hold separate Dune
+sessions, such as one per tool call. This is useful for exploring custom policy
+memory, but it also creates a second history mechanism outside Wardwright's
+explicit cache and receipt model. Prefer passing explicit history facts in
+`input`; use Dune sessions only when the state itself is the policy behavior
+under test. Use `reset: true` to clear a Dune session before a new scenario, and
+set a short `ttl_ms` so exploratory state does not accumulate indefinitely.
 
 Dune snippets are a local/trusted advanced authoring path. Do not present them
 as safe for third-party policy packages or marketplace rules; those still need a
