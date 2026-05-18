@@ -143,6 +143,8 @@ defmodule Wardwright.Sinks do
   end
 
   defp deliver_to_sink(sink_id, sink_state, event) do
+    start_time = System.monotonic_time()
+
     result =
       case sink_state.config["kind"] do
         "memory_alert" -> deliver_memory_alert(sink_id, sink_state, event)
@@ -151,8 +153,10 @@ defmodule Wardwright.Sinks do
         kind -> base_result(sink_id, kind, event, idempotency_key(event), "dead_lettered")
       end
 
+    duration = System.monotonic_time() - start_time
+
     sink_state = record_result(sink_state, event, result)
-    publish_delivery_telemetry(sink_state.config, result)
+    publish_delivery_telemetry(sink_state.config, result, duration)
     publish_queue_depth(sink_state.config, length(sink_state.queue))
     publish_policy_alert_delivery(sink_state, result)
     {sink_state, result}
@@ -296,14 +300,14 @@ defmodule Wardwright.Sinks do
   end
 
   defp idempotency_key(event) do
-    get_in(event, ["payload", "idempotency_key"]) ||
+    payload_value(event, "idempotency_key") ||
       Enum.join(
         [
           event["receipt_id"],
           event["type"],
-          get_in(event, ["payload", "rule_id"]),
-          get_in(event, ["payload", "message"]),
-          get_in(event, ["payload", "severity"]),
+          payload_value(event, "rule_id"),
+          payload_value(event, "message"),
+          payload_value(event, "severity"),
           event["id"]
         ],
         ":"
@@ -311,13 +315,13 @@ defmodule Wardwright.Sinks do
   end
 
   defp alert_idempotency_key(event) do
-    get_in(event, ["payload", "idempotency_key"]) ||
+    payload_value(event, "idempotency_key") ||
       Enum.join(
         [
           event["receipt_id"],
-          get_in(event, ["payload", "rule_id"]),
-          get_in(event, ["payload", "message"]),
-          get_in(event, ["payload", "severity"])
+          payload_value(event, "rule_id"),
+          payload_value(event, "message"),
+          payload_value(event, "severity")
         ],
         ":"
       )
@@ -329,11 +333,14 @@ defmodule Wardwright.Sinks do
       "kind" => kind,
       "event_id" => event["id"],
       "event_type" => event["type"],
-      "rule_id" => get_in(event, ["payload", "rule_id"]),
+      "rule_id" => payload_value(event, "rule_id"),
       "idempotency_key" => key,
       "outcome" => outcome
     }
   end
+
+  defp payload_value(%{"payload" => payload}, key) when is_map(payload), do: Map.get(payload, key)
+  defp payload_value(_event, _key), do: nil
 
   defp sink_status(sink_id, sink_state) do
     outcomes = sink_state.outcomes
@@ -410,10 +417,10 @@ defmodule Wardwright.Sinks do
     end
   end
 
-  defp publish_delivery_telemetry(config, result) do
+  defp publish_delivery_telemetry(config, result, duration) do
     :telemetry.execute(
       [:wardwright, :sinks, :delivery],
-      %{count: 1},
+      %{count: 1, duration: duration},
       %{
         sink_id: result["sink_id"],
         kind: config["kind"],
@@ -423,12 +430,23 @@ defmodule Wardwright.Sinks do
   end
 
   defp publish_queue_depth(config, depth) do
+    capacity = get_in(config, ["delivery", "capacity"])
+
     :telemetry.execute(
       [:wardwright, :sinks, :queue_depth],
-      %{depth: depth},
+      %{
+        depth: depth,
+        capacity: capacity || 0,
+        utilization: queue_utilization(depth, capacity)
+      },
       %{sink_id: config["id"], kind: config["kind"]}
     )
   end
+
+  defp queue_utilization(depth, capacity) when is_integer(capacity) and capacity > 0,
+    do: depth / capacity
+
+  defp queue_utilization(_depth, _capacity), do: 0.0
 
   defp publish_policy_alert_delivery(%{config: %{"kind" => "memory_alert"}} = sink_state, result) do
     if Process.whereis(Wardwright.PubSub) do

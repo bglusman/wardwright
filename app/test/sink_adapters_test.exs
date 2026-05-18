@@ -99,7 +99,65 @@ defmodule Wardwright.SinkAdaptersTest do
     metric_names = Enum.map(WardwrightWeb.Telemetry.metrics(), & &1.name)
 
     assert [:wardwright, :sinks, :queue_depth] in metric_names
+    assert [:wardwright, :sinks, :queue_capacity] in metric_names
+    assert [:wardwright, :sinks, :queue_utilization] in metric_names
     assert [:wardwright, :sinks, :delivery, :count] in metric_names
+    assert [:wardwright, :sinks, :delivery, :duration] in metric_names
+  end
+
+  test "sink delivery emits latency and queue utilization telemetry" do
+    test_pid = self()
+    handler_id = "sink-telemetry-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach_many(
+      handler_id,
+      [[:wardwright, :sinks, :delivery], [:wardwright, :sinks, :queue_depth]],
+      fn event, measurements, metadata, _config ->
+        send(test_pid, {:sink_telemetry, event, measurements, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn ->
+      :telemetry.detach(handler_id)
+      Wardwright.Sinks.reset()
+    end)
+
+    Wardwright.Sinks.configure([
+      %{
+        "id" => "alerts",
+        "kind" => "memory_alert",
+        "select" => %{"types" => ["policy.alert"]},
+        "delivery" => %{"capacity" => 2, "on_full" => "dead_letter"}
+      }
+    ])
+
+    assert [
+             %{
+               "sink_id" => "alerts",
+               "kind" => "memory_alert",
+               "outcome" => "queued"
+             }
+           ] =
+             Wardwright.Sinks.emit([
+               %{
+                 "type" => "policy.alert",
+                 "rule_id" => "always-alert",
+                 "message" => "operator review requested",
+                 "severity" => "warning"
+               }
+             ])
+
+    assert_receive {:sink_telemetry, [:wardwright, :sinks, :delivery], measurements,
+                    %{sink_id: "alerts", kind: "memory_alert", outcome: "queued"}}
+
+    assert measurements.count == 1
+    assert is_integer(measurements.duration)
+    assert measurements.duration >= 0
+
+    assert_receive {:sink_telemetry, [:wardwright, :sinks, :queue_depth],
+                    %{depth: 1, capacity: 2, utilization: 0.5},
+                    %{sink_id: "alerts", kind: "memory_alert"}}
   end
 
   defp webhook_url do
