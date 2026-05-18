@@ -12,6 +12,8 @@ defmodule Wardwright do
   @managed_model "managed/kimi-k2.6"
   @local_context_window 32_768
   @managed_context_window 262_144
+  @description_key "description"
+  @default_description "Mock coding assistant Wardwright model with composable route selectors."
 
   def model_id, do: @model_id
   def model_id(config) when is_map(config), do: Map.get(config, "model_id", @model_id)
@@ -25,6 +27,7 @@ defmodule Wardwright do
     %{
       "model_id" => @model_id,
       "version" => @model_version,
+      @description_key => @default_description,
       "targets" => [
         %{"model" => @local_model, "context_window" => @local_context_window},
         %{"model" => @managed_model, "context_window" => @managed_context_window}
@@ -270,7 +273,7 @@ defmodule Wardwright do
       "model_id" => model_id,
       "public_model_id" => model_id,
       "active_version" => config["version"],
-      "description" => "Mock coding assistant Wardwright model with composable route selectors.",
+      @description_key => model_description(config),
       "public_namespace" => "flat",
       "route_type" => root_route_type(config),
       "status" => "active",
@@ -306,7 +309,7 @@ defmodule Wardwright do
       "model_id" => model_id,
       "public_model_id" => model_id,
       "active_version" => config["version"],
-      "description" => "Mock coding assistant Wardwright model with composable route selectors.",
+      @description_key => model_description(config),
       "public_namespace" => "flat",
       "route_type" => root_route_type(config),
       "requires_api_key" => model_requires_api_key?(config),
@@ -316,6 +319,8 @@ defmodule Wardwright do
 
   def model_records, do: Enum.map(model_configs(), &model_record/1)
   def model_summaries, do: Enum.map(model_configs(), &model_summary/1)
+
+  defp model_description(config), do: :maps.get(@description_key, config, @default_description)
 
   def externally_callable_model_configs do
     Enum.filter(model_configs(), &externally_callable?/1)
@@ -723,6 +728,7 @@ defmodule Wardwright do
           "" -> @model_version
           version -> version
         end),
+      @description_key => normalize_description(config),
       "targets" =>
         config
         |> Map.get("targets", [])
@@ -800,6 +806,17 @@ defmodule Wardwright do
       "policy_cache" => normalize_policy_cache(Map.get(config, "policy_cache", %{})),
       "governance" => Map.get(config, "governance", [])
     }
+  end
+
+  defp normalize_description(config) do
+    config
+    |> model_description()
+    |> to_string()
+    |> String.trim()
+    |> then(fn
+      "" -> @default_description
+      description -> description
+    end)
   end
 
   defp normalize_canned_outputs(outputs) when is_list(outputs),

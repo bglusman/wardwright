@@ -47,6 +47,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert prompt =~ "Ask for human confirmation before any write-capable action."
     assert prompt =~ "You may call read-only and draft-only authoring tools"
     assert prompt =~ "draft_wardwright_model is intentionally ephemeral"
+    assert prompt =~ "do not draft a route-only model"
     assert prompt =~ "draft_wardwright_model"
     assert prompt =~ "activate_wardwright_model"
     assert prompt =~ "simulate_policy"

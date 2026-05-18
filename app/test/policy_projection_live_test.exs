@@ -525,8 +525,12 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     beta =
       Wardwright.default_config()
       |> Map.put("model_id", "beta-workbench")
+      |> Map.put("description", "Beta workbench catches mooing output before release.")
+      |> Map.update!("targets", fn [first | rest] ->
+        [Map.put(first, "provider_headers", %{"X-Api-Key" => "visible-secret"}) | rest]
+      end)
       |> Map.put("stream_rules", [
-        %{"id" => "beta-noop", "pattern" => "", "action" => "pass"}
+        %{"id" => "beta-moo", "pattern" => "\\bmoo+\\b", "action" => "rewrite_chunk"}
       ])
 
     assert {:ok, _alpha} = Wardwright.put_config(alpha)
@@ -539,8 +543,16 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     assert html =~ "Registered model workbench:"
     assert html =~ "<h1>beta-workbench</h1>"
+    assert html =~ "Beta workbench catches mooing output before release."
     assert html =~ "<strong>beta-workbench</strong>"
     assert html =~ beta_hash
+    assert html =~ "Selected Model Configuration"
+    assert html =~ "Show redacted model configuration"
+    assert html =~ "beta-moo"
+    assert html =~ "\\\\bmoo+\\\\b"
+    assert html =~ "X-Api-Key"
+    assert html =~ "[redacted]"
+    refute html =~ "visible-secret"
     assert html =~ "alpha-workbench"
     assert html =~ "beta-workbench"
     assert html =~ "model=beta-workbench"

@@ -81,6 +81,11 @@ defmodule WardwrightWeb.AuthoringAgent do
     - Never request silent activation, deletion, scenario persistence, or any
       other durable write. For those, explain the approval needed and name the
       exact tool a human should run after review.
+    - When the user asks for changed behavior, do not draft a route-only model.
+      Include at least one concrete behavior primitive: governance,
+      stream_rules, prompt_transforms, structured_output, or a Dune-backed rule.
+      If Wardwright cannot express the requested behavior exactly yet, say that
+      clearly and draft the closest reviewable approximation with limitations.
 
     Current workbench context:
     - active_model_id: #{selected_model}

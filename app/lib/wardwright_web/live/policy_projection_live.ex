@@ -113,8 +113,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     |> assign(:modes, @modes)
     |> assign(:recipe_sources, recipe_sources())
     |> assign(:available_models, available_models)
+    |> assign(:model_workbench?, model_workbench?)
     |> assign(:selected_model_id, selected_model_id)
     |> assign(:selected_model_config, selected_model_config)
+    |> assign(:selected_model_config_json, selected_model_config_json(selected_model_config))
     |> assign(:selected_recipe_source_id, recipe_source_id)
     |> assign(:recipe_catalog, recipe_catalog)
     |> assign(:patterns, recipe_catalog["recipes"])
@@ -1027,6 +1029,47 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           <strong><%= @projection_stats.review_count %></strong>
           <small>conflicts, warnings, opaque regions</small>
         </article>
+      </section>
+
+      <section :if={@model_workbench?} class="panel raw_model_config" aria-label="Selected model raw configuration">
+        <div class="panel_header">
+          <div>
+            <h2>Selected Model Configuration</h2>
+            <p>
+              Registered artifact for <strong><%= @selected_model_id %></strong>, with
+              sensitive values redacted. Use this when the simulator looks surprising: this is
+              the durable model Wardwright will route and enforce.
+            </p>
+          </div>
+          <.badge value={"#{behavior_rule_count(@selected_model_config)} behavior rules"} />
+        </div>
+        <div class="config_fact_grid">
+          <article>
+            <span>Stream rules</span>
+            <strong><%= length(@selected_model_config["stream_rules"] || []) %></strong>
+          </article>
+          <article>
+            <span>Governance rules</span>
+            <strong><%= length(@selected_model_config["governance"] || []) %></strong>
+          </article>
+          <article>
+            <span>Prompt transforms</span>
+            <strong><%= map_size(@selected_model_config["prompt_transforms"] || %{}) %></strong>
+          </article>
+          <article>
+            <span>Structured output</span>
+            <strong><%= if @selected_model_config["structured_output"], do: "configured", else: "none" %></strong>
+          </article>
+        </div>
+        <p :if={behavior_rule_count(@selected_model_config) == 0} class="config_warning">
+          This model currently only routes to provider targets. It has no stream rules,
+          governance rules, prompt transforms, or structured-output contract, so Wardwright
+          will not enforce additional behavior for this model yet.
+        </p>
+        <details>
+          <summary>Show redacted model configuration</summary>
+          <pre><%= @selected_model_config_json %></pre>
+        </details>
       </section>
 
       <section class="panel model_access" aria-label="Model and agent access">
@@ -2073,6 +2116,15 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .scan_strip strong { color: #17202a; font-size: 18px; line-height: 1.2; }
     .scan_strip small { color: #5e6b76; line-height: 1.35; overflow-wrap: anywhere; }
     .model_access { background: #fbfcfd; }
+    .raw_model_config { background: #fbfcfd; }
+    .raw_model_config details { min-width: 0; }
+    .raw_model_config summary { width: fit-content; cursor: pointer; color: #2f5f87; font-size: 13px; font-weight: 800; }
+    .raw_model_config pre { margin-top: 10px; max-height: 520px; }
+    .config_fact_grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+    .config_fact_grid article { min-width: 0; padding: 10px; border: 1px solid #dce4eb; border-radius: 7px; background: #fff; }
+    .config_fact_grid span { display: block; margin-bottom: 4px; color: #66727c; font-size: 11px; font-weight: 900; text-transform: uppercase; }
+    .config_fact_grid strong { color: #17202a; overflow-wrap: anywhere; }
+    .config_warning { margin-bottom: 12px; padding: 10px 12px; border: 1px solid #e6c779; border-radius: 7px; color: #624b12; background: #fff8e1; }
     .access_grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr); gap: 12px; }
     .access_card, .provider_model_card { display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid #d5dde4; border-radius: 8px; background: #fff; }
     .access_card > span, .provider_model_card span, .provider_model_list h3 { color: #66727c; font-size: 12px; font-weight: 800; text-transform: uppercase; }
@@ -2353,7 +2405,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       .shell > [data-phx-main] { display: block; min-height: 100vh; }
       .sidebar { position: static; overflow: visible; gap: 16px; padding: 18px 16px; }
       .workspace { padding: 18px 16px; }
-      .split, .scan_strip, .access_grid, .provider_model_card, .model_key_grid, .metrics, .inline_form, .state_columns, .simulation_player, .player_event, .turn_editor_grid, .boundary_pair.changed, .attempt_step, .state_run_strip, .scenario_save_form { grid-template-columns: 1fr; }
+      .split, .scan_strip, .access_grid, .config_fact_grid, .provider_model_card, .model_key_grid, .metrics, .inline_form, .state_columns, .simulation_player, .player_event, .turn_editor_grid, .boundary_pair.changed, .attempt_step, .state_run_strip, .scenario_save_form { grid-template-columns: 1fr; }
       .topbar, .panel_header, .state_machine_summary, .assistant_boundary, .diagram_header, .turn_editor_header { display: grid; }
       .topbar { gap: 12px; }
       .sidebar_footer { margin-top: 0; }
@@ -2415,6 +2467,49 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       ]
     }
     |> Jason.encode!(pretty: true)
+  end
+
+  defp selected_model_config_json(config) do
+    config
+    |> redact_config_for_display()
+    |> Jason.encode!(pretty: true)
+  end
+
+  defp redact_config_for_display(config) when is_map(config) do
+    config
+    |> Enum.map(fn
+      {"provider_headers", headers} when is_map(headers) ->
+        {"provider_headers", Map.new(headers, fn {key, _value} -> {key, "[redacted]"} end)}
+
+      {key, value} when is_binary(key) ->
+        if sensitive_config_key?(key) do
+          {key, "[redacted]"}
+        else
+          {key, redact_config_for_display(value)}
+        end
+
+      {key, value} ->
+        {key, redact_config_for_display(value)}
+    end)
+    |> Map.new()
+  end
+
+  defp redact_config_for_display(values) when is_list(values),
+    do: Enum.map(values, &redact_config_for_display/1)
+
+  defp redact_config_for_display(value), do: value
+
+  defp sensitive_config_key?(key) do
+    normalized = key |> String.downcase() |> String.replace(["-", "_"], "")
+
+    normalized in ["apikey", "authorization", "bearer", "token", "secret", "password"]
+  end
+
+  defp behavior_rule_count(config) do
+    length(config["stream_rules"] || []) +
+      length(config["governance"] || []) +
+      map_size(config["prompt_transforms"] || %{}) +
+      if(config["structured_output"], do: 1, else: 0)
   end
 
   defp selected_recipe(%{"recipes" => recipes}, pattern_id, recipe_id) when is_list(recipes) do
