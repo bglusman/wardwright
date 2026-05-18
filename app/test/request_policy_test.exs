@@ -21,8 +21,13 @@ defmodule Wardwright.RequestPolicyTest do
     assert [%{"type" => "policy.alert", "rule_id" => "ambiguous-success"}] =
              get_in(body, ["receipt", "final", "events"])
 
-    assert [%{"rule_id" => "ambiguous-success", "matched" => true}] =
-             get_in(body, ["receipt", "decision", "policy_actions"])
+    assert [
+             %{
+               "rule_id" => "ambiguous-success",
+               "matched" => true,
+               "source" => %{"engine" => "dune", "status" => "ok"}
+             }
+           ] = get_in(body, ["receipt", "decision", "policy_actions"])
   end
 
   test "request transform policy injects a named reminder into the prompt" do
@@ -57,7 +62,8 @@ defmodule Wardwright.RequestPolicyTest do
              %{
                "rule_id" => "json-reminder",
                "matched" => true,
-               "reminder_injected" => true
+               "reminder_injected" => true,
+               "source" => %{"engine" => "dune", "status" => "ok"}
              }
            ] = get_in(body, ["receipt", "decision", "policy_actions"])
   end

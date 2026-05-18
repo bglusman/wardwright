@@ -39,6 +39,7 @@ defmodule Wardwright.HybridPolicyEngineTest do
                "kind" => "route_gate",
                "action" => "block",
                "effect_type" => "terminal",
+               "source" => %{"type" => "engine", "engine" => "dune", "status" => "ok"},
                "conflict_key" => "terminal_decision"
              }
            ] = get_in(receipt, ["decision", "policy_actions"])
@@ -55,7 +56,8 @@ defmodule Wardwright.HybridPolicyEngineTest do
                  "action_schema" => "wardwright.policy_action.v1",
                  "rule_id" => "primitive-deny",
                  "action" => "block",
-                 "effect_type" => "terminal"
+                 "effect_type" => "terminal",
+                 "source" => %{"type" => "engine", "engine" => "dune", "status" => "ok"}
                }
              ]
            } =
@@ -68,6 +70,60 @@ defmodule Wardwright.HybridPolicyEngineTest do
                      "rules" => [
                        %{"id" => "primitive-deny", "contains" => "deny me", "action" => "block"}
                      ]
+                   }
+                 ]
+               },
+               %{"request_text" => "please deny me"}
+             )
+  end
+
+  test "hybrid policy can compose workspace Dune snippets by id" do
+    original_workspace = Application.get_env(:wardwright, :dune_snippet_workspace_dir)
+    workspace_dir = temp_workspace_dir("wardwright-hybrid-dune-snippets")
+    Application.put_env(:wardwright, :dune_snippet_workspace_dir, workspace_dir)
+
+    on_exit(fn ->
+      File.rm_rf!(workspace_dir)
+
+      case original_workspace do
+        nil -> Application.delete_env(:wardwright, :dune_snippet_workspace_dir)
+        value -> Application.put_env(:wardwright, :dune_snippet_workspace_dir, value)
+      end
+    end)
+
+    assert {:ok, _saved} =
+             Wardwright.PolicySandbox.DuneSnippetRegistry.save(%{
+               "id" => "workspace.block-risk",
+               "source" => """
+               if String.contains?(input["request_text"], "deny me") do
+                 %{"action" => "block", "reason" => "workspace snippet matched"}
+               else
+                 %{"action" => "allow"}
+               end
+               """
+             })
+
+    assert %{
+             "engine" => "hybrid",
+             "status" => "ok",
+             "action" => "block",
+             "actions" => [
+               %{
+                 "rule_id" => "saved-dune",
+                 "action" => "block",
+                 "source" => %{"type" => "engine", "engine" => "dune", "status" => "ok"}
+               }
+             ]
+           } =
+             Wardwright.Policy.Engine.evaluate(
+               %{
+                 "id" => "saved-dune",
+                 "engine" => "hybrid",
+                 "engines" => [
+                   %{
+                     "id" => "saved-dune",
+                     "engine" => "dune",
+                     "snippet_id" => "workspace.block-risk"
                    }
                  ]
                },
@@ -107,5 +163,9 @@ defmodule Wardwright.HybridPolicyEngineTest do
                "action" => "block"
              }
            ] = get_in(receipt, ["decision", "policy_actions"])
+  end
+
+  defp temp_workspace_dir(prefix) do
+    Path.join(System.tmp_dir!(), "#{prefix}-#{System.unique_integer([:positive])}")
   end
 end

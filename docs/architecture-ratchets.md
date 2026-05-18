@@ -90,3 +90,10 @@ Every non-trivial review should ask:
 - Does the UI consume projections and evidence, or start owning product truth?
 - Would an agent reading only `AGENTS.md`, this file, and the touched modules
   know where the next related change belongs?
+
+## Tooling Follow-Ups
+
+- Add Credo and Quokka after the Dune snippet spike lands. Configure them as
+  gradual ratchets rather than a noisy whole-repo style rewrite, with an initial
+  bias toward explicit aliases/module-qualified calls in production code while
+  allowing conventional test DSL imports such as ExUnitProperties.

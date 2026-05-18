@@ -24,6 +24,42 @@ defmodule WardwrightWeb.PolicyAuthoringTools do
         "/agent-authoring.html#simulate-before-you-activate"
       ),
       tool(
+        "list_dune_snippets",
+        "GET",
+        "/v1/policy-authoring/dune-snippets",
+        "List built-in and local workspace Dune policy snippets with source, example inputs, phases, and the structured primitives they may replace.",
+        "Use when exploring whether a policy behavior is clearer as inspectable BEAM-native code than as structured primitive fields.",
+        "Read-only. Dune snippets are local/trusted policy candidates, not hostile-code portability guarantees.",
+        "/agent-authoring.html#try-dune-snippets"
+      ),
+      tool(
+        "evaluate_dune_snippet",
+        "POST",
+        "/v1/policy-authoring/dune-snippets/evaluate",
+        "Run a registry or ad hoc Dune snippet against a supplied JSON-like input map and return normalized policy-result evidence.",
+        "Use before proposing any Dune-backed behavior so the user can inspect concrete results and failure modes.",
+        "Read-only evaluation. Sandbox errors and malformed results fail closed; never activate snippets without scenario review.",
+        "/agent-authoring.html#try-dune-snippets"
+      ),
+      tool(
+        "save_dune_snippet",
+        "POST",
+        "/v1/policy-authoring/dune-snippets",
+        "Persist a local trusted Dune snippet in the workspace catalog so later policies can reference it by snippet_id.",
+        "Use after evaluating an ad hoc snippet and getting user approval to keep it as a reusable local behavior.",
+        "Write-capable. Built-in snippets are read-only; saved snippets are trusted local code and should be reviewed before activation.",
+        "/agent-authoring.html#try-dune-snippets"
+      ),
+      tool(
+        "delete_dune_snippet",
+        "DELETE",
+        "/v1/policy-authoring/dune-snippets/{snippet_id}",
+        "Remove a local trusted Dune snippet from the workspace catalog.",
+        "Use when a workspace snippet is obsolete, misleading, or should no longer be referenced by new policies.",
+        "Write-capable. Built-in snippets cannot be deleted; existing policies that reference the removed snippet will fail closed.",
+        "/agent-authoring.html#try-dune-snippets"
+      ),
+      tool(
         "draft_synthetic_model",
         "POST",
         "/v1/policy-authoring/synthetic-models/draft",

@@ -68,6 +68,20 @@ defmodule Wardwright.Runtime do
     end
   end
 
+  def eval_dune_snippet(
+        model_id,
+        version,
+        session_id,
+        source,
+        input,
+        session_opts,
+        eval_opts \\ []
+      ) do
+    with {:ok, pid} <- ensure_session(model_id, version, session_id) do
+      SessionRuntime.eval_dune_snippet(pid, source, input, session_opts, eval_opts)
+    end
+  end
+
   def status do
     provider_runtime = Wardwright.ProviderRuntime.status()
 

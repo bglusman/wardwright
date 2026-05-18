@@ -311,6 +311,56 @@ defmodule Wardwright.Router do
     end
   end
 
+  get "/v1/policy-authoring/dune-snippets" do
+    with :ok <- require_protected_access(conn) do
+      json(conn, 200, Wardwright.PolicySandbox.DuneSnippetRegistry.list())
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+    end
+  end
+
+  post "/v1/policy-authoring/dune-snippets" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, result} <- Wardwright.PolicySandbox.DuneSnippetRegistry.save(body) do
+      json(conn, 201, result)
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} ->
+        error(conn, 400, message, "invalid_request", "invalid_dune_snippet")
+    end
+  end
+
+  delete "/v1/policy-authoring/dune-snippets/:snippet_id" do
+    with :ok <- require_protected_access(conn),
+         {:ok, result} <- Wardwright.PolicySandbox.DuneSnippetRegistry.delete(snippet_id) do
+      json(conn, 200, result)
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} ->
+        error(conn, 400, message, "invalid_request", "invalid_dune_snippet")
+    end
+  end
+
+  post "/v1/policy-authoring/dune-snippets/evaluate" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, result} <- Wardwright.PolicySandbox.DuneSnippetRegistry.evaluate(body) do
+      json(conn, 200, result)
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} ->
+        error(conn, 400, message, "invalid_request", "invalid_dune_snippet")
+    end
+  end
+
   post "/v1/policy-authoring/synthetic-models/draft" do
     with :ok <- require_protected_access(conn),
          {:ok, body} <- require_json_object(conn.body_params) do

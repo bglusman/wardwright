@@ -1,18 +1,37 @@
 defmodule Wardwright.Policy.Engine do
   @moduledoc false
 
+  @action_key "action"
+  @dune_engine "dune"
+  @engine_key "engine"
+  @error_status "error"
+  @reason_key "reason"
+  @snippet_id_key "snippet_id"
+  @status_key "status"
+
   def evaluate(%{"engine" => "primitive", "rules" => rules}, context) when is_list(rules) do
-    %{"engine" => "primitive", "status" => "ok", "actions" => primitive_actions(rules, context)}
-    |> Wardwright.Policy.Action.normalize_result()
+    "primitive.request-contains-actions"
+    |> Wardwright.PolicySandbox.DuneSnippetRegistry.source!()
+    |> Wardwright.PolicySandbox.Dune.eval_snippet(%{
+      "request_text" => Map.get(context, "request_text", ""),
+      "rules" => rules
+    })
+    |> normalize_dune_result()
+    |> Wardwright.Policy.Action.normalize_result(rule: %{"engine" => "dune"})
   end
 
   def evaluate(%{"engine" => "dune", "source" => source} = policy, context)
       when is_binary(source) do
     source
-    |> String.replace("__WARDWRIGHT_CONTEXT__", inspect(context, charlists: :as_lists))
-    |> Wardwright.PolicySandbox.Dune.eval_string()
+    |> expand_legacy_context_placeholder(context)
+    |> Wardwright.PolicySandbox.Dune.eval_snippet(context)
     |> normalize_dune_result()
     |> Wardwright.Policy.Action.normalize_result(rule: policy)
+  end
+
+  def evaluate(%{@engine_key => @dune_engine, @snippet_id_key => snippet_id} = policy, context)
+      when is_binary(snippet_id) do
+    evaluate_dune_snippet_id(policy, context, snippet_id)
   end
 
   def evaluate(%{"engine" => "wasm"} = policy, _context) do
@@ -42,6 +61,26 @@ defmodule Wardwright.Policy.Engine do
   end
 
   def evaluate(_policy, _context) do
+    unsupported_result()
+  end
+
+  defp evaluate_dune_snippet_id(policy, context, snippet_id) do
+    case Wardwright.PolicySandbox.DuneSnippetRegistry.get(snippet_id) do
+      {:ok, snippet} ->
+        snippet
+        |> Map.fetch!("source")
+        |> expand_legacy_context_placeholder(context)
+        |> Wardwright.PolicySandbox.Dune.eval_snippet(context)
+        |> normalize_dune_result()
+        |> Wardwright.Policy.Action.normalize_result(rule: policy)
+
+      {:error, message} ->
+        dune_error_result(message)
+        |> Wardwright.Policy.Action.normalize_result(rule: policy)
+    end
+  end
+
+  defp unsupported_result do
     %{
       "engine" => "unknown",
       "status" => "error",
@@ -51,20 +90,13 @@ defmodule Wardwright.Policy.Engine do
     |> Wardwright.Policy.Action.normalize_result()
   end
 
-  defp primitive_actions(rules, context) do
-    text = context |> Map.get("request_text", "") |> String.downcase()
-
-    for rule <- rules,
-        contains = Map.get(rule, "contains"),
-        is_binary(contains),
-        contains != "",
-        String.contains?(text, String.downcase(contains)) do
-      %{
-        "rule_id" => Map.get(rule, "id", "primitive-rule"),
-        "action" => Map.get(rule, "action", "annotate"),
-        "matched" => true
-      }
-    end
+  defp dune_error_result(message) do
+    %{
+      @engine_key => @dune_engine,
+      @status_key => @error_status,
+      @action_key => "block",
+      @reason_key => message
+    }
   end
 
   defp result_actions(%{"actions" => actions}) when is_list(actions), do: actions
@@ -90,6 +122,7 @@ defmodule Wardwright.Policy.Engine do
   defp normalize_dune_result(%{"status" => "ok", "value" => value} = result) when is_map(value) do
     result
     |> Map.put("action", Map.get(value, "action", value[:action] || "allow"))
+    |> put_dune_actions(value)
     |> Map.put("reason", Map.get(value, "reason", value[:reason]))
     |> Map.put("message", Map.get(value, "message", value[:message]))
     |> Map.put("severity", Map.get(value, "severity", value[:severity]))
@@ -98,6 +131,9 @@ defmodule Wardwright.Policy.Engine do
       "target_model",
       Map.get(value, "target_model", value[:target_model] || value[:model])
     )
+    |> Map.put("allow_fallback", Map.get(value, "allow_fallback", value[:allow_fallback]))
+    |> Map.put("reminder", Map.get(value, "reminder", value[:reminder]))
+    |> Map.put("idempotency_key", Map.get(value, "idempotency_key", value[:idempotency_key]))
   end
 
   defp normalize_dune_result(%{"status" => "ok"} = result),
@@ -107,5 +143,20 @@ defmodule Wardwright.Policy.Engine do
     result
     |> Map.put("action", "block")
     |> Map.put_new("reason", "dune policy failed closed")
+  end
+
+  defp put_dune_actions(result, value) do
+    case Map.get(value, "actions", value[:actions]) do
+      actions when is_list(actions) -> Map.put(result, "actions", actions)
+      _actions -> result
+    end
+  end
+
+  defp expand_legacy_context_placeholder(source, context) do
+    String.replace(
+      source,
+      "__WARDWRIGHT_CONTEXT__",
+      inspect(context, charlists: :as_lists)
+    )
   end
 end

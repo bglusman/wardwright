@@ -113,6 +113,10 @@ defmodule Wardwright.PublicApiTest do
 
     assert "explain_projection" in tool_names
     assert "simulate_policy" in tool_names
+    assert "list_dune_snippets" in tool_names
+    assert "evaluate_dune_snippet" in tool_names
+    assert "save_dune_snippet" in tool_names
+    assert "delete_dune_snippet" in tool_names
     assert "draft_synthetic_model" in tool_names
     assert "activate_synthetic_model" in tool_names
     assert "record_scenario" in tool_names
@@ -136,6 +140,138 @@ defmodule Wardwright.PublicApiTest do
 
     missing = call(:get, "/v1/policy-authoring/projections/not-real")
     assert missing.status == 404
+  end
+
+  test "protected policy authoring API lists and evaluates Dune snippets" do
+    original_workspace = Application.get_env(:wardwright, :dune_snippet_workspace_dir)
+    workspace_dir = temp_workspace_dir("wardwright-api-dune-snippets")
+    Application.put_env(:wardwright, :dune_snippet_workspace_dir, workspace_dir)
+
+    on_exit(fn ->
+      File.rm_rf!(workspace_dir)
+
+      case original_workspace do
+        nil -> Application.delete_env(:wardwright, :dune_snippet_workspace_dir)
+        value -> Application.put_env(:wardwright, :dune_snippet_workspace_dir, value)
+      end
+    end)
+
+    rejected = call(:get, "/v1/policy-authoring/dune-snippets", nil, [], {203, 0, 113, 10})
+    assert rejected.status == 403
+
+    listed = call(:get, "/v1/policy-authoring/dune-snippets")
+    assert listed.status == 200
+
+    snippets = Jason.decode!(listed.resp_body)["data"]
+    assert Enum.any?(snippets, &(&1["id"] == "tool.browser-before-shell"))
+
+    registry_eval =
+      call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{
+        "snippet_id" => "tool.browser-before-shell",
+        "input" => %{
+          "tool_name" => "shell.exec",
+          "recent_tools" => ["browser.open"]
+        }
+      })
+
+    assert registry_eval.status == 200
+    registry_body = Jason.decode!(registry_eval.resp_body)
+    assert get_in(registry_body, ["result", "policy_status"]) == "ok"
+    assert get_in(registry_body, ["result", "policy_result", "action"]) == "allow_tool"
+
+    ad_hoc_eval =
+      call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{
+        "source" => """
+        %{"action" => "block", "reason" => input["reason"]}
+        """,
+        "input" => %{"reason" => "operator test"}
+      })
+
+    assert ad_hoc_eval.status == 200
+
+    assert get_in(Jason.decode!(ad_hoc_eval.resp_body), ["result", "policy_result", "reason"]) ==
+             "operator test"
+
+    session_id = "api-session-#{System.unique_integer([:positive])}"
+
+    session = %{
+      "model_id" => "api-model",
+      "version" => "api-version",
+      "session_id" => session_id
+    }
+
+    first_session_eval =
+      call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{
+        "source" => """
+        events = [input["event"]]
+        %{"action" => "allow", "count" => Enum.count(events)}
+        """,
+        "input" => %{"event" => "first"},
+        "session" => session
+      })
+
+    assert first_session_eval.status == 200
+    first_session_body = Jason.decode!(first_session_eval.resp_body)
+    assert first_session_body["session"]["status"] == "new"
+    assert get_in(first_session_body, ["result", "policy_result", "count"]) == 1
+
+    second_session_eval =
+      call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{
+        "source" => """
+        events = [input["event"] | events]
+        %{"action" => "allow", "count" => Enum.count(events)}
+        """,
+        "input" => %{"event" => "second"},
+        "session" => session
+      })
+
+    assert second_session_eval.status == 200
+    second_session_body = Jason.decode!(second_session_eval.resp_body)
+    assert second_session_body["session"]["status"] == "reused"
+    assert get_in(second_session_body, ["result", "policy_result", "count"]) == 2
+
+    saved =
+      call(:post, "/v1/policy-authoring/dune-snippets", %{
+        "id" => "workspace.block-risk",
+        "title" => "Workspace risk blocker",
+        "phase" => "request.review",
+        "description" => "Block requests marked as high risk.",
+        "source" => """
+        if input["risk"] == "high" do
+          %{"action" => "block", "reason" => "high risk"}
+        else
+          %{"action" => "allow", "reason" => "low risk"}
+        end
+        """,
+        "example_input" => %{"risk" => "high"}
+      })
+
+    assert saved.status == 201
+    assert get_in(Jason.decode!(saved.resp_body), ["snippet", "origin"]) == "workspace"
+
+    relisted = call(:get, "/v1/policy-authoring/dune-snippets")
+
+    assert Enum.any?(Jason.decode!(relisted.resp_body)["data"], fn snippet ->
+             snippet["id"] == "workspace.block-risk" and snippet["origin"] == "workspace"
+           end)
+
+    saved_eval =
+      call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{
+        "snippet_id" => "workspace.block-risk",
+        "input" => %{"risk" => "high"}
+      })
+
+    assert saved_eval.status == 200
+
+    assert get_in(Jason.decode!(saved_eval.resp_body), ["result", "policy_result", "action"]) ==
+             "block"
+
+    delete_saved = call(:delete, "/v1/policy-authoring/dune-snippets/workspace.block-risk")
+    assert delete_saved.status == 200
+    assert Jason.decode!(delete_saved.resp_body)["deleted"] == true
+
+    missing = call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{})
+    assert missing.status == 400
   end
 
   test "protected policy authoring API drafts and activates synthetic models" do
@@ -652,5 +788,9 @@ defmodule Wardwright.PublicApiTest do
     ]
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
+  end
+
+  defp temp_workspace_dir(prefix) do
+    Path.join(System.tmp_dir!(), "#{prefix}-#{System.unique_integer([:positive])}")
   end
 end

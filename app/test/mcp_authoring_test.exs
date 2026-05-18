@@ -44,9 +44,13 @@ defmodule Wardwright.MCPAuthoringTest do
 
     assert tool_names == [
              "activate_synthetic_model",
+             "delete_dune_snippet",
              "draft_synthetic_model",
+             "evaluate_dune_snippet",
              "explain_projection",
+             "list_dune_snippets",
              "propose_rule_change",
+             "save_dune_snippet",
              "simulate_policy",
              "validate_policy_artifact"
            ]
@@ -81,6 +85,87 @@ defmodule Wardwright.MCPAuthoringTest do
 
     assert response.structured_content["schema"] == "wardwright.policy_validation.v1"
     assert response.structured_content["source"] == "current_config"
+  end
+
+  test "Dune snippet MCP tools list registry snippets and evaluate ad hoc source" do
+    original_workspace = Application.get_env(:wardwright, :dune_snippet_workspace_dir)
+    workspace_dir = temp_workspace_dir("wardwright-mcp-dune-snippets")
+    Application.put_env(:wardwright, :dune_snippet_workspace_dir, workspace_dir)
+
+    on_exit(fn ->
+      File.rm_rf!(workspace_dir)
+      restore_env(:dune_snippet_workspace_dir, original_workspace)
+    end)
+
+    assert {:reply, %Response{} = list_response, %Frame{}} =
+             WardwrightWeb.MCP.Tools.ListDuneSnippets.execute(%{}, Frame.new())
+
+    assert Enum.any?(
+             list_response.structured_content["data"],
+             &(&1["id"] == "route.private-context-local-only")
+           )
+
+    assert {:reply, %Response{} = eval_response, %Frame{}} =
+             WardwrightWeb.MCP.Tools.EvaluateDuneSnippet.execute(
+               %{
+                 "source" => """
+                 if input["risk"] == "high" do
+                   %{"action" => "require_review", "reason" => "high risk"}
+                 else
+                   %{"action" => "allow", "reason" => "low risk"}
+                 end
+                 """,
+                 "input" => %{"risk" => "high"}
+               },
+               Frame.new()
+             )
+
+    assert get_in(eval_response.structured_content, [
+             "result",
+             "policy_result",
+             "action"
+           ]) == "require_review"
+
+    assert {:reply, %Response{} = save_response, %Frame{}} =
+             WardwrightWeb.MCP.Tools.SaveDuneSnippet.execute(
+               %{
+                 "id" => "workspace.high-risk-review",
+                 "source" => """
+                 if input["risk"] == "high" do
+                   %{"action" => "require_review", "reason" => "saved high risk snippet"}
+                 else
+                   %{"action" => "allow"}
+                 end
+                 """
+               },
+               Frame.new()
+             )
+
+    assert get_in(save_response.structured_content, ["snippet", "id"]) ==
+             "workspace.high-risk-review"
+
+    assert {:reply, %Response{} = saved_eval_response, %Frame{}} =
+             WardwrightWeb.MCP.Tools.EvaluateDuneSnippet.execute(
+               %{
+                 "snippet_id" => "workspace.high-risk-review",
+                 "input" => %{"risk" => "high"}
+               },
+               Frame.new()
+             )
+
+    assert get_in(saved_eval_response.structured_content, [
+             "result",
+             "policy_result",
+             "action"
+           ]) == "require_review"
+
+    assert {:reply, %Response{} = delete_response, %Frame{}} =
+             WardwrightWeb.MCP.Tools.DeleteDuneSnippet.execute(
+               %{"snippet_id" => "workspace.high-risk-review"},
+               Frame.new()
+             )
+
+    assert delete_response.structured_content["deleted"] == true
   end
 
   test "draft synthetic model tool returns a callable model artifact" do
@@ -198,9 +283,13 @@ defmodule Wardwright.MCPAuthoringTest do
 
     assert tool_names == [
              "activate_synthetic_model",
+             "delete_dune_snippet",
              "draft_synthetic_model",
+             "evaluate_dune_snippet",
              "explain_projection",
+             "list_dune_snippets",
              "propose_rule_change",
+             "save_dune_snippet",
              "simulate_policy",
              "validate_policy_artifact"
            ]
@@ -232,4 +321,8 @@ defmodule Wardwright.MCPAuthoringTest do
 
   defp restore_env(key, nil), do: Application.delete_env(:wardwright, key)
   defp restore_env(key, value), do: Application.put_env(:wardwright, key, value)
+
+  defp temp_workspace_dir(prefix) do
+    Path.join(System.tmp_dir!(), "#{prefix}-#{System.unique_integer([:positive])}")
+  end
 end

@@ -126,6 +126,70 @@ Sandboxed engines such as Dune or WASM require scenario evidence before they can
 be treated as reviewed because the projection may not explain every branch
 statically.
 
+## Try Dune Snippets
+
+Use `list_dune_snippets` when exploring whether an existing behavior would be
+clearer as inspectable local code than as several structured fields. The current
+registry is a spike and includes small examples for private route gating,
+history-count state escalation, and cross-tool sequence review.
+
+Use `evaluate_dune_snippet` before proposing any Dune-backed policy. It accepts
+either:
+
+- `snippet_id` plus an `input` map for a built-in registry snippet
+- `snippet_id` plus an `input` map for a local workspace snippet saved with
+  `save_dune_snippet`
+- ad hoc `source` plus an `input` map for code the agent is drafting
+- optional `session: {"model_id": "...", "session_id": "...", "key": "default",
+  "ttl_ms": 300000, "reset": false}` when deliberately testing stateful Dune
+  behavior across evaluations inside a Wardwright runtime session
+
+The snippet receives a JSON-like map named `input` and should return a
+policy-shaped map such as:
+
+```elixir
+%{
+  "action" => "require_review",
+  "reason" => "shell_without_recent_browser_context",
+  "trace" => [%{"rule" => "browser_before_shell", "result" => false}]
+}
+```
+
+Malformed return values, restricted APIs, timeout, reduction exhaustion, and
+memory exhaustion all return a fail-closed `block` result. Treat that as useful
+review evidence, not as permission to activate the snippet.
+
+After an ad hoc snippet has useful evaluation evidence and the user wants to
+keep it, call `save_dune_snippet` with an `id`, `source`, and optional title,
+phase, description, input shape, example input, and replaced primitive labels.
+Saved snippets appear in `list_dune_snippets` with `origin: "workspace"` and
+can be referenced from artifacts as:
+
+```json
+{
+  "engine": "dune",
+  "snippet_id": "workspace.high-risk-review"
+}
+```
+
+They compose through the same normalized action/result ABI as built-ins,
+including inside `engine: "hybrid"` policies. Use `delete_dune_snippet` to remove
+obsolete workspace snippets. Built-in snippet ids are read-only.
+
+Stateful Dune evaluation is opt-in and should be rare. The stored Dune session
+lives in the existing Wardwright runtime GenServer for the selected
+`model_id`/`session_id`; `key` lets one runtime session hold separate Dune
+sessions, such as one per tool call. This is useful for exploring custom policy
+memory, but it also creates a second history mechanism outside Wardwright's
+explicit cache and receipt model. Prefer passing explicit history facts in
+`input`; use Dune sessions only when the state itself is the policy behavior
+under test. Use `reset: true` to clear a Dune session before a new scenario, and
+set a short `ttl_ms` so exploratory state does not accumulate indefinitely.
+
+Dune snippets are a local/trusted advanced authoring path. Do not present them
+as safe for third-party policy packages or marketplace rules; those still need a
+harder boundary such as WASM or an isolated sidecar.
+
 ## Activate Only After Review
 
 Use `activate_synthetic_model` only after explicit user approval. Activation
@@ -173,6 +237,16 @@ reviewability:
 This is not a 0.0.4 requirement. The 0.0.4 requirement is that agents can create
 and modify local synthetic models through a documented, reviewable, reversible
 workflow.
+
+The first compatibility conversion is `primitive.request-contains-actions`,
+which implements the old `engine: primitive` request-text contains matcher. The
+next request-side conversion is `primitive.request-rule-action`, which evaluates
+one `request_guard`, `request_transform`, `receipt_annotation`, or `route_gate`
+rule with contains/regex matching and returns a normalized action intent. Host
+code still applies irreversible effects such as prompt mutation, route
+constraints, alert events, and blocks. Prefer proposing a Dune snippet directly
+for new policy unless the user is preserving an older artifact shape for
+compatibility.
 
 Related planning:
 

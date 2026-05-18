@@ -49,6 +49,49 @@ that normalizes Dune success and failure structs into policy-engine result maps.
 This is intentionally small so callers can fail closed without binding the rest
 of Wardwright to Dune's API.
 
+A second spike adds `Wardwright.PolicySandbox.DuneSnippetRegistry`, a small
+registry of named snippets plus an evaluator for registry and ad hoc source.
+The registry is exposed through protected HTTP and MCP-shaped tools:
+
+- `GET /v1/policy-authoring/dune-snippets`
+- `POST /v1/policy-authoring/dune-snippets/evaluate`
+- `POST /v1/policy-authoring/dune-snippets`
+- `DELETE /v1/policy-authoring/dune-snippets/{snippet_id}`
+- `list_dune_snippets`
+- `evaluate_dune_snippet`
+- `save_dune_snippet`
+- `delete_dune_snippet`
+
+The evaluator binds a JSON-like `input` map before executing source, normalizes
+successful map returns to `wardwright.policy_result.v1`, and turns sandbox
+failures or malformed returns into explicit fail-closed policy results. This is
+the first concrete version of the "snippet emulator" idea: an agent can draft
+or fork a snippet, run it against representative inputs, save it into the local
+workspace registry after review, and show the exact policy action and trace
+before suggesting artifact changes.
+
+A follow-up spike adds opt-in Dune session evaluation for authoring tools. A
+caller may pass `session: {"model_id": "...", "session_id": "...", "key":
+"default", "ttl_ms": 300000, "reset": false}` to reuse Dune bindings across
+snippet evaluations. Wardwright stores those Dune sessions inside the existing
+runtime GenServer for the selected model/session; `key` allows one runtime
+session to isolate multiple Dune sessions, for example one per tool call. This
+follows Dune's session model: successful evaluations update the session, while
+failed evaluations keep the prior state available for later instructions.
+Wardwright keeps this stateful mode out of default policy evaluation because it
+is an implicit second history store. Use it to prototype custom policy-local
+memory or compiled helpers, not as a replacement for explicit receipts, policy
+cache facts, or scenario inputs. Sessions are pruned by TTL and can be reset
+explicitly by the caller.
+
+The next maturation step converts the small reusable `engine: primitive`
+contains matcher into the registry snippet
+`primitive.request-contains-actions`. Existing primitive-engine artifacts still
+load as a compatibility shape, but their behavior now executes through the same
+Dune adapter and action/result ABI as hand-authored snippets. This is the first
+case where Dune is not merely parallel example code: it is the source of truth
+for a previously separate primitive engine implementation.
+
 Executable tests currently verify:
 
 - deterministic policy-shaped map results can be returned
@@ -57,6 +100,29 @@ Executable tests currently verify:
 - CPU-heavy policy work can be stopped by `max_reductions`
 - large allocations can be stopped by `max_heap_size`
 - low wall-clock budgets stop slow allowed work by timeout or reductions
+- registry snippets are inspectable and evaluate against example inputs
+- ad hoc snippets can be tested, while malformed outputs fail closed
+- local workspace snippets can be saved, listed, evaluated by id, deleted, and
+  referenced from `engine: "dune"` policy artifacts by `snippet_id`
+- opt-in session-backed evaluation can preserve deliberate policy-local
+  bindings across invocations and can be reset
+- the legacy primitive contains engine is backed by a named Dune snippet and
+  still emits the same policy actions through hybrid evaluation
+
+## Primitive Conversion Inventory
+
+The current direction is to keep only genuinely tiny, high-value primitives in
+host code and move higher-level policy behaviors into named, inspectable Dune
+snippets when local trusted policy is acceptable.
+
+| Primitive family | Current use | Dune conversion status | Recommendation |
+|---|---|---|---|
+| `engine: primitive` request contains rules | Compatibility tests, not workbench demos | Converted to `primitive.request-contains-actions`; legacy artifacts are now a shim over Dune | Keep only as a compatibility alias, then remove from user-facing docs |
+| `route_gate`, `request_guard`, `request_transform`, `receipt_annotation` contains/regex rules | Request routing, alerts, reminders, and tests | Converted to `primitive.request-rule-action` for contains/regex matching and action intent; host code still owns request mutation, route-constraint merging, alerts, and blocks | Keep the effect application in host code until there is a typed action-effect boundary strong enough to share across engines |
+| `history_threshold` and `history_regex_threshold` | Demonstrates session-local cache/history behavior | Partially mirrored by `history.related-secret-ladder`, but host implementation still owns cache queries | Keep cache access in host for now; expose a narrow facts input to Dune snippets rather than direct arbitrary cache reads |
+| `tool_selector`, `tool_loop_threshold`, `tool_sequence` | Tool policy tests and tool-governance demos | Partially mirrored by `tool.browser-before-shell`; host implementation still records selector status, state transitions, and sequence evidence | Good Dune candidates once input facts and trace metadata are stable |
+| Stream horizon/rewrite/retry primitives | Core TTSR demos and stream tests | Not converted | Do not convert first; streaming control has latency, buffering, and provider-termination semantics that should stay in host runtime until Dune can only choose actions over explicit stream facts |
+| Structured-output guard rules | Bakeoff and ambiguous-success demos | Not converted | Possible later, but parser/schema validation should remain host-owned with Dune choosing repair/block policy over parsed evidence |
 
 One useful observation: recursive module-style code hit the memory cap before
 the reduction cap in an early test. This is acceptable fail-closed behavior, but
@@ -100,9 +166,11 @@ as a sidecar, WASM runtime, microVM, or hosted policy service.
 
 The BEAM prototype now has a common policy namespace for three execution paths:
 
-- primitive request governance in `Wardwright.Policy.Plan` and reusable
-  primitive engine rules in `Wardwright.Policy.Engine`
-- Dune snippets through `Wardwright.PolicySandbox.Dune`
+- low-level request governance in `Wardwright.Policy.Plan`; the reusable legacy
+  `engine: primitive` contains matcher now executes through the Dune snippet
+  registry
+- Dune snippets through `Wardwright.PolicySandbox.Dune` and
+  `Wardwright.PolicySandbox.DuneSnippetRegistry`
 - WASM through `Wardwright.PolicySandbox.Wasm`
 
 The WASM path is intentionally fail-closed until a runtime dependency and fuel
