@@ -17,7 +17,7 @@ run = "ruby scripts/check-elixir-map-boundaries.rb"
 
 [tasks."check:browser"]
 description = "Run headless Chrome smoke tests for responsive LiveView playback"
-run = "node scripts/browser-smoke/liveview-playback.mjs"
+run = "node --experimental-websocket scripts/browser-smoke/liveview-playback.mjs"
 
 [tasks.check]
 description = "Run all baseline checks"

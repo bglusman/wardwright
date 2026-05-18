@@ -36,7 +36,7 @@ jobs:
         run: mix test
         working-directory: app
       - name: Run LiveView browser smoke tests
-        run: node scripts/browser-smoke/liveview-playback.mjs
+        run: node --experimental-websocket scripts/browser-smoke/liveview-playback.mjs
 
   docs:
     name: docs
