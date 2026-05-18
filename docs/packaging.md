@@ -148,18 +148,43 @@ access to the operator workbench and protected control APIs beyond loopback, set
 `BASIC_AUTH_PASSWORD`; the Basic Auth username is always `admin`. This protects
 operator surfaces such as `/policies`, `/mcp`, `/admin/*`, receipts, and
 policy-authoring and simulation APIs. OpenAI-compatible model endpoints remain
-governed by model access configuration. Generated model API keys are stored
-hashed in `~/.wardwright/model-api-keys.json` unless
-`WARDWRIGHT_MODEL_API_KEY_STORE` points somewhere else. Keep
+governed by model access configuration. Generated model API keys and the active
+model definition are stored in the SQLite database at
+`~/.wardwright/wardwright.sqlite3` unless `WARDWRIGHT_SQLITE_STORE` points
+somewhere else. Keep
 `WARDWRIGHT_SECRET_KEY_BASE` stable, or set
 `WARDWRIGHT_MODEL_API_KEY_HASH_SECRET` explicitly, so stored keys remain
-verifiable across restarts. For foreground testing without `brew services`, run:
+verifiable across restarts. To encrypt the store, set `WARDWRIGHT_SQLITE_KEY` or
+`WARDWRIGHT_SQLITE_KEY_FNOX` and ship an exqlite build linked against SQLCipher;
+Wardwright checks `PRAGMA cipher_version` and refuses to start with a configured
+key when SQLCipher is unavailable. For foreground testing without `brew services`, run:
 
 ```bash
 WARDWRIGHT_SECRET_KEY_BASE="$(cat "$(brew --prefix)/etc/wardwright/secret_key_base")" \
 WARDWRIGHT_BIND=127.0.0.1:8787 \
 wardwright serve
 ```
+
+### SQLite Encryption in Packaged Builds
+
+exqlite can link its NIF against SQLCipher by setting `EXQLITE_USE_SYSTEM=1`,
+`EXQLITE_SYSTEM_CFLAGS`, and `EXQLITE_SYSTEM_LDFLAGS` during compilation.
+Burrito can rebuild NIFs per target with `:nif_env`/`:nif_cflags` qualifiers,
+and Tinfoil will package the resulting Burrito binaries. That means encrypted
+SQLite can be made available in packaged builds, but it must be solved in the
+release build matrix, not at runtime.
+
+The conservative release path is:
+
+1. install or vendor SQLCipher headers and libraries for each target;
+2. compile exqlite with `EXQLITE_USE_SYSTEM=1` and SQLCipher include/linker
+   flags;
+3. run a packaged-binary smoke test with `WARDWRIGHT_SQLITE_KEY` set and assert
+   the app starts and `PRAGMA cipher_version` is present.
+
+Until that matrix is wired, `WARDWRIGHT_SQLITE_KEY` and
+`WARDWRIGHT_SQLITE_KEY_FNOX` are opt-in and fail closed when the binary was not
+built with SQLCipher.
 
 ## Provider Credentials
 
@@ -168,6 +193,11 @@ The package does not install fnox. If a configured provider target uses
 `fnox` command on `PATH`; Wardwright resolves the value with `fnox get KEY` when
 it needs to call the provider. Environment-variable credentials via
 `credential_env` are also supported for local development and live smoke tests.
+Database-backed provider credentials should wait until SQLCipher-enabled
+packaged builds are part of the release matrix. Once encrypted SQLite is
+guaranteed, Wardwright can remove fnox as a required secret-store dependency by
+storing provider credentials in the same encrypted local database and failing
+closed whenever credentials are configured but the database is not encrypted.
 
 Credential storage and service authentication are separate. Fnox keeps raw
 provider keys out of artifacts and logs, but it does not decide who may call a

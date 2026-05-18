@@ -279,6 +279,12 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       </div>
 
       <nav>
+        <h2 class="nav_heading">Operator</h2>
+        <a href="/admin/model-api-keys">
+          <strong>Model Management</strong>
+          <span>Set keyed access and rotate model API keys.</span>
+        </a>
+
         <form class="recipe_source" phx-change="select-recipe-source" phx-submit="select-recipe-source">
           <label for="recipe_source">Example set</label>
           <select id="recipe_source" name="recipe_source" phx-change="select-recipe-source">

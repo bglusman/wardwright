@@ -20,6 +20,8 @@ The protected key page at `/admin/model-api-keys` can generate and revoke
 model-scoped API keys for the active model. Those keys authorize model calls
 only when the model artifact sets `requires_api_key` to `true`; unkeyed models
 remain public or internal-only according to `auth.unkeyed_model_access`.
+The same page can edit whether the active model is keyed or unkeyed, and the
+workbench sidebar links to it as model management.
 
 The deterministic model artifact remains the source of truth. The workbench is
 the review surface for understanding how that artifact compiles into routes,

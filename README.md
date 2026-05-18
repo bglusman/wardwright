@@ -69,9 +69,14 @@ model-scoped API key, or set unkeyed models to internal-only composition:
 ```
 
 Use the protected `/admin/model-api-keys` page to generate or revoke keys for
-the active model. Raw keys are shown once; Wardwright stores only a hash. Keep
-`WARDWRIGHT_SECRET_KEY_BASE` stable, or set `WARDWRIGHT_MODEL_API_KEY_HASH_SECRET`
-explicitly, so stored keys remain verifiable across restarts.
+the active model. Raw keys are shown once; Wardwright stores only a hash in the
+SQLite store at `~/.wardwright/wardwright.sqlite3` unless `WARDWRIGHT_SQLITE_STORE`
+points somewhere else. The same store persists the active model definition.
+Keep `WARDWRIGHT_SECRET_KEY_BASE` stable, or set
+`WARDWRIGHT_MODEL_API_KEY_HASH_SECRET` explicitly, so stored keys remain
+verifiable across restarts. To encrypt the SQLite store, provide
+`WARDWRIGHT_SQLITE_KEY` or `WARDWRIGHT_SQLITE_KEY_FNOX`; the exqlite NIF must be
+built against SQLCipher or Wardwright will fail closed at startup.
 
 ## Use With Agents
 

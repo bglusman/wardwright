@@ -64,8 +64,26 @@ defmodule Wardwright do
     :persistent_term.get({__MODULE__, :config}, default_config())
   end
 
+  def load_persisted_config do
+    case Wardwright.SQLiteStore.load_active_model() do
+      {:ok, config} ->
+        install_config(config)
+        configure_runtime(config)
+        {:ok, config}
+
+      :error ->
+        config = default_config()
+        install_config(config)
+        configure_runtime(config)
+        Wardwright.SQLiteStore.save_model_config(config)
+        {:ok, config}
+    end
+  end
+
   def reset_config do
-    :persistent_term.put({__MODULE__, :config}, default_config())
+    config = default_config()
+    install_config(config)
+    Wardwright.SQLiteStore.save_model_config(config)
     Wardwright.PolicyCache.configure(default_config()["policy_cache"])
     Wardwright.Sinks.configure(default_config()["sinks"])
     Wardwright.ProviderRuntime.reset()
@@ -75,14 +93,32 @@ defmodule Wardwright do
     config = normalize_config(config)
 
     with :ok <- validate_config(config) do
-      :persistent_term.put({__MODULE__, :config}, config)
-      Wardwright.PolicyCache.configure(config["policy_cache"])
-      Wardwright.Sinks.configure(config["sinks"])
+      install_config(config)
+      Wardwright.SQLiteStore.save_model_config(config)
+      configure_runtime(config)
       {:ok, config}
     end
   end
 
   def put_config(_), do: {:error, "request body must be a JSON object"}
+
+  defp install_config(config) do
+    :persistent_term.put({__MODULE__, :config}, config)
+  end
+
+  defp configure_runtime(config) do
+    if Process.whereis(Wardwright.PolicyCache) do
+      Wardwright.PolicyCache.configure(config["policy_cache"])
+    end
+
+    if Process.whereis(Wardwright.Sinks) do
+      Wardwright.Sinks.configure(config["sinks"])
+    end
+
+    if Process.whereis(Wardwright.ProviderRuntime) do
+      Wardwright.ProviderRuntime.reset()
+    end
+  end
 
   def normalize_model(model) when is_binary(model) do
     model = String.trim(model)

@@ -36,6 +36,10 @@ defmodule Wardwright.Application do
     opts = [strategy: :one_for_one, name: Wardwright.Supervisor]
     result = Supervisor.start_link(children, opts)
 
+    if match?({:ok, _pid}, result) do
+      Wardwright.load_persisted_config()
+    end
+
     if serve_http?() do
       Logger.info("wardwright app listening on http://#{:inet.ntoa(host)}:#{port}")
     end

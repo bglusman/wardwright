@@ -3,13 +3,16 @@ defmodule Wardwright.ModelApiKeyStore do
 
   use GenServer
 
-  @store_version 1
-
   def start_link(_opts), do: GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
 
   def init(:ok) do
-    state = %{path: store_path(), keys: %{}}
-    {:ok, load(state)}
+    state =
+      case Wardwright.SQLiteStore.enabled?() do
+        true -> %{storage: :sqlite, keys: load_sqlite_keys()}
+        false -> %{storage: :memory, keys: %{}}
+      end
+
+    {:ok, state}
   end
 
   def list(model_id \\ nil), do: GenServer.call(__MODULE__, {:list, model_id})
@@ -42,14 +45,29 @@ defmodule Wardwright.ModelApiKeyStore do
       "created_at" => now
     }
 
-    state = put_in(state.keys[record["id"]], record) |> persist()
-    {:reply, {:ok, Map.put(public_key_record(record), "key", raw_key)}, state}
+    case persist_insert(state, record) do
+      :ok ->
+        state = put_in(state.keys[record["id"]], record)
+        {:reply, {:ok, Map.put(public_key_record(record), "key", raw_key)}, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
   end
 
   def handle_call({:revoke, id}, _from, state) do
     {record, keys} = Map.pop(state.keys, id)
-    state = %{state | keys: keys} |> persist()
-    {:reply, if(record, do: :ok, else: {:error, :not_found}), state}
+
+    case {record, persist_delete(state, id)} do
+      {nil, _result} ->
+        {:reply, {:error, :not_found}, state}
+
+      {_record, :ok} ->
+        {:reply, :ok, %{state | keys: keys}}
+
+      {_record, {:error, reason}} ->
+        {:reply, {:error, reason}, state}
+    end
   end
 
   def handle_call({:valid?, model_id, key}, _from, state) do
@@ -64,8 +82,17 @@ defmodule Wardwright.ModelApiKeyStore do
   end
 
   def handle_call(:reset, _from, state) do
-    state = %{state | keys: %{}} |> persist()
-    {:reply, :ok, state}
+    case persist_clear(state) do
+      :ok -> {:reply, :ok, %{state | keys: %{}}}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  defp load_sqlite_keys do
+    case Wardwright.SQLiteStore.list_api_keys() do
+      {:ok, keys} -> Map.new(keys, &{&1["id"], &1})
+      {:error, reason} -> raise "failed to load model API keys from SQLite: #{inspect(reason)}"
+    end
   end
 
   defp public_key_record(record) do
@@ -105,45 +132,28 @@ defmodule Wardwright.ModelApiKeyStore do
       "wardwright-local-model-api-key-hash-secret"
   end
 
-  defp load(%{path: nil} = state), do: state
+  defp persist_insert(%{storage: :sqlite}, record),
+    do: sqlite_result(Wardwright.SQLiteStore.insert_api_key(record))
 
-  defp load(%{path: path} = state) do
-    with true <- File.exists?(path),
-         {:ok, body} <- File.read(path),
-         {:ok, %{"keys" => keys}} <- Jason.decode(body) do
-      %{state | keys: Map.new(keys, &{&1["id"], &1})}
-    else
-      _ -> state
+  defp persist_insert(%{storage: :memory}, _record), do: :ok
+
+  defp persist_delete(%{storage: :sqlite}, id) do
+    case Wardwright.SQLiteStore.delete_api_key(id) do
+      {:ok, {:ok, changed}} when changed > 0 -> :ok
+      {:ok, {:ok, _changed}} -> {:error, :not_found}
+      {:ok, other} -> other
+      {:error, reason} -> {:error, reason}
     end
   end
 
-  defp persist(%{path: nil} = state), do: state
+  defp persist_delete(%{storage: :memory}, _id), do: :ok
 
-  defp persist(%{path: path, keys: keys} = state) do
-    File.mkdir_p!(Path.dirname(path))
+  defp persist_clear(%{storage: :sqlite}),
+    do: sqlite_result(Wardwright.SQLiteStore.clear_api_keys())
 
-    body =
-      Jason.encode!(%{
-        "store_version" => @store_version,
-        "keys" => keys |> Map.values() |> Enum.sort_by(& &1["created_at"])
-      })
+  defp persist_clear(%{storage: :memory}), do: :ok
 
-    File.write!("#{path}.tmp", body)
-    File.chmod!("#{path}.tmp", 0o600)
-    File.rename!("#{path}.tmp", path)
-    File.chmod!(path, 0o600)
-    state
-  end
-
-  defp store_path do
-    case Application.get_env(:wardwright, :model_api_key_store_path, :default) do
-      nil -> nil
-      :default -> System.get_env("WARDWRIGHT_MODEL_API_KEY_STORE") || default_store_path()
-      path -> path
-    end
-  end
-
-  defp default_store_path do
-    Path.join(System.user_home!(), ".wardwright/model-api-keys.json")
-  end
+  defp sqlite_result({:ok, :ok}), do: :ok
+  defp sqlite_result({:ok, result}), do: result
+  defp sqlite_result({:error, reason}), do: {:error, reason}
 end

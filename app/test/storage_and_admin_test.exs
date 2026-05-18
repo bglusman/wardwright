@@ -110,6 +110,84 @@ defmodule Wardwright.StorageAndAdminTest do
     assert body["write_health"] == "ok"
   end
 
+  test "sqlite store persists the active model definition" do
+    path = temp_sqlite_path("wardwright-model-config")
+    original_path = Application.get_env(:wardwright, :sqlite_store_path)
+
+    Application.put_env(:wardwright, :sqlite_store_path, path)
+
+    on_exit(fn ->
+      restore_app_env(:sqlite_store_path, original_path)
+      remove_sqlite_store(path)
+    end)
+
+    config =
+      unit_policy_config()
+      |> Map.put("model_id", "persisted-unit-model")
+      |> Map.put("version", "persisted-version")
+      |> Map.put("requires_api_key", true)
+      |> Map.put("auth", %{"unkeyed_model_access" => "internal"})
+
+    assert {:ok, saved_config} = Wardwright.put_config(config)
+    assert saved_config["model_id"] == "persisted-unit-model"
+    :persistent_term.erase({Wardwright, :config})
+
+    assert {:ok, loaded} = Wardwright.load_persisted_config()
+    assert loaded["model_id"] == "persisted-unit-model"
+    assert loaded["requires_api_key"] == true
+    assert loaded["auth"]["unkeyed_model_access"] == "internal"
+    assert Wardwright.current_config()["model_id"] == "persisted-unit-model"
+  end
+
+  test "sqlite store persists and deletes model API key hashes" do
+    path = temp_sqlite_path("wardwright-model-keys")
+    original_path = Application.get_env(:wardwright, :sqlite_store_path)
+
+    Application.put_env(:wardwright, :sqlite_store_path, path)
+
+    on_exit(fn ->
+      restore_app_env(:sqlite_store_path, original_path)
+      remove_sqlite_store(path)
+    end)
+
+    record = %{
+      "id" => "key_test",
+      "model_id" => "coding-balanced",
+      "label" => "integration",
+      "prefix" => "wwk_test",
+      "key_hash" => "hashed-value",
+      "created_at" => "2026-05-18T00:00:00Z"
+    }
+
+    assert {:ok, :ok} = Wardwright.SQLiteStore.insert_api_key(record)
+    assert {:ok, [^record]} = Wardwright.SQLiteStore.list_api_keys("coding-balanced")
+    assert {:ok, {:ok, 1}} = Wardwright.SQLiteStore.delete_api_key("key_test")
+    assert {:ok, []} = Wardwright.SQLiteStore.list_api_keys("coding-balanced")
+  end
+
+  test "sqlite store rejects configured encryption when SQLCipher is unavailable" do
+    path = temp_sqlite_path("wardwright-encrypted-models")
+    original_path = Application.get_env(:wardwright, :sqlite_store_path)
+    original_key = Application.get_env(:wardwright, :sqlite_key)
+
+    Application.put_env(:wardwright, :sqlite_store_path, path)
+    Application.put_env(:wardwright, :sqlite_key, "test-sqlite-key")
+
+    on_exit(fn ->
+      restore_app_env(:sqlite_store_path, original_path)
+      restore_app_env(:sqlite_key, original_key)
+      remove_sqlite_store(path)
+    end)
+
+    if sqlcipher_available?() do
+      assert {:ok, :ok} = Wardwright.SQLiteStore.save_model_config(Wardwright.default_config())
+    else
+      assert_raise RuntimeError, ~r/exqlite build does not expose SQLCipher/, fn ->
+        Wardwright.SQLiteStore.save_model_config(Wardwright.default_config())
+      end
+    end
+  end
+
   test "policy scenario store can persist reviewed scenarios to a file" do
     path = temp_json_path("wardwright-policy-scenarios")
 
@@ -495,6 +573,52 @@ defmodule Wardwright.StorageAndAdminTest do
     File.rm(path)
     File.rm("#{path}.tmp")
     path
+  end
+
+  defp temp_sqlite_path(prefix) do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "#{prefix}-#{System.unique_integer([:positive, :monotonic])}.sqlite3"
+      )
+
+    remove_sqlite_store(path)
+    path
+  end
+
+  defp remove_sqlite_store(path) do
+    File.rm(path)
+    File.rm("#{path}-wal")
+    File.rm("#{path}-shm")
+  end
+
+  defp restore_app_env(:sqlite_store_path, nil),
+    do: Application.put_env(:wardwright, :sqlite_store_path, nil)
+
+  defp restore_app_env(key, nil), do: Application.delete_env(:wardwright, key)
+  defp restore_app_env(key, value), do: Application.put_env(:wardwright, key, value)
+
+  defp sqlcipher_available? do
+    {:ok, conn} = Exqlite.Sqlite3.open(":memory:")
+
+    try do
+      case sqlite_query_one(conn, "PRAGMA cipher_version") do
+        {:row, [version]} when is_binary(version) and version != "" -> true
+        _other -> false
+      end
+    after
+      Exqlite.Sqlite3.close(conn)
+    end
+  end
+
+  defp sqlite_query_one(conn, sql) do
+    {:ok, statement} = Exqlite.Sqlite3.prepare(conn, sql)
+
+    try do
+      Exqlite.Sqlite3.step(conn, statement)
+    after
+      Exqlite.Sqlite3.release(conn, statement)
+    end
   end
 
   defp basic_auth(username, password), do: "Basic " <> Base.encode64("#{username}:#{password}")
