@@ -137,6 +137,8 @@ Use `evaluate_dune_snippet` before proposing any Dune-backed policy. It accepts
 either:
 
 - `snippet_id` plus an `input` map for a built-in registry snippet
+- `snippet_id` plus an `input` map for a local workspace snippet saved with
+  `save_dune_snippet`
 - ad hoc `source` plus an `input` map for code the agent is drafting
 - optional `session: {"model_id": "...", "session_id": "...", "key": "default",
   "ttl_ms": 300000, "reset": false}` when deliberately testing stateful Dune
@@ -156,6 +158,23 @@ policy-shaped map such as:
 Malformed return values, restricted APIs, timeout, reduction exhaustion, and
 memory exhaustion all return a fail-closed `block` result. Treat that as useful
 review evidence, not as permission to activate the snippet.
+
+After an ad hoc snippet has useful evaluation evidence and the user wants to
+keep it, call `save_dune_snippet` with an `id`, `source`, and optional title,
+phase, description, input shape, example input, and replaced primitive labels.
+Saved snippets appear in `list_dune_snippets` with `origin: "workspace"` and
+can be referenced from artifacts as:
+
+```json
+{
+  "engine": "dune",
+  "snippet_id": "workspace.high-risk-review"
+}
+```
+
+They compose through the same normalized action/result ABI as built-ins,
+including inside `engine: "hybrid"` policies. Use `delete_dune_snippet` to remove
+obsolete workspace snippets. Built-in snippet ids are read-only.
 
 Stateful Dune evaluation is opt-in and should be rare. The stored Dune session
 lives in the existing Wardwright runtime GenServer for the selected

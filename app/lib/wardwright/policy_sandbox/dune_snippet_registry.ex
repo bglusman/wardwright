@@ -13,6 +13,7 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
   @default_dune_session_key "default"
   @default_dune_ttl_ms 300_000
   @max_dune_ttl_ms 3_600_000
+  @user_id_pattern ~r/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/
 
   @snippets [
     %{
@@ -312,16 +313,62 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
   def list do
     %{
       "schema" => @schema,
-      "data" => Enum.map(@snippets, &public_snippet/1)
+      "data" => Enum.map(all_snippets(), &public_snippet/1)
     }
   end
 
   def get(id) when is_binary(id) do
-    case Enum.find(@snippets, &(&1["id"] == id)) do
+    case Enum.find(all_snippets(), &(&1["id"] == id)) do
       nil -> {:error, "Dune snippet not found: #{id}"}
       snippet -> {:ok, snippet}
     end
   end
+
+  def save(params) when is_map(params) do
+    with {:ok, snippet} <- user_snippet(params),
+         :ok <- ensure_no_builtin_collision(snippet["id"]),
+         :ok <- File.mkdir_p(workspace_dir()),
+         :ok <- write_user_snippet(snippet) do
+      {:ok,
+       %{
+         "schema" => "wardwright.dune_snippet_write.v1",
+         "snippet" => public_snippet(snippet),
+         "storage" => %{
+           "kind" => "workspace",
+           "endpoint" => workspace_dir()
+         }
+       }}
+    end
+  end
+
+  def save(_params), do: {:error, "Dune snippet body must be an object."}
+
+  def delete(id) when is_binary(id) do
+    id = String.trim(id)
+
+    with :ok <- valid_user_id(id),
+         :ok <- ensure_no_builtin_collision(id) do
+      path = user_snippet_path(id)
+
+      case File.rm(path) do
+        :ok ->
+          {:ok,
+           %{
+             "schema" => "wardwright.dune_snippet_delete.v1",
+             "id" => id,
+             "deleted" => true
+           }}
+
+        {:error, :enoent} ->
+          {:error, "Dune snippet not found: #{id}"}
+
+        {:error, reason} ->
+          {:error, "Could not delete Dune snippet #{id}: #{format_file_error(reason)}"}
+      end
+    end
+  end
+
+  def delete(_id), do: {:error, "Dune snippet id must be a string."}
 
   def source!(id) when is_binary(id) do
     case get(id) do
@@ -350,6 +397,116 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
   end
 
   def evaluate(_params), do: {:error, "Dune snippet evaluation body must be an object."}
+
+  defp all_snippets do
+    built_in_snippets() ++ user_snippets()
+  end
+
+  defp built_in_snippets do
+    Enum.map(@snippets, &Map.put(&1, "origin", "built_in"))
+  end
+
+  defp user_snippets do
+    workspace_dir()
+    |> File.ls()
+    |> case do
+      {:ok, entries} ->
+        entries
+        |> Enum.filter(&String.ends_with?(&1, ".json"))
+        |> Enum.flat_map(fn entry ->
+          workspace_dir()
+          |> Path.join(entry)
+          |> read_user_snippet()
+        end)
+        |> Enum.reject(fn snippet -> builtin_id?(snippet["id"]) end)
+
+      {:error, :enoent} ->
+        []
+
+      {:error, _reason} ->
+        []
+    end
+  end
+
+  defp user_snippet(params) do
+    id = params |> Map.get("id", Map.get(params, "snippet_id")) |> string_value()
+    source = params |> Map.get("source") |> string_value()
+
+    with :ok <- valid_user_id(id),
+         :ok <- require_source(source) do
+      {:ok,
+       %{
+         "id" => id,
+         "title" => optional_string(params, "title", id),
+         "phase" => optional_string(params, "phase", "unknown"),
+         "description" => optional_string(params, "description", "User supplied snippet."),
+         "replaces_primitives" => list_value(Map.get(params, "replaces_primitives")),
+         "input_shape" => map_value(Map.get(params, "input_shape")),
+         "example_input" => map_value(Map.get(params, "example_input", Map.get(params, "input"))),
+         "source" => source,
+         "origin" => "workspace"
+       }}
+    end
+  end
+
+  defp valid_user_id(id) when is_binary(id) do
+    if Regex.match?(@user_id_pattern, id) do
+      :ok
+    else
+      {:error,
+       "Dune snippet id must start with a letter or number and contain only letters, numbers, dots, underscores, colons, or hyphens."}
+    end
+  end
+
+  defp valid_user_id(_id), do: {:error, "Dune snippet id must be a non-empty string."}
+
+  defp require_source(source) when is_binary(source) and source != "", do: :ok
+  defp require_source(_source), do: {:error, "Dune snippet source must be a non-empty string."}
+
+  defp ensure_no_builtin_collision(id) do
+    if builtin_id?(id) do
+      {:error, "Built-in Dune snippet ids are read-only: #{id}"}
+    else
+      :ok
+    end
+  end
+
+  defp builtin_id?(id), do: Enum.any?(@snippets, &(&1["id"] == id))
+
+  defp write_user_snippet(snippet) do
+    path = user_snippet_path(snippet["id"])
+    tmp_path = "#{path}.tmp"
+    body = Jason.encode!(snippet, pretty: true)
+
+    with :ok <- File.write(tmp_path, body),
+         :ok <- File.rename(tmp_path, path) do
+      :ok
+    else
+      {:error, reason} -> {:error, "Could not write Dune snippet: #{format_file_error(reason)}"}
+    end
+  end
+
+  defp read_user_snippet(path) do
+    with {:ok, body} <- File.read(path),
+         {:ok, decoded} <- Jason.decode(body),
+         {:ok, snippet} <- user_snippet(decoded) do
+      [Map.put(snippet, "origin", "workspace")]
+    else
+      _error -> []
+    end
+  end
+
+  defp user_snippet_path(id) do
+    Path.join(workspace_dir(), "#{Base.url_encode64(id, padding: false)}.json")
+  end
+
+  defp workspace_dir do
+    Application.get_env(:wardwright, :dune_snippet_workspace_dir, default_workspace_dir())
+  end
+
+  defp default_workspace_dir do
+    Path.join(System.user_home!(), ".wardwright/dune-snippets")
+  end
 
   defp evaluate_snippet(snippet, input, params, opts) do
     source = Map.fetch!(snippet, "source")
@@ -471,6 +628,23 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
   defp string_value(value) when is_binary(value), do: String.trim(value)
   defp string_value(_value), do: nil
 
+  defp optional_string(params, key, default) do
+    params
+    |> Map.get(key, default)
+    |> string_value()
+    |> case do
+      nil -> default
+      "" -> default
+      value -> value
+    end
+  end
+
+  defp list_value(value) when is_list(value), do: value
+  defp list_value(_value), do: []
+
+  defp map_value(value) when is_map(value), do: value
+  defp map_value(_value), do: %{}
+
   defp session_ttl_ms(session) do
     if Map.has_key?(session, "ttl_ms") or Map.has_key?(session, :ttl_ms) do
       session
@@ -515,9 +689,12 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
       "replaces_primitives",
       "input_shape",
       "example_input",
-      "source"
+      "source",
+      "origin"
     ])
   end
+
+  defp format_file_error(reason), do: reason |> :file.format_error() |> List.to_string()
 
   defp review_notes(_snippet, %{"policy_status" => "ok"}) do
     [

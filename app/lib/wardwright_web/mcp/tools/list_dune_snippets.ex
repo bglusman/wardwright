@@ -1,6 +1,6 @@
 defmodule WardwrightWeb.MCP.Tools.ListDuneSnippets do
   @moduledoc """
-  List built-in Dune snippet candidates for policy authoring.
+  List built-in and local workspace Dune snippet candidates for policy authoring.
   """
 
   use Hermes.Server.Component, type: :tool, annotations: %{read_only: true}

@@ -51,6 +51,8 @@ defmodule Wardwright.CLITest do
     assert output =~ "POST /v1/policy-authoring/synthetic-models/draft"
     assert output =~ "list_dune_snippets"
     assert output =~ "evaluate_dune_snippet"
+    assert output =~ "save_dune_snippet"
+    assert output =~ "delete_dune_snippet"
     assert output =~ "activate_synthetic_model"
     assert output =~ "propose_rule_change"
     refute output =~ "not implemented"
@@ -74,6 +76,8 @@ defmodule Wardwright.CLITest do
     assert "simulate_policy" in names
     assert "list_dune_snippets" in names
     assert "evaluate_dune_snippet" in names
+    assert "save_dune_snippet" in names
+    assert "delete_dune_snippet" in names
     assert "draft_synthetic_model" in names
     assert "activate_synthetic_model" in names
     assert "record_scenario" in names

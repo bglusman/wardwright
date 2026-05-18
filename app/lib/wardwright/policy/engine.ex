@@ -1,6 +1,14 @@
 defmodule Wardwright.Policy.Engine do
   @moduledoc false
 
+  @action_key "action"
+  @dune_engine "dune"
+  @engine_key "engine"
+  @error_status "error"
+  @reason_key "reason"
+  @snippet_id_key "snippet_id"
+  @status_key "status"
+
   def evaluate(%{"engine" => "primitive", "rules" => rules}, context) when is_list(rules) do
     "primitive.request-contains-actions"
     |> Wardwright.PolicySandbox.DuneSnippetRegistry.source!()
@@ -19,6 +27,11 @@ defmodule Wardwright.Policy.Engine do
     |> Wardwright.PolicySandbox.Dune.eval_snippet(context)
     |> normalize_dune_result()
     |> Wardwright.Policy.Action.normalize_result(rule: policy)
+  end
+
+  def evaluate(%{@engine_key => @dune_engine, @snippet_id_key => snippet_id} = policy, context)
+      when is_binary(snippet_id) do
+    evaluate_dune_snippet_id(policy, context, snippet_id)
   end
 
   def evaluate(%{"engine" => "wasm"} = policy, _context) do
@@ -48,6 +61,26 @@ defmodule Wardwright.Policy.Engine do
   end
 
   def evaluate(_policy, _context) do
+    unsupported_result()
+  end
+
+  defp evaluate_dune_snippet_id(policy, context, snippet_id) do
+    case Wardwright.PolicySandbox.DuneSnippetRegistry.get(snippet_id) do
+      {:ok, snippet} ->
+        snippet
+        |> Map.fetch!("source")
+        |> expand_legacy_context_placeholder(context)
+        |> Wardwright.PolicySandbox.Dune.eval_snippet(context)
+        |> normalize_dune_result()
+        |> Wardwright.Policy.Action.normalize_result(rule: policy)
+
+      {:error, message} ->
+        dune_error_result(message)
+        |> Wardwright.Policy.Action.normalize_result(rule: policy)
+    end
+  end
+
+  defp unsupported_result do
     %{
       "engine" => "unknown",
       "status" => "error",
@@ -55,6 +88,15 @@ defmodule Wardwright.Policy.Engine do
       "reason" => "unsupported policy engine"
     }
     |> Wardwright.Policy.Action.normalize_result()
+  end
+
+  defp dune_error_result(message) do
+    %{
+      @engine_key => @dune_engine,
+      @status_key => @error_status,
+      @action_key => "block",
+      @reason_key => message
+    }
   end
 
   defp result_actions(%{"actions" => actions}) when is_list(actions), do: actions

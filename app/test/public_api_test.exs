@@ -115,6 +115,8 @@ defmodule Wardwright.PublicApiTest do
     assert "simulate_policy" in tool_names
     assert "list_dune_snippets" in tool_names
     assert "evaluate_dune_snippet" in tool_names
+    assert "save_dune_snippet" in tool_names
+    assert "delete_dune_snippet" in tool_names
     assert "draft_synthetic_model" in tool_names
     assert "activate_synthetic_model" in tool_names
     assert "record_scenario" in tool_names
@@ -141,6 +143,19 @@ defmodule Wardwright.PublicApiTest do
   end
 
   test "protected policy authoring API lists and evaluates Dune snippets" do
+    original_workspace = Application.get_env(:wardwright, :dune_snippet_workspace_dir)
+    workspace_dir = temp_workspace_dir("wardwright-api-dune-snippets")
+    Application.put_env(:wardwright, :dune_snippet_workspace_dir, workspace_dir)
+
+    on_exit(fn ->
+      File.rm_rf!(workspace_dir)
+
+      case original_workspace do
+        nil -> Application.delete_env(:wardwright, :dune_snippet_workspace_dir)
+        value -> Application.put_env(:wardwright, :dune_snippet_workspace_dir, value)
+      end
+    end)
+
     rejected = call(:get, "/v1/policy-authoring/dune-snippets", nil, [], {203, 0, 113, 10})
     assert rejected.status == 403
 
@@ -214,6 +229,46 @@ defmodule Wardwright.PublicApiTest do
     second_session_body = Jason.decode!(second_session_eval.resp_body)
     assert second_session_body["session"]["status"] == "reused"
     assert get_in(second_session_body, ["result", "policy_result", "count"]) == 2
+
+    saved =
+      call(:post, "/v1/policy-authoring/dune-snippets", %{
+        "id" => "workspace.block-risk",
+        "title" => "Workspace risk blocker",
+        "phase" => "request.review",
+        "description" => "Block requests marked as high risk.",
+        "source" => """
+        if input["risk"] == "high" do
+          %{"action" => "block", "reason" => "high risk"}
+        else
+          %{"action" => "allow", "reason" => "low risk"}
+        end
+        """,
+        "example_input" => %{"risk" => "high"}
+      })
+
+    assert saved.status == 201
+    assert get_in(Jason.decode!(saved.resp_body), ["snippet", "origin"]) == "workspace"
+
+    relisted = call(:get, "/v1/policy-authoring/dune-snippets")
+
+    assert Enum.any?(Jason.decode!(relisted.resp_body)["data"], fn snippet ->
+             snippet["id"] == "workspace.block-risk" and snippet["origin"] == "workspace"
+           end)
+
+    saved_eval =
+      call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{
+        "snippet_id" => "workspace.block-risk",
+        "input" => %{"risk" => "high"}
+      })
+
+    assert saved_eval.status == 200
+
+    assert get_in(Jason.decode!(saved_eval.resp_body), ["result", "policy_result", "action"]) ==
+             "block"
+
+    delete_saved = call(:delete, "/v1/policy-authoring/dune-snippets/workspace.block-risk")
+    assert delete_saved.status == 200
+    assert Jason.decode!(delete_saved.resp_body)["deleted"] == true
 
     missing = call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{})
     assert missing.status == 400
@@ -733,5 +788,9 @@ defmodule Wardwright.PublicApiTest do
     ]
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
+  end
+
+  defp temp_workspace_dir(prefix) do
+    Path.join(System.tmp_dir!(), "#{prefix}-#{System.unique_integer([:positive])}")
   end
 end

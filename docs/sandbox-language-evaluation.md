@@ -55,15 +55,20 @@ The registry is exposed through protected HTTP and MCP-shaped tools:
 
 - `GET /v1/policy-authoring/dune-snippets`
 - `POST /v1/policy-authoring/dune-snippets/evaluate`
+- `POST /v1/policy-authoring/dune-snippets`
+- `DELETE /v1/policy-authoring/dune-snippets/{snippet_id}`
 - `list_dune_snippets`
 - `evaluate_dune_snippet`
+- `save_dune_snippet`
+- `delete_dune_snippet`
 
 The evaluator binds a JSON-like `input` map before executing source, normalizes
 successful map returns to `wardwright.policy_result.v1`, and turns sandbox
 failures or malformed returns into explicit fail-closed policy results. This is
 the first concrete version of the "snippet emulator" idea: an agent can draft
-or fork a snippet, run it against representative inputs, and show the exact
-policy action and trace before suggesting artifact changes.
+or fork a snippet, run it against representative inputs, save it into the local
+workspace registry after review, and show the exact policy action and trace
+before suggesting artifact changes.
 
 A follow-up spike adds opt-in Dune session evaluation for authoring tools. A
 caller may pass `session: {"model_id": "...", "session_id": "...", "key":
@@ -97,6 +102,8 @@ Executable tests currently verify:
 - low wall-clock budgets stop slow allowed work by timeout or reductions
 - registry snippets are inspectable and evaluate against example inputs
 - ad hoc snippets can be tested, while malformed outputs fail closed
+- local workspace snippets can be saved, listed, evaluated by id, deleted, and
+  referenced from `engine: "dune"` policy artifacts by `snippet_id`
 - opt-in session-backed evaluation can preserve deliberate policy-local
   bindings across invocations and can be reset
 - the legacy primitive contains engine is backed by a named Dune snippet and
