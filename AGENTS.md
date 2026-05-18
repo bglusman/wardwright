@@ -76,3 +76,8 @@ In short:
 - Do not push directly to `main` except for initial bootstrap/admin work before
   protections exist.
 - Run `bash scripts/install-git-hooks.sh` in new clones.
+- Before merging any PR, inspect every PR review comment and review thread,
+  including automated reviewer comments. Address correct feedback in code or
+  docs, and explicitly decide/document when a comment is not being changed
+  because it is incorrect or out of scope. Do not merge while substantive
+  review threads are unconsidered.
