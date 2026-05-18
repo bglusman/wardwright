@@ -446,8 +446,8 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Model Authoring Assistant"
     assert html =~ "setup needed"
     assert html =~ "qwen3.6-plus"
-    assert html =~ "Write access"
-    assert html =~ "suggestions only"
+    assert html =~ "Tool access"
+    assert html =~ "draft tools enabled"
     assert html =~ "Ask agent"
     assert html =~ "Policy Simulator"
     assert html =~ "Policy run map"
@@ -492,7 +492,6 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert response =~ "You"
     assert response =~ "Wardwright assistant"
     assert response =~ "Help me tighten this retry model."
-    assert response =~ "Working on a tool plan"
     assert response =~ "Working..."
 
     completed =

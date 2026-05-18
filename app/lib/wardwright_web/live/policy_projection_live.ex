@@ -3,6 +3,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   use Phoenix.LiveView
   alias Phoenix.LiveView.JS
+  require Logger
 
   @modes ["diagram", "phase_map", "state_machine", "effect_matrix", "trace_overlay"]
 
@@ -46,6 +47,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     selected_recipe_id = selected_recipe["id"] || ""
     projection = Wardwright.PolicyProjection.projection(pattern_id)
     simulations = Wardwright.PolicyProjection.simulations(pattern_id)
+    authoring_context = authoring_agent_context(projection, pattern_id, selected_recipe_id)
 
     simulation_inputs =
       Wardwright.PolicyProjection.simulation_inputs(pattern_id, selected_recipe_id)
@@ -104,7 +106,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     |> assign_new(:policy_cache_status, fn -> Wardwright.PolicyCache.status() end)
     |> assign_new(:policy_cache_events, fn -> Wardwright.PolicyCache.recent(%{}, 8) end)
     |> assign_new(:authoring_agent_messages, fn -> [] end)
-    |> assign_new(:authoring_agent_status, fn -> WardwrightWeb.AuthoringAgent.status() end)
+    |> assign(:authoring_agent_status, WardwrightWeb.AuthoringAgent.status(authoring_context))
     |> assign_new(:authoring_agent_input, fn -> "" end)
     |> assign_new(:authoring_agent_tasks, fn -> %{} end)
     |> assign_new(:authoring_agent_pending, fn -> false end)
@@ -151,6 +153,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       when is_reference(ref) do
     Process.demonitor(ref, [:flush])
 
+    Logger.info(
+      "authoring agent response received request_id=#{request_id} status=#{response.status}"
+    )
+
     {:noreply,
      socket
      |> remove_authoring_agent_task(ref)
@@ -165,7 +171,13 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   @impl true
   def handle_info({:DOWN, ref, :process, _pid, reason}, socket) when is_reference(ref) do
     case Map.fetch(socket.assigns.authoring_agent_tasks, ref) do
-      {:ok, request_id} ->
+      {:ok, task_info} ->
+        request_id = authoring_agent_task_request_id(task_info)
+
+        Logger.warning(
+          "authoring agent task stopped request_id=#{request_id} reason=#{inspect(reason)}"
+        )
+
         {:noreply,
          socket
          |> remove_authoring_agent_task(ref)
@@ -175,6 +187,41 @@ defmodule WardwrightWeb.PolicyProjectionLive do
            "content" => "The authoring agent stopped before returning an answer.",
            "status" => "error",
            "error" => inspect(reason)
+         })}
+
+      :error ->
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:authoring_agent_timeout, ref}, socket) when is_reference(ref) do
+    case Map.fetch(socket.assigns.authoring_agent_tasks, ref) do
+      {:ok, task_info} ->
+        request_id = authoring_agent_task_request_id(task_info)
+
+        timeout_ms =
+          Map.get(task_info, :timeout_ms, WardwrightWeb.AuthoringAgent.status().timeout_ms)
+
+        if pid = Map.get(task_info, :pid) do
+          Process.exit(pid, :kill)
+        end
+
+        Process.demonitor(ref, [:flush])
+
+        Logger.warning(
+          "authoring agent task timed out request_id=#{request_id} timeout_ms=#{timeout_ms}"
+        )
+
+        {:noreply,
+         socket
+         |> remove_authoring_agent_task(ref)
+         |> replace_authoring_agent_message(request_id, %{
+           "id" => request_id,
+           "role" => "assistant",
+           "content" =>
+             "The authoring agent timed out after #{div(timeout_ms, 1000)} seconds before the provider returned an answer.",
+           "status" => "error"
          })}
 
       :error ->
@@ -266,13 +313,19 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     if message == "" do
       {:noreply, socket}
     else
-      context = %{
-        model_id: Wardwright.ModelGraph.model_id(socket.assigns.projection["artifact"], ""),
-        pattern_id: socket.assigns.selected_pattern_id,
-        recipe_id: socket.assigns.selected_recipe_id
-      }
+      context =
+        authoring_agent_context(
+          socket.assigns.projection,
+          socket.assigns.selected_pattern_id,
+          socket.assigns.selected_recipe_id
+        )
 
       request_id = authoring_agent_request_id()
+      agent_status = WardwrightWeb.AuthoringAgent.status(context)
+
+      Logger.info(
+        "authoring agent request queued request_id=#{request_id} model=#{agent_status.model} timeout_ms=#{agent_status.timeout_ms}"
+      )
 
       messages =
         socket.assigns.authoring_agent_messages ++
@@ -281,7 +334,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             %{
               "id" => request_id,
               "role" => "assistant",
-              "content" => "Working on a tool plan...",
+              "content" => "Working...",
               "status" => "pending"
             }
           ]
@@ -292,14 +345,26 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           {:authoring_agent_response, request_id, response}
         end)
 
+      timeout_ref =
+        Process.send_after(
+          self(),
+          {:authoring_agent_timeout, task.ref},
+          agent_status.timeout_ms + 1_000
+        )
+
       {:noreply,
        socket
        |> assign(:authoring_agent_messages, Enum.take(messages, -8))
-       |> assign(:authoring_agent_status, WardwrightWeb.AuthoringAgent.status())
+       |> assign(:authoring_agent_status, agent_status)
        |> assign(:authoring_agent_input, "")
        |> assign(
          :authoring_agent_tasks,
-         Map.put(socket.assigns.authoring_agent_tasks, task.ref, request_id)
+         Map.put(socket.assigns.authoring_agent_tasks, task.ref, %{
+           request_id: request_id,
+           pid: task.pid,
+           timeout_ref: timeout_ref,
+           timeout_ms: agent_status.timeout_ms
+         })
        )
        |> assign(:authoring_agent_pending, true)}
     end
@@ -367,13 +432,32 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     "authoring_agent_#{System.unique_integer([:positive, :monotonic])}"
   end
 
+  defp authoring_agent_context(projection, pattern_id, recipe_id) do
+    %{
+      model_id: Wardwright.ModelGraph.model_id(projection["artifact"], ""),
+      pattern_id: pattern_id,
+      recipe_id: recipe_id
+    }
+  end
+
   defp remove_authoring_agent_task(socket, ref) do
+    case Map.get(socket.assigns.authoring_agent_tasks, ref) do
+      %{timeout_ref: timeout_ref} when is_reference(timeout_ref) ->
+        Process.cancel_timer(timeout_ref)
+
+      _ ->
+        :ok
+    end
+
     tasks = Map.delete(socket.assigns.authoring_agent_tasks, ref)
 
     socket
     |> assign(:authoring_agent_tasks, tasks)
     |> assign(:authoring_agent_pending, map_size(tasks) > 0)
   end
+
+  defp authoring_agent_task_request_id(%{request_id: request_id}), do: request_id
+  defp authoring_agent_task_request_id(request_id) when is_binary(request_id), do: request_id
 
   defp replace_authoring_agent_message(socket, request_id, replacement) do
     {messages, replaced?} =
@@ -397,6 +481,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   defp authoring_agent_status_label("not_configured"), do: "setup needed"
   defp authoring_agent_status_label("error"), do: "error"
   defp authoring_agent_status_label(status), do: status
+
+  defp authoring_agent_tool_access_label("read_and_draft_tools"), do: "draft tools enabled"
+  defp authoring_agent_tool_access_label("suggestions_only"), do: "suggestions only"
+  defp authoring_agent_tool_access_label(_access), do: "approval required"
 
   @impl true
   def render(assigns) do
@@ -624,9 +712,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
         <div class="authoring_agent_meta">
           <span><strong>Model</strong> <%= @authoring_agent_status.model %></span>
+          <span><strong>Route</strong> <%= @authoring_agent_status.route %></span>
           <span>
-            <strong>Write access</strong>
-            <%= if @authoring_agent_status.can_execute_tools, do: "can apply changes", else: "suggestions only" %>
+            <strong>Tool access</strong>
+            <%= authoring_agent_tool_access_label(@authoring_agent_status.tool_access) %>
           </span>
           <span><strong>Tools</strong> <%= length(WardwrightWeb.PolicyAuthoringTools.list()) %></span>
         </div>

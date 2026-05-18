@@ -41,10 +41,11 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert prompt =~ "selected_policy_pattern: route-privacy"
     assert prompt =~ "selected_recipe_id: private-helpdesk-local-gate"
     assert prompt =~ "Ask for human confirmation before any write-capable action."
-    assert prompt =~ "This spike cannot execute tools directly yet"
+    assert prompt =~ "You may call read-only and draft-only authoring tools"
     assert prompt =~ "draft_wardwright_model"
     assert prompt =~ "activate_wardwright_model"
     assert prompt =~ "simulate_policy"
+    assert prompt =~ "\"tool_calls\""
     assert prompt =~ "User request:\nMake the private route gate easier to review."
   end
 
@@ -58,13 +59,15 @@ defmodule WardwrightWeb.AuthoringAgentTest do
 
     assert response.status == "not_configured"
     assert response.backend.configured == false
-    assert response.backend.can_execute_tools == false
-    assert response.backend.tool_access == "suggestions_only"
-    assert response.backend.max_tokens == 4096
+    assert response.backend.can_execute_tools == true
+    assert response.backend.tool_access == "read_and_draft_tools"
+    assert response.backend.route == "direct"
+    assert response.backend.max_tokens == 16_384
     assert response.backend.timeout_ms == 120_000
     assert response.content =~ "Wardwright's authoring assistant is installed but not configured"
+    assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_ROUTE=wardwright"
     assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE"
-    assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=4096"
+    assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=16384"
     assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000"
     assert response.prompt_preview =~ "Draft a safer tool policy."
     assert response.prompt_preview =~ "propose_rule_change"
@@ -80,8 +83,55 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
     assert WardwrightWeb.AuthoringAgent.configured?()
     assert WardwrightWeb.AuthoringAgent.status().configured
-    assert WardwrightWeb.AuthoringAgent.status().max_tokens == 4096
+    assert WardwrightWeb.AuthoringAgent.status().max_tokens == 16_384
     assert WardwrightWeb.AuthoringAgent.status().timeout_ms == 120_000
+  end
+
+  test "local Wardwright route is configured without a provider API key" do
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", "wardwright")
+    System.put_env("WARDWRIGHT_BIND", "0.0.0.0:8797")
+
+    assert WardwrightWeb.AuthoringAgent.configured?()
+
+    status = WardwrightWeb.AuthoringAgent.status()
+    assert status.route == "wardwright"
+    assert status.base_url == "http://127.0.0.1:8797/v1"
+    assert status.model == Wardwright.model_id()
+
+    selected_status = WardwrightWeb.AuthoringAgent.status(%{model_id: "wardwright/cow-guard"})
+    assert selected_status.model == "wardwright/cow-guard"
+  end
+
+  test "local Wardwright route accepts a full v1 bind URL" do
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", "dogfood")
+    System.put_env("WARDWRIGHT_BIND", "http://127.0.0.1:8797/v1")
+
+    assert WardwrightWeb.AuthoringAgent.status().base_url == "http://127.0.0.1:8797/v1"
+  end
+
+  test "local Wardwright route sends the selected model through the provider request" do
+    Application.put_env(
+      :wardwright,
+      :authoring_agent_client,
+      __MODULE__.CapturingAuthoringClient
+    )
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", "wardwright")
+    System.put_env("WARDWRIGHT_BIND", "127.0.0.1:8797")
+
+    {:ok, response} =
+      WardwrightWeb.AuthoringAgent.respond("Review the current model.", %{
+        model_id: "wardwright/cow-guard"
+      })
+
+    assert response.status == "completed"
+    assert response.backend.model == "wardwright/cow-guard"
+    assert response.content =~ "model=wardwright/cow-guard"
+    assert response.content =~ "base_url=http://127.0.0.1:8797/v1"
+    assert response.content =~ "api_key=wardwright-local"
   end
 
   test "configured response explains token-limited reasoning-only provider responses" do
@@ -104,6 +154,69 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert response.content =~ "no extra Wardwright request-body flag"
   end
 
+  test "configured response exposes sanitized provider errors in the visible answer" do
+    Application.put_env(
+      :wardwright,
+      :authoring_agent_client,
+      __MODULE__.FailingAuthoringClient
+    )
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
+
+    {:ok, response} = WardwrightWeb.AuthoringAgent.respond("Make a cow model.")
+
+    assert response.status == "error"
+    assert response.content =~ "Provider error:"
+    assert response.content =~ "upstream_timeout"
+    refute response.content =~ "secret-token"
+  end
+
+  test "configured response executes read and draft tool calls returned by the model" do
+    Application.put_env(
+      :wardwright,
+      :authoring_agent_client,
+      __MODULE__.DraftingAuthoringClient
+    )
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
+
+    {:ok, response} = WardwrightWeb.AuthoringAgent.respond("Make a cow model.")
+
+    assert response.status == "completed"
+    assert response.content =~ "Drafted a cow-focused model."
+    assert response.content =~ "Executed authoring tools:"
+    assert response.content =~ "draft_wardwright_model: executed"
+
+    assert [%{"name" => "draft_wardwright_model", "status" => "executed", "result" => result}] =
+             response.tool_results
+
+    assert get_in(result, ["artifact", "model_id"]) == "cow-guard"
+    assert get_in(result, ["validation", "errors"]) == []
+  end
+
+  test "configured response refuses approval-gated tool calls" do
+    Application.put_env(
+      :wardwright,
+      :authoring_agent_client,
+      __MODULE__.ActivatingAuthoringClient
+    )
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
+
+    {:ok, response} = WardwrightWeb.AuthoringAgent.respond("Activate this immediately.")
+
+    assert response.status == "completed"
+    assert response.content =~ "activate_wardwright_model: skipped"
+
+    assert [%{"name" => "activate_wardwright_model", "status" => "skipped", "result" => result}] =
+             response.tool_results
+
+    assert result["reason"] =~ "explicit user approval"
+  end
+
   defmodule LengthLimitedAuthoringClient do
     def generate_text(_prompt, _opts) do
       {:ok,
@@ -118,11 +231,75 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     end
   end
 
+  defmodule DraftingAuthoringClient do
+    def generate_text(_prompt, _opts) do
+      {:ok,
+       Jason.encode!(%{
+         "answer" => "Drafted a cow-focused model.",
+         "tool_calls" => [
+           %{
+             "name" => "draft_wardwright_model",
+             "arguments" => %{
+               "model_id" => "cow-guard",
+               "targets" => [%{"model" => "local-ollama", "context_window" => 8192}],
+               "route" => %{
+                 "type" => "dispatcher",
+                 "id" => "dispatcher.cow",
+                 "models" => ["local-ollama"]
+               },
+               "stream_rules" => [
+                 %{
+                   "id" => "cow-art",
+                   "phase" => "response.streaming",
+                   "pattern" => "\\bmoo+\\b",
+                   "action" => "rewrite_chunk",
+                   "replacement" => "moo\n(^__^)\n(oo)\\\\_______"
+                 }
+               ]
+             }
+           }
+         ],
+         "approval_needed" => ["activate_wardwright_model after review"]
+       })}
+    end
+  end
+
+  defmodule FailingAuthoringClient do
+    def generate_text(_prompt, _opts) do
+      {:error, {:upstream_timeout, "Bearer secret-token"}}
+    end
+  end
+
+  defmodule ActivatingAuthoringClient do
+    def generate_text(_prompt, _opts) do
+      {:ok,
+       Jason.encode!(%{
+         "answer" => "I prepared an activation.",
+         "tool_calls" => [
+           %{"name" => "activate_wardwright_model", "arguments" => %{"artifact" => %{}}}
+         ]
+       })}
+    end
+  end
+
+  defmodule CapturingAuthoringClient do
+    def generate_text(_prompt, opts) do
+      {:ok,
+       Jason.encode!(%{
+         "answer" =>
+           "model=#{opts[:model].id} base_url=#{opts[:model].base_url} api_key=#{opts[:api_key]}",
+         "tool_calls" => []
+       })}
+    end
+  end
+
   defp env_keys do
     [
       "WARDWRIGHT_AUTHORING_AGENT_ENABLED",
       "WARDWRIGHT_AUTHORING_AGENT_BASE_URL",
       "WARDWRIGHT_AUTHORING_AGENT_MODEL",
+      "WARDWRIGHT_AUTHORING_AGENT_ROUTE",
+      "WARDWRIGHT_BIND",
       "WARDWRIGHT_AUTHORING_AGENT_API_KEY",
       "WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE",
       "WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS",

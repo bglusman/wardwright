@@ -7,29 +7,34 @@ defmodule WardwrightWeb.AuthoringAgent do
   live model credentials in CI.
   """
 
+  alias Wardwright.PolicySandbox.DuneSnippetRegistry
+  alias WardwrightWeb.PolicyAuthoringDrafts
+  alias WardwrightWeb.PolicyArtifactValidator
   alias WardwrightWeb.PolicyAuthoringTools
+  require Logger
 
   @default_base_url "https://opencode.ai/zen/go/v1"
   @default_model "qwen3.6-plus"
-  @default_max_tokens 4096
+  @default_max_tokens 16_384
   @default_timeout_ms 120_000
 
   def configured? do
-    enabled?() and api_key() not in [nil, ""]
+    enabled?() and (local_wardwright_route?() or api_key() not in [nil, ""])
   end
 
-  def status do
+  def status(context \\ %{}) do
     %{
       configured: configured?(),
       backend: "jido_ai",
+      route: authoring_route(),
       base_url: base_url(),
-      model: model(),
+      model: model(context),
       max_tokens: max_tokens(),
       timeout_ms: timeout_ms(),
-      can_execute_tools: false,
-      tool_access: "suggestions_only",
+      can_execute_tools: true,
+      tool_access: "read_and_draft_tools",
       instructions:
-        "Set WARDWRIGHT_AUTHORING_AGENT_ENABLED=1 and WARDWRIGHT_AUTHORING_AGENT_API_KEY or WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE to run live. Reasoning-heavy coding models may also need WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS and WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS."
+        "Set WARDWRIGHT_AUTHORING_AGENT_ENABLED=1 and WARDWRIGHT_AUTHORING_AGENT_ROUTE=wardwright to dogfood the local Wardwright /v1 endpoint, or set WARDWRIGHT_AUTHORING_AGENT_API_KEY / WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE for a direct provider endpoint. Reasoning-heavy coding models may also need WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS and WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS."
     }
   end
 
@@ -37,14 +42,14 @@ defmodule WardwrightWeb.AuthoringAgent do
     prompt = prompt(message, context)
 
     if configured?() do
-      run_jido(prompt)
+      run_jido(prompt, context)
     else
       {:ok,
        %{
          status: "not_configured",
          content: not_configured_message(prompt),
          prompt_preview: prompt,
-         backend: status()
+         backend: status(context)
        }}
     end
   end
@@ -64,8 +69,12 @@ defmodule WardwrightWeb.AuthoringAgent do
     - Always explain what evidence would convince you and which tool should gather it.
     - Treat deterministic artifacts as source of truth, projections as explanation, and simulations as evidence.
     - Ask for human confirmation before any write-capable action.
-    - This spike cannot execute tools directly yet; when a tool is needed,
-      name the exact tool and the minimal inputs a human or MCP client should run.
+    - You may call read-only and draft-only authoring tools by returning a
+      machine-readable tool_calls array. Wardwright will execute those calls and
+      return the results for review.
+    - Never request silent activation, deletion, scenario persistence, or any
+      other durable write. For those, explain the approval needed and name the
+      exact tool a human should run after review.
 
     Current workbench context:
     - active_model_id: #{selected_model}
@@ -78,20 +87,34 @@ defmodule WardwrightWeb.AuthoringAgent do
     User request:
     #{message}
 
-    Respond with:
-    1. A concise answer.
-    2. A proposed next tool plan using the exact tool names above.
-    3. Any risks, missing information, or human approvals needed.
+    Prefer this JSON shape when a tool call would make your answer concrete:
+    {
+      "answer": "concise explanation for the operator",
+      "tool_calls": [
+        {"name": "draft_wardwright_model", "arguments": {"model_id": "example", "...": "..."}}
+      ],
+      "approval_needed": ["activate_wardwright_model after review"]
+    }
+
+    If no tool is needed, answer normally.
     """
   end
 
-  defp run_jido(prompt) do
-    model_spec = %{provider: :openai, id: model(), base_url: base_url()}
+  defp run_jido(prompt, context) do
+    model_id = model(context)
+    provider_base_url = base_url()
+    model_spec = %{provider: :openai, id: model_id, base_url: provider_base_url}
+    started_at = System.monotonic_time(:millisecond)
+    backend_status = status(context)
+
+    Logger.info(
+      "authoring agent provider request started model=#{model_id} base_url=#{provider_base_url} max_tokens=#{max_tokens()} timeout_ms=#{timeout_ms()}"
+    )
 
     result =
       jido_client().generate_text(prompt,
         model: model_spec,
-        api_key: api_key(),
+        api_key: api_key_for_request(),
         max_tokens: max_tokens(),
         temperature: 0.2,
         timeout: timeout_ms()
@@ -99,31 +122,66 @@ defmodule WardwrightWeb.AuthoringAgent do
 
     case result do
       {:ok, response} ->
+        Logger.info(
+          "authoring agent provider request completed elapsed_ms=#{elapsed_ms(started_at)} finish_reason=#{inspect(response_finish_reason(response))}"
+        )
+
         response
         |> response_text()
-        |> answer(
+        |> answer_with_tool_execution(
+          backend: backend_status,
           finish_reason: response_finish_reason(response),
           provider_usage: response_usage(response)
         )
 
       {:error, reason} ->
+        error_summary = safe_error_summary(reason)
+
+        Logger.warning(
+          "authoring agent provider request failed elapsed_ms=#{elapsed_ms(started_at)} error=#{error_summary}"
+        )
+
         {:ok,
          %{
            status: "error",
-           content: "The Wardwright authoring assistant failed before returning an answer.",
-           error: inspect(reason),
-           backend: status()
+           content:
+             "The Wardwright authoring assistant failed before returning an answer.\n\nProvider error: #{error_summary}",
+           error: error_summary,
+           backend: backend_status
          }}
     end
   rescue
     exception ->
+      Logger.error(
+        "authoring agent provider request raised exception=#{inspect(exception.__struct__)} error=#{Exception.message(exception)}"
+      )
+
       {:ok,
        %{
          status: "error",
          content: "The Wardwright authoring assistant raised #{inspect(exception.__struct__)}.",
          error: Exception.message(exception),
-         backend: status()
+         backend: status(context)
        }}
+  end
+
+  defp elapsed_ms(started_at), do: System.monotonic_time(:millisecond) - started_at
+
+  defp answer_with_tool_execution(content, extras) do
+    content = String.trim(content || "")
+
+    case decode_tool_plan(content) do
+      {:ok, plan} ->
+        answer_text = plan |> Map.get("answer", content) |> to_string() |> String.trim()
+        tool_results = plan |> Map.get("tool_calls", []) |> execute_tool_calls()
+        approval_needed = Map.get(plan, "approval_needed", [])
+        rendered = render_tool_answer(answer_text, tool_results, approval_needed)
+
+        answer(rendered, Keyword.merge(extras, tool_results: tool_results))
+
+      :error ->
+        answer(content, extras)
+    end
   end
 
   defp answer(content, extras) do
@@ -147,6 +205,205 @@ defmodule WardwrightWeb.AuthoringAgent do
        |> Map.merge(Map.new(extras))}
     end
   end
+
+  @auto_tool_names MapSet.new([
+                     "draft_wardwright_model",
+                     "evaluate_dune_snippet",
+                     "explain_projection",
+                     "list_dune_snippets",
+                     "propose_rule_change",
+                     "simulate_policy",
+                     "validate_policy_artifact"
+                   ])
+
+  defp decode_tool_plan(content) do
+    content
+    |> candidate_json_strings()
+    |> Enum.find_value(:error, fn candidate ->
+      case Jason.decode(candidate) do
+        {:ok, %{"tool_calls" => calls} = plan} when is_list(calls) -> {:ok, plan}
+        _ -> nil
+      end
+    end)
+  end
+
+  defp candidate_json_strings(content) do
+    fenced =
+      ~r/```(?:json)?\s*([\s\S]*?)\s*```/
+      |> Regex.scan(content, capture: :all_but_first)
+      |> List.flatten()
+
+    [content | fenced]
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  defp execute_tool_calls(calls) when is_list(calls) do
+    calls
+    |> Enum.take(4)
+    |> Enum.map(&execute_tool_call/1)
+  end
+
+  defp execute_tool_calls(_calls), do: []
+
+  defp execute_tool_call(%{"name" => name} = call) when is_binary(name) do
+    arguments = Map.get(call, "arguments", %{})
+
+    cond do
+      not MapSet.member?(@auto_tool_names, name) ->
+        skipped_tool(
+          name,
+          "requires explicit user approval or is not available to the embedded assistant"
+        )
+
+      not is_map(arguments) ->
+        skipped_tool(name, "arguments must be a JSON object")
+
+      true ->
+        safe_run_auto_tool(name, arguments)
+    end
+  end
+
+  defp execute_tool_call(_call),
+    do: skipped_tool("unknown", "tool call must include a string name")
+
+  defp safe_run_auto_tool(name, arguments) do
+    run_auto_tool(name, arguments)
+  rescue
+    exception ->
+      tool_result(name, "error", %{
+        "error" => Exception.message(exception),
+        "exception" => inspect(exception.__struct__)
+      })
+  end
+
+  defp run_auto_tool("draft_wardwright_model", arguments) do
+    tool_result(
+      "draft_wardwright_model",
+      "executed",
+      PolicyAuthoringDrafts.wardwright_model_draft(arguments)
+    )
+  end
+
+  defp run_auto_tool("evaluate_dune_snippet", arguments) do
+    case DuneSnippetRegistry.evaluate(arguments) do
+      {:ok, result} -> tool_result("evaluate_dune_snippet", "executed", result)
+      {:error, message} -> tool_result("evaluate_dune_snippet", "error", %{"error" => message})
+    end
+  end
+
+  defp run_auto_tool("explain_projection", arguments) do
+    pattern_id = Map.get(arguments, "pattern_id")
+
+    if pattern_id in Wardwright.PolicyProjection.pattern_ids() do
+      tool_result("explain_projection", "executed", %{
+        "projection" => Wardwright.PolicyProjection.projection(pattern_id)
+      })
+    else
+      tool_result("explain_projection", "error", %{"error" => "policy pattern not found"})
+    end
+  end
+
+  defp run_auto_tool("list_dune_snippets", _arguments) do
+    tool_result("list_dune_snippets", "executed", DuneSnippetRegistry.list())
+  end
+
+  defp run_auto_tool("propose_rule_change", arguments) do
+    tool_result(
+      "propose_rule_change",
+      "executed",
+      PolicyAuthoringDrafts.propose_rule_change(arguments)
+    )
+  end
+
+  defp run_auto_tool("simulate_policy", arguments) do
+    pattern_id = Map.get(arguments, "pattern_id")
+
+    if pattern_id in Wardwright.PolicyProjection.pattern_ids() do
+      tool_result("simulate_policy", "executed", %{
+        "data" => Wardwright.PolicyProjection.simulations(pattern_id)
+      })
+    else
+      tool_result("simulate_policy", "error", %{"error" => "policy pattern not found"})
+    end
+  end
+
+  defp run_auto_tool("validate_policy_artifact", arguments) do
+    artifact = Map.get(arguments, "artifact", %{})
+    source = if artifact == %{}, do: "current_config", else: "submitted"
+
+    tool_result(
+      "validate_policy_artifact",
+      "executed",
+      PolicyArtifactValidator.validate(artifact, source: source)
+    )
+  end
+
+  defp skipped_tool(name, reason) do
+    tool_result(name, "skipped", %{"reason" => reason})
+  end
+
+  defp tool_result(name, status, result) do
+    %{"name" => name, "status" => status, "result" => result}
+  end
+
+  defp render_tool_answer(answer_text, tool_results, approval_needed) do
+    sections = [
+      answer_text,
+      render_tool_results(tool_results),
+      render_approvals(approval_needed)
+    ]
+
+    sections
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join("\n\n")
+  end
+
+  defp render_tool_results([]), do: ""
+
+  defp render_tool_results(tool_results) do
+    lines =
+      Enum.map(tool_results, fn %{"name" => name, "status" => status} = tool_result ->
+        detail = tool_result_summary(tool_result)
+        "- #{name}: #{status}#{detail}"
+      end)
+
+    "Executed authoring tools:\n" <> Enum.join(lines, "\n")
+  end
+
+  defp tool_result_summary(%{
+         "result" => %{"validation" => %{"errors" => errors, "warnings" => warnings}}
+       })
+       when is_list(errors) and is_list(warnings) do
+    " (#{length(errors)} validation errors, #{length(warnings)} warnings)"
+  end
+
+  defp tool_result_summary(%{"result" => %{"errors" => errors, "warnings" => warnings}})
+       when is_list(errors) and is_list(warnings) do
+    " (#{length(errors)} validation errors, #{length(warnings)} warnings)"
+  end
+
+  defp tool_result_summary(%{"result" => %{"error" => error}}) when is_binary(error),
+    do: " (#{error})"
+
+  defp tool_result_summary(_tool_result), do: ""
+
+  defp render_approvals([]), do: ""
+
+  defp render_approvals(approval_needed) when is_list(approval_needed) do
+    items =
+      approval_needed
+      |> Enum.map(&to_string/1)
+      |> Enum.reject(&(&1 == ""))
+
+    if items == [] do
+      ""
+    else
+      "Needs human approval:\n" <> Enum.map_join(items, "\n", &"- #{&1}")
+    end
+  end
+
+  defp render_approvals(approval_needed), do: render_approvals([approval_needed])
 
   defp response_text(response) do
     cond do
@@ -191,6 +448,14 @@ defmodule WardwrightWeb.AuthoringAgent do
     end
   end
 
+  defp safe_error_summary(reason) do
+    reason
+    |> inspect(limit: 20, printable_limit: 1_000)
+    |> String.replace(~r/(Bearer\s+)[A-Za-z0-9._~+\/=-]+/i, "\\1[REDACTED]")
+    |> String.replace(~r/(api[_-]?key[\"']?\s*[:=]\s*[\"']?)[^\"'\s,}]+/i, "\\1[REDACTED]")
+    |> String.slice(0, 1_000)
+  end
+
   defp not_configured_message(prompt) do
     """
     Wardwright's authoring assistant is installed but not configured for live model calls.
@@ -198,9 +463,17 @@ defmodule WardwrightWeb.AuthoringAgent do
     To try it locally with opencode-go:
 
         WARDWRIGHT_AUTHORING_AGENT_ENABLED=1
+        WARDWRIGHT_AUTHORING_AGENT_ROUTE=direct
         WARDWRIGHT_AUTHORING_AGENT_BASE_URL=#{@default_base_url}
         WARDWRIGHT_AUTHORING_AGENT_MODEL=#{@default_model}
         WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE=/Users/admin/.config/calciforge/secrets/opencode-api-key
+        WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=#{@default_max_tokens}
+        WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=#{@default_timeout_ms}
+
+    To dogfood the current local Wardwright model instead:
+
+        WARDWRIGHT_AUTHORING_AGENT_ENABLED=1
+        WARDWRIGHT_AUTHORING_AGENT_ROUTE=wardwright
         WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=#{@default_max_tokens}
         WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=#{@default_timeout_ms}
 
@@ -226,14 +499,50 @@ defmodule WardwrightWeb.AuthoringAgent do
     "- #{name}: #{method} #{path}; #{when_to_use}; safety: #{safety}"
   end
 
+  defp authoring_route do
+    System.get_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", "direct")
+    |> String.downcase()
+  end
+
+  defp local_wardwright_route? do
+    authoring_route() in ["wardwright", "local_wardwright", "local-wardwright", "dogfood"]
+  end
+
   defp enabled? do
     System.get_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "")
     |> String.downcase()
     |> then(&(&1 in ["1", "true", "yes", "on"]))
   end
 
-  defp base_url, do: System.get_env("WARDWRIGHT_AUTHORING_AGENT_BASE_URL", @default_base_url)
-  defp model, do: System.get_env("WARDWRIGHT_AUTHORING_AGENT_MODEL", @default_model)
+  defp base_url do
+    System.get_env("WARDWRIGHT_AUTHORING_AGENT_BASE_URL") ||
+      if local_wardwright_route?(), do: local_wardwright_base_url(), else: @default_base_url
+  end
+
+  defp model(context) do
+    System.get_env("WARDWRIGHT_AUTHORING_AGENT_MODEL") ||
+      if local_wardwright_route?(), do: context_model_id(context), else: @default_model
+  end
+
+  defp context_model_id(context) when is_map(context) do
+    Map.get(context, :model_id) || Map.get(context, "model_id") || Wardwright.model_id()
+  end
+
+  defp local_wardwright_base_url do
+    bind = System.get_env("WARDWRIGHT_BIND", "127.0.0.1:8787")
+
+    bind
+    |> String.replace_prefix("0.0.0.0", "127.0.0.1")
+    |> String.replace_prefix("http://0.0.0.0", "http://127.0.0.1")
+    |> String.replace_prefix("https://0.0.0.0", "https://127.0.0.1")
+    |> then(fn url ->
+      cond do
+        String.ends_with?(url, "/v1") -> url
+        String.starts_with?(url, ["http://", "https://"]) -> url <> "/v1"
+        true -> "http://#{url}/v1"
+      end
+    end)
+  end
 
   defp max_tokens do
     "WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS"
@@ -261,6 +570,10 @@ defmodule WardwrightWeb.AuthoringAgent do
 
   defp api_key do
     System.get_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY") || api_key_from_file()
+  end
+
+  defp api_key_for_request do
+    api_key() || if local_wardwright_route?(), do: "wardwright-local", else: nil
   end
 
   defp api_key_from_file do

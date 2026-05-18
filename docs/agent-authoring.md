@@ -63,12 +63,26 @@ To try it locally with an OpenAI-compatible backend:
 
 ```bash
 WARDWRIGHT_AUTHORING_AGENT_ENABLED=1
+WARDWRIGHT_AUTHORING_AGENT_ROUTE=direct
 WARDWRIGHT_AUTHORING_AGENT_BASE_URL=https://opencode.ai/zen/go/v1
 WARDWRIGHT_AUTHORING_AGENT_MODEL=qwen3.6-plus
 WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE=/path/to/provider-key
-WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=4096
+WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=16384
 WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000
 ```
+
+To dogfood Wardwright itself, route the in-page assistant through the local
+OpenAI-compatible Wardwright endpoint instead of a direct provider endpoint:
+
+```sh
+WARDWRIGHT_AUTHORING_AGENT_ENABLED=1
+WARDWRIGHT_AUTHORING_AGENT_ROUTE=wardwright
+WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=16384
+WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000
+```
+
+That makes authoring-agent prompts visible to the same routing, receipts, and
+runtime activity surfaces as other local model calls.
 
 OpenCode Go usage is BYOK when the account/key is configured that way; the API
 reports that in response usage metadata. The current OpenCode Go chat endpoint
@@ -77,9 +91,11 @@ coding models such as Kimi K2.6 can spend many tokens before final content, so
 use a larger token budget and timeout or choose a faster final-answer model such
 as Qwen for interactive authoring.
 
-The first spike asks the assistant to propose tool plans and review risks. It
-does not automatically execute write-capable tools from chat, and it must not
-claim a model is active unless the activation tool reports success.
+The first spike may execute read-only and draft-only tools from chat so it can
+inspect projections, simulate scenarios, validate artifacts, and prepare
+reviewable model drafts. It does not automatically execute durable write-capable
+tools, and it must not claim a model is active unless the activation tool
+reports success.
 
 ## Inspect Before You Edit
 
