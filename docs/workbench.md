@@ -45,7 +45,7 @@ change can be reviewed.
 ## Example Categories
 
 Fresh installs seed a starter workspace under
-`~/.wardwright/recipes/policies`. The current `v0.0.4` example set is grouped
+`~/.wardwright/recipes/policies`. The current `v0.0.5` example set is grouped
 around the behaviors Wardwright is designed to make understandable:
 
 - **Output evidence and contracts:** incomplete-success detection and structured

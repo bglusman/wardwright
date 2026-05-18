@@ -205,7 +205,7 @@ The activated model can be called with either `model-id` or
 
 ## Mental Model
 
-For 0.0.4, a Wardwright model is easiest to explain as four layers:
+For 0.0.5, a Wardwright model is easiest to explain as four layers:
 
 1. **Targets**: real provider models or other synthetic model routes.
 2. **Route selectors**: dispatchers, cascades, and alloys that choose or combine
@@ -234,7 +234,7 @@ reviewability:
 - require projection, trace, validation, and scenario evidence to stay engine
   neutral
 
-This is not a 0.0.4 requirement. The 0.0.4 requirement is that agents can create
+This is not a 0.0.5 requirement. The 0.0.5 requirement is that agents can create
 and modify local synthetic models through a documented, reviewable, reversible
 workflow.
 

@@ -22,8 +22,8 @@ correctness-heavy pure policy logic when the boundary is stable enough.
 
 ## Install
 
-Wardwright publishes early native binaries for macOS and Linux. The next
-prepared release is `v0.0.4`.
+Wardwright publishes early native binaries for macOS and Linux. The latest
+prepared release is `v0.0.5`.
 
 ### macOS Homebrew
 
@@ -61,7 +61,7 @@ curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/in
 For a pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.4
+curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.5
 ```
 
 Run it locally:
@@ -113,7 +113,7 @@ decisions, and receipt events.
 
 ![Wardwright policy workbench showing context-window dispatcher simulation](docs/assets/workbench/route-composition-simulator.png)
 
-The `v0.0.4` starter examples are grouped around output contracts, route/model
+The `v0.0.5` starter examples are grouped around output contracts, route/model
 composition, stream repair/session state, and tool/workflow control. Locally
 authored models that use a supported projection shape are loaded from the same
 workspace recipe directory and use the same simulator.
@@ -121,6 +121,8 @@ workspace recipe directory and use the same simulator.
 See [Policy Workbench](docs/workbench.md) for screenshots and the current
 example catalog. External agents can use `wardwright tools` or `/mcp`; see the
 [Agent Authoring Guide](docs/agent-authoring.md) for the safe authoring loop.
+The `v0.0.5` authoring surface also supports workspace Dune snippets that agents
+can save, evaluate, compose by `snippet_id`, and delete.
 
 ## Current Contents
 

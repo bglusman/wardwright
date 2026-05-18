@@ -31,11 +31,11 @@ description: Synthetic model contracts, governance, and receipts for agentic wor
 
 <div class="notice">
   <strong>Status:</strong> Wardwright is early but installable. The prepared
-  <code>v0.0.4</code> release publishes native macOS and Linux artifacts, a
+  <code>v0.0.5</code> release publishes native macOS and Linux artifacts, a
   Homebrew formula, the active BEAM implementation, shared contracts, and
-  a policy workbench with starter model examples and simulation playback. See the
-  [Backend Selection Decision](backend-selection-decision.html) for the pruning
-  rationale.
+  a policy workbench with starter model examples, simulation playback, and
+  local Dune snippet authoring for agents. See the [Backend Selection
+  Decision](backend-selection-decision.html) for the pruning rationale.
 </div>
 
 ## Install
@@ -60,10 +60,10 @@ WARDWRIGHT_BIND=127.0.0.1:8787 \
 ~/.local/bin/wardwright serve
 ```
 
-For a pinned release, pass `--version v0.0.4` to the installer:
+For a pinned release, pass `--version v0.0.5` to the installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.4
+curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.5
 ```
 
 The Linux installer verifies the release archive against published SHA-256
@@ -145,10 +145,12 @@ run.
   <figcaption>The simulator can replay retry-oriented stream governance, including the raw model stream, held/released output, and receipt evidence.</figcaption>
 </figure>
 
-The `v0.0.4` package seeds example collections for output contracts,
+The `v0.0.5` package seeds example collections for output contracts,
 route/model composition, stream repair and session state, plus tool/workflow
 control. Models you create locally and store in the configured workspace recipe
 directory use the same workbench path when they expose a supported projection.
+Agents can also save, evaluate, compose, and delete local Dune snippets through
+the protected MCP/API authoring surface.
 See the [Policy Workbench](workbench.html) page for screenshots and the current
 example catalog. External agents can use the local MCP/API authoring surface;
 the [Agent Authoring Guide](agent-authoring.html) describes the expected

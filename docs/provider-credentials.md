@@ -7,7 +7,7 @@ description: How Wardwright resolves provider API credentials and the security l
 # Provider Credentials
 
 Wardwright can call local Ollama targets without credentials and
-OpenAI-compatible targets with bearer-token credentials. In `v0.0.4`, credential
+OpenAI-compatible targets with bearer-token credentials. In `v0.0.5`, credential
 configuration is intentionally local-operator oriented. It is useful for
 development and homelab-style evaluation, but it is not yet a complete hosted or
 multi-user authentication model.
@@ -106,7 +106,7 @@ Wardwright-hosted synthetic model. If an untrusted caller can reach
 credentials Wardwright is configured to use, even though they cannot read the
 secret value directly.
 
-For `v0.0.4`:
+For `v0.0.5`:
 
 - keep Wardwright bound to `127.0.0.1` unless it is behind a trusted auth
   boundary;

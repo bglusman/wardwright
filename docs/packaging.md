@@ -6,7 +6,7 @@ description: Release, native binary, and Homebrew packaging plan for Wardwright.
 
 # Packaging
 
-Status: initial Burrito/Tinfoil packaging path in place. Release `v0.0.4` is
+Status: initial Burrito/Tinfoil packaging path in place. Release `v0.0.5` is
 prepared as a usable early release before the policy UI is complete enough to
 call `0.1.0`.
 
@@ -57,7 +57,7 @@ curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/in
 For a pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.4
+curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.5
 ```
 
 The script downloads the matching release archive, requires
@@ -65,10 +65,10 @@ The script downloads the matching release archive, requires
 to `~/.local/bin` by default. A manual install is equivalent:
 
 ```bash
-curl -fLO https://github.com/bglusman/wardwright/releases/download/v0.0.4/wardwright-0.0.4-x86_64-unknown-linux-musl.tar.gz
-curl -fLO https://github.com/bglusman/wardwright/releases/download/v0.0.4/checksums-sha256.txt
+curl -fLO https://github.com/bglusman/wardwright/releases/download/v0.0.5/wardwright-0.0.5-x86_64-unknown-linux-musl.tar.gz
+curl -fLO https://github.com/bglusman/wardwright/releases/download/v0.0.5/checksums-sha256.txt
 sha256sum -c checksums-sha256.txt --ignore-missing
-tar -xzf wardwright-0.0.4-x86_64-unknown-linux-musl.tar.gz
+tar -xzf wardwright-0.0.5-x86_64-unknown-linux-musl.tar.gz
 install -m 0755 wardwright ~/.local/bin/wardwright
 ```
 
@@ -173,7 +173,7 @@ The root workflow `.github/workflows/wardwright-release.yml` is adapted from
 Tinfoil's generated workflow because this repository keeps the Mix app under
 `app/`.
 
-Tagging `v0.0.4` or later should:
+Tagging `v0.0.5` or later should:
 
 1. Build Burrito binaries for each configured target.
 2. Upload archives and checksums to a GitHub Release.
@@ -198,9 +198,11 @@ where the policy UI and validation story are useful enough to promote.
 - Release `v0.0.4` adds clearer model binding visibility in the state-machine
   workbench, seeded example collections, simulator screenshots/docs, and
   prepares the next package version.
+- Release `v0.0.5` adds workspace Dune snippet save/evaluate/compose/delete
+  support for local agents and a Homebrew service bind file for port overrides.
 - Fnox-backed provider credentials are runtime-supported but not package-managed;
   fnox installation/profile management and product authorization remain
-  post-`0.0.4` hardening work.
+  post-`0.0.5` hardening work.
 - The first CI run may expose platform-specific Burrito, Zig, or NIF issues.
   macOS builds intentionally install Homebrew `zig@0.15` because upstream Zig
   0.15.2 can fail to link on newer macOS/Xcode combinations.
