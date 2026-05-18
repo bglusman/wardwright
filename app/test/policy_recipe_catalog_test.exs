@@ -57,7 +57,7 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
     catalog = Wardwright.PolicyRecipeCatalog.to_map(catalog)
 
     assert catalog["recipes"] == []
-    assert catalog["warnings"] == ["No valid workspace examples were found in #{workspace_dir}."]
+    assert catalog["warnings"] == ["No valid project examples were found in #{workspace_dir}."]
   end
 
   test "workspace source seeds starter recipes into an existing unmarked directory" do
@@ -74,6 +74,38 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
 
     assert File.exists?(Path.join(workspace_dir, "route-and-model-composition/recipes.json"))
 
+    assert File.exists?(Path.join(workspace_dir, ".starter-recipes-seeded"))
+  end
+
+  test "workspace source does not overwrite user recipes when seeding an existing directory" do
+    workspace_dir = temp_workspace_dir("wardwright-existing-user-recipes")
+    user_recipe_dir = Path.join(workspace_dir, "route-and-model-composition")
+    user_recipe_path = Path.join(user_recipe_dir, "recipes.json")
+
+    File.mkdir_p!(user_recipe_dir)
+
+    user_recipe_json =
+      Jason.encode!(%{
+        "recipes" => [
+          %{
+            "id" => "user-local-dispatcher",
+            "title" => "User local dispatcher",
+            "category" => "route.selecting",
+            "promise" => "Prefer local models for private work.",
+            "pattern_id" => "route-privacy"
+          }
+        ]
+      })
+
+    File.write!(user_recipe_path, user_recipe_json)
+    Application.put_env(:wardwright, :policy_recipe_workspace_dir, workspace_dir)
+
+    assert {:ok, catalog} = Wardwright.PolicyRecipeCatalog.list("workspace")
+    catalog = Wardwright.PolicyRecipeCatalog.to_map(catalog)
+
+    assert File.read!(user_recipe_path) == user_recipe_json
+    assert Enum.any?(catalog["recipes"], &(&1["id"] == "user-local-dispatcher"))
+    assert Enum.any?(catalog["recipes"], &(&1["id"] == "deprecated-sdk-stream-retry"))
     assert File.exists?(Path.join(workspace_dir, ".starter-recipes-seeded"))
   end
 
@@ -114,7 +146,7 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
                "title" => "Local tool review",
                "pattern_id" => "tool-governance",
                "source_id" => "workspace",
-               "collection_title" => "Workspace examples"
+               "collection_title" => "Project examples"
              }
            ] = catalog["recipes"]
   end

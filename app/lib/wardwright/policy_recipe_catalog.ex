@@ -215,7 +215,7 @@ defmodule Wardwright.PolicyRecipeCatalog do
          %Catalog{
            source: source,
            recipes: [],
-           warnings: ["No workspace example directory exists at #{source.endpoint}."]
+           warnings: ["No project example directory exists at #{source.endpoint}."]
          }}
 
       {:error, reason} ->
@@ -223,7 +223,7 @@ defmodule Wardwright.PolicyRecipeCatalog do
          %Catalog{
            source: source,
            recipes: [],
-           error: "Could not read workspace examples: #{format_file_error(reason)}"
+           error: "Could not read project examples: #{format_file_error(reason)}"
          }}
     end
   end
@@ -343,7 +343,7 @@ defmodule Wardwright.PolicyRecipeCatalog do
   end
 
   defp workspace_warnings(source, [], nil),
-    do: ["No valid workspace examples were found in #{source.endpoint}."]
+    do: ["No valid project examples were found in #{source.endpoint}."]
 
   defp workspace_warnings(_source, recipes, nil) when recipes != [], do: []
 
@@ -438,7 +438,7 @@ defmodule Wardwright.PolicyRecipeCatalog do
           nil
         else
           {:error, reason} ->
-            "Could not seed workspace examples: #{format_file_error(reason)}"
+            "Could not seed project examples: #{format_file_error(reason)}"
 
           warning when is_binary(warning) ->
             warning
@@ -452,7 +452,7 @@ defmodule Wardwright.PolicyRecipeCatalog do
         nil
 
       {:error, reason} ->
-        "Could not record workspace example seed marker: #{format_file_error(reason)}"
+        "Could not record project example seed marker: #{format_file_error(reason)}"
     end
   end
 
@@ -463,7 +463,7 @@ defmodule Wardwright.PolicyRecipeCatalog do
 
       {:error, _reason} ->
         with {:ok, starter_path} <- starter_recipe_path() do
-          File.cp(starter_path, Path.join(endpoint, @starter_recipe_file))
+          copy_file_if_absent(starter_path, Path.join(endpoint, @starter_recipe_file))
         end
     end
   end
@@ -478,7 +478,7 @@ defmodule Wardwright.PolicyRecipeCatalog do
 
       case File.mkdir_p(Path.dirname(target_path)) do
         :ok ->
-          case File.cp(source_path, target_path) do
+          case copy_file_if_absent(source_path, target_path) do
             :ok -> {:cont, :ok}
             error -> {:halt, error}
           end
@@ -487,6 +487,14 @@ defmodule Wardwright.PolicyRecipeCatalog do
           {:halt, error}
       end
     end)
+  end
+
+  defp copy_file_if_absent(source_path, target_path) do
+    if File.exists?(target_path) do
+      :ok
+    else
+      File.cp(source_path, target_path)
+    end
   end
 
   defp starter_workspace_path do
@@ -542,7 +550,7 @@ defmodule Wardwright.PolicyRecipeCatalog do
 
   defp default_collection(source_id) do
     case source_id do
-      "workspace" -> %{id: "workspace", title: "Workspace examples"}
+      "workspace" -> %{id: "workspace", title: "Project examples"}
       "community" -> %{id: "community", title: "Community examples"}
       "built_in" -> %{id: "built-in", title: "Built-in projection demos"}
       _ -> %{id: "examples", title: "Examples"}

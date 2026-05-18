@@ -17,9 +17,15 @@ const viewports = [
 ];
 
 if (!chromePath) {
-  throw new Error(
-    "Chrome or Chromium was not found. Set CHROME_PATH to run LiveView browser smoke tests."
-  );
+  const message =
+    "Chrome or Chromium was not found. Set CHROME_PATH to run LiveView browser smoke tests.";
+
+  if (process.env.WARDWRIGHT_BROWSER_REQUIRED === "1") {
+    throw new Error(message);
+  }
+
+  console.log(`skip LiveView browser smoke tests: ${message}`);
+  process.exit(0);
 }
 
 const serverCommand = mixCommand();
