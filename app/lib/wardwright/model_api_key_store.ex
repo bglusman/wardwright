@@ -57,13 +57,10 @@ defmodule Wardwright.ModelApiKeyStore do
 
     valid? =
       Enum.any?(state.keys, fn {_id, record} ->
-        record["model_id"] == model_id and
-          Plug.Crypto.secure_compare(record["key_hash"], key_hash)
+        key_hash_matches?(record, model_id, key_hash)
       end)
 
     {:reply, valid?, state}
-  rescue
-    _error -> {:reply, false, state}
   end
 
   def handle_call(:reset, _from, state) do
@@ -74,6 +71,19 @@ defmodule Wardwright.ModelApiKeyStore do
   defp public_key_record(record) do
     Map.take(record, ["id", "model_id", "label", "prefix", "created_at"])
   end
+
+  defp key_hash_matches?(
+         %{"model_id" => record_model_id, "key_hash" => stored_hash},
+         model_id,
+         key_hash
+       )
+       when record_model_id == model_id and is_binary(stored_hash) and is_binary(key_hash) do
+    Plug.Crypto.secure_compare(stored_hash, key_hash)
+  rescue
+    _error -> false
+  end
+
+  defp key_hash_matches?(_record, _model_id, _key_hash), do: false
 
   defp generate_key do
     "wwk_" <> Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)

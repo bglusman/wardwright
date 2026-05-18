@@ -28,6 +28,7 @@ defmodule Wardwright.PublicApiTest do
       })
 
     assert rejected.status == 403
+    assert get_in(Jason.decode!(rejected.resp_body), ["error", "type"]) == "forbidden"
     assert get_in(Jason.decode!(rejected.resp_body), ["error", "code"]) == "model_internal"
   end
 
@@ -42,6 +43,7 @@ defmodule Wardwright.PublicApiTest do
       })
 
     assert missing.status == 401
+    assert get_in(Jason.decode!(missing.resp_body), ["error", "type"]) == "unauthorized"
     assert get_in(Jason.decode!(missing.resp_body), ["error", "code"]) == "model_api_key_required"
 
     {:ok, created} = Wardwright.ModelApiKeyStore.create("unit-model", "test-client")

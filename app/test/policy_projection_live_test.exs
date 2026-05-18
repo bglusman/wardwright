@@ -364,11 +364,13 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     assert html =~ "Model API Keys"
     assert html =~ "coding-balanced"
+    assert html =~ "Access Policy"
+    assert html =~ "href=\"/policies\""
     assert html =~ "No API keys have been created for this model."
 
     html =
       view
-      |> form("form", %{"key" => %{"label" => "local-gateway"}})
+      |> form("#create-model-key-form", %{"key" => %{"label" => "local-gateway"}})
       |> render_submit()
 
     assert html =~ "Copy this key now"
@@ -383,6 +385,37 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     assert html =~ "No API keys have been created for this model."
     assert Wardwright.ModelApiKeyStore.list("coding-balanced") == []
+  end
+
+  test "model API key management page edits keyed and unkeyed access" do
+    {:ok, view, html} = live(build_conn(), "/admin/model-api-keys")
+
+    assert html =~ "Unkeyed"
+    refute Wardwright.model_requires_api_key?()
+    assert Wardwright.unkeyed_model_access() == "public"
+
+    html =
+      view
+      |> form("#model-access-form", %{
+        "access" => %{"requires_api_key" => "true", "unkeyed_model_access" => "internal"}
+      })
+      |> render_submit()
+
+    assert html =~ "Model access saved."
+    assert html =~ "API key required"
+    assert Wardwright.model_requires_api_key?()
+    assert Wardwright.unkeyed_model_access() == "internal"
+
+    html =
+      view
+      |> form("#model-access-form", %{
+        "access" => %{"requires_api_key" => "false", "unkeyed_model_access" => "public"}
+      })
+      |> render_submit()
+
+    assert html =~ "Unkeyed"
+    refute Wardwright.model_requires_api_key?()
+    assert Wardwright.unkeyed_model_access() == "public"
   end
 
   test "LiveView client assets are served without an npm build step" do
@@ -405,6 +438,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "/mcp"
     assert html =~ "wardwright tools"
     assert html =~ "Model Access"
+    assert html =~ "href=\"/admin/model-api-keys\""
     assert html =~ "/v1/chat/completions"
     assert html =~ "coding-balanced"
     assert html =~ "wardwright/coding-balanced"

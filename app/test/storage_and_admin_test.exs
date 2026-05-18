@@ -322,11 +322,39 @@ defmodule Wardwright.StorageAndAdminTest do
     refute Map.has_key?(listed_key, "key")
     refute Map.has_key?(listed_key, "key_hash")
 
+    prefixed = call(:get, "/admin/model-api-keys?model=wardwright/coding-balanced")
+    assert prefixed.status == 200
+    assert [prefixed_key] = Jason.decode!(prefixed.resp_body)["data"]
+    assert prefixed_key["id"] == key["id"]
+
     deleted = call(:delete, "/admin/model-api-keys/#{key["id"]}")
     assert deleted.status == 200
 
     relisted = call(:get, "/admin/model-api-keys?model=coding-balanced")
     assert Jason.decode!(relisted.resp_body)["data"] == []
+  end
+
+  test "admin API does not emit wildcard CORS headers" do
+    conn = call(:get, "/admin/model-api-keys")
+    assert conn.status == 200
+    assert Plug.Conn.get_resp_header(conn, "access-control-allow-origin") == []
+
+    public = call(:get, "/v1/models")
+    assert Plug.Conn.get_resp_header(public, "access-control-allow-origin") == ["*"]
+  end
+
+  test "malformed key records do not invalidate valid model API keys" do
+    {:ok, created} = Wardwright.ModelApiKeyStore.create("coding-balanced", "valid-client")
+
+    :sys.replace_state(Wardwright.ModelApiKeyStore, fn state ->
+      put_in(state.keys["malformed"], %{
+        "id" => "malformed",
+        "model_id" => "coding-balanced",
+        "key_hash" => nil
+      })
+    end)
+
+    assert Wardwright.ModelApiKeyStore.valid?("coding-balanced", created["key"])
   end
 
   test "receipt list is deterministic and returns storage summaries" do
