@@ -27,6 +27,7 @@ const overflowPaths = [
   "/policies",
   "/admin/model-api-keys",
   "/policies/tts-retry/diagram",
+  "/policies/tts-retry/diagram?model=browser-smoke-model",
   "/policies/route-privacy/diagram",
   "/policies/tool-governance/diagram"
 ];
@@ -78,10 +79,13 @@ const chrome = spawn(
 try {
   await waitForHttp(`${appUrl}/policies/tts-retry/diagram`, "Wardwright");
   await waitForHttp(`http://127.0.0.1:${chromePort}/json/version`, "webSocketDebuggerUrl");
+  await seedRegisteredModelWorkbench();
 
   for (const viewport of viewports) {
     await runViewportSmoke(viewport);
   }
+
+  await assertRegisteredModelWorkbench();
 
   for (const viewport of overflowViewports) {
     for (const path of overflowPaths) {
@@ -94,6 +98,91 @@ try {
   await rm(userDataDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }).catch(
     () => {}
   );
+}
+
+async function seedRegisteredModelWorkbench() {
+  const response = await fetch(`${appUrl}/v1/policy-authoring/wardwright-models`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model_id: "browser-smoke-model",
+      version: "browser-smoke",
+      description: "Browser smoke model for registered-model workbench coverage.",
+      targets: [{ model: "local/browser-smoke", context_window: 8192 }],
+      stream_rules: [
+        {
+          id: "browser-smoke-redact",
+          pattern: "\\bmoo\\b",
+          action: "rewrite_chunk",
+          replacement: "[cow]"
+        }
+      ],
+      auth: { unkeyed_model_access: "public" }
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Could not seed registered model workbench fixture: ${response.status} ${await response.text()}`
+    );
+  }
+}
+
+async function assertRegisteredModelWorkbench() {
+  const target = await createChromeTarget();
+  const cdp = await connectCdp(target.webSocketDebuggerUrl);
+
+  try {
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 1280,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false
+    });
+
+    await cdp.send("Page.navigate", {
+      url: `${appUrl}/policies/tts-retry/diagram?model=browser-smoke-model`
+    });
+    await cdp.waitFor("Page.loadEventFired");
+    await waitForEval(
+      cdp,
+      `document.body && document.body.innerText.includes("Registered model selected")`
+    );
+    await waitForEval(cdp, `!document.documentElement.classList.contains("phx-loading")`);
+    await waitForEval(cdp, `document.body.textContent.includes("browser-smoke-redact")`);
+
+    const result = await evaluate(
+      cdp,
+      `(() => {
+        const text = document.body.innerText;
+        const forbidden = [
+          "Policy run map",
+          "State and turn model",
+          "Receipt Preview",
+          "Selected Node",
+          "Review Findings",
+          "retry arbiter"
+        ].filter((label) => text.includes(label));
+        return {
+          hasRuntime: text.includes("Runtime Visibility"),
+          hasCache: text.includes("History Cache"),
+          forbidden
+        };
+      })()`
+    );
+
+    if (!result.hasRuntime || !result.hasCache || result.forbidden.length > 0) {
+      throw new Error(
+        `registered model workbench rendered stale or missing panels: ${JSON.stringify(result)}`
+      );
+    }
+
+    console.log("ok registered model workbench hides example simulation panels");
+  } finally {
+    cdp.close();
+  }
 }
 
 async function assertNoPageOverflow(viewport, path) {

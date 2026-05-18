@@ -1003,7 +1003,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         </div>
       </section>
 
-      <section class="scan_strip" aria-label="Policy authoring summary">
+      <section :if={!@model_workbench?} class="scan_strip" aria-label="Policy authoring summary">
         <article>
           <span>Authority</span>
           <strong>Artifact first</strong>
@@ -1244,46 +1244,53 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           <.badge value={@projection["projection_schema"]} class="schema_badge" />
         </div>
 
-        <.projection_inspector_links
-          mode={@mode}
-          modes={@modes}
-          selected_pattern_id={@selected_pattern_id}
-          selected_recipe_source_id={@selected_recipe_source_id}
-          selected_recipe_id={@selected_recipe_id}
-          selected_model_id={@selected_model_id}
-          model_workbench?={!@explicit_recipe?}
-        />
-
-        <%= if @mode == "diagram" do %>
-          <.policy_diagram
-            projection={@projection}
-            simulation={@selected_simulation}
-            simulation_inputs={@simulation_inputs}
-            selected_simulation_input_id={@selected_simulation_input_id}
-            simulation_user_input={@simulation_user_input}
-            simulation_model_response={@simulation_model_response}
-            simulation_response_attempts={@simulation_response_attempts}
-            simulation_history_context={@simulation_history_context}
-            simulation_boundary={@simulation_boundary}
-            playback_step={@simulation_step}
-            playing={@simulation_playing}
-            scenario_save_title={@scenario_save_title}
-            scenario_save_status={@scenario_save_status}
+        <%= if @model_workbench? do %>
+          <.registered_model_simulation_notice
+            selected_model_id={@selected_model_id}
+            selected_model_config={@selected_model_config}
           />
         <% else %>
-        <%= if @mode == "effect_matrix" do %>
-          <.effect_matrix projection={@projection} />
-        <% else %>
-          <%= if @mode == "trace_overlay" do %>
-            <.trace_overlay projection={@projection} simulation={@selected_simulation} />
+          <.projection_inspector_links
+            mode={@mode}
+            modes={@modes}
+            selected_pattern_id={@selected_pattern_id}
+            selected_recipe_source_id={@selected_recipe_source_id}
+            selected_recipe_id={@selected_recipe_id}
+            selected_model_id={@selected_model_id}
+            model_workbench?={!@explicit_recipe?}
+          />
+
+          <%= if @mode == "diagram" do %>
+            <.policy_diagram
+              projection={@projection}
+              simulation={@selected_simulation}
+              simulation_inputs={@simulation_inputs}
+              selected_simulation_input_id={@selected_simulation_input_id}
+              simulation_user_input={@simulation_user_input}
+              simulation_model_response={@simulation_model_response}
+              simulation_response_attempts={@simulation_response_attempts}
+              simulation_history_context={@simulation_history_context}
+              simulation_boundary={@simulation_boundary}
+              playback_step={@simulation_step}
+              playing={@simulation_playing}
+              scenario_save_title={@scenario_save_title}
+              scenario_save_status={@scenario_save_status}
+            />
           <% else %>
-            <%= if @mode == "state_machine" do %>
-              <.state_machine_view projection={@projection} />
+            <%= if @mode == "effect_matrix" do %>
+              <.effect_matrix projection={@projection} />
             <% else %>
-              <.phase_map projection={@projection} />
+              <%= if @mode == "trace_overlay" do %>
+                <.trace_overlay projection={@projection} simulation={@selected_simulation} />
+              <% else %>
+                <%= if @mode == "state_machine" do %>
+                  <.state_machine_view projection={@projection} />
+                <% else %>
+                  <.phase_map projection={@projection} />
+                <% end %>
+              <% end %>
             <% end %>
           <% end %>
-        <% end %>
         <% end %>
       </section>
 
@@ -1316,7 +1323,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           </div>
         </div>
 
-        <div class="panel">
+        <div :if={!@model_workbench?} class="panel">
           <div class="panel_header">
             <div>
               <h2>Selected Node</h2>
@@ -1379,7 +1386,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           </div>
         </div>
 
-        <div class="panel">
+        <div :if={!@model_workbench?} class="panel">
           <div class="panel_header">
             <div>
               <h2>Review Findings</h2>
@@ -1407,7 +1414,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         </div>
       </section>
 
-      <section class="split">
+      <section :if={!@model_workbench?} class="split">
         <div class="panel">
           <div class="panel_header">
             <div>
@@ -1521,6 +1528,41 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           </a>
         </div>
       <% end %>
+    </div>
+    """
+  end
+
+  attr(:selected_model_id, :string, required: true)
+  attr(:selected_model_config, :map, required: true)
+
+  def registered_model_simulation_notice(assigns) do
+    assigns =
+      assign(assigns,
+        behavior_count: behavior_rule_count(assigns.selected_model_config),
+        target_count: length(assigns.selected_model_config["targets"] || [])
+      )
+
+    ~H"""
+    <div class="model_simulation_notice" aria-label="Registered model simulation status">
+      <div>
+        <strong>Registered model selected</strong>
+        <p>
+          <%= @selected_model_id %> is loaded as the current model workbench target. Example
+          state machines, stream traces, and receipt previews are hidden here because they belong
+          to demo examples, not this registered model.
+        </p>
+      </div>
+      <dl>
+        <dt>Provider targets</dt>
+        <dd><%= @target_count %></dd>
+        <dt>Behavior rules</dt>
+        <dd><%= @behavior_count %></dd>
+      </dl>
+      <p>
+        Use the selected model configuration above to review what this model actually enforces.
+        Select an example synthetic model from the sidebar to browse demo simulations, or add a
+        model-owned scenario before showing playback, state, stream, or receipt evidence here.
+      </p>
     </div>
     """
   end
@@ -2125,6 +2167,13 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .config_fact_grid span { display: block; margin-bottom: 4px; color: #66727c; font-size: 11px; font-weight: 900; text-transform: uppercase; }
     .config_fact_grid strong { color: #17202a; overflow-wrap: anywhere; }
     .config_warning { margin-bottom: 12px; padding: 10px 12px; border: 1px solid #e6c779; border-radius: 7px; color: #624b12; background: #fff8e1; }
+    .model_simulation_notice { display: grid; gap: 12px; padding: 14px; border: 1px solid #d5dde4; border-radius: 8px; background: #fbfcfd; }
+    .model_simulation_notice strong { color: #17202a; font-size: 18px; }
+    .model_simulation_notice p { margin: 0; color: #4c5964; line-height: 1.5; }
+    .model_simulation_notice dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
+    .model_simulation_notice dt, .model_simulation_notice dd { margin: 0; }
+    .model_simulation_notice dt { color: #66727c; font-size: 11px; font-weight: 900; text-transform: uppercase; }
+    .model_simulation_notice dd { color: #17202a; font-size: 20px; font-weight: 850; }
     .access_grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr); gap: 12px; }
     .access_card, .provider_model_card { display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid #d5dde4; border-radius: 8px; background: #fff; }
     .access_card > span, .provider_model_card span, .provider_model_list h3 { color: #66727c; font-size: 12px; font-weight: 800; text-transform: uppercase; }
@@ -2405,7 +2454,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       .shell > [data-phx-main] { display: block; min-height: 100vh; }
       .sidebar { position: static; overflow: visible; gap: 16px; padding: 18px 16px; }
       .workspace { padding: 18px 16px; }
-      .split, .scan_strip, .access_grid, .config_fact_grid, .provider_model_card, .model_key_grid, .metrics, .inline_form, .state_columns, .simulation_player, .player_event, .turn_editor_grid, .boundary_pair.changed, .attempt_step, .state_run_strip, .scenario_save_form { grid-template-columns: 1fr; }
+      .split, .scan_strip, .access_grid, .config_fact_grid, .model_simulation_notice dl, .provider_model_card, .model_key_grid, .metrics, .inline_form, .state_columns, .simulation_player, .player_event, .turn_editor_grid, .boundary_pair.changed, .attempt_step, .state_run_strip, .scenario_save_form { grid-template-columns: 1fr; }
       .topbar, .panel_header, .state_machine_summary, .assistant_boundary, .diagram_header, .turn_editor_header { display: grid; }
       .topbar { gap: 12px; }
       .sidebar_footer { margin-top: 0; }
