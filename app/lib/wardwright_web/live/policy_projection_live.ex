@@ -610,23 +610,24 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         </div>
       </section>
 
-      <section class="panel authoring_agent" aria-label="In-page authoring agent spike">
+      <section class="panel authoring_agent" aria-label="In-page model authoring assistant">
         <div class="panel_header">
           <div>
-            <h2>Authoring Agent Spike</h2>
+            <h2>Model Authoring Assistant</h2>
             <p>
-              Narrow Jido-backed assistant for drafting, validating, and simulating
-              Wardwright model changes using the same authoring tool registry exposed
-              to MCP clients.
+              Draft, validate, and simulate Wardwright model changes using the same
+              authoring tools exposed to MCP clients.
             </p>
           </div>
           <.badge value={if @authoring_agent_status.configured, do: "live", else: "setup needed"} />
         </div>
 
         <div class="authoring_agent_meta">
-          <span><strong>Backend</strong> <%= @authoring_agent_status.backend %></span>
           <span><strong>Model</strong> <%= @authoring_agent_status.model %></span>
-          <span><strong>Tool mode</strong> <%= @authoring_agent_status.tool_mode %></span>
+          <span>
+            <strong>Write access</strong>
+            <%= if @authoring_agent_status.can_execute_tools, do: "can apply changes", else: "suggestions only" %>
+          </span>
           <span><strong>Tools</strong> <%= length(WardwrightWeb.PolicyAuthoringTools.list()) %></span>
         </div>
 

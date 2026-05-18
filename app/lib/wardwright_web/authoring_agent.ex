@@ -26,7 +26,8 @@ defmodule WardwrightWeb.AuthoringAgent do
       model: model(),
       max_tokens: max_tokens(),
       timeout_ms: timeout_ms(),
-      tool_mode: "plan_only",
+      can_execute_tools: false,
+      tool_access: "suggestions_only",
       instructions:
         "Set WARDWRIGHT_AUTHORING_AGENT_ENABLED=1 and WARDWRIGHT_AUTHORING_AGENT_API_KEY or WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE to run live. Reasoning-heavy coding models may also need WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS and WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS."
     }
@@ -109,7 +110,7 @@ defmodule WardwrightWeb.AuthoringAgent do
         {:ok,
          %{
            status: "error",
-           content: "The Jido authoring agent failed before returning an answer.",
+           content: "The Wardwright authoring assistant failed before returning an answer.",
            error: inspect(reason),
            backend: status()
          }}
@@ -119,7 +120,7 @@ defmodule WardwrightWeb.AuthoringAgent do
       {:ok,
        %{
          status: "error",
-         content: "The Jido authoring agent raised #{inspect(exception.__struct__)}.",
+         content: "The Wardwright authoring assistant raised #{inspect(exception.__struct__)}.",
          error: Exception.message(exception),
          backend: status()
        }}
@@ -181,18 +182,18 @@ defmodule WardwrightWeb.AuthoringAgent do
 
     if finish_reason in [:length, "length"] do
       """
-      The Jido authoring agent returned reasoning metadata but no final answer before the model hit its token limit.
+      The Wardwright authoring assistant received reasoning metadata but no final answer before the model hit its token limit.
 
       Increase WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS and WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS, or switch to a model that returns final content more quickly. OpenCode Go marks BYOK usage in the response usage metadata; no extra Wardwright request-body flag is currently required for the configured OpenCode Go endpoint.
       """
     else
-      "The Jido authoring agent returned an empty answer."
+      "The Wardwright authoring assistant returned an empty answer."
     end
   end
 
   defp not_configured_message(prompt) do
     """
-    Jido authoring agent is installed but not configured for live model calls.
+    Wardwright's authoring assistant is installed but not configured for live model calls.
 
     To try it locally with opencode-go:
 

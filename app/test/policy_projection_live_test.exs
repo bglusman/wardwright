@@ -443,10 +443,11 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "coding-balanced"
     assert html =~ "wardwright/coding-balanced"
     assert html =~ Wardwright.local_model()
-    assert html =~ "Authoring Agent Spike"
+    assert html =~ "Model Authoring Assistant"
     assert html =~ "setup needed"
     assert html =~ "qwen3.6-plus"
-    assert html =~ "plan_only"
+    assert html =~ "Write access"
+    assert html =~ "suggestions only"
     assert html =~ "Ask agent"
     assert html =~ "Policy Simulator"
     assert html =~ "Policy run map"
@@ -481,7 +482,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   test "LiveView authoring agent panel submits to the local fallback without credentials" do
     {:ok, view, html} = live(build_conn(), "/policies/tts-retry/diagram")
 
-    assert html =~ "Authoring Agent Spike"
+    assert html =~ "Model Authoring Assistant"
 
     response =
       render_submit(view, "authoring-agent-submit", %{
@@ -494,9 +495,13 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert response =~ "Working on a tool plan"
     assert response =~ "Working..."
 
-    completed = eventually_render(view, "Jido authoring agent is installed but not configured")
+    completed =
+      eventually_render(
+        view,
+        "Wardwright&#39;s authoring assistant is installed but not configured"
+      )
 
-    assert completed =~ "Jido authoring agent is installed but not configured"
+    assert completed =~ "Wardwright&#39;s authoring assistant is installed but not configured"
     assert completed =~ "simulate_policy"
   end
 

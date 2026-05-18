@@ -58,10 +58,11 @@ defmodule WardwrightWeb.AuthoringAgentTest do
 
     assert response.status == "not_configured"
     assert response.backend.configured == false
-    assert response.backend.tool_mode == "plan_only"
+    assert response.backend.can_execute_tools == false
+    assert response.backend.tool_access == "suggestions_only"
     assert response.backend.max_tokens == 4096
     assert response.backend.timeout_ms == 120_000
-    assert response.content =~ "Jido authoring agent is installed but not configured"
+    assert response.content =~ "Wardwright's authoring assistant is installed but not configured"
     assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE"
     assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=4096"
     assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000"
