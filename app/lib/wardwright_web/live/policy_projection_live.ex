@@ -3482,7 +3482,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       |> Enum.take(playback_step)
       |> Enum.map(& &1["node_id"])
       |> Enum.reject(&is_nil/1)
-      |> Enum.uniq()
+      |> Map.new(&{&1, true})
 
     active_node_id = current_trace_event(simulation, playback_step) |> active_node_id()
     phase_x = Map.new(phases, &{&1.id, &1.x})
@@ -3495,7 +3495,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         %{
           active: node["id"] == active_node_id,
           confidence: node["confidence"],
-          executed: node["id"] in executed,
+          executed: Map.has_key?(executed, node["id"]),
           height: 74,
           id: node["id"],
           kind: node["kind"],

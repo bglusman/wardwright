@@ -625,13 +625,13 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
         cond do
           wardwright_model_target?(target) and is_map(nested) and
               ref_id not in visited ->
-            acc ++ provider_target_models(nested, visited, depth + 1)
+            [provider_target_models(nested, visited, depth + 1) | acc]
 
           wardwright_model_target?(target) ->
             acc
 
           is_binary(target["model"]) ->
-            [target["model"] | acc]
+            [[target["model"]] | acc]
 
           true ->
             acc
@@ -640,6 +640,7 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
       _target, acc ->
         acc
     end)
+    |> List.flatten()
     |> Enum.uniq()
   end
 
