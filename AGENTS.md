@@ -55,7 +55,7 @@ In short:
 ## Agent Operating Style
 
 These guidelines are adapted from
-`https://github.com/multica-ai/andrej-karpathy-skills/blob/main/CLAUDE.md`
+[CLAUDE.md](https://github.com/multica-ai/andrej-karpathy-skills/blob/main/CLAUDE.md)
 and should be merged with the Wardwright-specific rules in this file.
 
 - Think before coding. State assumptions when they matter, surface tradeoffs,
