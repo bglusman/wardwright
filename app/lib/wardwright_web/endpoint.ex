@@ -5,7 +5,10 @@ defmodule WardwrightWeb.Endpoint do
 
   alias Phoenix.LiveView.Socket
 
+  @lustre_static Path.expand("../../deps/lustre/priv/static", __DIR__)
+
   socket("/live", Socket)
+  socket("/spikes/lustre-workbench/socket", WardwrightWeb.LustreWorkbenchSocket, websocket: true)
 
   plug(Plug.Static,
     at: "/",
@@ -26,6 +29,13 @@ defmodule WardwrightWeb.Endpoint do
     from: {:phoenix_live_view, "priv/static"},
     gzip: false,
     only: ~w(phoenix_live_view.min.js)
+  )
+
+  plug(Plug.Static,
+    at: "/vendor/lustre",
+    from: @lustre_static,
+    gzip: false,
+    only: ~w(lustre-server-component.mjs lustre-server-component.min.mjs)
   )
 
   plug(Plug.RequestId)

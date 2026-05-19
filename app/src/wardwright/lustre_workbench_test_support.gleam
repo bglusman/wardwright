@@ -1,0 +1,69 @@
+import gleam/json
+import gleam/string
+import lustre/dev/query
+import lustre/dev/simulate
+import lustre/element
+import wardwright/lustre_workbench
+
+pub fn selecting_policy_slice_updates_heading(
+  pattern_id: String,
+  expected_heading: String,
+) -> Bool {
+  start()
+  |> change_select("pattern_id", pattern_id)
+  |> view_contains(expected_heading)
+}
+
+pub fn selecting_model_updates_simulation(
+  model_id: String,
+  expected_text: String,
+) -> Bool {
+  start()
+  |> change_select("model_id", model_id)
+  |> view_contains(expected_text)
+}
+
+pub fn editing_then_submitting_runs_simulation(
+  model_id: String,
+  user_input: String,
+  expected_text: String,
+) -> Bool {
+  start()
+  |> change_select("model_id", model_id)
+  |> simulate.input(on: by_id("user_input"), value: user_input)
+  |> simulate.submit(on: query.element(matching: query.tag("form")), fields: [
+    #("user_input", user_input),
+  ])
+  |> view_contains(expected_text)
+}
+
+fn start() {
+  simulate.simple(
+    init: lustre_workbench.init,
+    update: lustre_workbench.update,
+    view: lustre_workbench.view,
+  )
+  |> simulate.start(Nil)
+}
+
+fn change_select(simulation, control_id: String, selected_id: String) {
+  simulate.event(simulation, on: by_id(control_id), name: "change", data: [
+    #(
+      "target",
+      json.object([
+        #("value", json.string(selected_id)),
+      ]),
+    ),
+  ])
+}
+
+fn by_id(id: String) {
+  query.element(matching: query.id(id))
+}
+
+fn view_contains(simulation, text: String) -> Bool {
+  simulation
+  |> simulate.view
+  |> element.to_string
+  |> string.contains(text)
+}
