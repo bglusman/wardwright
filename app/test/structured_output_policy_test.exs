@@ -90,6 +90,42 @@ defmodule Wardwright.StructuredOutputPolicyTest do
              ~s({"answer":"valid and confident","confidence":0.91})
   end
 
+  test "structured output guard sends validation feedback to live provider retries" do
+    base_url = streaming_provider_base_url("/repairing-ollama")
+
+    config =
+      structured_policy_config(["unused"], 3)
+      |> Map.put("targets", [
+        %{
+          "context_window" => 256,
+          "model" => "ollama/live-test",
+          "provider_base_url" => base_url,
+          "provider_kind" => "ollama"
+        }
+      ])
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "return structured json", role: "user"}],
+        model: "unit-model"
+      })
+
+    assert conn.status == 200
+    body = Jason.decode!(conn.resp_body)
+
+    assert get_in(body, ["choices", Access.at(0), "message", "content"]) ==
+             ~s({"answer":"repaired after feedback","confidence":0.91})
+
+    structured = get_in(body, ["wardwright", "structured_output"])
+    assert structured["final_status"] == "completed_after_guard"
+    assert structured["attempt_count"] == 2
+
+    assert [%{"guard_type" => "json_syntax", "rule_id" => "structured-json"}] =
+             structured["guard_events"]
+  end
+
   test "structured output guard fails closed when per-rule budget is exhausted" do
     config =
       structured_policy_config([

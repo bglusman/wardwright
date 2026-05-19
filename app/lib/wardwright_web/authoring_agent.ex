@@ -19,6 +19,7 @@ defmodule WardwrightWeb.AuthoringAgent do
   @default_max_tokens 16_384
   @default_timeout_ms 120_000
   @required_authoring_schema "authoring_tool_plan_v1"
+  @authoring_config_file_env "WARDWRIGHT_AUTHORING_AGENT_CONFIG_FILE"
 
   def configured?(context \\ %{}) do
     enabled?() and
@@ -48,7 +49,7 @@ defmodule WardwrightWeb.AuthoringAgent do
     prompt = prompt(message, context)
 
     if configured?(context) do
-      run_jido(prompt, context)
+      run_jido(prompt, message, context)
     else
       {:ok,
        %{
@@ -80,9 +81,15 @@ defmodule WardwrightWeb.AuthoringAgent do
     - You may call read-only and draft-only authoring tools by returning a
       machine-readable tool_calls array. Wardwright will execute those calls and
       return the results for review.
+    - When the user asks you to make, create, draft, build, add, update, or
+      change a Wardwright model, policy, rule, guard, route, scenario, or Dune
+      snippet, a tool call is required in this turn. Do not answer with only a
+      prose design or approval checklist.
     - draft_wardwright_model is intentionally ephemeral. It does not register a
       model, does not update /v1/models, and only creates a reviewable draft for
       the current workbench session.
+    - draft_wardwright_model and other draft-only/read-only tools do not require
+      user approval. Use them immediately when they make the answer concrete.
     - Never request silent activation, deletion, scenario persistence, or any
       other durable write. For those, explain the approval needed and name the
       exact tool a human should run after review.
@@ -132,11 +139,12 @@ defmodule WardwrightWeb.AuthoringAgent do
       "next_steps": ["review and activate from the workbench if the draft matches the request"]
     }
 
-    If no tool is needed, answer normally.
+    If no tool is needed, return the same JSON shape with an empty tool_calls
+    array. Do not wrap JSON in markdown fences.
     """
   end
 
-  defp run_jido(prompt, context) do
+  defp run_jido(prompt, user_message, context) do
     model_id = model(context)
     provider_base_url = base_url()
     model_spec = %{base_url: provider_base_url, id: model_id, model: model_id, provider: :openai}
@@ -147,14 +155,7 @@ defmodule WardwrightWeb.AuthoringAgent do
       "authoring agent provider request started model=#{model_id} base_url=#{provider_base_url} max_tokens=#{max_tokens()} timeout_ms=#{timeout_ms()}"
     )
 
-    result =
-      jido_client().generate_text(prompt,
-        model: model_spec,
-        api_key: api_key_for_request(),
-        max_tokens: max_tokens(),
-        temperature: 0.2,
-        timeout: timeout_ms()
-      )
+    result = request_authoring_model(prompt, model_spec)
 
     case result do
       {:ok, response} ->
@@ -162,13 +163,56 @@ defmodule WardwrightWeb.AuthoringAgent do
           "authoring agent provider request completed elapsed_ms=#{elapsed_ms(started_at)} finish_reason=#{inspect(response_finish_reason(response))}"
         )
 
-        response
-        |> response_text()
-        |> answer_with_tool_execution(
-          backend: backend_status,
-          finish_reason: response_finish_reason(response),
-          provider_usage: response_usage(response)
-        )
+        content = response_text(response)
+
+        if needs_authoring_tool_retry?(content, user_message) do
+          Logger.info(
+            "authoring agent provider response omitted required draft tool call; retrying with targeted feedback"
+          )
+
+          retry_prompt = authoring_tool_retry_prompt(prompt, content)
+          retry_started_at = System.monotonic_time(:millisecond)
+
+          case request_authoring_model(retry_prompt, model_spec) do
+            {:ok, retry_response} ->
+              Logger.info(
+                "authoring agent provider retry completed elapsed_ms=#{elapsed_ms(retry_started_at)} finish_reason=#{inspect(response_finish_reason(retry_response))}"
+              )
+
+              retry_response
+              |> response_text()
+              |> answer_with_tool_execution(
+                user_message,
+                backend: backend_status,
+                finish_reason: response_finish_reason(retry_response),
+                provider_usage: response_usage(retry_response)
+              )
+
+            {:error, retry_reason} ->
+              error_summary = safe_error_summary(retry_reason)
+
+              Logger.warning(
+                "authoring agent provider retry failed elapsed_ms=#{elapsed_ms(retry_started_at)} error=#{error_summary}"
+              )
+
+              content
+              |> answer_with_tool_execution(
+                user_message,
+                backend: backend_status,
+                error: error_summary,
+                finish_reason: response_finish_reason(response),
+                provider_usage: response_usage(response)
+              )
+          end
+        else
+          content
+          |> answer_with_tool_execution(
+            user_message,
+            backend: backend_status,
+            finish_reason: response_finish_reason(response),
+            provider_usage: response_usage(response)
+          )
+        end
 
       {:error, reason} ->
         error_summary = safe_error_summary(reason)
@@ -201,23 +245,66 @@ defmodule WardwrightWeb.AuthoringAgent do
        }}
   end
 
+  defp request_authoring_model(prompt, model_spec) do
+    jido_client().generate_text(prompt,
+      model: model_spec,
+      api_key: api_key_for_request(),
+      max_tokens: max_tokens(),
+      temperature: 0.2,
+      timeout: timeout_ms()
+    )
+  end
+
   defp elapsed_ms(started_at), do: System.monotonic_time(:millisecond) - started_at
 
-  defp answer_with_tool_execution(content, extras) do
+  defp needs_authoring_tool_retry?(content, user_message) do
+    with true <- authoring_action_requested?(user_message),
+         {:ok, %{"tool_calls" => []}} <- decode_tool_plan(content) do
+      true
+    else
+      _ -> false
+    end
+  end
+
+  defp authoring_tool_retry_prompt(original_prompt, prior_content) do
+    """
+    #{original_prompt}
+
+    Previous assistant answer did not include an executable authoring tool call:
+
+    #{String.slice(prior_content || "", 0, 4_000)}
+
+    Retry now. The user asked to create or change a Wardwright model, policy, or
+    rule, so return only valid JSON with at least one draft-only or read-only
+    tool call. For a new or changed model, use draft_wardwright_model. Do not
+    ask for approval before draft_wardwright_model; it is reviewable and not
+    active.
+    """
+  end
+
+  defp answer_with_tool_execution(content, user_message, extras) do
     content = String.trim(content || "")
 
     case decode_tool_plan(content) do
       {:ok, plan} ->
         answer_text = plan |> Map.get("answer", content) |> to_string() |> String.trim()
-        tool_results = plan |> Map.get("tool_calls", []) |> execute_tool_calls()
+        tool_calls = Map.get(plan, "tool_calls", [])
+        tool_results = execute_tool_calls(tool_calls)
 
-        next_steps =
-          tool_results
-          |> add_default_next_steps(Map.get(plan, "next_steps", Map.get(plan, "approval_needed", [])))
+        if tool_calls == [] and authoring_action_requested?(user_message) do
+          answer(
+            no_tool_executed_for_authoring_request_message(answer_text),
+            Keyword.put(extras, :status, "error")
+          )
+        else
+          next_steps =
+            tool_results
+            |> add_default_next_steps(Map.get(plan, "next_steps", Map.get(plan, "approval_needed", [])))
 
-        rendered = render_tool_answer(answer_text, tool_results, next_steps)
+          rendered = render_tool_answer(answer_text, tool_results, next_steps)
 
-        answer(rendered, Keyword.put(extras, :tool_results, tool_results))
+          answer(rendered, Keyword.put(extras, :tool_results, tool_results))
+        end
 
       :error ->
         if looks_like_tool_plan?(content) do
@@ -226,6 +313,26 @@ defmodule WardwrightWeb.AuthoringAgent do
           answer(content, extras)
         end
     end
+  end
+
+  defp authoring_action_requested?(message) when is_binary(message) do
+    normalized = String.downcase(message)
+
+    Regex.match?(~r/\b(make|create|draft|build|add|update|change|modify|write|generate)\b/, normalized) and
+      Regex.match?(
+        ~r/\b(model|policy|rule|guard|rewrite|route|scenario|snippet|behavior|behaviour)\b/,
+        normalized
+      )
+  end
+
+  defp authoring_action_requested?(_message), do: false
+
+  defp no_tool_executed_for_authoring_request_message(answer_text) do
+    """
+    #{answer_text}
+
+    No authoring tool was executed. For a request to create or change a Wardwright model, the assistant must return a draft_wardwright_model or other draft-only tool call so Wardwright can validate and show a reviewable draft. Please retry, or ask for a design-only explanation explicitly.
+    """
   end
 
   defp answer(content, extras) do
@@ -590,7 +697,7 @@ defmodule WardwrightWeb.AuthoringAgent do
   end
 
   defp authoring_route do
-    System.get_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", "direct")
+    authoring_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", "direct")
     |> String.downcase()
   end
 
@@ -599,18 +706,18 @@ defmodule WardwrightWeb.AuthoringAgent do
   end
 
   defp enabled? do
-    System.get_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "")
+    authoring_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "")
     |> String.downcase()
     |> Kernel.in(["1", "true", "yes", "on"])
   end
 
   defp base_url do
-    System.get_env("WARDWRIGHT_AUTHORING_AGENT_BASE_URL") ||
+    authoring_env("WARDWRIGHT_AUTHORING_AGENT_BASE_URL") ||
       if local_wardwright_route?(), do: local_wardwright_base_url(), else: @default_base_url
   end
 
   defp model(_context) do
-    case blank_to_nil(System.get_env("WARDWRIGHT_AUTHORING_AGENT_MODEL")) do
+    case blank_to_nil(authoring_env("WARDWRIGHT_AUTHORING_AGENT_MODEL")) do
       nil ->
         if local_wardwright_route?(), do: "not-configured", else: @default_model
 
@@ -626,7 +733,7 @@ defmodule WardwrightWeb.AuthoringAgent do
   end
 
   defp requested_local_authoring_model_config(_context) do
-    case blank_to_nil(System.get_env("WARDWRIGHT_AUTHORING_AGENT_MODEL")) do
+    case blank_to_nil(authoring_env("WARDWRIGHT_AUTHORING_AGENT_MODEL")) do
       nil -> nil
       configured_model -> usable_local_authoring_model_config(configured_model)
     end
@@ -668,7 +775,7 @@ defmodule WardwrightWeb.AuthoringAgent do
   defp blank_to_nil(value), do: value
 
   defp local_wardwright_base_url do
-    bind = System.get_env("WARDWRIGHT_BIND", "127.0.0.1:8787")
+    bind = System.get_env("WARDWRIGHT_BIND") || authoring_env("WARDWRIGHT_BIND", "127.0.0.1:8787")
 
     bind
     |> String.replace_prefix("0.0.0.0", "127.0.0.1")
@@ -685,7 +792,7 @@ defmodule WardwrightWeb.AuthoringAgent do
 
   defp max_tokens do
     "WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS"
-    |> System.get_env(Integer.to_string(@default_max_tokens))
+    |> authoring_env(Integer.to_string(@default_max_tokens))
     |> Integer.parse()
     |> case do
       {value, ""} when value > 0 -> value
@@ -695,7 +802,7 @@ defmodule WardwrightWeb.AuthoringAgent do
 
   defp timeout_ms do
     "WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS"
-    |> System.get_env(Integer.to_string(@default_timeout_ms))
+    |> authoring_env(Integer.to_string(@default_timeout_ms))
     |> Integer.parse()
     |> case do
       {value, ""} when value > 0 -> value
@@ -708,7 +815,7 @@ defmodule WardwrightWeb.AuthoringAgent do
   end
 
   defp api_key do
-    System.get_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY") || api_key_from_file()
+    authoring_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY") || api_key_from_file()
   end
 
   defp api_key_for_request do
@@ -720,11 +827,11 @@ defmodule WardwrightWeb.AuthoringAgent do
   end
 
   defp local_model_api_key do
-    System.get_env("WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY") || local_model_api_key_from_file()
+    authoring_env("WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY") || local_model_api_key_from_file()
   end
 
   defp api_key_from_file do
-    case System.get_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE") do
+    case authoring_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE") do
       nil ->
         nil
 
@@ -739,7 +846,7 @@ defmodule WardwrightWeb.AuthoringAgent do
   end
 
   defp local_model_api_key_from_file do
-    case System.get_env("WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY_FILE") do
+    case authoring_env("WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY_FILE") do
       nil ->
         nil
 
@@ -750,6 +857,83 @@ defmodule WardwrightWeb.AuthoringAgent do
           {:ok, key} -> String.trim(key)
           {:error, _reason} -> nil
         end
+    end
+  end
+
+  defp authoring_env(key, default \\ nil) do
+    System.get_env(key) ||
+      authoring_config_file()
+      |> config_file_env()
+      |> Map.get(key, default)
+  end
+
+  defp authoring_config_file do
+    System.get_env(@authoring_config_file_env) || default_authoring_config_file()
+  end
+
+  defp default_authoring_config_file do
+    if !test_env?() do
+      [
+        Path.join([System.user_home!(), ".wardwright", "authoring_agent.env"]),
+        "/opt/homebrew/etc/wardwright/authoring_agent.env",
+        "/usr/local/etc/wardwright/authoring_agent.env"
+      ]
+      |> Enum.find(&File.regular?/1)
+    end
+  end
+
+  defp test_env? do
+    Code.ensure_loaded?(Mix) and function_exported?(Mix, :env, 0) and Mix.env() == :test
+  end
+
+  defp config_file_env(nil), do: %{}
+
+  defp config_file_env(path) do
+    path
+    |> File.read()
+    |> case do
+      {:ok, contents} -> parse_env_file(contents)
+      {:error, _reason} -> %{}
+    end
+  end
+
+  defp parse_env_file(contents) do
+    contents
+    |> String.split("\n")
+    |> Enum.reduce(%{}, fn line, acc ->
+      line = String.trim(line)
+
+      cond do
+        line == "" or String.starts_with?(line, "#") ->
+          acc
+
+        String.contains?(line, "=") ->
+          [key, value] = String.split(line, "=", parts: 2)
+          key = String.trim(key)
+          value = value |> String.trim() |> unquote_env_value()
+
+          if String.starts_with?(key, "WARDWRIGHT_") and key != "" do
+            Map.put(acc, key, value)
+          else
+            acc
+          end
+
+        true ->
+          acc
+      end
+    end)
+  end
+
+  defp unquote_env_value(value) do
+    cond do
+      String.starts_with?(value, "\"") and String.ends_with?(value, "\"") ->
+        value |> String.trim_leading("\"") |> String.trim_trailing("\"")
+
+      String.starts_with?(value, "'") and String.ends_with?(value, "'") ->
+        value |> String.trim_leading("'") |> String.trim_trailing("'")
+
+      true ->
+        value
     end
   end
 end

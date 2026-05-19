@@ -155,6 +155,15 @@ subset; scenario write tools remain HTTP-only. The
 [Agent Authoring Guide](agent-authoring.html) explains when an agent should use
 each tool and which operations are draft-only versus write-capable.
 
+The experimental in-page authoring assistant is intentionally disabled unless
+configured. Service installs should put its settings in
+`/opt/homebrew/etc/wardwright/authoring_agent.env` on Apple Silicon Homebrew,
+`/usr/local/etc/wardwright/authoring_agent.env` on Intel Homebrew, or
+`~/.wardwright/authoring_agent.env` for user-local runs. Use
+`WARDWRIGHT_AUTHORING_AGENT_CONFIG_FILE` to point at a different file. This
+keeps `brew services` and `wardwright admin` launches from silently losing the
+local model/provider selection that was only present in one shell session.
+
 `WARDWRIGHT_ADMIN_TOKEN` remains optional for loopback-only use. For browser
 access to the operator workbench and protected control APIs beyond loopback, set
 `BASIC_AUTH_PASSWORD`; the Basic Auth username is always `admin`. This protects
