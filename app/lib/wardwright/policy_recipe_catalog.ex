@@ -416,7 +416,7 @@ defmodule Wardwright.PolicyRecipeCatalog do
   end
 
   defp default_workspace_dir do
-    Path.join(System.user_home!(), ".wardwright/recipes/policies")
+    Wardwright.Paths.config_path("recipes/policies")
   end
 
   defp seed_workspace(%Source{endpoint: endpoint}) do

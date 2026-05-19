@@ -874,7 +874,7 @@ defmodule WardwrightWeb.AuthoringAgent do
   defp default_authoring_config_file do
     if !test_env?() do
       [
-        Path.join([System.user_home!(), ".wardwright", "authoring_agent.env"]),
+        Wardwright.Paths.config_path("authoring_agent.env"),
         "/opt/homebrew/etc/wardwright/authoring_agent.env",
         "/usr/local/etc/wardwright/authoring_agent.env"
       ]
