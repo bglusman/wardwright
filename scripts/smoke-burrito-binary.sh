@@ -13,6 +13,7 @@ PORT="${WARDWRIGHT_SMOKE_PORT:-$(ruby -rsocket -e 'server = TCPServer.new("127.0
 BASE_URL="http://127.0.0.1:${PORT}"
 SECRET="${WARDWRIGHT_SECRET_KEY_BASE:-$(openssl rand -base64 64)}"
 LOG_FILE="$(mktemp -t wardwright-burrito-smoke.XXXXXX.log)"
+SQLITE_STORE="$(mktemp -t wardwright-burrito-smoke.XXXXXX.sqlite3)"
 
 if [ ! -x "$BINARY" ]; then
   echo "binary is not executable: $BINARY" >&2
@@ -34,15 +35,18 @@ esac
 
 WARDWRIGHT_BIND="127.0.0.1:${PORT}" \
   WARDWRIGHT_SECRET_KEY_BASE="$SECRET" \
+  WARDWRIGHT_SQLITE_STORE="$SQLITE_STORE" \
   "$BINARY" serve >"$LOG_FILE" 2>&1 &
 
 PID="$!"
 cleanup() {
   kill "$PID" >/dev/null 2>&1 || true
   wait "$PID" >/dev/null 2>&1 || true
+  rm -f "$SQLITE_STORE" "$SQLITE_STORE"-shm "$SQLITE_STORE"-wal
 }
 trap cleanup EXIT
 
+ready=0
 for _ in $(seq 1 60); do
   if ! kill -0 "$PID" >/dev/null 2>&1; then
     cat "$LOG_FILE" >&2
@@ -50,14 +54,20 @@ for _ in $(seq 1 60); do
   fi
 
   if curl -fsS "${BASE_URL}/v1/models" >/dev/null 2>&1; then
+    ready=1
     break
   fi
   sleep 0.25
 done
 
+if [ "$ready" -ne 1 ]; then
+  cat "$LOG_FILE" >&2
+  exit 1
+fi
+
 curl -fsS "${BASE_URL}/" >/dev/null
 curl -fsS "${BASE_URL}/v1/models" | grep -q "coding-balanced"
-curl -fsS "${BASE_URL}/v1/synthetic/models" | grep -q "coding-balanced"
+curl -fsS "${BASE_URL}/v1/wardwright/models" | grep -q "coding-balanced"
 curl -fsS "${BASE_URL}/v1/chat/completions" \
   -H "content-type: application/json" \
   -d '{"model":"coding-balanced","messages":[{"role":"user","content":"burrito smoke"}]}' |
