@@ -70,8 +70,13 @@ pub fn component() {
   lustre.simple(init, update, view)
 }
 
-pub fn init(_flags: Nil) -> Model {
-  load_model(external_default_model_id(), "", "", "")
+pub fn init(selected_model_id: String) -> Model {
+  let model_id = case selected_model_id {
+    "" -> external_default_model_id()
+    selected -> selected
+  }
+
+  load_model(model_id, "", "", "")
 }
 
 pub fn update(model: Model, msg: Msg) -> Model {

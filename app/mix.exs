@@ -177,6 +177,7 @@ defmodule Wardwright.MixProject do
       {:assay, "~> 0.5.2", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:quokka, "~> 2.13", only: [:dev, :test], runtime: false},
+      {:phoenix_live_reload, "~> 1.6", only: :dev},
       {:tidewave, "~> 0.5", only: :dev},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:muex, "~> 0.6.1", only: :test},

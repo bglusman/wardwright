@@ -21,7 +21,10 @@ defmodule WardwrightWeb.LustreModelAccessSocket do
 
   @impl true
   def init(state) do
-    with {:ok, component} <- :wardwright@lustre_model_access.component() |> :lustre.start_server_component(nil) do
+    selected_model = selected_model(state)
+
+    with {:ok, component} <-
+           :wardwright@lustre_model_access.component() |> :lustre.start_server_component(selected_model) do
       subject = subscribe(component)
 
       {:ok,
@@ -100,6 +103,16 @@ defmodule WardwrightWeb.LustreModelAccessSocket do
         x_headers
     end
   end
+
+  defp selected_model(%{connect_info: %{session: %{"wardwright_model_access_model" => model}}}) when is_binary(model),
+    do: model
+
+  defp selected_model(%{connect_info: %{session: %{wardwright_model_access_model: model}}}) when is_binary(model),
+    do: model
+
+  defp selected_model(%{params: %{"model" => model}}) when is_binary(model), do: model
+
+  defp selected_model(_state), do: ""
 
   defp parse_runtime_message(json) do
     {_, transformer} = :lustre@server_component.runtime_message_decoder()

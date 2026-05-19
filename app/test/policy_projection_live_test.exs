@@ -449,7 +449,11 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert {:ok, _alpha} = Wardwright.put_config(alpha)
     assert {:ok, _beta} = Wardwright.put_model_config(beta)
 
-    assert :wardwright@lustre_model_access_test_support.initial_view_contains("alpha-access")
+    conn = get(build_conn(), "/admin/model-api-keys?model=alpha-access")
+
+    assert Plug.Conn.get_session(conn, :wardwright_model_access_model) == "alpha-access"
+    assert html_response(conn, 200) =~ "model=alpha-access"
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains("alpha-access", "alpha-access")
     assert :wardwright@lustre_model_access_test_support.initial_view_contains("beta-access")
 
     assert :wardwright@lustre_model_access_test_support.saving_access_updates_mode(

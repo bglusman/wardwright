@@ -31,6 +31,10 @@ defmodule WardwrightWeb.Endpoint do
     ]
   )
 
+  if code_reloading? do
+    socket("/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket)
+  end
+
   plug(Plug.Static,
     at: "/",
     from: :wardwright,
@@ -71,11 +75,16 @@ defmodule WardwrightWeb.Endpoint do
   plug(Plug.MethodOverride)
   plug(Plug.Head)
 
-  plug(Plug.Session, @session_options)
-
   if Code.ensure_loaded?(Tidewave) do
     plug(Tidewave)
   end
+
+  if code_reloading? do
+    plug(Phoenix.CodeReloader)
+    plug(Phoenix.LiveReloader)
+  end
+
+  plug(Plug.Session, @session_options)
 
   plug(WardwrightWeb.Router)
 end

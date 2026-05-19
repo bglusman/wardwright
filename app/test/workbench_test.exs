@@ -167,6 +167,73 @@ defmodule WardwrightWeb.WorkbenchTest do
     WardwrightWeb.LustreModelAccessSocket.terminate(:normal, state)
   end
 
+  test "model access transport honors the selected model session value" do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "session-selected-model")
+
+    assert {:ok, _config} = Wardwright.put_model_config(config)
+
+    assert {:ok, state} =
+             WardwrightWeb.LustreModelAccessSocket.init(%{
+               connect_info: %{session: %{"wardwright_model_access_model" => "session-selected-model"}}
+             })
+
+    assert_receive {ref, message} when is_tuple(message), 1_000
+
+    assert {:push, {:text, json}, _state} =
+             WardwrightWeb.LustreModelAccessSocket.handle_info({ref, message}, state)
+
+    assert json =~ "session-selected-model"
+
+    WardwrightWeb.LustreModelAccessSocket.terminate(:normal, state)
+  end
+
+  test "model access transport honors the selected model websocket parameter" do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "query-selected-model")
+
+    assert {:ok, _config} = Wardwright.put_model_config(config)
+
+    assert {:ok, state} =
+             WardwrightWeb.LustreModelAccessSocket.init(%{
+               connect_info: %{session: %{}},
+               params: %{"model" => "query-selected-model"}
+             })
+
+    assert_receive {ref, message} when is_tuple(message), 1_000
+
+    assert {:push, {:text, json}, _state} =
+             WardwrightWeb.LustreModelAccessSocket.handle_info({ref, message}, state)
+
+    assert json =~ "query-selected-model"
+
+    WardwrightWeb.LustreModelAccessSocket.terminate(:normal, state)
+  end
+
+  test "model access transport honors atom-keyed session values" do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "atom-session-selected-model")
+
+    assert {:ok, _config} = Wardwright.put_model_config(config)
+
+    assert {:ok, state} =
+             WardwrightWeb.LustreModelAccessSocket.init(%{
+               connect_info: %{session: %{wardwright_model_access_model: "atom-session-selected-model"}}
+             })
+
+    assert_receive {ref, message} when is_tuple(message), 1_000
+
+    assert {:push, {:text, json}, _state} =
+             WardwrightWeb.LustreModelAccessSocket.handle_info({ref, message}, state)
+
+    assert json =~ "atom-session-selected-model"
+
+    WardwrightWeb.LustreModelAccessSocket.terminate(:normal, state)
+  end
+
   test "workbench websocket transport requires protected access" do
     assert {:ok, _state} =
              WardwrightWeb.LustreWorkbenchSocket.connect(%{

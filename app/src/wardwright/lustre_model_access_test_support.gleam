@@ -12,6 +12,14 @@ pub fn initial_view_contains(expected_text: String) -> Bool {
   |> view_contains(expected_text)
 }
 
+pub fn initial_model_view_contains(
+  model_id: String,
+  expected_text: String,
+) -> Bool {
+  start_with_model(model_id)
+  |> view_contains(expected_text)
+}
+
 pub fn creating_key_shows_secret(model_id: String, label: String) -> Bool {
   start()
   |> change_select("model", model_id)
@@ -60,12 +68,16 @@ pub fn selecting_model_shows(model_id: String, expected_text: String) -> Bool {
 }
 
 fn start() {
+  start_with_model("")
+}
+
+fn start_with_model(model_id: String) {
   simulate.simple(
     init: lustre_model_access.init,
     update: lustre_model_access.update,
     view: lustre_model_access.view,
   )
-  |> simulate.start(Nil)
+  |> simulate.start(model_id)
 }
 
 fn change_select(simulation, control_id: String, selected_id: String) {
