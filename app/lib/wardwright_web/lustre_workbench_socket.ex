@@ -5,6 +5,10 @@ defmodule WardwrightWeb.LustreWorkbenchSocket do
 
   require Logger
 
+  @dialyzer {:nowarn_function, subscribe: 1}
+  @dialyzer {:nowarn_function, unsubscribe: 2}
+  @dialyzer {:nowarn_function, parse_runtime_message: 1}
+
   @impl true
   def child_spec(_opts), do: :ignore
 

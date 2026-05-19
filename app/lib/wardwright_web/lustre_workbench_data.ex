@@ -1,6 +1,9 @@
 defmodule WardwrightWeb.LustreWorkbenchData do
   @moduledoc false
 
+  @typep model_config :: map()
+  @typep visited_model_ids :: [String.t()]
+
   def pattern_options, do: pattern_options(nil)
 
   def pattern_options(model_id) when model_id in [nil, ""] do
@@ -453,10 +456,11 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     |> filter_existing_pattern_ids()
   end
 
+  @spec filter_existing_pattern_ids([String.t()]) :: [String.t()]
   defp filter_existing_pattern_ids(ids) do
-    existing = Wardwright.PolicyProjection.pattern_ids() |> MapSet.new()
+    existing = Wardwright.PolicyProjection.pattern_ids()
 
-    Enum.filter(ids, &MapSet.member?(existing, &1))
+    Enum.filter(ids, &(&1 in existing))
   end
 
   defp filter_projection_transitions("tts-retry", transitions, config) do
@@ -487,10 +491,20 @@ defmodule WardwrightWeb.LustreWorkbenchData do
 
   defp filter_projection_transitions(_pattern_id, transitions, _config), do: transitions
 
+  @spec composed_projection_transitions(String.t(), model_config(), String.t(), String.t()) :: [tuple()]
   defp composed_projection_transitions(pattern_id, config, parent_initial, parent_terminal) do
-    composed_projection_transitions(pattern_id, config, parent_initial, parent_terminal, nil, MapSet.new(), 0)
+    composed_projection_transitions(pattern_id, config, parent_initial, parent_terminal, nil, [], 0)
   end
 
+  @spec composed_projection_transitions(
+          String.t(),
+          model_config(),
+          String.t(),
+          String.t(),
+          String.t() | nil,
+          visited_model_ids(),
+          non_neg_integer()
+        ) :: [tuple()]
   defp composed_projection_transitions(
          _pattern_id,
          _config,
@@ -512,7 +526,7 @@ defmodule WardwrightWeb.LustreWorkbenchData do
          depth
        ) do
     config_id = Wardwright.ModelGraph.model_id(config, "")
-    visited = if config_id == "", do: visited, else: MapSet.put(visited, config_id)
+    visited = add_visited(visited, config_id)
     parent_from = prefixed_state(parent_initial, parent_prefix)
     parent_to = prefixed_state(parent_terminal, parent_prefix)
 
@@ -523,10 +537,10 @@ defmodule WardwrightWeb.LustreWorkbenchData do
       ref_id = Wardwright.ModelGraph.ref_id(target, artifact)
 
       if Wardwright.ModelGraph.wardwright_model_target?(target) and is_map(artifact) and
-           not MapSet.member?(visited, ref_id) do
+           ref_id not in visited do
         child_id = graph_model_id(ref_id)
         child_prefix = joined_prefix(parent_prefix, child_id)
-        child_visited = MapSet.put(visited, ref_id)
+        child_visited = add_visited(visited, ref_id)
 
         {child_initial, child_terminal, child_transitions} =
           prefixed_projection_transitions(pattern_id, artifact, child_prefix, child_visited, depth + 1)
@@ -556,6 +570,8 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     end)
   end
 
+  @spec prefixed_projection_transitions(String.t(), model_config(), String.t(), visited_model_ids(), non_neg_integer()) ::
+          {String.t(), String.t(), [tuple()]}
   defp prefixed_projection_transitions(pattern_id, config, prefix, visited, depth) do
     config_model_id = config["model_id"] || ""
     config_version = config["version"] || ""
@@ -621,15 +637,18 @@ defmodule WardwrightWeb.LustreWorkbenchData do
 
   defp stream_state_transition_capable_tree?(config), do: config_tree_any?(config, &stream_state_transition_capable?/1)
 
+  @spec config_tree_any?(model_config(), (model_config() -> boolean())) :: boolean()
   defp config_tree_any?(config, callback) do
-    config_tree_any?(config, callback, MapSet.new(), 0)
+    config_tree_any?(config, callback, [], 0)
   end
 
+  @spec config_tree_any?(model_config(), (model_config() -> boolean()), visited_model_ids(), non_neg_integer()) ::
+          boolean()
   defp config_tree_any?(_config, _callback, _visited, depth) when depth >= 4, do: false
 
   defp config_tree_any?(config, callback, visited, depth) do
     config_id = Wardwright.ModelGraph.model_id(config, "")
-    visited = if config_id == "", do: visited, else: MapSet.put(visited, config_id)
+    visited = add_visited(visited, config_id)
 
     callback.(config) or
       config
@@ -694,15 +713,17 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     |> Enum.max(fn -> 0 end)
   end
 
+  @spec retry_slot_candidates(model_config()) :: [non_neg_integer()]
   defp retry_slot_candidates(config) do
-    retry_slot_candidates(config, MapSet.new(), 0)
+    retry_slot_candidates(config, [], 0)
   end
 
+  @spec retry_slot_candidates(model_config(), visited_model_ids(), non_neg_integer()) :: [non_neg_integer()]
   defp retry_slot_candidates(_config, _visited, depth) when depth >= 4, do: []
 
   defp retry_slot_candidates(config, visited, depth) do
     config_id = Wardwright.ModelGraph.model_id(config, "")
-    visited = if config_id == "", do: visited, else: MapSet.put(visited, config_id)
+    visited = add_visited(visited, config_id)
 
     stream_retry_slots(config) ++
       structured_output_retry_slots(config) ++
@@ -817,15 +838,18 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     end
   end
 
+  @spec nested_default(model_config(), (model_config() -> String.t() | nil)) :: String.t() | nil
   defp nested_default(config, callback) do
-    nested_default(config, callback, MapSet.new(), 0)
+    nested_default(config, callback, [], 0)
   end
 
+  @spec nested_default(model_config(), (model_config() -> String.t() | nil), visited_model_ids(), non_neg_integer()) ::
+          String.t() | nil
   defp nested_default(_config, _callback, _visited, depth) when depth >= 4, do: nil
 
   defp nested_default(config, callback, visited, depth) do
     config_id = Wardwright.ModelGraph.model_id(config, "")
-    visited = if config_id == "", do: visited, else: MapSet.put(visited, config_id)
+    visited = add_visited(visited, config_id)
 
     config
     |> nested_model_configs(visited)
@@ -834,6 +858,7 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     end)
   end
 
+  @spec nested_model_configs(model_config(), visited_model_ids()) :: [model_config()]
   defp nested_model_configs(config, visited) do
     config
     |> Wardwright.ModelGraph.targets()
@@ -842,12 +867,18 @@ defmodule WardwrightWeb.LustreWorkbenchData do
       ref_id = Wardwright.ModelGraph.ref_id(target, artifact)
 
       if Wardwright.ModelGraph.wardwright_model_target?(target) and is_map(artifact) and
-           not MapSet.member?(visited, ref_id) do
+           ref_id not in visited do
         [artifact]
       else
         []
       end
     end)
+  end
+
+  defp add_visited(visited, ""), do: visited
+
+  defp add_visited(visited, id) do
+    if id in visited, do: visited, else: [id | visited]
   end
 
   defp request_transform_rule?(%{"kind" => "request_transform"}), do: true
