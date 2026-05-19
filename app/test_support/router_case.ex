@@ -29,7 +29,7 @@ defmodule Wardwright.Test.StreamingProvider do
         {:ok, conn} =
           Plug.Conn.chunk(
             conn,
-            Jason.encode!(%{"message" => %{"content" => chunk}, "done" => false}) <> "\n"
+            Jason.encode!(%{"done" => false, "message" => %{"content" => chunk}}) <> "\n"
           )
 
         conn
@@ -41,13 +41,35 @@ defmodule Wardwright.Test.StreamingProvider do
         Jason.encode!(%{
           "done" => true,
           "done_reason" => "stop",
-          "total_duration" => 123,
+          "eval_count" => 2,
           "prompt_eval_count" => 4,
-          "eval_count" => 2
+          "total_duration" => 123
         }) <> "\n"
       )
 
     conn
+  end
+
+  post "/repairing-ollama/api/chat" do
+    {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+    content =
+      if body =~ "Previous model output failed Wardwright structured output validation" do
+        ~s({"answer":"repaired after feedback","confidence":0.91})
+      else
+        "not json yet"
+      end
+
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(
+      200,
+      Jason.encode!(%{
+        "done" => true,
+        "message" => %{"content" => content},
+        "total_duration" => 123
+      })
+    )
   end
 
   post "/openai/chat/completions" do
@@ -83,7 +105,7 @@ defmodule Wardwright.Test.StreamingProvider do
             "data: " <>
               Jason.encode!(%{
                 "choices" => [%{"delta" => %{}, "finish_reason" => "stop", "index" => 0}],
-                "usage" => %{"prompt_tokens" => 3, "completion_tokens" => 2, "total_tokens" => 5}
+                "usage" => %{"completion_tokens" => 2, "prompt_tokens" => 3, "total_tokens" => 5}
               }) <>
               "\n\n"
           )
@@ -105,12 +127,16 @@ defmodule Wardwright.RouterCase do
   @moduledoc false
 
   use ExUnit.CaseTemplate
+
   import Plug.Conn
   import Plug.Test
+
+  alias Wardwright.Test.StreamingProvider
 
   using do
     quote do
       use ExUnit.Case, async: false
+
       import Plug.Conn
       import Plug.Test
       import Wardwright.RouterCase
@@ -129,7 +155,7 @@ defmodule Wardwright.RouterCase do
   @opts Wardwright.Router.init([])
 
   def call(method, path, body \\ nil, headers \\ [], remote_ip \\ {127, 0, 0, 1}) do
-    encoded = if is_nil(body), do: nil, else: Jason.encode!(body)
+    encoded = if !is_nil(body), do: Jason.encode!(body)
 
     method
     |> conn(path, encoded)
@@ -143,7 +169,7 @@ defmodule Wardwright.RouterCase do
 
   def streaming_provider_base_url(prefix) do
     ref = :"wardwright_streaming_provider_#{System.unique_integer([:positive])}"
-    {:ok, _pid} = Plug.Cowboy.http(Wardwright.Test.StreamingProvider, [], ref: ref, port: 0)
+    {:ok, _pid} = Plug.Cowboy.http(StreamingProvider, [], ref: ref, port: 0)
     port = :ranch.get_port(ref)
     on_exit(fn -> Plug.Cowboy.shutdown(ref) end)
     "http://127.0.0.1:#{port}#{prefix}"
@@ -151,23 +177,23 @@ defmodule Wardwright.RouterCase do
 
   def unit_policy_config do
     %{
-      "model_id" => "unit-model",
-      "version" => "unit-version",
-      "targets" => [
-        %{"model" => "tiny/model", "context_window" => 8},
-        %{"model" => "medium/model", "context_window" => 32},
-        %{"model" => "large/model", "context_window" => 256}
-      ],
       "governance" => [
         %{
-          "id" => "ambiguous-success",
-          "kind" => "request_guard",
           "action" => "escalate",
           "contains" => "looks done",
+          "id" => "ambiguous-success",
+          "kind" => "request_guard",
           "message" => "completion claim needs artifact",
           "severity" => "warning"
         }
-      ]
+      ],
+      "model_id" => "unit-model",
+      "targets" => [
+        %{"context_window" => 8, "model" => "tiny/model"},
+        %{"context_window" => 32, "model" => "medium/model"},
+        %{"context_window" => 256, "model" => "large/model"}
+      ],
+      "version" => "unit-version"
     }
   end
 
@@ -175,39 +201,34 @@ defmodule Wardwright.RouterCase do
     unit_policy_config()
     |> Map.put("targets", [
       %{
-        "model" => "canned/model",
+        "canned_outputs" => outputs,
         "context_window" => 256,
-        "provider_kind" => "canned_sequence",
-        "canned_outputs" => outputs
+        "model" => "canned/model",
+        "provider_kind" => "canned_sequence"
       }
     ])
     |> Map.put("structured_output", %{
-      "schemas" => %{
-        "answer_v1" => %{
-          "type" => "object",
-          "required" => ["answer", "confidence"],
-          "properties" => %{
-            "answer" => %{"type" => "string", "minLength" => 1},
-            "confidence" => %{"type" => "number", "minimum" => 0, "maximum" => 1},
-            "citations" => %{"type" => "array", "items" => %{"type" => "string"}}
-          },
-          "additionalProperties" => false
-        }
-      },
-      "semantic_rules" => [
-        %{
-          "id" => "minimum-confidence",
-          "kind" => "json_path_number",
-          "path" => "/confidence",
-          "gte" => 0.7
-        }
-      ],
       "guard_loop" => %{
         "max_attempts" => 4,
         "max_failures_per_rule" => max_failures_per_rule,
-        "on_violation" => "retry_with_validation_feedback",
-        "on_exhausted" => "block"
-      }
+        "on_exhausted" => "block",
+        "on_violation" => "retry_with_validation_feedback"
+      },
+      "schemas" => %{
+        "answer_v1" => %{
+          "additionalProperties" => false,
+          "properties" => %{
+            "answer" => %{"minLength" => 1, "type" => "string"},
+            "citations" => %{"items" => %{"type" => "string"}, "type" => "array"},
+            "confidence" => %{"maximum" => 1, "minimum" => 0, "type" => "number"}
+          },
+          "required" => ["answer", "confidence"],
+          "type" => "object"
+        }
+      },
+      "semantic_rules" => [
+        %{"gte" => 0.7, "id" => "minimum-confidence", "kind" => "json_path_number", "path" => "/confidence"}
+      ]
     })
   end
 
@@ -215,28 +236,23 @@ defmodule Wardwright.RouterCase do
     status = Keyword.get(opts, :status, "completed")
 
     %{
-      "receipt_schema" => "v1",
-      "receipt_id" => receipt_id,
+      "caller" => %{
+        "application_id" => %{"source" => "header", "value" => "app-a"},
+        "consuming_agent_id" => %{"source" => "header", "value" => agent_id},
+        "consuming_user_id" => %{"source" => "header", "value" => "user-a"},
+        "run_id" => %{"source" => "header", "value" => "run-a"},
+        "session_id" => %{"source" => "header", "value" => "session-a"},
+        "tenant_id" => %{"source" => "header", "value" => "tenant-a"}
+      },
       "created_at" => created_at,
+      "decision" => %{"selected_model" => "managed/kimi-k2.6", "selected_provider" => "managed"},
+      "events" => [%{"event_id" => receipt_id <> ":1", "receipt_id" => receipt_id, "sequence" => 1}],
+      "final" => %{"status" => status},
       "model_id" => "coding-balanced",
       "model_version" => "2026-05-13.mock",
-      "simulation" => status == "simulated",
-      "caller" => %{
-        "tenant_id" => %{"value" => "tenant-a", "source" => "header"},
-        "application_id" => %{"value" => "app-a", "source" => "header"},
-        "consuming_agent_id" => %{"value" => agent_id, "source" => "header"},
-        "consuming_user_id" => %{"value" => "user-a", "source" => "header"},
-        "session_id" => %{"value" => "session-a", "source" => "header"},
-        "run_id" => %{"value" => "run-a", "source" => "header"}
-      },
-      "decision" => %{
-        "selected_provider" => "managed",
-        "selected_model" => "managed/kimi-k2.6"
-      },
-      "final" => %{"status" => status},
-      "events" => [
-        %{"event_id" => receipt_id <> ":1", "receipt_id" => receipt_id, "sequence" => 1}
-      ]
+      "receipt_id" => receipt_id,
+      "receipt_schema" => "v1",
+      "simulation" => status == "simulated"
     }
   end
 end

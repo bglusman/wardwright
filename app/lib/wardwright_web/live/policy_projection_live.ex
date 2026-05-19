@@ -2232,6 +2232,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .model_key_workspace { max-width: 1440px; margin: 0 auto; }
     .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
     .topbar > div:first-child, .panel_header > div { min-width: 0; flex: 1 1 auto; }
+    .topbar h1, .topbar p, .panel_header h2, .panel_header p { overflow-wrap: anywhere; }
     .topbar_actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
     .eyebrow { margin: 0 0 4px; color: #5e6b76; font-size: 12px; font-weight: 800; text-transform: uppercase; }
     h1, h2, h3, p { margin-top: 0; }
@@ -2241,13 +2242,13 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     p { color: #5e6b76; line-height: 1.45; }
     .panel { min-width: 0; margin-bottom: 18px; padding: 20px; border: 1px solid #d3dbe2; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgb(16 24 40 / 5%); }
     .panel_header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
-    .button { display: inline-flex; align-items: center; justify-content: center; max-width: 100%; min-height: 36px; padding: 7px 12px; border: 1px solid #2f74b5; border-radius: 6px; color: #fff; background: #2f74b5; font: inherit; font-size: 13px; font-weight: 800; line-height: 1.2; text-align: center; cursor: pointer; }
+    .button { display: inline-flex; align-items: center; justify-content: center; max-width: 100%; min-height: 36px; padding: 7px 12px; border: 1px solid #2f74b5; border-radius: 6px; color: #fff; background: #2f74b5; font: inherit; font-size: 13px; font-weight: 800; line-height: 1.2; text-align: center; overflow-wrap: anywhere; cursor: pointer; }
     .button:hover { border-color: #235b91; background: #235b91; }
     .button.secondary { border-color: #c5d0d9; color: #26323c; background: #fff; }
     .button.secondary:hover { border-color: #8fa1b2; background: #f3f6f8; }
     .button.danger { border-color: #c45c5c; color: #8b2d2d; background: #fff5f5; }
     .button.danger:hover { border-color: #9d3737; background: #ffe8e8; }
-    .engine_card { display: grid; gap: 6px; min-width: 260px; padding: 12px; border: 1px solid #d3dbe2; border-radius: 8px; background: #fff; }
+    .engine_card { display: grid; gap: 6px; min-width: 260px; max-width: 100%; padding: 12px; border: 1px solid #d3dbe2; border-radius: 8px; background: #fff; overflow-wrap: anywhere; }
     .engine_card span:last-child { color: #66727c; font-size: 12px; }
     .editing_target_summary { display: block; margin-top: 10px; color: #5e6b76; font-size: 13px; line-height: 1.35; }
     .editing_target_summary strong { color: #17202a; }
@@ -2332,7 +2333,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     th, td { overflow-wrap: anywhere; }
     .authoring_agent { border-color: #c7d8e6; background: #f8fbfd; }
     .authoring_agent_meta { display: flex; flex-wrap: wrap; gap: 8px; color: #51606d; font-size: 12px; font-weight: 800; }
-    .authoring_agent_meta span { border: 1px solid #d8e2ea; border-radius: 999px; padding: 5px 8px; background: #fff; }
+    .authoring_agent_meta span { min-width: 0; max-width: 100%; border: 1px solid #d8e2ea; border-radius: 999px; padding: 5px 8px; background: #fff; overflow-wrap: anywhere; }
     .authoring_transcript { display: grid; gap: 10px; max-height: 360px; overflow: auto; }
     .empty_agent_message { margin: 0; color: #647482; font-size: 13px; line-height: 1.45; }
     .agent_message { display: grid; gap: 5px; border: 1px solid #dbe5ed; border-radius: 8px; padding: 10px; background: #fff; }

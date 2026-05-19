@@ -46,6 +46,8 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert prompt =~ "selected_recipe_id: private-helpdesk-local-gate"
     assert prompt =~ "Ask for human confirmation before any durable write-capable action."
     assert prompt =~ "Draft-only tools are safe to call immediately"
+    assert prompt =~ "a tool call is required in this turn"
+    assert prompt =~ "do not require\n  user approval"
     assert prompt =~ "Prefer top-level fields named governance, stream_rules"
     assert prompt =~ "You may call read-only and draft-only authoring tools"
     assert prompt =~ "draft_wardwright_model is intentionally ephemeral"
@@ -59,6 +61,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert prompt =~ "activate_wardwright_model"
     assert prompt =~ "simulate_policy"
     assert prompt =~ "\"tool_calls\""
+    assert prompt =~ "Do not wrap JSON in markdown fences."
     assert prompt =~ "pending_drafts: []"
     assert prompt =~ "User request:\nMake the private route gate easier to review."
   end
@@ -100,6 +103,37 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert WardwrightWeb.AuthoringAgent.status().configured
     assert WardwrightWeb.AuthoringAgent.status().max_tokens == 16_384
     assert WardwrightWeb.AuthoringAgent.status().timeout_ms == 120_000
+  end
+
+  test "status can load authoring agent settings from a local config file" do
+    path = Path.join(System.tmp_dir!(), "wardwright-authoring-agent-#{System.unique_integer([:positive])}.env")
+
+    File.write!(path, """
+    # local operator config
+    WARDWRIGHT_AUTHORING_AGENT_ENABLED=1
+    WARDWRIGHT_AUTHORING_AGENT_ROUTE=direct
+    WARDWRIGHT_AUTHORING_AGENT_MODEL='configured-from-file'
+    WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE="#{path}.key"
+    WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=2048
+    WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=45000
+    IGNORED_KEY=ignored
+    """)
+
+    File.write!("#{path}.key", "test-key-from-file\n")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_CONFIG_FILE", path)
+
+    on_exit(fn ->
+      File.rm(path)
+      File.rm("#{path}.key")
+    end)
+
+    assert WardwrightWeb.AuthoringAgent.configured?()
+
+    status = WardwrightWeb.AuthoringAgent.status()
+    assert status.model == "configured-from-file"
+    assert status.route == "direct"
+    assert status.max_tokens == 2048
+    assert status.timeout_ms == 45_000
   end
 
   test "local Wardwright route is configured without a provider API key when the model governs tool-plan JSON" do
@@ -177,6 +211,46 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert response.content =~ "model=#{Wardwright.model_id()}"
     assert response.content =~ "base_url=http://127.0.0.1:8797/v1"
     assert response.content =~ "api_key=wardwright-local"
+  end
+
+  test "configured response rejects no-op tool plans for authoring change requests" do
+    Application.put_env(
+      :wardwright,
+      :authoring_agent_client,
+      __MODULE__.NoToolDraftAuthoringClient
+    )
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
+
+    {:ok, response} = WardwrightWeb.AuthoringAgent.respond("Make a cow model with a moo rewrite rule.")
+
+    assert response.status == "error"
+    assert response.content =~ "No authoring tool was executed"
+    assert response.content =~ "draft_wardwright_model"
+    refute Map.has_key?(response, :tool_results)
+  end
+
+  test "configured response retries once when an authoring request omits a draft tool call" do
+    Application.put_env(
+      :wardwright,
+      :authoring_agent_client,
+      __MODULE__.NoToolThenDraftAuthoringClient
+    )
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
+
+    {:ok, response} = WardwrightWeb.AuthoringAgent.respond("Make a cow model with a moo rewrite rule.")
+
+    assert response.status == "completed"
+    assert response.content =~ "Retried with a draft tool call."
+    assert response.content =~ "draft_wardwright_model: executed"
+
+    assert [%{"name" => "draft_wardwright_model", "result" => result, "status" => "executed"}] =
+             response.tool_results
+
+    assert get_in(result, ["artifact", "model_id"]) == "retry-cow-model"
   end
 
   test "local Wardwright route falls back when the selected workbench model is blank" do
@@ -658,9 +732,54 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     end
   end
 
+  defmodule NoToolDraftAuthoringClient do
+    def generate_text(_prompt, _opts) do
+      {:ok,
+       Jason.encode!(%{
+         "answer" => "I drafted the cow model in prose only.",
+         "tool_calls" => []
+       })}
+    end
+  end
+
+  defmodule NoToolThenDraftAuthoringClient do
+    def generate_text(prompt, _opts) do
+      if String.contains?(prompt, "Previous assistant answer did not include") do
+        {:ok,
+         Jason.encode!(%{
+           "answer" => "Retried with a draft tool call.",
+           "tool_calls" => [
+             %{
+               "arguments" => %{
+                 "model_id" => "retry-cow-model",
+                 "stream_rules" => [
+                   %{
+                     "action" => "rewrite_chunk",
+                     "id" => "cow-art",
+                     "regex" => "\\bmoo+\\b",
+                     "replacement" => "moo\n ^__^\n (oo)\\\\_______"
+                   }
+                 ],
+                 "targets" => [%{"context_window" => 8192, "model" => "local-ollama"}]
+               },
+               "name" => "draft_wardwright_model"
+             }
+           ]
+         })}
+      else
+        {:ok,
+         Jason.encode!(%{
+           "answer" => "I drafted the cow model in prose only.",
+           "tool_calls" => []
+         })}
+      end
+    end
+  end
+
   defp env_keys do
     [
       "WARDWRIGHT_AUTHORING_AGENT_ENABLED",
+      "WARDWRIGHT_AUTHORING_AGENT_CONFIG_FILE",
       "WARDWRIGHT_AUTHORING_AGENT_BASE_URL",
       "WARDWRIGHT_AUTHORING_AGENT_MODEL",
       "WARDWRIGHT_AUTHORING_AGENT_ROUTE",
