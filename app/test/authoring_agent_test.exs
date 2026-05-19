@@ -44,7 +44,9 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert prompt =~ "active_model_id: wardwright/coding-balanced"
     assert prompt =~ "selected_policy_pattern: route-privacy"
     assert prompt =~ "selected_recipe_id: private-helpdesk-local-gate"
-    assert prompt =~ "Ask for human confirmation before any write-capable action."
+    assert prompt =~ "Ask for human confirmation before any durable write-capable action."
+    assert prompt =~ "Draft-only tools are safe to call immediately"
+    assert prompt =~ "Prefer top-level fields named governance, stream_rules"
     assert prompt =~ "You may call read-only and draft-only authoring tools"
     assert prompt =~ "draft_wardwright_model is intentionally ephemeral"
     assert prompt =~ "do not draft a route-only model"
@@ -321,14 +323,130 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert response.content =~
              "draft_wardwright_model: executed (draft cow-guard, 0 validation errors, 0 warnings, not active)"
 
-    assert response.content =~ "Needs human approval:"
+    assert response.content =~ "Suggested next steps:"
     assert response.content =~ "Review and activate the draft from the workbench"
+    refute response.content =~ "\"tool_calls\""
+    refute response.content =~ "\"approval_needed\""
 
     assert [%{"name" => "draft_wardwright_model", "status" => "executed", "result" => result}] =
              response.tool_results
 
     assert get_in(result, ["artifact", "model_id"]) == "cow-guard"
     assert get_in(result, ["validation", "errors"]) == []
+  end
+
+  test "configured response normalizes input-triggered behavior primitives into request transforms" do
+    Application.put_env(
+      :wardwright,
+      :authoring_agent_client,
+      __MODULE__.NestedBehaviorPrimitiveAuthoringClient
+    )
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
+
+    {:ok, response} =
+      WardwrightWeb.AuthoringAgent.respond(
+        "Make a cow model that reacts to moo and includes ASCII art."
+      )
+
+    assert response.status == "completed"
+    assert response.content =~ "I drafted a cow-focused model."
+    assert response.content =~ "draft_wardwright_model: executed"
+    refute response.content =~ "\"tool_calls\""
+    refute response.content =~ "behavior_primitives"
+
+    assert [%{"name" => "draft_wardwright_model", "status" => "executed", "result" => result}] =
+             response.tool_results
+
+    assert get_in(result, ["artifact", "model_id"]) == "moo_rewrite_model"
+    assert get_in(result, ["validation", "errors"]) == []
+
+    assert get_in(result, ["artifact", "stream_rules"]) == []
+
+    assert [
+             %{
+               "id" => "request-transform-1",
+               "kind" => "request_transform",
+               "action" => "transform",
+               "contains" => "moo",
+               "message" => "request input matched",
+               "reminder" => reminder
+             }
+           ] = get_in(result, ["artifact", "governance"])
+
+    assert reminder =~ "^__^"
+  end
+
+  test "configured response normalizes output-triggered behavior primitives into stream rules" do
+    Application.put_env(
+      :wardwright,
+      :authoring_agent_client,
+      __MODULE__.OutputBehaviorPrimitiveAuthoringClient
+    )
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
+
+    {:ok, response} =
+      WardwrightWeb.AuthoringAgent.respond(
+        "Make a cow model that rewrites moo in generated output."
+      )
+
+    assert response.status == "completed"
+    assert response.content =~ "I drafted an output-stream cow model."
+
+    assert [%{"name" => "draft_wardwright_model", "status" => "executed", "result" => result}] =
+             response.tool_results
+
+    assert get_in(result, ["artifact", "governance"]) == []
+
+    assert [
+             %{
+               "id" => "stream-rule-1",
+               "pattern" => "\\bmoo\\b",
+               "action" => "rewrite_chunk",
+               "replacement" => replacement
+             }
+           ] = get_in(result, ["artifact", "stream_rules"])
+
+    assert replacement =~ "^__^"
+  end
+
+  test "configured response does not leak malformed tool JSON into the visible answer" do
+    Application.put_env(
+      :wardwright,
+      :authoring_agent_client,
+      __MODULE__.MalformedToolPlanAuthoringClient
+    )
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
+
+    {:ok, response} = WardwrightWeb.AuthoringAgent.respond("Make a cow model.")
+
+    assert response.status == "error"
+    assert response.content =~ "returned a tool plan"
+    assert response.content =~ "could not parse it as valid JSON"
+    refute response.content =~ "\"tool_calls\""
+    refute Map.has_key?(response, :tool_results)
+  end
+
+  test "configured response allows plain prose that names an authoring tool" do
+    Application.put_env(
+      :wardwright,
+      :authoring_agent_client,
+      __MODULE__.PlainToolAdviceAuthoringClient
+    )
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
+
+    {:ok, response} = WardwrightWeb.AuthoringAgent.respond("How should I proceed?")
+
+    assert response.status == "completed"
+    assert response.content =~ "draft_wardwright_model"
+    refute response.content =~ "could not parse it as valid JSON"
   end
 
   test "configured response refuses approval-gated tool calls" do
@@ -394,8 +512,79 @@ defmodule WardwrightWeb.AuthoringAgentTest do
              }
            }
          ],
-         "approval_needed" => ["activate_wardwright_model after review"]
+         "next_steps" => ["activate_wardwright_model after review"]
        })}
+    end
+  end
+
+  defmodule NestedBehaviorPrimitiveAuthoringClient do
+    def generate_text(_prompt, _opts) do
+      {:ok,
+       Jason.encode!(%{
+         "answer" => "I drafted a cow-focused model.",
+         "tool_calls" => [
+           %{
+             "name" => "draft_wardwright_model",
+             "arguments" => %{
+               "model_id" => "moo_rewrite_model",
+               "description" => "Rewrites responses when mooing text is detected.",
+               "targets" => [%{"model" => "local-ollama", "context_window" => 8192}],
+               "behavior_primitives" => %{
+                 "stream_rules" => [
+                   %{
+                     "trigger" => "contains('moo', input_text)",
+                     "action" => "rewrite_stream",
+                     "replacement_text" => "moo\n ^__^\n (oo)\\\\_______"
+                   }
+                 ]
+               }
+             }
+           }
+         ],
+         "approval_needed" => [
+           "validate_policy_artifact after draft generation",
+           "activate_wardwright_model after review"
+         ]
+       })}
+    end
+  end
+
+  defmodule OutputBehaviorPrimitiveAuthoringClient do
+    def generate_text(_prompt, _opts) do
+      {:ok,
+       Jason.encode!(%{
+         "answer" => "I drafted an output-stream cow model.",
+         "tool_calls" => [
+           %{
+             "name" => "draft_wardwright_model",
+             "arguments" => %{
+               "model_id" => "moo_output_rewrite_model",
+               "targets" => [%{"model" => "local-ollama", "context_window" => 8192}],
+               "behavior_primitives" => %{
+                 "stream_rules" => [
+                   %{
+                     "trigger" => "contains('moo', output_text)",
+                     "action" => "rewrite_stream",
+                     "replacement_text" => "moo\n ^__^\n (oo)\\\\_______"
+                   }
+                 ]
+               }
+             }
+           }
+         ]
+       })}
+    end
+  end
+
+  defmodule MalformedToolPlanAuthoringClient do
+    def generate_text(_prompt, _opts) do
+      {:ok, ~s({"answer":"drafting","tool_calls":[{"name":"draft_wardwright_model","arguments":)}
+    end
+  end
+
+  defmodule PlainToolAdviceAuthoringClient do
+    def generate_text(_prompt, _opts) do
+      {:ok, "Use draft_wardwright_model when you are ready to create a reviewable draft."}
     end
   end
 

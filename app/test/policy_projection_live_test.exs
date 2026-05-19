@@ -722,6 +722,48 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert activated =~ "Activated cow-lover-mode"
     assert {:ok, config} = Wardwright.model_config("cow-lover-mode")
     assert Wardwright.model_id(config) == "cow-lover-mode"
+    assert [%{"id" => "cow-art", "action" => "rewrite_chunk"}] = config["stream_rules"]
+  end
+
+  test "LiveView authoring agent reports malformed tool plans without leaking raw JSON" do
+    original_client = Application.get_env(:wardwright, :authoring_agent_client, :unset)
+    original_enabled = System.get_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED")
+    original_api_key = System.get_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY")
+    original_route = System.get_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE")
+
+    Application.put_env(
+      :wardwright,
+      :authoring_agent_client,
+      __MODULE__.MalformedToolPlanAuthoringClient
+    )
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
+    System.delete_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE")
+
+    on_exit(fn ->
+      case original_client do
+        :unset -> Application.delete_env(:wardwright, :authoring_agent_client)
+        client -> Application.put_env(:wardwright, :authoring_agent_client, client)
+      end
+
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", original_enabled)
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", original_api_key)
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", original_route)
+    end)
+
+    {:ok, view, _html} = live(build_conn(), "/policies/tts-retry/diagram")
+
+    render_submit(view, "authoring-agent-submit", %{
+      "authoring_agent" => %{"message" => "Make a cow model."}
+    })
+
+    completed = eventually_render(view, "could not parse it as valid JSON", 60)
+
+    assert completed =~ "No tool was executed"
+    refute completed =~ "\"tool_calls\""
+    refute completed =~ "\"arguments\""
+    refute completed =~ "Drafts Awaiting Review"
   end
 
   test "LiveView diagram simulation can step through matching rules and state changes" do
@@ -1440,6 +1482,12 @@ defmodule Wardwright.PolicyProjectionLiveTest do
            }
          ]
        })}
+    end
+  end
+
+  defmodule MalformedToolPlanAuthoringClient do
+    def generate_text(_prompt, _opts) do
+      {:ok, ~s({"answer":"drafting","tool_calls":[{"name":"draft_wardwright_model","arguments":)}
     end
   end
 end

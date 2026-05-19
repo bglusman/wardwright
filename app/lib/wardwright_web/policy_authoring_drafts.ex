@@ -105,10 +105,16 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
         if(route["type"] == "dispatcher", do: [Map.delete(route, "type")], else: []),
       "cascades" => if(route["type"] == "cascade", do: [Map.delete(route, "type")], else: []),
       "alloys" => if(route["type"] == "alloy", do: [Map.delete(route, "type")], else: []),
-      "governance" => list_field(body, "governance"),
-      "stream_rules" => list_field(body, "stream_rules"),
-      "prompt_transforms" => map_field(body, "prompt_transforms", %{}),
-      "structured_output" => Map.get(body, "structured_output"),
+      "governance" => governance_rules_field(body),
+      "stream_rules" => stream_rules_field(body),
+      "prompt_transforms" =>
+        map_field(body, "prompt_transforms", %{}, ["behavior_primitives", "prompt_transforms"]),
+      "structured_output" =>
+        Map.get(
+          body,
+          "structured_output",
+          get_in(body, ["behavior_primitives", "structured_output"])
+        ),
       "alert_delivery" => map_field(body, "alert_delivery", %{}),
       "policy_cache" => map_field(body, "policy_cache", %{})
     })
@@ -282,19 +288,131 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
   defp rule_id(%{"id" => id}), do: id
   defp rule_id(_rule), do: ""
 
-  defp list_field(map, key) do
-    case Map.get(map, key) do
+  defp governance_rules_field(body) do
+    explicit = list_field(body, "governance", ["behavior_primitives", "governance"])
+
+    inferred =
+      body
+      |> behavior_stream_rules()
+      |> Enum.with_index(1)
+      |> Enum.filter(fn {rule, _index} -> request_trigger?(Map.get(rule, "trigger")) end)
+      |> Enum.map(fn {rule, index} -> request_transform_from_stream_like_rule(rule, index) end)
+
+    explicit ++ inferred
+  end
+
+  defp stream_rules_field(body) do
+    body
+    |> behavior_stream_rules()
+    |> Enum.reject(&request_trigger?(Map.get(&1, "trigger")))
+    |> Enum.with_index(1)
+    |> Enum.map(fn {rule, index} -> normalize_stream_rule(rule, index) end)
+  end
+
+  defp behavior_stream_rules(body),
+    do: list_field(body, "stream_rules", ["behavior_primitives", "stream_rules"])
+
+  defp request_transform_from_stream_like_rule(rule, index) do
+    rule = string_keys(rule)
+    {match_key, match_value} = request_match_from_trigger(Map.get(rule, "trigger"))
+
+    reminder =
+      Map.get(rule, "reminder", Map.get(rule, "replacement_text", Map.get(rule, "replacement")))
+
+    %{
+      "id" => Map.get(rule, "id", "request-transform-#{index}"),
+      "kind" => "request_transform",
+      "action" => "transform",
+      "message" => Map.get(rule, "message", "request input matched"),
+      "reminder" => reminder
+    }
+    |> maybe_put(match_key, match_value)
+  end
+
+  defp normalize_stream_rule(rule, index) when is_map(rule) do
+    rule = string_keys(rule)
+    action = normalize_stream_action(Map.get(rule, "action"), rule)
+    pattern = Map.get(rule, "pattern") || trigger_pattern(Map.get(rule, "trigger"))
+    replacement = Map.get(rule, "replacement", Map.get(rule, "replacement_text"))
+
+    rule
+    |> Map.put_new("id", "stream-rule-#{index}")
+    |> Map.put("action", action)
+    |> maybe_put("pattern", pattern)
+    |> maybe_put("replacement", replacement)
+    |> Map.drop(["trigger", "replacement_text"])
+  end
+
+  defp normalize_stream_rule(rule, _index), do: rule
+
+  defp normalize_stream_action("rewrite_stream", _rule), do: "rewrite_chunk"
+  defp normalize_stream_action(action, _rule) when is_binary(action) and action != "", do: action
+
+  defp normalize_stream_action(_action, rule) do
+    if Map.has_key?(rule, "replacement") or Map.has_key?(rule, "replacement_text") do
+      "rewrite_chunk"
+    else
+      "pass"
+    end
+  end
+
+  defp trigger_pattern(trigger) when is_binary(trigger) do
+    case trigger_contains_parts(trigger) do
+      {token, _source} -> token_pattern(token)
+      nil -> nil
+    end
+  end
+
+  defp trigger_pattern(_trigger), do: nil
+
+  defp request_match_from_trigger(trigger) when is_binary(trigger) do
+    case trigger_contains_parts(trigger) do
+      {token, _source} -> {"contains", token}
+      nil -> {"regex", trigger}
+    end
+  end
+
+  defp request_match_from_trigger(_trigger), do: {"contains", ""}
+
+  defp request_trigger?(trigger) when is_binary(trigger) do
+    trigger =~ ~r/\b(input_text|request_text|user_input|user_text)\b/
+  end
+
+  defp request_trigger?(_trigger), do: false
+
+  defp trigger_contains_parts(trigger) do
+    case Regex.run(~r/contains\(['"]([^'"]+)['"]\s*,\s*([a-zA-Z_][a-zA-Z0-9_]*)\)/, trigger) do
+      [_match, token, source] -> {token, source}
+      _ -> nil
+    end
+  end
+
+  defp token_pattern(token) do
+    escaped = Regex.escape(token)
+
+    if token =~ ~r/^\w+$/ do
+      "\\b#{escaped}\\b"
+    else
+      escaped
+    end
+  end
+
+  defp list_field(map, key, nested_path \\ nil) do
+    case Map.get(map, key, nested_value(map, nested_path)) do
       values when is_list(values) -> values
       _ -> []
     end
   end
 
-  defp map_field(map, key, default) do
-    case Map.get(map, key) do
+  defp map_field(map, key, default, nested_path \\ nil) do
+    case Map.get(map, key, nested_value(map, nested_path)) do
       value when is_map(value) -> value
       _ -> default
     end
   end
+
+  defp nested_value(_map, nil), do: nil
+  defp nested_value(map, path), do: get_in(map, path)
 
   defp maybe_put(map, _key, value) when value in [nil, "", []], do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)

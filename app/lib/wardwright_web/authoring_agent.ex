@@ -71,7 +71,9 @@ defmodule WardwrightWeb.AuthoringAgent do
     - Never claim a model is active unless an activation tool result says it is active.
     - Always explain what evidence would convince you and which tool should gather it.
     - Treat deterministic artifacts as source of truth, projections as explanation, and simulations as evidence.
-    - Ask for human confirmation before any write-capable action.
+    - Ask for human confirmation before any durable write-capable action.
+    - Draft-only tools are safe to call immediately; they create reviewable
+      artifacts but do not activate models or persist policy changes.
     - You may call read-only and draft-only authoring tools by returning a
       machine-readable tool_calls array. Wardwright will execute those calls and
       return the results for review.
@@ -84,6 +86,9 @@ defmodule WardwrightWeb.AuthoringAgent do
     - When the user asks for changed behavior, do not draft a route-only model.
       Include at least one concrete behavior primitive: governance,
       stream_rules, prompt_transforms, structured_output, or a Dune-backed rule.
+      Prefer top-level fields named governance, stream_rules, prompt_transforms,
+      and structured_output. If you use a behavior_primitives wrapper,
+      Wardwright will normalize it, but top-level fields are clearer.
       If Wardwright cannot express the requested behavior exactly yet, say that
       clearly and draft the closest reviewable approximation with limitations.
 
@@ -105,7 +110,7 @@ defmodule WardwrightWeb.AuthoringAgent do
       "tool_calls": [
         {"name": "draft_wardwright_model", "arguments": {"model_id": "example", "...": "..."}}
       ],
-      "approval_needed": ["activate_wardwright_model after review"]
+      "next_steps": ["review and activate from the workbench if the draft matches the request"]
     }
 
     If no tool is needed, answer normally.
@@ -187,20 +192,28 @@ defmodule WardwrightWeb.AuthoringAgent do
         answer_text = plan |> Map.get("answer", content) |> to_string() |> String.trim()
         tool_results = plan |> Map.get("tool_calls", []) |> execute_tool_calls()
 
-        approval_needed =
-          tool_results |> add_default_approval_needs(Map.get(plan, "approval_needed", []))
+        next_steps =
+          tool_results
+          |> add_default_next_steps(
+            Map.get(plan, "next_steps", Map.get(plan, "approval_needed", []))
+          )
 
-        rendered = render_tool_answer(answer_text, tool_results, approval_needed)
+        rendered = render_tool_answer(answer_text, tool_results, next_steps)
 
         answer(rendered, Keyword.merge(extras, tool_results: tool_results))
 
       :error ->
-        answer(content, extras)
+        if looks_like_tool_plan?(content) do
+          answer(unreadable_tool_plan_message(), Keyword.merge(extras, status: "error"))
+        else
+          answer(content, extras)
+        end
     end
   end
 
   defp answer(content, extras) do
     content = String.trim(content || "")
+    status = Keyword.get(extras, :status, "completed")
 
     if content == "" do
       {:ok,
@@ -213,7 +226,7 @@ defmodule WardwrightWeb.AuthoringAgent do
     else
       {:ok,
        %{
-         status: "completed",
+         status: status,
          content: content,
          backend: status()
        }
@@ -251,6 +264,18 @@ defmodule WardwrightWeb.AuthoringAgent do
     [content | fenced]
     |> Enum.map(&String.trim/1)
     |> Enum.reject(&(&1 == ""))
+  end
+
+  defp looks_like_tool_plan?(content) do
+    String.contains?(content, "\"tool_calls\"")
+  end
+
+  defp unreadable_tool_plan_message do
+    """
+    The authoring assistant returned a tool plan, but Wardwright could not parse it as valid JSON.
+
+    No tool was executed. Ask again for a draft model, or provide a valid JSON object with an answer and a tool_calls array.
+    """
   end
 
   defp execute_tool_calls(calls) when is_list(calls) do
@@ -362,11 +387,11 @@ defmodule WardwrightWeb.AuthoringAgent do
     %{"name" => name, "status" => status, "result" => result}
   end
 
-  defp render_tool_answer(answer_text, tool_results, approval_needed) do
+  defp render_tool_answer(answer_text, tool_results, next_steps) do
     sections = [
       answer_text,
       render_tool_results(tool_results),
-      render_approvals(approval_needed)
+      render_next_steps(next_steps)
     ]
 
     sections
@@ -414,16 +439,16 @@ defmodule WardwrightWeb.AuthoringAgent do
 
   defp tool_result_summary(_tool_result), do: ""
 
-  defp add_default_approval_needs(tool_results, approval_needed) do
-    approval_needed = List.wrap(approval_needed)
+  defp add_default_next_steps(tool_results, next_steps) do
+    next_steps = List.wrap(next_steps)
 
     if Enum.any?(tool_results, &draft_model_tool_result?/1) do
       Enum.uniq(
-        approval_needed ++
+        next_steps ++
           ["Review and activate the draft from the workbench if it matches your intent."]
       )
     else
-      approval_needed
+      next_steps
     end
   end
 
@@ -437,22 +462,22 @@ defmodule WardwrightWeb.AuthoringAgent do
 
   defp draft_model_tool_result?(_result), do: false
 
-  defp render_approvals([]), do: ""
+  defp render_next_steps([]), do: ""
 
-  defp render_approvals(approval_needed) when is_list(approval_needed) do
+  defp render_next_steps(next_steps) when is_list(next_steps) do
     items =
-      approval_needed
+      next_steps
       |> Enum.map(&to_string/1)
       |> Enum.reject(&(&1 == ""))
 
     if items == [] do
       ""
     else
-      "Needs human approval:\n" <> Enum.map_join(items, "\n", &"- #{&1}")
+      "Suggested next steps:\n" <> Enum.map_join(items, "\n", &"- #{&1}")
     end
   end
 
-  defp render_approvals(approval_needed), do: render_approvals([approval_needed])
+  defp render_next_steps(next_steps), do: render_next_steps([next_steps])
 
   defp response_text(response) do
     cond do
