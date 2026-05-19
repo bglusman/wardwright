@@ -52,6 +52,25 @@ In short:
 (cd app && mise exec -- mix format --check-formatted && mise exec -- mix test)
 ```
 
+## Agent Operating Style
+
+These guidelines are adapted from
+`https://github.com/multica-ai/andrej-karpathy-skills/blob/main/CLAUDE.md`
+and should be merged with the Wardwright-specific rules in this file.
+
+- Think before coding. State assumptions when they matter, surface tradeoffs,
+  ask when the request is genuinely ambiguous, and push back on unnecessary
+  complexity.
+- Prefer the minimum implementation that solves the requested problem. Do not
+  add speculative features, one-off abstractions, configurability, or defensive
+  branches for impossible states.
+- Make surgical changes. Touch only files needed for the task, match existing
+  style, clean up only unused code created by your change, and mention unrelated
+  dead code instead of deleting it.
+- Work from verifiable success criteria. For non-trivial changes, know what
+  command, test, or behavior proves the task is done, and keep looping until
+  that verification is clean or the blocker is explicit.
+
 ## Product Contract Rules
 
 - Read `docs/architecture-ratchets.md` and `docs/testing-ratchets.md` before
@@ -73,6 +92,9 @@ In short:
 ## Git
 
 - Prefer feature branches and PRs once branch protection is enabled.
+- Use descriptive branch names and PR titles that describe the work itself.
+  Do not include agent branding such as `codex/` branch prefixes or `[codex]`
+  PR-title tags.
 - Do not push directly to `main` except for initial bootstrap/admin work before
   protections exist.
 - Run `bash scripts/install-git-hooks.sh` in new clones.
