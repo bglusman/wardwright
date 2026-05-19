@@ -249,37 +249,37 @@ async function runViewportSmoke(viewport) {
     await waitForLiveView(cdp);
 
     await assertClickableControl(cdp, viewport.name, "Step");
-    await clickControl(cdp, "Step");
-    await waitForEval(
+    await clickControlAndWait(
       cdp,
+      "Step",
       `document.querySelector(".player_status span")?.textContent.includes("Step 1 of 5")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Back");
-    await clickControl(cdp, "Back");
-    await waitForEval(
+    await clickControlAndWait(
       cdp,
+      "Back",
       `document.querySelector(".player_status span")?.textContent.includes("Ready: 5")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Step");
-    await clickControl(cdp, "Step");
-    await waitForEval(
+    await clickControlAndWait(
       cdp,
+      "Step",
       `document.querySelector(".player_status span")?.textContent.includes("Step 1 of 5")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Reset");
-    await clickControl(cdp, "Reset");
-    await waitForEval(
+    await clickControlAndWait(
       cdp,
+      "Reset",
       `document.querySelector(".player_status span")?.textContent.includes("Ready: 5")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Play");
-    await clickControl(cdp, "Play");
-    await waitForEval(
+    await clickControlAndWait(
       cdp,
+      "Play",
       `[...document.querySelectorAll(".simulation_player button")].some((button) => button.textContent.trim() === "Pause")`
     );
 
@@ -289,32 +289,39 @@ async function runViewportSmoke(viewport) {
   }
 }
 
-async function clickControl(cdp, label) {
-  const point = await evaluate(cdp, controlPointExpression(label));
-  if (!point || point.error) {
-    throw new Error(point?.error || `Could not find ${label} control`);
+async function clickControlAndWait(cdp, label, condition) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await clickControl(cdp, label);
+
+    try {
+      await waitForEval(cdp, condition, 2_000);
+      return;
+    } catch (error) {
+      lastError = error;
+      await waitForLiveView(cdp);
+    }
   }
 
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mouseMoved",
-    x: point.x,
-    y: point.y,
-    button: "left"
-  });
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mousePressed",
-    x: point.x,
-    y: point.y,
-    button: "left",
-    clickCount: 1
-  });
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mouseReleased",
-    x: point.x,
-    y: point.y,
-    button: "left",
-    clickCount: 1
-  });
+  throw lastError;
+}
+
+async function clickControl(cdp, label) {
+  const result = await evaluate(
+    cdp,
+    `(() => {
+      const button = [...document.querySelectorAll(".simulation_player button")]
+        .find((candidate) => candidate.textContent.trim() === ${JSON.stringify(label)});
+      if (!button) return { error: "missing ${label} control" };
+      button.click();
+      return { clicked: true };
+    })()`
+  );
+
+  if (!result || result.error) {
+    throw new Error(result?.error || `Could not click ${label} control`);
+  }
 }
 
 async function assertClickableControl(cdp, viewportName, label) {
@@ -334,7 +341,7 @@ async function assertClickableControl(cdp, viewportName, label) {
 async function waitForLiveView(cdp) {
   await waitForEval(
     cdp,
-    `window.liveSocket && (typeof window.liveSocket.isConnected !== "function" || window.liveSocket.isConnected())`
+    `window.liveSocket && typeof window.liveSocket.isConnected === "function" && window.liveSocket.isConnected()`
   );
   await waitForEval(cdp, `document.querySelector("[data-phx-main]") !== null`);
 }

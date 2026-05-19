@@ -9,13 +9,83 @@ defmodule Wardwright.PolicyProjection do
   @transition_to_key "transition_to"
   @then_key "then"
   @action_key "action"
+  @alert_key "alert"
+  @alert_delivery_key "alert_delivery"
+  @actions_key "actions"
+  @completed_status "completed"
+  @content_key "content"
+  @conflicts_key "conflicts"
+  @decision_key "decision"
   @tool_sequence_kind "tool_sequence"
   @tool_loop_threshold_kind "tool_loop_threshold"
+  @tool_policy_key "tool_policy"
   @state_transition_action "state_transition"
   @decision_tool_context_read "decision.tool_context"
   @policy_cache_tool_call_read "policy_cache.session.tool_call"
   @policy_cache_state_read "policy_cache.session.policy_state"
   @policy_actions_write "policy.actions"
+  @direction_key "direction"
+  @events_key "events"
+  @engine_id_key "engine_id"
+  @expected_behavior_key "expected_behavior"
+  @final_output_key "final_output"
+  @input_key "input"
+  @input_summary_key "input_summary"
+  @match_key "match"
+  @message_key "message"
+  @model_key "model"
+  @messages_key "messages"
+  @model_received_input_key "model_received_input"
+  @model_response_key "model_response"
+  @name_key "name"
+  @policy_actions_key "policy_actions"
+  @policy_conflicts_key "policy_conflicts"
+  @postscript_key "postscript"
+  @preamble_key "preamble"
+  @prompt_transforms_key "prompt_transforms"
+  @route_blocked_key "route_blocked"
+  @route_constraints_key "route_constraints"
+  @selected_model_key "selected_model"
+  @phase_key "phase"
+  @receipt_preview_key "receipt_preview"
+  @reason_key "reason"
+  @released_to_consumer_key "released_to_consumer"
+  @replacement_key "replacement"
+  @reminder_key "reminder"
+  @request_rewrites_key "request_rewrites"
+  @response_chunks_key "response_chunks"
+  @rewrites_key "rewrites"
+  @rule_id_key "rule_id"
+  @scenario_id_key "scenario_id"
+  @simulation_schema_key "simulation_schema"
+  @state_transition_key "state_transition"
+  @structured_output_key "structured_output"
+  @stream_key "stream"
+  @stream_rules_key "stream_rules"
+  @title_key "title"
+  @trace_key "trace"
+  @role_key "role"
+  @status_key "status"
+  @type_key "type"
+  @user_input_key "user_input"
+  @verdict_key "verdict"
+  @generated_bytes_key "generated_bytes"
+  @governance_key "governance"
+  @held_bytes_key "held_bytes"
+  @released_bytes_key "released_bytes"
+  @trigger_count_key "trigger_count"
+  @default_rule_id "policy"
+  @default_request_role "user"
+  @default_stream_policy_action "stream-policy"
+  @default_transform_action "transform"
+  @fail_closed_action "fail_closed"
+  @match_scope_key "match_scope"
+  @request_pre_model_phase "request.pre_model"
+  @response_streaming_phase "response.streaming"
+  @simulation_coverage_phase "simulation.coverage"
+  @simulation_coverage_gap_type "simulation.coverage_gap"
+  @stream_match_scope "stream"
+  @system_role "system"
 
   @patterns [
     %{
@@ -369,6 +439,82 @@ defmodule Wardwright.PolicyProjection do
     |> Map.put("artifact_hash", artifact_hash)
     |> Map.put("scenario_source", "interactive")
     |> Map.put("source", "interactive")
+  end
+
+  def simulate_model_turn(user_input, model_response, config \\ Wardwright.current_config()) do
+    turn = simulation_turn(user_input, model_response, %{}, [])
+
+    request =
+      turn_user_input(turn)
+      |> model_turn_request(config)
+      |> model_turn_apply_prompt_transforms(config)
+
+    {policy_request, request_policy} = Plan.evaluate_request(request, %{}, config)
+    model_policy_input = model_turn_request_text(policy_request)
+    decision = model_turn_route_decision(policy_request, request_policy, config)
+    stream_policy = model_turn_stream_policy(turn_response(turn), config)
+
+    model_received_input = model_policy_input
+    request_rewrites = model_turn_policy_rewrites(request_policy)
+    request_events = model_turn_policy_events(request_policy)
+
+    {user_received_output, response_rewrites, response_events} =
+      model_turn_stream_output(turn_response(turn), stream_policy)
+
+    rewrites = request_rewrites ++ response_rewrites
+
+    coverage_events = model_turn_coverage_gap_events(config)
+
+    trace =
+      model_turn_trace(request_events, "request.pre_model", "model.request-rewrite") ++
+        model_turn_trace(response_events, "response.streaming", "model.stream-rewrite") ++
+        model_turn_trace(coverage_events, @simulation_coverage_phase, "model.simulation-coverage") ++
+        [
+          trace(
+            "model-receipt",
+            "receipt.finalized",
+            "model.receipt",
+            "receipt_event",
+            "model simulation receipt",
+            model_turn_receipt_detail(rewrites),
+            "pass"
+          )
+        ]
+
+    Map.new([
+      {@engine_id_key, "registered-model-simulator"},
+      {
+        @expected_behavior_key,
+        "Evaluate the selected registered model's deterministic request, route, and stream rules against this turn. Runtime side effects and unsupported surfaces are reported as coverage gaps."
+      },
+      {@input_summary_key, summarize_turn(turn)},
+      {
+        @receipt_preview_key,
+        Map.new([
+          {@events_key, model_turn_receipt_events(request_events, response_events)},
+          {@decision_key, model_turn_decision_preview(decision, request_policy)},
+          {
+            @input_key,
+            Map.new([
+              {@model_received_input_key, model_received_input},
+              {@model_response_key, turn_response(turn)},
+              {@request_rewrites_key, request_rewrites},
+              {@response_chunks_key, input_chunks(turn_response(turn))},
+              {@user_input_key, turn_user_input(turn)}
+            ])
+          },
+          {
+            @stream_key,
+            model_turn_stream_preview(user_received_output, response_rewrites, stream_policy)
+          }
+        ])
+      },
+      {@scenario_id_key, "interactive-registered-model-turn"},
+      {@simulation_schema_key, "wardwright.policy_simulation.v1"},
+      {@title_key, "Selected model turn simulation"},
+      {@trace_key, trace},
+      {@verdict_key, "passed"}
+    ])
   end
 
   defp simulation_turn(user_input, model_response, history_context, response_attempts) do
@@ -2677,6 +2823,344 @@ defmodule Wardwright.PolicyProjection do
         state_id: "observing"
       )
     ]
+  end
+
+  defp model_turn_request(user_input, config) do
+    Map.new([
+      {@model_key, Wardwright.model_id(config)},
+      {
+        @messages_key,
+        [
+          Map.new([
+            {@content_key, user_input || ""},
+            {@role_key, @default_request_role}
+          ])
+        ]
+      }
+    ])
+  end
+
+  defp model_turn_apply_prompt_transforms(request, config) do
+    transforms = Map.get(config, @prompt_transforms_key, %{})
+    messages = Map.get(request, @messages_key, [])
+
+    messages =
+      transforms
+      |> Map.get(@preamble_key)
+      |> model_turn_blank_to_nil()
+      |> case do
+        nil ->
+          messages
+
+        text ->
+          [
+            Map.new([
+              {@content_key, text},
+              {@name_key, "wardwright_preamble"},
+              {@role_key, @system_role}
+            ])
+            | messages
+          ]
+      end
+
+    messages =
+      transforms
+      |> Map.get(@postscript_key)
+      |> model_turn_blank_to_nil()
+      |> case do
+        nil ->
+          messages
+
+        text ->
+          messages ++
+            [
+              Map.new([
+                {@content_key, text},
+                {@name_key, "wardwright_postscript"},
+                {@role_key, @system_role}
+              ])
+            ]
+      end
+
+    Map.put(request, @messages_key, messages)
+  end
+
+  defp model_turn_blank_to_nil(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp model_turn_blank_to_nil(_value), do: nil
+
+  defp model_turn_request_text(%{@messages_key => messages}) when is_list(messages) do
+    messages
+    |> Enum.map(&model_turn_message_text/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join("\n\n")
+  end
+
+  defp model_turn_request_text(_request), do: ""
+
+  defp model_turn_message_text(message) when is_map(message) do
+    content = Map.get(message, @content_key)
+
+    if is_binary(content) and String.trim(content) != "" do
+      role = Map.get(message, @role_key, @default_request_role)
+      name = Map.get(message, @name_key)
+
+      [role, name]
+      |> Enum.filter(&is_binary/1)
+      |> Enum.reject(&(String.trim(&1) == ""))
+      |> Enum.join("/")
+      |> then(&"#{&1}: #{content}")
+    else
+      ""
+    end
+  end
+
+  defp model_turn_message_text(_message), do: ""
+
+  defp model_turn_policy_events(%{@actions_key => actions}) when is_list(actions) do
+    actions
+    |> Enum.filter(&model_turn_request_transform_action?/1)
+    |> Enum.map(fn action ->
+      Map.new([
+        {@action_key, Map.get(action, @action_key, @default_transform_action)},
+        {@direction_key, "request"},
+        {@match_key, Map.get(action, @match_key)},
+        {@message_key, Map.get(action, @message_key)},
+        {@phase_key, @request_pre_model_phase},
+        {@reason_key, Map.get(action, @message_key)},
+        {@replacement_key, Map.get(action, @reminder_key)},
+        {@rule_id_key, Map.get(action, @rule_id_key, @default_rule_id)},
+        {@type_key, "request.transform_applied"}
+      ])
+    end)
+  end
+
+  defp model_turn_policy_events(_policy), do: []
+
+  defp model_turn_policy_rewrites(%{@actions_key => actions}) when is_list(actions) do
+    actions
+    |> Enum.filter(&model_turn_request_transform_action?/1)
+    |> Enum.map(fn action ->
+      Map.new([
+        {@direction_key, "request"},
+        {@match_key, Map.get(action, @match_key)},
+        {@phase_key, @request_pre_model_phase},
+        {@replacement_key, Map.get(action, @reminder_key)},
+        {@rule_id_key, Map.get(action, @rule_id_key, @default_rule_id)}
+      ])
+    end)
+  end
+
+  defp model_turn_policy_rewrites(_policy), do: []
+
+  defp model_turn_request_transform_action?(%{@action_key => action})
+       when action in ["inject_reminder_and_retry", "transform"], do: true
+
+  defp model_turn_request_transform_action?(_action), do: false
+
+  defp model_turn_route_decision(request, policy, config) do
+    estimate = Wardwright.estimate_prompt_tokens(Map.get(request, @messages_key, []))
+    Wardwright.select_route(config, estimate, Map.get(policy, @route_constraints_key, %{}))
+  end
+
+  defp model_turn_decision_preview(decision, policy) do
+    Map.new([
+      {@policy_actions_key, Map.get(policy, @actions_key, [])},
+      {@policy_conflicts_key, Map.get(policy, @conflicts_key, [])},
+      {@route_blocked_key, Map.get(decision, :route_blocked, false)},
+      {@route_constraints_key, Map.get(decision, :policy_route_constraints, %{})},
+      {@selected_model_key, Map.get(decision, :selected_model)}
+    ])
+  end
+
+  defp model_turn_stream_policy(model_response, config) do
+    model_response
+    |> input_chunks()
+    |> Wardwright.Policy.Stream.evaluate(Map.get(config, @stream_rules_key, []))
+  end
+
+  defp model_turn_stream_output(_model_response, stream_policy) do
+    final_output =
+      if Map.get(stream_policy, :released_to_consumer, true) do
+        stream_policy
+        |> Map.get(:chunks, [])
+        |> Enum.join()
+      else
+        ""
+      end
+
+    rewrites =
+      if Map.get(stream_policy, :rewritten_bytes, 0) > 0 do
+        [
+          Map.new([
+            {@direction_key, "response"},
+            {@phase_key, @response_streaming_phase},
+            {@rule_id_key, Map.get(stream_policy, :action, @default_stream_policy_action)},
+            {@type_key, "stream.rewrite_applied"}
+          ])
+        ]
+      else
+        []
+      end
+
+    {final_output, rewrites, Map.get(stream_policy, :events, [])}
+  end
+
+  defp model_turn_stream_preview(final_output, rewrites, stream_policy) do
+    Map.new([
+      {@final_output_key, final_output},
+      {@released_to_consumer_key, Map.get(stream_policy, :released_to_consumer, true)},
+      {@rewrites_key, rewrites},
+      {@state_transition_key, nil},
+      {@action_key, Map.get(stream_policy, :action)},
+      {@events_key, Map.get(stream_policy, :events, [])},
+      {@generated_bytes_key, Map.get(stream_policy, :generated_bytes, 0)},
+      {@held_bytes_key, Map.get(stream_policy, :held_bytes, 0)},
+      {@released_bytes_key, Map.get(stream_policy, :released_bytes, 0)},
+      {@status_key, Map.get(stream_policy, :status, @completed_status)},
+      {@trigger_count_key, Map.get(stream_policy, :trigger_count, 0)}
+    ])
+  end
+
+  defp model_turn_coverage_gap_events(config) do
+    []
+    |> maybe_add_model_turn_gap(
+      Map.get(config, @structured_output_key),
+      @structured_output_key,
+      "Structured-output repair and validation are not executed by this single-turn model simulator."
+    )
+    |> maybe_add_model_turn_gap(
+      model_turn_tool_policy?(config),
+      @tool_policy_key,
+      "Tool planning, tool-use, and tool-result policy phases are not executed by this text turn simulator."
+    )
+    |> maybe_add_model_turn_gap(
+      model_turn_alert_policy?(config),
+      @alert_delivery_key,
+      "Alert sink delivery and fail-closed delivery errors are not executed by this local simulator."
+    )
+    |> maybe_add_model_turn_gap(
+      model_turn_request_stream_rules?(config),
+      "stream_rules.request",
+      "Request-direction stream_rules are not executed by the runtime or this simulator; use governance request_transform rules for request-side changes."
+    )
+  end
+
+  defp maybe_add_model_turn_gap(events, nil, _rule_id, _message), do: events
+  defp maybe_add_model_turn_gap(events, false, _rule_id, _message), do: events
+  defp maybe_add_model_turn_gap(events, [], _rule_id, _message), do: events
+  defp maybe_add_model_turn_gap(events, %{} = value, _rule_id, _message) when map_size(value) == 0, do: events
+
+  defp maybe_add_model_turn_gap(events, _value, rule_id, message) do
+    events ++
+      [
+        Map.new([
+          {@message_key, message},
+          {@phase_key, @simulation_coverage_phase},
+          {@rule_id_key, rule_id},
+          {@type_key, @simulation_coverage_gap_type}
+        ])
+      ]
+  end
+
+  defp model_turn_tool_policy?(config) do
+    config
+    |> Map.get(@governance_key, [])
+    |> Enum.any?(fn rule ->
+      Map.get(rule, @kind_key) in [@tool_sequence_kind, @tool_loop_threshold_kind] or
+        Map.get(rule, @phase_key) in [
+          "tool.planning",
+          "tool.using",
+          "tool.result_interpreting",
+          "tool.loop_governing"
+        ]
+    end)
+  end
+
+  defp model_turn_alert_policy?(config) do
+    config
+    |> Map.get(@governance_key, [])
+    |> Enum.any?(fn rule ->
+      Map.get(rule, @action_key) in [@alert_key, @fail_closed_action] or Map.has_key?(rule, @alert_key)
+    end)
+  end
+
+  defp model_turn_request_stream_rules?(config) do
+    config
+    |> Map.get(@stream_rules_key, [])
+    |> Enum.any?(&request_stream_rule?/1)
+  end
+
+  defp request_stream_rule?(%{@phase_key => "request" <> _rest}), do: true
+  defp request_stream_rule?(%{@direction_key => "request"}), do: true
+  defp request_stream_rule?(_rule), do: false
+
+  defp model_turn_trace([], _phase, _node_id), do: []
+
+  defp model_turn_trace(events, phase, node_id) do
+    events
+    |> Enum.with_index(1)
+    |> Enum.map(fn {event, index} ->
+      event_type = Map.get(event, @type_key)
+      invalid_rule? = event_type == "stream.rule_invalid"
+
+      trace(
+        "#{node_id}-#{index}",
+        Map.get(event, @phase_key, phase),
+        node_id,
+        if(invalid_rule?, do: "warning", else: "match"),
+        model_turn_trace_label(event),
+        model_turn_trace_detail(event),
+        if(invalid_rule?, do: "warn", else: "pass")
+      )
+    end)
+  end
+
+  defp model_turn_trace_label(%{@type_key => "stream.rule_invalid"}), do: "rule invalid"
+
+  defp model_turn_trace_label(%{@type_key => "request.transform_applied"}), do: "request transform applied"
+
+  defp model_turn_trace_label(%{@type_key => "stream_policy.triggered"}), do: "stream policy triggered"
+
+  defp model_turn_trace_label(%{@type_key => @simulation_coverage_gap_type}), do: "simulation coverage gap"
+
+  defp model_turn_trace_label(%{@direction_key => "request"}), do: "request rewrite matched"
+
+  defp model_turn_trace_label(_event), do: "response rewrite matched"
+
+  defp model_turn_trace_detail(%{@type_key => "stream.rule_invalid"} = event) do
+    "#{Map.get(event, @rule_id_key)} could not compile: #{Map.get(event, @reason_key)}"
+  end
+
+  defp model_turn_trace_detail(%{@type_key => "request.transform_applied"} = event) do
+    "#{Map.get(event, @rule_id_key)} matched the request and injected #{inspect(Map.get(event, @replacement_key))}."
+  end
+
+  defp model_turn_trace_detail(%{@type_key => "stream_policy.triggered"} = event) do
+    "#{Map.get(event, @rule_id_key)} triggered #{Map.get(event, @action_key)} in #{Map.get(event, @match_scope_key, @stream_match_scope)}."
+  end
+
+  defp model_turn_trace_detail(%{@type_key => @simulation_coverage_gap_type} = event) do
+    Map.get(event, @message_key)
+  end
+
+  defp model_turn_trace_detail(event) do
+    "#{Map.get(event, @rule_id_key)} matched #{inspect(Map.get(event, @match_key))} in #{Map.get(event, @phase_key)} and rewrote it to #{inspect(Map.get(event, @replacement_key))}."
+  end
+
+  defp model_turn_receipt_events(request_events, response_events) do
+    request_events ++ response_events
+  end
+
+  defp model_turn_receipt_detail([]), do: "No configured rewrite rules matched this simulated turn."
+
+  defp model_turn_receipt_detail(rewrites) do
+    "#{length(rewrites)} configured rewrite match(es) recorded for this simulated turn."
   end
 
   defp summarize_turn(turn) do

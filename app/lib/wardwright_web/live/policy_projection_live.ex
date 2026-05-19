@@ -111,6 +111,22 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
     selected_node = first_node(projection)
     simulation_step = normalize_step(Map.get(params, "step"), selected_simulation)
+    model_simulation_user_input = default_model_simulation_user_input(selected_model_config)
+    model_simulation_model_response = default_model_simulation_response(selected_model_config)
+
+    model_simulation =
+      Wardwright.PolicyProjection.simulate_model_turn(
+        model_simulation_user_input,
+        model_simulation_model_response,
+        selected_model_config
+      )
+
+    model_simulation_boundary =
+      simulation_boundary(
+        model_simulation,
+        model_simulation_user_input,
+        model_simulation_model_response
+      )
 
     socket
     |> assign(:page_title, "Policy Workbench")
@@ -148,6 +164,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     |> assign(:simulation_playing, false)
     |> assign(:simulation_timer_ref, nil)
     |> assign(:simulation_step, simulation_step)
+    |> assign(:model_simulation_user_input, model_simulation_user_input)
+    |> assign(:model_simulation_model_response, model_simulation_model_response)
+    |> assign(:model_simulation, model_simulation)
+    |> assign(:model_simulation_boundary, model_simulation_boundary)
     |> assign_new(:runtime_status, fn -> Wardwright.Runtime.status() end)
     |> assign_new(:runtime_events, fn -> [] end)
     |> assign_new(:policy_cache_status, fn -> Wardwright.PolicyCache.status() end)
@@ -384,6 +404,26 @@ defmodule WardwrightWeb.PolicyProjectionLive do
        history_context,
        response_attempts
      )}
+  end
+
+  def handle_event(
+        "edit-model-simulation-turn",
+        %{"model_simulation" => %{"model_response" => model_response, "user_input" => user_input}},
+        socket
+      ) do
+    simulation =
+      Wardwright.PolicyProjection.simulate_model_turn(
+        user_input,
+        model_response,
+        socket.assigns.selected_model_config
+      )
+
+    {:noreply,
+     socket
+     |> assign(:model_simulation_user_input, user_input)
+     |> assign(:model_simulation_model_response, model_response)
+     |> assign(:model_simulation, simulation)
+     |> assign(:model_simulation_boundary, simulation_boundary(simulation, user_input, model_response))}
   end
 
   def handle_event("pause-simulation", _params, socket) do
@@ -1236,6 +1276,12 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             selected_model_id={@selected_model_id}
             selected_model_config={@selected_model_config}
           />
+          <.registered_model_simulator
+            simulation={@model_simulation}
+            simulation_user_input={@model_simulation_user_input}
+            simulation_model_response={@model_simulation_model_response}
+            simulation_boundary={@model_simulation_boundary}
+          />
         <% else %>
           <.projection_inspector_links
             mode={@mode}
@@ -1550,6 +1596,83 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         Select an example synthetic model from the sidebar to browse demo simulations, or add a
         model-owned scenario before showing playback, state, stream, or receipt evidence here.
       </p>
+    </div>
+    """
+  end
+
+  attr(:simulation, :map, required: true)
+  attr(:simulation_user_input, :string, required: true)
+  attr(:simulation_model_response, :string, required: true)
+  attr(:simulation_boundary, :map, required: true)
+
+  def registered_model_simulator(assigns) do
+    ~H"""
+    <div class="registered_model_simulator" aria-label="Registered model turn simulator">
+      <div class="turn_editor_header">
+        <div>
+          <strong>Try this registered model</strong>
+          <span>
+            Edit either side of a single turn to see how deterministic request
+            policy, routing, and response stream rules affect what reaches the
+            provider and the user.
+          </span>
+        </div>
+        <.badge value={"#{length(@simulation["trace"] || [])} events"} />
+      </div>
+
+      <form
+        id="model-turn-editor-form"
+        phx-change="edit-model-simulation-turn"
+        phx-submit="edit-model-simulation-turn"
+        class="turn_editor_grid"
+      >
+        <div class={boundary_pair_class(@simulation_boundary.input_changed)}>
+          <label>
+            <span>User input</span>
+            <textarea id="model-simulation-user-input" name="model_simulation[user_input]" rows="4" phx-debounce="300"><%= @simulation_user_input %></textarea>
+            <small :if={!@simulation_boundary.input_changed} class="boundary_status">
+              Model receives this input unchanged.
+            </small>
+          </label>
+          <label>
+            <span>
+              <%= if @simulation_boundary.input_changed,
+                do: "Model receives after Wardwright",
+                else: "Model receives" %>
+            </span>
+            <textarea rows="4" readonly><%= @simulation_boundary.model_received_input %></textarea>
+          </label>
+        </div>
+        <div class={boundary_pair_class(@simulation_boundary.output_changed)}>
+          <label>
+            <span>Raw model output / stream</span>
+            <textarea id="model-simulation-model-response" name="model_simulation[model_response]" rows="4" phx-debounce="300"><%= @simulation_model_response %></textarea>
+            <small :if={!@simulation_boundary.output_changed} class="boundary_status">
+              Released unchanged. The user receives this raw model output.
+            </small>
+          </label>
+          <label>
+            <span>
+              <%= if @simulation_boundary.output_changed,
+                do: "User receives after Wardwright",
+                else: "User receives" %>
+            </span>
+            <textarea rows="4" readonly><%= @simulation_boundary.user_received_output %></textarea>
+          </label>
+        </div>
+        <div class="turn_editor_actions">
+          <span>Changes are evaluated against the selected model artifact, not canned demo examples.</span>
+          <button type="submit">Apply changes</button>
+        </div>
+      </form>
+
+      <div class="trace_summary">
+        <article :for={event <- @simulation["trace"] || []} class={"trace_event #{event["severity"]}"}>
+          <.badge value={event["kind"]} />
+          <strong><%= event["label"] %></strong>
+          <span><%= event["detail"] %></span>
+        </article>
+      </div>
     </div>
     """
   end
@@ -2148,7 +2271,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .raw_model_config { background: #fbfcfd; }
     .raw_model_config details { min-width: 0; }
     .raw_model_config summary { width: fit-content; cursor: pointer; color: #2f5f87; font-size: 13px; font-weight: 800; }
-    .raw_model_config pre { margin-top: 10px; max-height: 520px; }
+    .raw_model_config pre { width: 100%; max-width: 100%; margin-top: 10px; max-height: 520px; white-space: pre-wrap; overflow-wrap: anywhere; }
     .config_fact_grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
     .config_fact_grid article { min-width: 0; padding: 10px; border: 1px solid #dce4eb; border-radius: 7px; background: #fff; }
     .config_fact_grid span { display: block; margin-bottom: 4px; color: #66727c; font-size: 11px; font-weight: 900; text-transform: uppercase; }
@@ -2161,6 +2284,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .model_simulation_notice dt, .model_simulation_notice dd { margin: 0; }
     .model_simulation_notice dt { color: #66727c; font-size: 11px; font-weight: 900; text-transform: uppercase; }
     .model_simulation_notice dd { color: #17202a; font-size: 20px; font-weight: 850; }
+    .registered_model_simulator { min-width: 0; display: grid; gap: 12px; margin-top: 12px; padding: 14px; border: 1px solid #d5dde4; border-radius: 8px; background: #fff; }
+    .registered_model_simulator form, .registered_model_simulator label, .registered_model_simulator textarea, .registered_model_simulator .trace_summary, .registered_model_simulator .trace_event { min-width: 0; }
+    .registered_model_simulator textarea { width: 100%; border: 1px solid #cbd5df; border-radius: 6px; color: #17202a; background: #fbfcfd; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 9px; resize: vertical; }
+    .model_access code, .raw_model_config code, .copyable_example code { white-space: normal; overflow-wrap: anywhere; }
     .access_grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr); gap: 12px; }
     .access_card, .provider_model_card { display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid #d5dde4; border-radius: 8px; background: #fff; }
     .access_card > span, .provider_model_card span, .provider_model_list h3 { color: #66727c; font-size: 12px; font-weight: 800; text-transform: uppercase; }
@@ -2170,10 +2297,12 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .access_card dt, .provider_model_card dt { color: #66727c; font-size: 12px; font-weight: 800; }
     .access_card dd, .provider_model_card dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
     .copyable_example summary { width: fit-content; cursor: pointer; color: #2f5f87; font-size: 13px; font-weight: 800; }
-    .copyable_example pre { margin-top: 8px; }
+    .copyable_example pre { width: 100%; max-width: 100%; margin-top: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
     .provider_model_list { display: grid; gap: 9px; }
     .provider_model_list h3 { margin: 0; }
     .provider_model_card { grid-template-columns: minmax(180px, 0.65fr) minmax(0, 1fr); align-items: start; }
+    .model_access .access_grid, .model_access .provider_model_card { grid-template-columns: 1fr; }
+    .model_access .access_card dl, .model_access .provider_model_card dl { grid-template-columns: minmax(0, 1fr); }
     .model_key_grid { display: grid; grid-template-columns: minmax(320px, 0.85fr) minmax(420px, 1.15fr); gap: 18px; align-items: start; }
     .model_key_grid .panel { margin-bottom: 0; }
     .access_policy_editor { grid-row: span 2; }
@@ -2543,6 +2672,57 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       if(config["structured_output"], do: 1, else: 0)
   end
 
+  defp default_model_simulation_response(config) do
+    config
+    |> Map.get("stream_rules", [])
+    |> Enum.find(&(Map.get(&1, "action") in ["rewrite_chunk", "rewrite_span", "replace"]))
+    |> case do
+      %{"regex" => regex} when is_binary(regex) ->
+        default_model_response_for_match(regex)
+
+      %{"contains" => contains} when is_binary(contains) ->
+        default_model_response_for_match(contains)
+
+      %{"pattern" => pattern} when is_binary(pattern) ->
+        default_model_response_for_match(pattern)
+
+      _rule ->
+        "The model output contains text to test."
+    end
+  end
+
+  defp default_model_response_for_match(match) do
+    cond do
+      String.contains?(String.downcase(match), "moo") ->
+        "The model says moo in a draft answer."
+
+      String.contains?(match, "acct_") ->
+        "The model mentions acct_4938 in a draft answer."
+
+      true ->
+        "The model output contains text to test against #{match}."
+    end
+  end
+
+  defp default_model_simulation_user_input(config) do
+    config
+    |> Map.get("governance", [])
+    |> Enum.find(&request_transform_rule?/1)
+    |> case do
+      %{"contains" => contains} when is_binary(contains) and contains != "" ->
+        "The user says #{contains} while asking for help."
+
+      %{"match" => match} when is_binary(match) and match != "" ->
+        "The user says #{match} while asking for help."
+
+      _rule ->
+        ""
+    end
+  end
+
+  defp request_transform_rule?(%{"kind" => "request_transform"}), do: true
+  defp request_transform_rule?(_rule), do: false
+
   defp selected_recipe(%{"recipes" => recipes}, pattern_id, recipe_id) when is_list(recipes) do
     normalized_recipe_id =
       case recipe_id do
@@ -2643,7 +2823,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
     %{
       attempts: stream_attempts(stream),
-      input_changed: model_received_input != (user_input || ""),
+      input_changed: model_input_changed?(receipt),
       model_received_input: model_received_input,
       output_changed: user_received_output != (model_response || ""),
       output_withheld: Map.get(stream, "released_to_consumer") == false,
@@ -2658,6 +2838,16 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     do: value
 
   defp model_received_input(_receipt, user_input), do: user_input || ""
+
+  defp model_input_changed?(%{"input" => %{"request_rewrites" => rewrites}}) when is_list(rewrites) do
+    rewrites != []
+  end
+
+  defp model_input_changed?(%{"decision" => %{"policy_actions" => actions}}) when is_list(actions) do
+    actions != []
+  end
+
+  defp model_input_changed?(_receipt), do: false
 
   defp user_received_output(%{"released_to_consumer" => false}, _model_response) do
     ""

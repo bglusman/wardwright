@@ -67,6 +67,7 @@ defmodule Wardwright.MixProject do
       {:tinfoil, "~> 0.2", runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:quokka, "~> 2.13", only: [:dev, :test], runtime: false},
+      {:tidewave, "~> 0.5", only: :dev},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:muex, "~> 0.6.1", only: :test},
       {:stream_data, "~> 1.3", only: :test}

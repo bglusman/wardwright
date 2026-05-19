@@ -392,9 +392,19 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
         )
       end
 
-    if action in ["block", "rewrite_chunk", "retry_with_reminder"] and
-         blank_to_nil(Map.get(rule, "pattern")) == nil do
-      error(checks, "stream_rules.pattern", "stream rule #{rule_id} needs a pattern")
+    checks =
+      if action in ["block", "rewrite_chunk", "retry_with_reminder"] and stream_match_field(rule) == nil do
+        error(checks, "stream_rules.pattern", "stream rule #{rule_id} needs pattern, contains, or regex")
+      else
+        checks
+      end
+
+    if regex_like_pattern_without_regex?(rule) do
+      warning(
+        checks,
+        "stream_rules.pattern",
+        "stream rule #{rule_id} uses pattern with regex-like syntax; use regex for regex matching"
+      )
     else
       checks
     end
@@ -402,6 +412,17 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
 
   defp validate_stream_rule(_rule, checks) do
     error(checks, "stream_rules", "stream rules must be objects")
+  end
+
+  defp stream_match_field(rule) do
+    Enum.find_value(["pattern", "contains", "regex"], fn key -> blank_to_nil(Map.get(rule, key)) end)
+  end
+
+  defp regex_like_pattern_without_regex?(rule) do
+    pattern = blank_to_nil(Map.get(rule, "pattern"))
+    regex = blank_to_nil(Map.get(rule, "regex"))
+
+    is_binary(pattern) and regex == nil and Regex.match?(~r/(\\[bBdDsSwW]|\[[^\]]+\]|\([^)]*\)|[+*?{}|^$])/, pattern)
   end
 
   defp validate_structured_output(checks, artifact) do

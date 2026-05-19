@@ -50,6 +50,11 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert prompt =~ "You may call read-only and draft-only authoring tools"
     assert prompt =~ "draft_wardwright_model is intentionally ephemeral"
     assert prompt =~ "do not draft a route-only model"
+    assert prompt =~ "For regex semantics, use stream_rules[].regex"
+    assert prompt =~ "validate it and simulate at least"
+    assert prompt =~ "one matching case and one non-matching control case"
+    assert prompt =~ "Report validation warnings, coverage gaps, and simulator limitations"
+    assert prompt =~ "A plausible artifact is not enough."
     assert prompt =~ "draft_wardwright_model"
     assert prompt =~ "activate_wardwright_model"
     assert prompt =~ "simulate_policy"
@@ -365,7 +370,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert response.content =~ "Executed authoring tools:"
 
     assert response.content =~
-             "draft_wardwright_model: executed (draft cow-guard, 0 validation errors, 0 warnings, not active)"
+             "draft_wardwright_model: executed (draft cow-guard, 0 validation errors, 1 warnings, not active)"
 
     assert response.content =~ "Suggested next steps:"
     assert response.content =~ "Review and activate the draft from the workbench"
@@ -445,7 +450,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
              %{
                "action" => "rewrite_chunk",
                "id" => "stream-rule-1",
-               "pattern" => "\\bmoo\\b",
+               "regex" => "\\bmoo\\b",
                "replacement" => replacement
              }
            ] = get_in(result, ["artifact", "stream_rules"])

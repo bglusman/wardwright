@@ -322,13 +322,17 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
   defp normalize_stream_rule(rule, index) when is_map(rule) do
     rule = string_keys(rule)
     action = normalize_stream_action(Map.get(rule, "action"), rule)
-    pattern = Map.get(rule, "pattern") || trigger_pattern(Map.get(rule, "trigger"))
+    {trigger_match_key, trigger_match_value} = stream_match_from_trigger(Map.get(rule, "trigger"))
+    pattern = Map.get(rule, "pattern")
+    regex = Map.get(rule, "regex")
     replacement = Map.get(rule, "replacement", Map.get(rule, "replacement_text"))
 
     rule
     |> Map.put_new("id", "stream-rule-#{index}")
     |> Map.put("action", action)
     |> maybe_put("pattern", pattern)
+    |> maybe_put("regex", regex || if(trigger_match_key == "regex", do: trigger_match_value))
+    |> maybe_put("contains", if(trigger_match_key == "contains", do: trigger_match_value))
     |> maybe_put("replacement", replacement)
     |> Map.drop(["trigger", "replacement_text"])
   end
@@ -346,14 +350,14 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
     end
   end
 
-  defp trigger_pattern(trigger) when is_binary(trigger) do
+  defp stream_match_from_trigger(trigger) when is_binary(trigger) do
     case trigger_contains_parts(trigger) do
-      {token, _source} -> token_pattern(token)
-      nil -> nil
+      {token, _source} -> {"regex", token_pattern(token)}
+      nil -> {"regex", trigger}
     end
   end
 
-  defp trigger_pattern(_trigger), do: nil
+  defp stream_match_from_trigger(_trigger), do: {nil, nil}
 
   defp request_match_from_trigger(trigger) when is_binary(trigger) do
     case trigger_contains_parts(trigger) do

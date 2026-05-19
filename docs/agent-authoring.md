@@ -52,6 +52,28 @@ tests. Fnox is a secret lookup path, not Wardwright authentication: do not assum
 a Wardwright service with encrypted provider keys is safe for untrusted callers.
 See [Provider Credentials](provider-credentials.html).
 
+## Optional Tidewave Runtime MCP
+
+Developers working inside the repository can also enable Tidewave for Phoenix
+in development. Tidewave is mounted only when the dev dependency is loaded and
+exposes runtime-oriented tools at:
+
+```text
+http://127.0.0.1:8787/tidewave/mcp
+```
+
+For Codex CLI, register it with:
+
+```bash
+codex mcp add tidewave --url http://127.0.0.1:8787/tidewave/mcp
+```
+
+Use Tidewave for developer runtime inspection: evaluating code inside the
+running Phoenix app, reading logs, finding package docs, and inspecting runtime
+state. Do not treat Tidewave as an end-user policy-authoring tool. It is more
+powerful than the Wardwright MCP surface and should remain local/developer
+scoped unless a human explicitly chooses otherwise.
+
 ## Optional In-Page Assistant Spike
 
 The local workbench may expose an experimental **Authoring Agent** panel when it
@@ -108,6 +130,33 @@ reviewable model drafts. Durable writes still need explicit review boundaries:
 the assistant should not activate a model, delete a saved case, or persist a
 snippet unless the user approved that operation. It must not claim a model is
 active unless the activation tool reports success.
+
+For strong models such as Kimi K2.6, prompt quality still matters. A useful
+authoring run should normally include this loop:
+
+1. Inspect the current projection when the request depends on existing behavior.
+2. Draft or propose the smallest artifact change that could satisfy the request.
+3. Validate the artifact and report warnings, coverage gaps, and limits.
+4. Simulate at least one matching case and one non-matching control case when
+   the available simulator can express them.
+5. Explain whether the simulation actually exercised the changed behavior.
+
+Good smoke tasks for evaluating the in-page assistant are:
+
+- "Make a model that adds a cow reminder when the user's request contains moo,
+  but does not change ordinary requests."
+- "Rewrite streamed output matching the regex `\bmoo+\b` to a short cow marker,
+  and show me a control case that does not rewrite."
+- "Route private helpdesk requests to the local model but leave public requests
+  on the normal route."
+- "Prevent shell tools after two consecutive failures unless a browser-search
+  tool was used in the last five tool calls."
+- "Require structured JSON output with one of two allowed shapes and retry once
+  when neither shape validates."
+
+If the assistant cannot validate or simulate the behavior it drafted, that is a
+finding, not a success. It should say which missing simulator/API capability
+blocked evidence and leave the draft inactive.
 
 ## Inspect Before You Edit
 

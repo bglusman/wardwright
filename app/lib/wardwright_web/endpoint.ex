@@ -39,5 +39,9 @@ defmodule WardwrightWeb.Endpoint do
     signing_salt: "policy projection"
   )
 
+  if Code.ensure_loaded?(Tidewave) do
+    plug(Tidewave)
+  end
+
   plug(WardwrightWeb.Router)
 end

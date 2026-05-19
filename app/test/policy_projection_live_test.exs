@@ -528,7 +528,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
         [Map.put(first, "provider_headers", %{"X-Api-Key" => "visible-secret"}) | rest]
       end)
       |> Map.put("stream_rules", [
-        %{"action" => "rewrite_chunk", "id" => "beta-moo", "pattern" => "\\bmoo+\\b"}
+        %{"action" => "rewrite_chunk", "id" => "beta-moo", "regex" => "\\bmoo+\\b", "replacement" => "[rewritten]"}
       ])
 
     assert {:ok, _alpha} = Wardwright.put_config(alpha)
@@ -547,7 +547,11 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Selected Model Configuration"
     assert html =~ "Show redacted model configuration"
     assert html =~ "Registered model selected"
-    assert html =~ "state machines, stream traces, and receipt previews are hidden here"
+    assert html =~ "Try this registered model"
+    assert html =~ "stream policy triggered"
+    assert html =~ "User receives after Wardwright"
+    assert html =~ "The model says [rewritten] in a draft answer."
+    assert html =~ "Model receives"
     assert html =~ "beta-moo"
     assert html =~ "\\\\bmoo+\\\\b"
     assert html =~ "X-Api-Key"
@@ -567,6 +571,36 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     refute html =~ "A coding assistant keeps recommending an old client constructor"
     refute html =~ "Choose a registered model"
 
+    changed =
+      view
+      |> element("#model-turn-editor-form")
+      |> render_change(%{
+        "model_simulation" => %{
+          "model_response" => "ordinary answer",
+          "user_input" => "moo from the user"
+        }
+      })
+
+    assert changed =~ "Model receives this input unchanged."
+    assert changed =~ "Released unchanged. The user receives this raw model output."
+    assert changed =~ "User receives"
+    assert changed =~ "ordinary answer"
+
+    changed =
+      view
+      |> element("#model-turn-editor-form")
+      |> render_submit(%{
+        "model_simulation" => %{
+          "model_response" => "the model says mooo",
+          "user_input" => "ordinary user input"
+        }
+      })
+
+    assert changed =~ "User receives after Wardwright"
+    assert changed =~ "the model says [rewritten]"
+    assert changed =~ "beta-moo triggered rewrite_chunk"
+    assert changed =~ "response.streaming"
+
     updated =
       view
       |> element("form.workbench_model_selector")
@@ -576,7 +610,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert updated =~ "<h1>alpha-workbench</h1>"
     assert updated =~ "<strong>alpha-workbench</strong>"
     assert updated =~ "Registered model selected"
-    assert updated =~ "state machines, stream traces, and receipt previews are hidden here"
+    assert updated =~ "Try this registered model"
     assert updated =~ "Runtime Visibility"
     assert updated =~ "History Cache"
     refute updated =~ "Policy run map"
@@ -591,6 +625,152 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     refute updated =~
              "/policies/stream-rewrite-state/diagram/recipe/credential-redaction-ladder?model=alpha-workbench"
+  end
+
+  test "registered model simulator includes request governance and route decisions" do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "cow-transform-workbench")
+      |> Map.put("version", "request-transform-test")
+      |> Map.put("governance", [
+        %{
+          "action" => "transform",
+          "contains" => "moo",
+          "id" => "cow-moo-user-reminder",
+          "kind" => "request_transform",
+          "message" => "mooing user input matched",
+          "reminder" => "Include a small ASCII cow, then answer normally."
+        }
+      ])
+      |> Map.put("stream_rules", [])
+      |> Map.put("targets", [%{"context_window" => 8192, "model" => "ollama/gemma4:e4b"}])
+      |> Map.put("dispatchers", [%{"id" => "dispatcher.cow", "models" => ["ollama/gemma4:e4b"]}])
+      |> Map.put("route_root", "dispatcher.cow")
+
+    simulation =
+      Wardwright.PolicyProjection.simulate_model_turn(
+        "please moo for me",
+        "ordinary answer",
+        config
+      )
+
+    assert get_in(simulation, ["receipt_preview", "decision", "selected_model"]) ==
+             "ollama/gemma4:e4b"
+
+    assert [
+             %{
+               "action" => "transform",
+               "reminder_injected" => true,
+               "rule_id" => "cow-moo-user-reminder"
+             }
+           ] = get_in(simulation, ["receipt_preview", "decision", "policy_actions"])
+
+    assert get_in(simulation, ["receipt_preview", "input", "model_received_input"]) =~
+             "user: please moo for me"
+
+    assert get_in(simulation, ["receipt_preview", "input", "model_received_input"]) =~
+             "system/wardwright_policy_reminder: Include a small ASCII cow"
+
+    assert Enum.any?(simulation["trace"], fn event ->
+             event["label"] == "request transform applied" and
+               event["detail"] =~ "Include a small ASCII cow"
+           end)
+
+    {:ok, _config} = Wardwright.put_model_config(config)
+    {:ok, view, html} = live(build_conn(), "/policies/tts-retry/diagram?model=cow-transform-workbench")
+
+    assert html =~ "Try this registered model"
+
+    changed =
+      view
+      |> element("#model-turn-editor-form")
+      |> render_submit(%{
+        "model_simulation" => %{
+          "model_response" => "plain response",
+          "user_input" => "no trigger"
+        }
+      })
+
+    assert changed =~ "Model receives this input unchanged."
+  end
+
+  test "registered model simulator does not pretend stream rules rewrite requests" do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "request-stream-rule-workbench")
+      |> Map.put("governance", [])
+      |> Map.put("stream_rules", [
+        %{
+          "action" => "rewrite_chunk",
+          "direction" => "request",
+          "id" => "literal-pattern",
+          "pattern" => "\\bmoo\\b",
+          "replacement" => "[literal-pattern]"
+        },
+        %{
+          "action" => "rewrite_chunk",
+          "direction" => "request",
+          "id" => "regex-moo",
+          "regex" => "\\bmoo+\\b",
+          "replacement" => "[regex-moo]"
+        },
+        %{
+          "action" => "rewrite_chunk",
+          "contains" => "snack",
+          "direction" => "request",
+          "id" => "literal-contains",
+          "replacement" => "[literal-contains]"
+        }
+      ])
+
+    simulation =
+      Wardwright.PolicyProjection.simulate_model_turn(
+        "please mooo and bring snack",
+        "plain response",
+        config
+      )
+
+    assert get_in(simulation, ["receipt_preview", "input", "model_received_input"]) =~
+             "please mooo and bring snack"
+
+    refute get_in(simulation, ["receipt_preview", "input", "model_received_input"]) =~ "[regex-moo]"
+    refute get_in(simulation, ["receipt_preview", "input", "model_received_input"]) =~ "[literal-contains]"
+
+    assert Enum.any?(simulation["trace"], fn event ->
+             event["label"] == "simulation coverage gap" and
+               event["detail"] =~ "Request-direction stream_rules are not executed"
+           end)
+  end
+
+  test "registered model simulator reports unsupported coverage gaps loudly" do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "coverage-gap-workbench")
+      |> Map.put("structured_output", %{"schema" => %{"type" => "object"}})
+      |> Map.put("governance", [
+        %{
+          "action" => "constrain_tools",
+          "id" => "tool-policy",
+          "kind" => "tool_sequence",
+          "phase" => "tool.using"
+        }
+      ])
+
+    simulation =
+      Wardwright.PolicyProjection.simulate_model_turn(
+        "ordinary user input",
+        ~s({"status":"ok"}),
+        config
+      )
+
+    assert Enum.any?(simulation["trace"], fn event ->
+             event["label"] == "simulation coverage gap" and
+               event["detail"] =~ "Structured-output repair"
+           end)
+
+    assert Enum.any?(simulation["trace"], fn event ->
+             event["label"] == "simulation coverage gap" and event["detail"] =~ "Tool planning"
+           end)
   end
 
   test "LiveView can save the edited user and model turn as a reusable scenario" do
