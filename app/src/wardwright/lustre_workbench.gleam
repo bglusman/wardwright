@@ -23,6 +23,9 @@ type PatternOption =
 type ModelOption =
   #(String, String, String, String)
 
+type FixtureOption =
+  #(String, String, String, String, String, List(RetryResponse))
+
 pub type PolicyAction =
   #(String, String, String)
 
@@ -69,6 +72,7 @@ pub type Model {
   Model(
     pattern_id: String,
     model_id: String,
+    fixture_id: String,
     user_input: String,
     model_response: String,
     retry_responses: List(RetryResponse),
@@ -80,6 +84,7 @@ pub type Model {
 pub type Msg {
   PatternChanged(String)
   ModelChanged(String)
+  FixtureChanged(String)
   UserInputChanged(String)
   ModelResponseChanged(String)
   RetryResponseChanged(Int, String)
@@ -95,6 +100,12 @@ fn external_pattern_options(model_id: String) -> List(PatternOption)
 
 @external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "model_options")
 fn external_model_options() -> List(ModelOption)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "fixture_options")
+fn external_fixture_options(
+  pattern_id: String,
+  model_id: String,
+) -> List(FixtureOption)
 
 @external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "default_pattern_id")
 fn external_default_pattern_id(model_id: String) -> String
@@ -145,13 +156,14 @@ pub fn component() {
 pub fn init(_flags: Nil) -> Model {
   let model_id = external_default_model_id()
   let pattern_id = external_default_pattern_id(model_id)
-  let user_input = external_default_user_input(model_id)
-  let model_response = external_default_model_response(model_id)
-  let retry_responses = empty_retry_responses(model_id)
+  let fixture_id = default_fixture_id(pattern_id, model_id)
+  let #(user_input, model_response, retry_responses) =
+    fixture_turn(pattern_id, model_id, fixture_id)
 
   Model(
     pattern_id:,
     model_id:,
+    fixture_id:,
     user_input:,
     model_response:,
     retry_responses:,
@@ -168,20 +180,52 @@ pub fn init(_flags: Nil) -> Model {
 
 pub fn update(model: Model, msg: Msg) -> Model {
   case msg {
-    PatternChanged(pattern_id) ->
-      run_model(Model(..model, pattern_id: pattern_id, step: 0))
+    PatternChanged(pattern_id) -> {
+      let fixture_id = default_fixture_id(pattern_id, model.model_id)
+      let #(user_input, model_response, retry_responses) =
+        fixture_turn(pattern_id, model.model_id, fixture_id)
+
+      run_model(
+        Model(
+          ..model,
+          pattern_id: pattern_id,
+          fixture_id: fixture_id,
+          user_input: user_input,
+          model_response: model_response,
+          retry_responses: retry_responses,
+          step: 0,
+        ),
+      )
+    }
 
     ModelChanged(model_id) -> {
       let pattern_id = external_default_pattern_id(model_id)
-      let user_input = external_default_user_input(model_id)
-      let model_response = external_default_model_response(model_id)
-      let retry_responses = empty_retry_responses(model_id)
+      let fixture_id = default_fixture_id(pattern_id, model_id)
+      let #(user_input, model_response, retry_responses) =
+        fixture_turn(pattern_id, model_id, fixture_id)
 
       run_model(
         Model(
           ..model,
           model_id: model_id,
           pattern_id: pattern_id,
+          fixture_id: fixture_id,
+          user_input: user_input,
+          model_response: model_response,
+          retry_responses: retry_responses,
+          step: 0,
+        ),
+      )
+    }
+
+    FixtureChanged(fixture_id) -> {
+      let #(user_input, model_response, retry_responses) =
+        fixture_turn(model.pattern_id, model.model_id, fixture_id)
+
+      run_model(
+        Model(
+          ..model,
+          fixture_id: fixture_id,
           user_input: user_input,
           model_response: model_response,
           retry_responses: retry_responses,
@@ -191,16 +235,21 @@ pub fn update(model: Model, msg: Msg) -> Model {
     }
 
     UserInputChanged(user_input) ->
-      Model(..model, user_input: user_input)
+      Model(..model, fixture_id: custom_fixture_id(), user_input: user_input)
       |> reset_and_run_model
 
     ModelResponseChanged(model_response) ->
-      Model(..model, model_response: model_response)
+      Model(
+        ..model,
+        fixture_id: custom_fixture_id(),
+        model_response: model_response,
+      )
       |> reset_and_run_model
 
     RetryResponseChanged(index, model_response) ->
       Model(
         ..model,
+        fixture_id: custom_fixture_id(),
         retry_responses: update_retry_response(
           model.retry_responses,
           index,
@@ -217,13 +266,14 @@ pub fn update(model: Model, msg: Msg) -> Model {
       Model(..model, step: int.min(model.step + 1, max_step(model.simulation)))
 
     ResetTurn -> {
-      let user_input = external_default_user_input(model.model_id)
-      let model_response = external_default_model_response(model.model_id)
-      let retry_responses = empty_retry_responses(model.model_id)
+      let fixture_id = reset_fixture_id(model)
+      let #(user_input, model_response, retry_responses) =
+        fixture_turn(model.pattern_id, model.model_id, fixture_id)
 
       run_model(
         Model(
           ..model,
+          fixture_id: fixture_id,
           user_input: user_input,
           model_response: model_response,
           retry_responses: retry_responses,
@@ -418,13 +468,6 @@ pub fn view(model: Model) -> Element(Msg) {
         model_options(model.model_id),
         ModelChanged,
       ),
-      labeled_select(
-        "Projection view",
-        "pattern_id",
-        model.pattern_id,
-        pattern_options(model.model_id, model.pattern_id),
-        PatternChanged,
-      ),
     ]),
     html.main([class("workspace")], [
       html.header([class("topbar")], [
@@ -438,18 +481,15 @@ pub fn view(model: Model) -> Element(Msg) {
             ),
           ]),
         ]),
-        html.div([class("topbar-actions")], [
-          element(
-            "a",
-            [class("button-link"), attribute("href", "/admin/model-api-keys")],
-            [text("Model access")],
-          ),
-          element(
-            "a",
-            [class("button-link secondary"), attribute("href", "/policies")],
-            [text("Legacy workbench")],
-          ),
-        ]),
+      ]),
+      html.section([class("context-controls")], [
+        labeled_select(
+          "Policy slice",
+          "pattern_id",
+          model.pattern_id,
+          pattern_options(model.model_id, model.pattern_id),
+          PatternChanged,
+        ),
       ]),
       simulator_form(model),
       results_grid(model),
@@ -549,23 +589,59 @@ fn model_options(selected_id: String) -> List(Element(Msg)) {
   })
 }
 
+fn fixture_options(
+  pattern_id: String,
+  model_id: String,
+  selected_id: String,
+) -> List(Element(Msg)) {
+  let loaded_options =
+    external_fixture_options(pattern_id, model_id)
+    |> list.map(fn(option) {
+      let #(option_id, title, _, _, _, _) = option
+
+      select_ui.option([selected(option_id == selected_id)], title, option_id)
+    })
+
+  case selected_id == custom_fixture_id() {
+    True -> [
+      select_ui.option(
+        [selected(True)],
+        "Custom edited turn",
+        custom_fixture_id(),
+      ),
+      ..loaded_options
+    ]
+
+    False -> loaded_options
+  }
+}
+
 fn simulator_form(model: Model) -> Element(Msg) {
   html.form([class("simulator"), event.on_submit(SubmitSimulation)], [
     html.div([class("form-header")], [
       html.div([], [
         html.strong([], [text("Selected model turn simulator")]),
       ]),
-      html.div([class("actions")], [
-        button.button(
-          [
-            button.variant(button.Ghost),
-            type_("button"),
-            event.on_click(ResetTurn),
-          ],
-          [text("Reset")],
+      html.div([class("simulator-toolbar")], [
+        labeled_select(
+          "Fixture",
+          "fixture_id",
+          model.fixture_id,
+          fixture_options(model.pattern_id, model.model_id, model.fixture_id),
+          FixtureChanged,
         ),
-        button.button([button.variant(button.Default), type_("submit")], [
-          text("Run simulation"),
+        html.div([class("actions")], [
+          button.button(
+            [
+              button.variant(button.Ghost),
+              type_("button"),
+              event.on_click(ResetTurn),
+            ],
+            [text("Reset")],
+          ),
+          button.button([button.variant(button.Default), type_("submit")], [
+            text("Run simulation"),
+          ]),
         ]),
       ]),
     ]),
@@ -634,6 +710,86 @@ fn text_area(
 
 fn empty_retry_responses(model_id: String) -> List(RetryResponse) {
   retry_response_range(2, external_retry_response_slots(model_id) + 1)
+}
+
+fn custom_fixture_id() -> String {
+  "custom"
+}
+
+fn default_fixture_id(pattern_id: String, model_id: String) -> String {
+  case external_fixture_options(pattern_id, model_id) {
+    [] -> "model-default"
+    [option, ..] -> {
+      let #(fixture_id, _, _, _, _, _) = option
+      fixture_id
+    }
+  }
+}
+
+fn reset_fixture_id(model: Model) -> String {
+  case model.fixture_id == custom_fixture_id() {
+    True -> default_fixture_id(model.pattern_id, model.model_id)
+    False -> model.fixture_id
+  }
+}
+
+fn fixture_turn(
+  pattern_id: String,
+  model_id: String,
+  fixture_id: String,
+) -> #(String, String, List(RetryResponse)) {
+  case selected_fixture(pattern_id, model_id, fixture_id) {
+    #(user_input, model_response, retry_responses) -> #(
+      user_input,
+      model_response,
+      retry_responses,
+    )
+  }
+}
+
+fn selected_fixture(
+  pattern_id: String,
+  model_id: String,
+  fixture_id: String,
+) -> #(String, String, List(RetryResponse)) {
+  case fixture_id == custom_fixture_id() {
+    True -> #(
+      external_default_user_input(model_id),
+      external_default_model_response(model_id),
+      empty_retry_responses(model_id),
+    )
+
+    False ->
+      selected_fixture_from(
+        external_fixture_options(pattern_id, model_id),
+        fixture_id,
+        model_id,
+      )
+  }
+}
+
+fn selected_fixture_from(
+  options: List(FixtureOption),
+  fixture_id: String,
+  model_id: String,
+) -> #(String, String, List(RetryResponse)) {
+  case options {
+    [] -> #(
+      external_default_user_input(model_id),
+      external_default_model_response(model_id),
+      empty_retry_responses(model_id),
+    )
+
+    [option, ..rest] -> {
+      let #(option_id, _, _, user_input, model_response, retry_responses) =
+        option
+
+      case option_id == fixture_id {
+        True -> #(user_input, model_response, retry_responses)
+        False -> selected_fixture_from(rest, fixture_id, model_id)
+      }
+    }
+  }
 }
 
 fn retry_response_range(index: Int, final_index: Int) -> List(RetryResponse) {
@@ -1288,6 +1444,20 @@ fn styles() -> String {
     align-items: flex-start;
     gap: 14px;
   }
+  .context-controls {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: grid;
+    grid-template-columns: minmax(260px, 460px);
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(251, 252, 253, 0.96);
+    box-shadow: 0 10px 24px rgb(16 24 40 / 6%);
+    backdrop-filter: blur(8px);
+  }
   h1 {
     margin: 0;
     font-size: 28px;
@@ -1304,36 +1474,15 @@ fn styles() -> String {
     gap: 8px;
     flex-wrap: wrap;
   }
-  .topbar-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 8px;
+  .form-header .actions {
+    flex-direction: row;
   }
-  .button-link {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 38px;
-    padding: 8px 12px;
-    border: 1px solid var(--primary);
-    border-radius: 8px;
-    color: var(--primary-foreground);
-    background: var(--primary);
-    font-size: 13px;
-    font-weight: 800;
-    line-height: 1.2;
-    text-decoration: none;
-  }
-  .button-link.secondary {
-    border-color: var(--border);
-    color: var(--foreground);
-    background: #fff;
-  }
-  .button-link:hover {
-    border-color: #0f4b46;
-    background: #0f4b46;
-    color: #fff;
+  .simulator-toolbar {
+    display: grid !important;
+    grid-template-columns: minmax(260px, 420px) max-content;
+    gap: 12px;
+    align-items: end;
+    min-width: 0;
   }
   .simulator, .panel, .trace-panel {
     display: flex;
@@ -1537,7 +1686,7 @@ fn styles() -> String {
       border-right: 0;
       border-bottom: 1px solid var(--border);
     }
-    .topbar, .form-header, .trace-header, .turn-grid, .results, .state-edge {
+    .context-controls, .topbar, .form-header, .trace-header, .turn-grid, .results, .state-edge, .simulator-toolbar {
       grid-template-columns: 1fr;
       flex-direction: column;
     }

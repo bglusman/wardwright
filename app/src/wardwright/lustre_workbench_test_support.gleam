@@ -95,6 +95,19 @@ pub fn selecting_model_exposes_retry_outputs(
   |> view_contains(expected_text)
 }
 
+pub fn selecting_fixture_updates_simulation(
+  pattern_id: String,
+  model_id: String,
+  fixture_id: String,
+  expected_text: String,
+) -> Bool {
+  start()
+  |> change_select("model_id", model_id)
+  |> change_select("pattern_id", pattern_id)
+  |> change_select("fixture_id", fixture_id)
+  |> view_contains(expected_text)
+}
+
 pub fn editing_retry_output_updates_simulation(
   model_id: String,
   first_response: String,

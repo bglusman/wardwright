@@ -376,6 +376,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "href=\"/workbench\""
     assert html =~ "href=\"/policies\""
     assert html =~ "Legacy Workbench"
+    refute html =~ ~s(class="topbar_actions")
     refute html =~ "Lustre Workbench"
     refute html =~ "Gleam UI"
     assert html =~ "No API keys have been created for this model."
@@ -403,17 +404,28 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     {:ok, view, html} = live(build_conn(), "/admin/model-api-keys")
 
     assert html =~ "Unkeyed"
+    assert html =~ "Unkeyed access"
     refute Wardwright.model_requires_api_key?()
     assert Wardwright.unkeyed_model_access() == "public"
 
     html =
       view
       |> form("#model-access-form", %{
-        "access" => %{"requires_api_key" => "true", "unkeyed_model_access" => "internal"}
+        "access" => %{"requires_api_key" => "false", "unkeyed_model_access" => "internal"}
       })
       |> render_submit()
 
     assert html =~ "Model access saved."
+    refute Wardwright.model_requires_api_key?()
+    assert Wardwright.unkeyed_model_access() == "internal"
+
+    html =
+      view
+      |> form("#model-access-form", %{
+        "access" => %{"requires_api_key" => "true"}
+      })
+      |> render_submit()
+
     assert html =~ "API key required"
     assert Wardwright.model_requires_api_key?()
     assert Wardwright.unkeyed_model_access() == "internal"
@@ -488,7 +500,6 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Selecting a model leaves example preview"
     assert html =~ "Model Access"
     assert html =~ "href=\"/admin/model-api-keys\""
-    assert html =~ "Manage access"
     assert html =~ "/v1/chat/completions"
     assert html =~ "coding-balanced"
     assert html =~ "wardwright/coding-balanced"

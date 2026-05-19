@@ -1113,11 +1113,6 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             <h2>Model Access</h2>
             <p>Use these OpenAI-compatible endpoints and model IDs when pointing a local agent at Wardwright.</p>
           </div>
-          <div class="topbar_actions">
-            <a class="button secondary" href="/workbench">Workbench</a>
-            <a class="button secondary" href="/admin/model-api-keys">Manage access</a>
-            <.badge value={"#{length(@model_access["provider_models"])} provider models"} />
-          </div>
         </div>
 
         <div class="access_grid">
@@ -2263,7 +2258,6 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
     .topbar > div:first-child, .panel_header > div { min-width: 0; flex: 1 1 auto; }
     .topbar h1, .topbar p, .panel_header h2, .panel_header p { overflow-wrap: anywhere; }
-    .topbar_actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
     .eyebrow { margin: 0 0 4px; color: #5e6b76; font-size: 12px; font-weight: 800; text-transform: uppercase; }
     h1, h2, h3, p { margin-top: 0; }
     h1 { margin-bottom: 6px; font-size: 28px; line-height: 1.15; }
@@ -2349,10 +2343,16 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .stacked_form fieldset { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px; border: 1px solid #d8e0e7; border-radius: 8px; background: #fbfcfd; }
     .stacked_form legend { padding: 0 4px; color: #4b5863; font-size: 12px; font-weight: 900; text-transform: uppercase; }
     .radio_card { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: start; padding: 9px; border: 1px solid #d8e0e7; border-radius: 7px; background: #fff; cursor: pointer; }
+    .access_mode_card { grid-template-columns: 1fr; cursor: default; }
+    .radio_card_main { display: grid !important; grid-template-columns: max-content minmax(0, 1fr); gap: 8px; align-items: start; color: #4b5863; cursor: pointer; }
     .radio_card input { margin-top: 3px; }
     .radio_card span { display: grid; gap: 3px; min-width: 0; }
     .radio_card strong { color: #17202a; }
     .radio_card small { color: #5e6b76; font-weight: 600; line-height: 1.35; }
+    .nested_radio_group { grid-column: 1; display: none; gap: 8px; margin: 8px 0 0 28px; padding: 10px 0 0 12px; border-left: 3px solid #c6ddd9; }
+    .access_mode_card:has(.radio_card_main > input[value="false"]:checked) > .nested_radio_group { display: grid; }
+    .nested_radio_group > span { color: #5e6b76; font-size: 11px; font-weight: 900; text-transform: uppercase; }
+    .radio_card.compact { padding: 8px; }
     .notice_panel { margin-bottom: 18px; padding: 12px 14px; border: 1px solid #94c7b5; border-radius: 8px; color: #1c654f; background: #edf8f3; }
     .notice_panel.error { border-color: #df9a9a; color: #8b2d2d; background: #fff1f1; }
     .success_panel { border-color: #94c7b5; background: #f0faf6; }
@@ -2606,7 +2606,6 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       .topbar { gap: 12px; }
       .sidebar_footer { margin-top: 0; }
       .diagram_legend, .player_controls { justify-content: flex-start; }
-      .topbar_actions { justify-content: flex-start; }
       .effect_row, .state_step, .turn_editor_header form { grid-template-columns: 1fr; }
       .trace_event small, .trace_summary span, .turn_editor_header form label { grid-column: 1; }
       .trace_event .badge { grid-column: 1; grid-row: auto; justify-self: start; }

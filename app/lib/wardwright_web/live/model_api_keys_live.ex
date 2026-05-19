@@ -41,12 +41,13 @@ defmodule WardwrightWeb.ModelApiKeysLive do
   @impl true
   def handle_event("save-access", %{"access" => params}, socket) do
     config = socket.assigns.config
+    unkeyed_model_access = Map.get(params, "unkeyed_model_access", Wardwright.unkeyed_model_access(config))
 
     updated_config =
       config
       |> Map.put("requires_api_key", Map.get(params, "requires_api_key") == "true")
       |> Map.put("auth", %{
-        "unkeyed_model_access" => Map.get(params, "unkeyed_model_access", "public")
+        "unkeyed_model_access" => unkeyed_model_access
       })
 
     case Wardwright.put_model_config(updated_config) do
@@ -102,10 +103,6 @@ defmodule WardwrightWeb.ModelApiKeysLive do
           <p>
             Choose a Wardwright model, then configure API-key requirements and unkeyed access.
           </p>
-        </div>
-        <div class="topbar_actions">
-          <a class="button secondary" href="/workbench">Workbench</a>
-          <a class="button secondary" href="/policies">Legacy workbench</a>
         </div>
       </header>
 
@@ -164,18 +161,47 @@ defmodule WardwrightWeb.ModelApiKeysLive do
           <form id="model-access-form" phx-submit="save-access" class="stacked_form">
             <fieldset>
               <legend>Model calls</legend>
-              <label class="radio_card">
-                <input
-                  type="radio"
-                  name="access[requires_api_key]"
-                  value="false"
-                  checked={!@requires_api_key}
-                />
-                <span>
-                  <strong>Unkeyed</strong>
-                  <small>Allow calls without a Wardwright model API key.</small>
-                </span>
-              </label>
+              <div class="radio_card access_mode_card">
+                <label class="radio_card_main">
+                  <input
+                    type="radio"
+                    name="access[requires_api_key]"
+                    value="false"
+                    checked={!@requires_api_key}
+                  />
+                  <span>
+                    <strong>Unkeyed</strong>
+                    <small>Allow calls without a Wardwright model API key.</small>
+                  </span>
+                </label>
+                <div class="nested_radio_group">
+                  <span>Unkeyed access</span>
+                  <label class="radio_card compact">
+                    <input
+                      type="radio"
+                      name="access[unkeyed_model_access]"
+                      value="public"
+                      checked={@unkeyed_model_access == "public"}
+                    />
+                    <span>
+                      <strong>Public</strong>
+                      <small>Show the model in discovery and allow direct unkeyed calls.</small>
+                    </span>
+                  </label>
+                  <label class="radio_card compact">
+                    <input
+                      type="radio"
+                      name="access[unkeyed_model_access]"
+                      value="internal"
+                      checked={@unkeyed_model_access == "internal"}
+                    />
+                    <span>
+                      <strong>Composition only</strong>
+                      <small>Hide unkeyed direct calls while keeping internal composition possible.</small>
+                    </span>
+                  </label>
+                </div>
+              </div>
               <label class="radio_card">
                 <input
                   type="radio"
@@ -186,34 +212,6 @@ defmodule WardwrightWeb.ModelApiKeysLive do
                 <span>
                   <strong>Keyed</strong>
                   <small>Require a bearer key scoped to this model.</small>
-                </span>
-              </label>
-            </fieldset>
-
-            <fieldset>
-              <legend>When unkeyed</legend>
-              <label class="radio_card">
-                <input
-                  type="radio"
-                  name="access[unkeyed_model_access]"
-                  value="public"
-                  checked={@unkeyed_model_access == "public"}
-                />
-                <span>
-                  <strong>Public</strong>
-                  <small>Show the model in discovery and allow direct unkeyed calls.</small>
-                </span>
-              </label>
-              <label class="radio_card">
-                <input
-                  type="radio"
-                  name="access[unkeyed_model_access]"
-                  value="internal"
-                  checked={@unkeyed_model_access == "internal"}
-                />
-                <span>
-                  <strong>Composition only</strong>
-                  <small>Hide unkeyed direct calls while keeping internal composition possible.</small>
                 </span>
               </label>
             </fieldset>

@@ -122,6 +122,9 @@ defmodule WardwrightWeb.WorkbenchTest do
 
     assert json =~ "Wardwright"
     assert json =~ "Selected model turn simulator"
+    assert json =~ "Policy slice"
+    assert json =~ "Fixture"
+    refute json =~ "topbar-actions"
 
     for implementation_label <- [
           "Lustre 5",
@@ -345,6 +348,28 @@ defmodule WardwrightWeb.WorkbenchTest do
              "Use OldClient(arg) in the migration.",
              "Use NewClient(arg) in the migration.",
              "Use NewClient(arg) in the migration."
+           )
+  end
+
+  test "workbench fixture selector drives simulator inputs and retry slots" do
+    put_retry_model_config()
+
+    fixtures = WardwrightWeb.LustreWorkbenchData.fixture_options("tts-retry", "retry-workbench")
+
+    assert Enum.any?(fixtures, fn {id, title, _description, _user_input, _model_response, retries} ->
+             id == "model-default" and title == "Model default" and length(retries) == 2
+           end)
+
+    assert Enum.any?(fixtures, fn {id, title, _description, _user_input, model_response, retries} ->
+             id == "safe-stream" and title =~ "safe stream" and
+               model_response =~ "current client adapter" and length(retries) == 2
+           end)
+
+    assert :wardwright@lustre_workbench_test_support.selecting_fixture_updates_simulation(
+             "tts-retry",
+             "retry-workbench",
+             "safe-stream",
+             "Use the current client adapter."
            )
   end
 

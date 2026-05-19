@@ -40,6 +40,16 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     end)
   end
 
+  def fixture_options(pattern_id, model_id) do
+    config = model_config(model_id)
+
+    [
+      model_default_fixture(model_id, config)
+      | policy_fixture_options(pattern_id, model_id)
+    ]
+    |> Enum.uniq_by(&elem(&1, 0))
+  end
+
   def default_pattern_id, do: default_pattern_id(default_model_id())
 
   def default_pattern_id(model_id) do
@@ -81,6 +91,93 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     |> model_config()
     |> retry_response_slots_for_config()
   end
+
+  defp model_default_fixture(model_id, config) do
+    {
+      "model-default",
+      "Model default",
+      "Current model policy sample",
+      default_model_simulation_user_input(config),
+      default_model_simulation_response(config),
+      fixture_retry_responses(model_id, [])
+    }
+  end
+
+  defp policy_fixture_options(pattern_id, model_id) do
+    pattern_id
+    |> Wardwright.PolicyProjection.simulation_inputs()
+    |> Enum.filter(&fixture_for_selected_policy?/1)
+    |> Enum.map(fn input ->
+      {
+        input["id"] || "",
+        fixture_title(input),
+        input["description"] || "",
+        input["user_input"] || "",
+        input["model_response"] || "",
+        fixture_retry_responses(model_id, input["response_attempts"] || [])
+      }
+    end)
+  end
+
+  defp fixture_for_selected_policy?(%{"relationship" => relationship}), do: relationship in ["direct", "saved_scenario"]
+
+  defp fixture_for_selected_policy?(_input), do: false
+
+  defp fixture_title(%{"relationship" => "saved_scenario"} = input), do: "Saved: #{input["title"] || input["id"] || ""}"
+  defp fixture_title(input), do: input["title"] || input["id"] || ""
+
+  defp fixture_retry_responses(model_id, attempts) do
+    slot_count = retry_response_slots(model_id)
+
+    case slot_count do
+      count when count <= 0 ->
+        []
+
+      count ->
+        attempt_outputs =
+          attempts
+          |> normalize_fixture_response_attempts()
+          |> Map.new(fn %{"index" => index, "model_output" => output} -> {index, output} end)
+
+        Enum.map(2..(count + 1), fn index ->
+          {index, Map.get(attempt_outputs, index, "")}
+        end)
+    end
+  end
+
+  defp normalize_fixture_response_attempts(attempts) when is_list(attempts) do
+    attempts
+    |> Enum.flat_map(&normalize_fixture_response_attempt/1)
+    |> Enum.sort_by(&Map.get(&1, "index", 0))
+  end
+
+  defp normalize_fixture_response_attempts(_attempts), do: []
+
+  defp normalize_fixture_response_attempt({index, output}) when is_integer(index) and is_binary(output),
+    do: [%{"index" => index, "model_output" => output}]
+
+  defp normalize_fixture_response_attempt(%{"index" => index} = attempt) do
+    with index when is_integer(index) <- parse_attempt_index(index),
+         output when is_binary(output) and output != "" <-
+           Map.get(attempt, "model_output") || Map.get(attempt, "model_response") do
+      [%{"index" => index, "model_output" => output}]
+    else
+      _invalid -> []
+    end
+  end
+
+  defp normalize_fixture_response_attempt(_attempt), do: []
+
+  defp parse_attempt_index(index) when is_integer(index), do: index
+
+  defp parse_attempt_index(index) when is_binary(index) do
+    case Integer.parse(index) do
+      {integer, ""} -> integer
+      _parse_error -> nil
+    end
+  end
+
+  defp parse_attempt_index(_index), do: nil
 
   def projection_summary(pattern_id, model_id) do
     config = model_config(model_id)
