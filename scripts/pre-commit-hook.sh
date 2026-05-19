@@ -15,7 +15,11 @@ fail() { echo -e "${RED}✗ pre-commit:${NC} $*" >&2; exit 1; }
 note() { echo -e "${YELLOW}…${NC} $*"; }
 ok() { echo -e "${GREEN}✓${NC} $*"; }
 
-staged_files="$(git diff --cached --name-only --diff-filter=ACM)"
+staged_files="$(git diff --cached --name-only --diff-filter=ACMRD)"
+
+note "UI docs acknowledgement..."
+scripts/check-ui-docs-ack.sh --staged || fail "UI docs acknowledgement missing"
+ok "UI docs acknowledgement clean"
 
 if echo "$staged_files" | grep -qE '^app/'; then
   note "app format/test..."

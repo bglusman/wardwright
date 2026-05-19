@@ -52,7 +52,7 @@ Set `WARDWRIGHT_ADMIN_TOKEN` before exposing Wardwright beyond loopback. See
 [Packaging](docs/packaging.md) for release targets, manual archive install
 steps, and service details.
 
-Then visit `http://127.0.0.1:8787/policies`. Set `BASIC_AUTH_PASSWORD` before
+Then visit `http://127.0.0.1:8787/workbench`. Set `BASIC_AUTH_PASSWORD` before
 exposing the workbench or protected control APIs beyond loopback; the Basic Auth
 username is always `admin`. Model calls remain governed separately by model
 access configuration.
@@ -97,7 +97,8 @@ wardwright tools --json
 Wardwright exposes:
 
 - OpenAI-compatible `/v1/chat/completions` and `/v1/models` endpoints.
-- A policy workbench at `/policies`.
+- A registered-model workbench at `/workbench`, with the legacy policy
+  projection workbench still available at `/policies`.
 - Protected authoring APIs, plus MCP tools at `/mcp`.
 - Receipts, simulations, model access details, and admin status endpoints.
 
@@ -123,24 +124,25 @@ provider credentials on an instance reachable by untrusted users. See
 
 ## Policy Workbench
 
-The installed service includes a LiveView workbench at `/policies`. It loads
-seeded and local examples, lets you choose the Wardwright model being simulated,
-edit caller input, backend model output, retry attempts, and relevant history,
-then steps through routing, state transitions, stream retries, rewrites, tool
-decisions, and receipt events. Reviewed turns can be saved as reusable test cases
-for later simulation, regression export, or agent review.
+The installed service includes a registered-model workbench at `/workbench`. It
+lets you choose the Wardwright model being simulated, load a fixture, edit caller
+input, backend model output, and retry attempts, then step through routing,
+state transitions, stream retries, rewrites, tool decisions, and receipt events.
+The older `/policies` workbench remains available as a legacy fallback during
+the transition.
 
-![Wardwright policy workbench showing context-window dispatcher simulation](docs/assets/workbench/route-composition-simulator.png)
+![Wardwright registered-model workbench showing a retry fixture](docs/assets/workbench/registered-model-workbench.png)
 
-See [Policy Workbench](docs/workbench.md) for screenshots and the example
-catalog. See [Model Middleware](docs/wardwright-models.md) for the current model
+See [Policy Workbench](docs/workbench.md) for screenshots and workflow details.
+See [Model Middleware](docs/wardwright-models.md) for the current model
 composition shape.
 
 ## Current Runtime
 
-The active app is a Phoenix/LiveView service. Elixir owns runtime plumbing,
-provider calls, HTTP/API boundaries, receipts, and the UI. Gleam is used for
-correctness-heavy pure policy logic where the boundary is stable.
+The active app is a Phoenix service with server-rendered operator workbenches.
+Elixir owns runtime plumbing, provider calls, HTTP/API boundaries, and receipts;
+Gleam is used for correctness-heavy pure policy logic where the boundary is
+stable.
 
 Current capabilities include:
 

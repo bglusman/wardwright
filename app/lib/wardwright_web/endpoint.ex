@@ -19,6 +19,12 @@ defmodule WardwrightWeb.Endpoint do
     ]
   )
 
+  socket("/admin/model-api-keys/socket", WardwrightWeb.LustreModelAccessSocket,
+    websocket: [
+      connect_info: [:peer_data, :x_headers, :auth_token, session: @session_options]
+    ]
+  )
+
   socket("/spikes/lustre-workbench/socket", WardwrightWeb.LustreWorkbenchSocket,
     websocket: [
       connect_info: [:peer_data, :x_headers, :auth_token, session: @session_options]

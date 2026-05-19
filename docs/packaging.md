@@ -11,9 +11,9 @@ the latest published usable early release, with the stronger model-aware
 workbench, saved simulator test cases, and an experimental in-page authoring
 assistant.
 
-Wardwright is a BEAM application with a Phoenix/LiveView operator UI and Gleam
-decision cores. The packaging goal is a user-facing binary that does not require
-Erlang, Elixir, or Gleam on the target machine.
+Wardwright is a BEAM application with a Phoenix operator UI, a legacy LiveView
+fallback page, and Gleam decision cores. The packaging goal is a user-facing
+binary that does not require Erlang, Elixir, or Gleam on the target machine.
 
 ## Chosen Path
 
@@ -167,10 +167,10 @@ local model/provider selection that was only present in one shell session.
 `WARDWRIGHT_ADMIN_TOKEN` remains optional for loopback-only use. For browser
 access to the operator workbench and protected control APIs beyond loopback, set
 `BASIC_AUTH_PASSWORD`; the Basic Auth username is always `admin`. This protects
-operator surfaces such as `/policies`, `/mcp`, `/admin/*`, receipts, and
-policy-authoring and simulation APIs. OpenAI-compatible model endpoints remain
-governed by model access configuration. Generated model API keys and the active
-model definition are stored in the SQLite database at
+operator surfaces such as `/workbench`, `/policies`, `/mcp`, `/admin/*`,
+receipts, and policy-authoring and simulation APIs. OpenAI-compatible model
+endpoints remain governed by model access configuration. Generated model API
+keys and the active model definition are stored in the SQLite database at
 `~/.local/share/wardwright/wardwright.sqlite3` unless `XDG_DATA_HOME` or
 `WARDWRIGHT_SQLITE_STORE` points somewhere else. Keep
 `WARDWRIGHT_SECRET_KEY_BASE` stable, or set

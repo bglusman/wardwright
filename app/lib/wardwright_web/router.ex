@@ -34,7 +34,7 @@ defmodule WardwrightWeb.Router do
 
     get("/", LustreWorkbenchController, :show)
     get("/workbench", LustreWorkbenchController, :show)
-    live("/admin/model-api-keys", ModelApiKeysLive, :index)
+    get("/admin/model-api-keys", LustreModelAccessController, :show)
     live("/policies", PolicyProjectionLive, :index)
     get("/spikes/graph-renderer-lab", GraphRendererLabController, :show)
     get("/spikes/lustre-workbench", LustreWorkbenchController, :show)

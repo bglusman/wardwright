@@ -49,6 +49,16 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert conn.resp_body =~ "/workbench/socket/websocket"
   end
 
+  test "model access route mounts the server component runtime" do
+    conn = get(build_conn(), "/admin/model-api-keys")
+
+    assert html_response(conn, 200) =~ "lustre-server-component"
+    assert conn.resp_body =~ "<title>Wardwright Model Access</title>"
+    assert conn.resp_body =~ "/vendor/lustre/lustre-server-component.mjs"
+    assert conn.resp_body =~ "/admin/model-api-keys/socket/websocket"
+    refute conn.resp_body =~ "Phoenix.LiveView"
+  end
+
   test "old spike workbench route remains available during the transition" do
     conn = get(build_conn(), "/spikes/lustre-workbench")
 
@@ -140,6 +150,23 @@ defmodule WardwrightWeb.WorkbenchTest do
     WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
   end
 
+  test "transport registration pushes the initial model access DOM payload" do
+    assert {:ok, state} = WardwrightWeb.LustreModelAccessSocket.init(%{})
+    assert_receive {ref, message} when is_tuple(message), 1_000
+
+    assert {:push, {:text, json}, _state} =
+             WardwrightWeb.LustreModelAccessSocket.handle_info({ref, message}, state)
+
+    assert json =~ "Model Access"
+    assert json =~ "Access Policy"
+    assert json =~ "Create Key"
+    assert json =~ "Legacy Workbench"
+    refute json =~ "Lustre Workbench"
+    refute json =~ "Gleam UI"
+
+    WardwrightWeb.LustreModelAccessSocket.terminate(:normal, state)
+  end
+
   test "workbench websocket transport requires protected access" do
     assert {:ok, _state} =
              WardwrightWeb.LustreWorkbenchSocket.connect(%{
@@ -153,6 +180,27 @@ defmodule WardwrightWeb.WorkbenchTest do
 
     assert {:ok, _state} =
              WardwrightWeb.LustreWorkbenchSocket.connect(%{
+               connect_info: %{
+                 peer_data: %{address: {203, 0, 113, 10}},
+                 session: %{"wardwright_protected_access" => true},
+                 x_headers: []
+               }
+             })
+  end
+
+  test "model access websocket transport requires protected access" do
+    assert {:ok, _state} =
+             WardwrightWeb.LustreModelAccessSocket.connect(%{
+               connect_info: %{peer_data: %{address: {127, 0, 0, 1}}, x_headers: []}
+             })
+
+    assert :error =
+             WardwrightWeb.LustreModelAccessSocket.connect(%{
+               connect_info: %{peer_data: %{address: {203, 0, 113, 10}}, x_headers: []}
+             })
+
+    assert {:ok, _state} =
+             WardwrightWeb.LustreModelAccessSocket.connect(%{
                connect_info: %{
                  peer_data: %{address: {203, 0, 113, 10}},
                  session: %{"wardwright_protected_access" => true},

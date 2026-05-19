@@ -368,76 +368,71 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   end
 
   test "model API key management page creates and revokes keys" do
-    {:ok, view, html} = live(build_conn(), "/admin/model-api-keys")
+    conn = get(build_conn(), "/admin/model-api-keys")
 
-    assert html =~ "Model Access"
-    assert html =~ "coding-balanced"
-    assert html =~ "Access Policy"
-    assert html =~ "href=\"/workbench\""
-    assert html =~ "href=\"/policies\""
-    assert html =~ "Legacy Workbench"
-    refute html =~ ~s(class="topbar_actions")
-    refute html =~ "Lustre Workbench"
-    refute html =~ "Gleam UI"
-    assert html =~ "No API keys have been created for this model."
+    assert html_response(conn, 200) =~ "lustre-server-component"
+    assert conn.resp_body =~ "<title>Wardwright Model Access</title>"
+    assert conn.resp_body =~ "/admin/model-api-keys/socket/websocket"
+    refute conn.resp_body =~ "live_socket"
 
-    html =
-      view
-      |> form("#create-model-key-form", %{"key" => %{"label" => "local-gateway"}})
-      |> render_submit()
+    assert :wardwright@lustre_model_access_test_support.initial_view_contains("Model Access")
+    assert :wardwright@lustre_model_access_test_support.initial_view_contains("coding-balanced")
+    assert :wardwright@lustre_model_access_test_support.initial_view_contains("Access Policy")
+    assert :wardwright@lustre_model_access_test_support.initial_view_contains("Legacy Workbench")
 
-    assert html =~ "Copy this key now"
-    assert html =~ "wwk_"
-    assert html =~ "local-gateway"
-    assert [%{"id" => id}] = Wardwright.ModelApiKeyStore.list("coding-balanced")
+    assert :wardwright@lustre_model_access_test_support.initial_view_contains(
+             "No API keys have been created for this model."
+           )
 
-    html =
-      view
-      |> element("button[phx-click='revoke-key'][phx-value-id='#{id}']")
-      |> render_click()
+    assert :wardwright@lustre_model_access_test_support.creating_key_shows_secret(
+             "coding-balanced",
+             "local-gateway"
+           )
 
-    assert html =~ "No API keys have been created for this model."
+    assert [%{"id" => id, "label" => "local-gateway"}] =
+             Wardwright.ModelApiKeyStore.list("coding-balanced")
+
+    assert :wardwright@lustre_model_access_test_support.revoking_key_removes_it(
+             "coding-balanced",
+             id
+           )
+
     assert Wardwright.ModelApiKeyStore.list("coding-balanced") == []
   end
 
   test "model API key management page edits keyed and unkeyed access" do
-    {:ok, view, html} = live(build_conn(), "/admin/model-api-keys")
-
-    assert html =~ "Unkeyed"
-    assert html =~ "Unkeyed access"
+    assert :wardwright@lustre_model_access_test_support.initial_view_contains("Unkeyed")
+    assert :wardwright@lustre_model_access_test_support.initial_view_contains("Unkeyed access")
     refute Wardwright.model_requires_api_key?()
     assert Wardwright.unkeyed_model_access() == "public"
 
-    html =
-      view
-      |> form("#model-access-form", %{
-        "access" => %{"requires_api_key" => "false", "unkeyed_model_access" => "internal"}
-      })
-      |> render_submit()
+    assert :wardwright@lustre_model_access_test_support.saving_access_updates_mode(
+             "coding-balanced",
+             "false",
+             "internal",
+             "Model access saved."
+           )
 
-    assert html =~ "Model access saved."
     refute Wardwright.model_requires_api_key?()
     assert Wardwright.unkeyed_model_access() == "internal"
 
-    html =
-      view
-      |> form("#model-access-form", %{
-        "access" => %{"requires_api_key" => "true"}
-      })
-      |> render_submit()
+    assert :wardwright@lustre_model_access_test_support.saving_access_updates_mode(
+             "coding-balanced",
+             "true",
+             "internal",
+             "API key required"
+           )
 
-    assert html =~ "API key required"
     assert Wardwright.model_requires_api_key?()
     assert Wardwright.unkeyed_model_access() == "internal"
 
-    html =
-      view
-      |> form("#model-access-form", %{
-        "access" => %{"requires_api_key" => "false", "unkeyed_model_access" => "public"}
-      })
-      |> render_submit()
+    assert :wardwright@lustre_model_access_test_support.saving_access_updates_mode(
+             "coding-balanced",
+             "false",
+             "public",
+             "Unkeyed"
+           )
 
-    assert html =~ "Unkeyed"
     refute Wardwright.model_requires_api_key?()
     assert Wardwright.unkeyed_model_access() == "public"
   end
@@ -454,19 +449,16 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert {:ok, _alpha} = Wardwright.put_config(alpha)
     assert {:ok, _beta} = Wardwright.put_model_config(beta)
 
-    {:ok, view, html} = live(build_conn(), "/admin/model-api-keys?model=alpha-access")
+    assert :wardwright@lustre_model_access_test_support.initial_view_contains("alpha-access")
+    assert :wardwright@lustre_model_access_test_support.initial_view_contains("beta-access")
 
-    assert html =~ "alpha-access"
-    assert html =~ "beta-access"
+    assert :wardwright@lustre_model_access_test_support.saving_access_updates_mode(
+             "alpha-access",
+             "true",
+             "internal",
+             "Model access saved."
+           )
 
-    html =
-      view
-      |> form("#model-access-form", %{
-        "access" => %{"requires_api_key" => "true", "unkeyed_model_access" => "internal"}
-      })
-      |> render_submit()
-
-    assert html =~ "Model access saved."
     assert {:ok, alpha_config} = Wardwright.model_config("alpha-access")
     assert {:ok, beta_config} = Wardwright.model_config("beta-access")
 
