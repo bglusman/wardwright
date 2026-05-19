@@ -727,6 +727,7 @@ fn state_machine_graph(model: Model) -> Element(Msg) {
         ),
         attribute("data-active-state", active_state),
         attribute("data-final-state", replay.final_state),
+        attribute("data-model-id", model.model_id),
       ],
       [],
     ),

@@ -88,6 +88,13 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
 
     assert response(conn, 200) =~ "wardwright-state-graph"
     assert conn.resp_body =~ "showEdgeDetail"
+    assert conn.resp_body =~ "model-group"
+    assert conn.resp_body =~ "model-boundary-edge"
+    assert conn.resp_body =~ "graphSpacingFactor"
+    assert conn.resp_body =~ "bindGraphWheel"
+    assert conn.resp_body =~ "userPanningEnabled: true"
+    assert conn.resp_body =~ "boxSelectionEnabled: false"
+    assert conn.resp_body =~ "WHEEL_ZOOM_INTENSITY"
   end
 
   test "transport registration pushes the initial Lustre DOM payload" do

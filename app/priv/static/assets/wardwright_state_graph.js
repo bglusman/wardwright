@@ -4,7 +4,8 @@ class WardwrightStateGraph extends HTMLElement {
       "data-states",
       "data-transitions",
       "data-active-state",
-      "data-final-state"
+      "data-final-state",
+      "data-model-id"
     ];
   }
 
@@ -12,6 +13,7 @@ class WardwrightStateGraph extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this.cy = null;
+    this.interactionAbort = null;
     this.lastGraphKey = "";
     this.pendingRender = null;
   }
@@ -36,6 +38,11 @@ class WardwrightStateGraph extends HTMLElement {
       this.cy.destroy();
       this.cy = null;
     }
+
+    if (this.interactionAbort) {
+      this.interactionAbort.abort();
+      this.interactionAbort = null;
+    }
   }
 
   scheduleRender() {
@@ -54,6 +61,7 @@ class WardwrightStateGraph extends HTMLElement {
     const transitions = parseJsonAttribute(this, "data-transitions", []);
     const activeState = this.getAttribute("data-active-state") || "";
     const finalState = this.getAttribute("data-final-state") || "";
+    const rootModelId = this.getAttribute("data-model-id") || "";
     const graphKey = graphTopologyKey(states, transitions);
     const previousViewport = this.cy
       ? { zoom: this.cy.zoom(), pan: this.cy.pan() }
@@ -70,6 +78,7 @@ class WardwrightStateGraph extends HTMLElement {
       <style>
         :host {
           display: block;
+          container-type: inline-size;
           min-height: 460px;
           color: #18202a;
           font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -194,6 +203,12 @@ class WardwrightStateGraph extends HTMLElement {
             grid-template-columns: 1fr;
           }
         }
+
+        @container (max-width: 780px) {
+          .shell {
+            grid-template-columns: 1fr;
+          }
+        }
       </style>
       ${this.renderShell(transitions)}
     `;
@@ -211,39 +226,25 @@ class WardwrightStateGraph extends HTMLElement {
     const pathEdgeIds = new Set(
       transitions.filter((edge) => edge.path || edge.current).map((edge) => edge.id)
     );
+    const groupElements = modelGroupElements(states, rootModelId);
+    const graphStates = states.map((state) =>
+      stateElement(state, rootModelId, activeState, finalState)
+    );
+    const graphTransitions = transitions.map((edge) =>
+      edgeElement(edge, rootModelId, activeEdgeIds)
+    );
     const initialDetail =
-      transitions.find((edge) => edge.current) ||
-      transitions.find((edge) => pathEdgeIds.has(edge.id)) ||
-      transitions.find((edge) => activeEdgeIds.has(edge.id)) ||
-      transitions[0];
+      graphTransitions.find((edge) => edge.data.current === "yes")?.data ||
+      graphTransitions.find((edge) => pathEdgeIds.has(edge.data.id))?.data ||
+      graphTransitions.find((edge) => activeEdgeIds.has(edge.data.id))?.data ||
+      graphTransitions[0]?.data;
 
     this.cy = window.cytoscape({
       container: canvas,
       elements: [
-        ...states.map((state) => ({
-          data: {
-            id: state.id,
-            label: state.label || state.id,
-            active: state.id === activeState ? "yes" : "no",
-            terminal: state.id === finalState || state.terminal ? "yes" : "no",
-            visited: state.visited ? "yes" : "no"
-          }
-        })),
-        ...transitions.map((edge) => ({
-          data: {
-            id: edge.id,
-            source: edge.from,
-            target: edge.to,
-            label: edge.short_label || edge.event || edge.action || edge.id,
-            event: edge.event,
-            action: edge.action,
-            node: edge.node,
-            detail: edge.detail,
-            current: edge.current ? "yes" : "no",
-            path: edge.path ? "yes" : "no",
-            active: activeEdgeIds.has(edge.id) ? "yes" : "no"
-          }
-        }))
+        ...groupElements,
+        ...graphStates,
+        ...graphTransitions
       ],
       style: this.styles(),
       minZoom: 0.55,
@@ -251,12 +252,15 @@ class WardwrightStateGraph extends HTMLElement {
       wheelSensitivity: 0.14,
       userPanningEnabled: true,
       userZoomingEnabled: true,
+      boxSelectionEnabled: false,
       autoungrabify: true,
       layout: {
         name: "breadthfirst",
         directed: true,
-        padding: 44,
-        spacingFactor: 1.22
+        avoidOverlap: true,
+        nodeDimensionsIncludeLabels: true,
+        padding: 72,
+        spacingFactor: graphSpacingFactor(states, transitions)
       }
     });
     this.lastGraphKey = graphKey;
@@ -276,6 +280,7 @@ class WardwrightStateGraph extends HTMLElement {
     this.cy.on("tap", "node", (event) => {
       this.showStateDetail(event.target.data());
     });
+    this.bindGraphWheel(canvas);
     this.bindViewportControls();
 
     const activeNode = this.cy.getElementById(activeState);
@@ -284,8 +289,8 @@ class WardwrightStateGraph extends HTMLElement {
       this.showStateDetail(activeNode.data());
     } else if (initialDetail) {
       this.showEdgeDetail(initialDetail);
-    } else if (states[0]) {
-      this.showStateDetail(states[0]);
+    } else if (graphStates[0]) {
+      this.showStateDetail(graphStates[0].data);
     }
 
     window.requestAnimationFrame(() => {
@@ -334,6 +339,8 @@ class WardwrightStateGraph extends HTMLElement {
           <dl>
             <dt>Selection</dt>
             <dd data-detail="selection">No graph item selected.</dd>
+            <dt>Model</dt>
+            <dd data-detail="model">-</dd>
             <dt>Event</dt>
             <dd data-detail="event">-</dd>
             <dt>Action</dt>
@@ -358,12 +365,61 @@ class WardwrightStateGraph extends HTMLElement {
           "font-family": "Inter, ui-sans-serif, system-ui, sans-serif",
           "font-size": 12,
           "font-weight": 800,
-          height: 54,
+          height: 58,
           label: "data(label)",
           shape: "round-rectangle",
           "text-halign": "center",
+          "text-max-width": 116,
+          "text-wrap": "wrap",
           "text-valign": "center",
-          width: 132
+          width: 138
+        }
+      },
+      {
+        selector: ".model-group",
+        style: {
+          "background-color": "#e7f2f1",
+          "background-opacity": 0.38,
+          "border-color": "#74a29e",
+          "border-style": "dashed",
+          "border-width": 2,
+          color: "#395762",
+          events: "no",
+          "font-size": 11,
+          "font-weight": 850,
+          label: "data(label)",
+          padding: 26,
+          shape: "round-rectangle",
+          "text-background-color": "#f8fafb",
+          "text-background-opacity": 0.94,
+          "text-background-padding": 4,
+          "text-halign": "center",
+          "text-margin-y": -8,
+          "text-valign": "top",
+          "text-wrap": "wrap",
+          "z-compound-depth": "bottom",
+          "z-index": 0
+        }
+      },
+      {
+        selector: ".model-group[groupDepth = '2']",
+        style: {
+          "background-color": "#eef1fb",
+          "border-color": "#9aa7d8"
+        }
+      },
+      {
+        selector: ".model-group[groupDepth = '3']",
+        style: {
+          "background-color": "#fbf3e5",
+          "border-color": "#d5a75d"
+        }
+      },
+      {
+        selector: ".nested-state",
+        style: {
+          "background-color": "#f8fdfc",
+          "border-color": "#7aa9a5"
         }
       },
       {
@@ -402,13 +458,23 @@ class WardwrightStateGraph extends HTMLElement {
           "text-background-color": "#f8fafb",
           "text-background-opacity": 1,
           "text-background-padding": 3,
-          "text-rotation": "autorotate"
+          "text-margin-y": -8,
+          "text-rotation": "none"
+        }
+      },
+      {
+        selector: ".model-boundary-edge",
+        style: {
+          "line-color": "#a46b18",
+          "line-style": "dashed",
+          "target-arrow-color": "#a46b18",
+          width: 3,
+          "z-index": 6
         }
       },
       {
         selector: "edge[path = 'yes']",
         style: {
-          label: "data(label)",
           "line-color": "#16605a",
           "target-arrow-color": "#16605a",
           width: 4,
@@ -453,6 +519,56 @@ class WardwrightStateGraph extends HTMLElement {
       ?.addEventListener("click", () => this.fitView());
   }
 
+  bindGraphWheel(canvas) {
+    if (this.interactionAbort) {
+      this.interactionAbort.abort();
+    }
+
+    this.interactionAbort = new AbortController();
+    const signal = this.interactionAbort.signal;
+
+    const zoomWheel = (event) => {
+      if (!this.cy) {
+        return;
+      }
+
+      const rect = canvas.getBoundingClientRect();
+
+      if (
+        event.clientX < rect.left ||
+        event.clientX > rect.right ||
+        event.clientY < rect.top ||
+        event.clientY > rect.bottom
+      ) {
+        return;
+      }
+
+      const factor = clamp(Math.exp(-event.deltaY * WHEEL_ZOOM_INTENSITY), 0.88, 1.12);
+      const zoom = clamp(this.cy.zoom() * factor, this.minZoom(), this.maxZoom());
+
+      this.cy.zoom({
+        level: zoom,
+        renderedPosition: {
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top
+        }
+      });
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    canvas.addEventListener(
+      "wheel",
+      zoomWheel,
+      { capture: true, passive: false, signal }
+    );
+    this.addEventListener(
+      "wheel",
+      zoomWheel,
+      { capture: true, passive: false, signal }
+    );
+  }
+
   zoomBy(factor) {
     if (!this.cy) {
       return;
@@ -484,14 +600,19 @@ class WardwrightStateGraph extends HTMLElement {
   }
 
   showEdgeDetail(edge) {
-    this.setDetail("selection", `${edge.source || edge.from} -> ${edge.target || edge.to}`);
+    this.setDetail(
+      "selection",
+      `${edge.sourceLabel || edge.source || edge.from} -> ${edge.targetLabel || edge.target || edge.to}`
+    );
+    this.setDetail("model", edge.modelLabel || "-");
     this.setDetail("event", edge.event || "-");
     this.setDetail("action", edge.action || "-");
     this.setDetail("node", edge.node || "-");
   }
 
   showStateDetail(state) {
-    this.setDetail("selection", state.label || state.id || "-");
+    this.setDetail("selection", state.fullLabel || state.label || state.id || "-");
+    this.setDetail("model", state.modelLabel || "-");
     this.setDetail("event", "state");
     this.setDetail("action", state.active === "yes" || state.active === true ? "active" : "available");
     this.setDetail("node", state.id || "-");
@@ -503,6 +624,215 @@ class WardwrightStateGraph extends HTMLElement {
       target.textContent = value;
     }
   }
+}
+
+const ROOT_MODEL_NAMESPACE = "__wardwright_root_model__";
+const WHEEL_ZOOM_INTENSITY = 0.0012;
+
+function modelGroupElements(states, rootModelId) {
+  const namespaces = new Set();
+
+  states.forEach((state) => {
+    namespacePrefixes(stateNamespace(state.id))
+      .filter((namespace) => namespace !== ROOT_MODEL_NAMESPACE)
+      .forEach((namespace) => {
+        namespaces.add(namespace);
+      });
+  });
+
+  return [...namespaces]
+    .sort((left, right) => modelDepth(left) - modelDepth(right))
+    .map((namespace) => {
+      const parent = parentNamespace(namespace);
+      const data = {
+        id: modelGroupId(namespace),
+        label: modelLabel(namespace, rootModelId),
+        modelGroup: "yes",
+        modelNamespace: namespace,
+        groupDepth: String(Math.min(modelDepth(namespace), 3))
+      };
+
+      if (parent) {
+        data.parent = modelGroupId(parent);
+      }
+
+      return {
+        data,
+        classes: `model-group model-depth-${Math.min(modelDepth(namespace), 3)}`
+      };
+    });
+}
+
+function stateElement(state, rootModelId, activeState, finalState) {
+  const namespace = stateNamespace(state.id);
+  const depth = modelDepth(namespace);
+  const data = {
+    id: state.id,
+    label: stateDisplayLabel(state, namespace),
+    fullLabel: fullStateLabel(state),
+    modelLabel: modelLabel(namespace, rootModelId),
+    modelNamespace: namespace,
+    modelDepth: String(depth),
+    active: state.id === activeState ? "yes" : "no",
+    terminal: state.id === finalState || state.terminal ? "yes" : "no",
+    visited: state.visited ? "yes" : "no"
+  };
+
+  if (namespace !== ROOT_MODEL_NAMESPACE) {
+    data.parent = modelGroupId(namespace);
+  }
+
+  return {
+    data,
+    classes: [
+      "state-node",
+      namespace === ROOT_MODEL_NAMESPACE ? "root-state" : "nested-state",
+      `model-depth-${Math.min(depth, 3)}`
+    ].join(" ")
+  };
+}
+
+function edgeElement(edge, rootModelId, activeEdgeIds) {
+  const sourceNamespace = stateNamespace(edge.from);
+  const targetNamespace = stateNamespace(edge.to);
+  const boundary = sourceNamespace !== targetNamespace;
+  const sourceModel = modelLabel(sourceNamespace, rootModelId);
+  const targetModel = modelLabel(targetNamespace, rootModelId);
+
+  return {
+    data: {
+      id: edge.id,
+      source: edge.from,
+      target: edge.to,
+      sourceLabel: stateReferenceLabel(edge.from, rootModelId),
+      targetLabel: stateReferenceLabel(edge.to, rootModelId),
+      modelLabel: boundary ? `${sourceModel} -> ${targetModel}` : sourceModel,
+      boundary: boundary ? "yes" : "no",
+      label: edge.short_label || edge.event || edge.action || edge.id,
+      event: edge.event,
+      action: edge.action,
+      node: edge.node,
+      detail: edge.detail,
+      current: edge.current ? "yes" : "no",
+      path: edge.path ? "yes" : "no",
+      active: activeEdgeIds.has(edge.id) ? "yes" : "no"
+    },
+    classes: boundary ? "model-boundary-edge" : "model-internal-edge"
+  };
+}
+
+function namespacePrefixes(namespace) {
+  if (namespace === ROOT_MODEL_NAMESPACE) {
+    return [ROOT_MODEL_NAMESPACE];
+  }
+
+  const parts = namespace.split("::");
+  const prefixes = [];
+
+  for (let index = 1; index <= parts.length; index += 1) {
+    prefixes.push(parts.slice(0, index).join("::"));
+  }
+
+  return prefixes;
+}
+
+function stateNamespace(stateId) {
+  const parts = String(stateId || "").split("::");
+
+  if (parts.length <= 1) {
+    return ROOT_MODEL_NAMESPACE;
+  }
+
+  return parts.slice(0, -1).join("::");
+}
+
+function parentNamespace(namespace) {
+  if (namespace === ROOT_MODEL_NAMESPACE) {
+    return null;
+  }
+
+  const parts = namespace.split("::");
+
+  if (parts.length <= 1) {
+    return null;
+  }
+
+  return parts.slice(0, -1).join("::");
+}
+
+function modelDepth(namespace) {
+  return namespace === ROOT_MODEL_NAMESPACE ? 0 : namespace.split("::").length;
+}
+
+function modelGroupId(namespace) {
+  if (namespace === ROOT_MODEL_NAMESPACE) {
+    return "model-group-root";
+  }
+
+  return `model-group-${safeGraphId(namespace)}`;
+}
+
+function modelLabel(namespace, rootModelId) {
+  if (namespace === ROOT_MODEL_NAMESPACE) {
+    return formatGraphLabel(rootModelId || "selected model");
+  }
+
+  const parts = namespace.split("::");
+  return formatGraphLabel(parts[parts.length - 1] || namespace);
+}
+
+function stateDisplayLabel(state, namespace) {
+  if (namespace === ROOT_MODEL_NAMESPACE) {
+    return formatGraphLabel(state.label || state.id || "state");
+  }
+
+  return formatGraphLabel(localStateId(state.id));
+}
+
+function fullStateLabel(state) {
+  return formatGraphLabel(state.label || String(state.id || "state").replaceAll("::", " / "));
+}
+
+function stateReferenceLabel(stateId, rootModelId) {
+  const namespace = stateNamespace(stateId);
+  const localLabel = namespace === ROOT_MODEL_NAMESPACE
+    ? formatGraphLabel(stateId)
+    : formatGraphLabel(localStateId(stateId));
+
+  return `${modelLabel(namespace, rootModelId)} / ${localLabel}`;
+}
+
+function localStateId(stateId) {
+  const parts = String(stateId || "").split("::");
+  return parts[parts.length - 1] || String(stateId || "state");
+}
+
+function safeGraphId(value) {
+  return String(value || "model").replace(/[^A-Za-z0-9_.-]+/g, "_");
+}
+
+function formatGraphLabel(value) {
+  return String(value || "")
+    .replace(/^wardwright\//, "")
+    .replaceAll("::", " / ")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function graphSpacingFactor(states, transitions) {
+  const modelCount = new Set(states.map((state) => stateNamespace(state.id))).size;
+  const density = states.length + transitions.length;
+
+  if (modelCount > 2 || density >= 16) {
+    return 2.05;
+  }
+
+  if (modelCount > 1 || density >= 10) {
+    return 1.72;
+  }
+
+  return 1.42;
 }
 
 function parseJsonAttribute(element, name, fallback) {
