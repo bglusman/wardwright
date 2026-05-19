@@ -34,8 +34,11 @@ pub type StateReplayStep =
 pub type StateReplay {
   StateReplay(
     status: String,
+    initial_state: String,
     final_state: String,
     transition_count: Int,
+    state_ids: List(String),
+    transitions: List(projection_core.StateTransition),
     steps: List(StateReplayStep),
   )
 }
@@ -255,8 +258,11 @@ fn replay_state_machine(
     True, [] ->
       StateReplay(
         status: "default_projection",
+        initial_state: initial_state,
         final_state: initial_state,
         transition_count: 0,
+        state_ids: [initial_state],
+        transitions: [],
         steps: [],
       )
     _, _ -> {
@@ -271,11 +277,51 @@ fn replay_state_machine(
 
       StateReplay(
         status: status,
+        initial_state: initial_state,
         final_state: final_state,
         transition_count: list.length(transitions),
+        state_ids: states_from_transitions(initial_state, transitions),
+        transitions: transitions,
         steps: steps,
       )
     }
+  }
+}
+
+fn states_from_transitions(
+  initial_state: String,
+  transitions: List(projection_core.StateTransition),
+) -> List(String) {
+  transitions
+  |> collect_transition_states(add_unique([], initial_state))
+  |> list.reverse
+}
+
+fn collect_transition_states(
+  transitions: List(projection_core.StateTransition),
+  states: List(String),
+) -> List(String) {
+  case transitions {
+    [] -> states
+    [transition, ..rest] -> {
+      let #(from, _, to, _, _) = transition
+
+      collect_transition_states(
+        rest,
+        states |> add_unique(from) |> add_unique(to),
+      )
+    }
+  }
+}
+
+fn add_unique(states: List(String), state: String) -> List(String) {
+  case string.trim(state) {
+    "" -> states
+    state_id ->
+      case list.contains(states, state_id) {
+        True -> states
+        False -> [state_id, ..states]
+      }
   }
 }
 
@@ -492,6 +538,10 @@ fn results_grid(model: Model) -> Element(Msg) {
       ]),
     ]),
     policy_action_table(simulation.policy_actions),
+    state_machine_graph(
+      simulation.state_replay,
+      active_state_at(simulation.state_replay, model.step),
+    ),
     state_machine_table(simulation.state_replay),
   ])
 }
@@ -526,6 +576,77 @@ fn action_rows(actions: List(PolicyAction)) -> List(Element(Msg)) {
           table.table_cell([], [text(blank_default(rule_id, "policy"))]),
           table.table_cell([], [text(blank_default(action_name, "pass"))]),
           table.table_cell([], [text(blank_default(message, "applied"))]),
+        ])
+      })
+  }
+}
+
+fn state_machine_graph(
+  replay: StateReplay,
+  active_state: String,
+) -> Element(Msg) {
+  html.article([class("panel state-graph")], [
+    html.div([class("panel-heading")], [
+      html.span([], [text("State machine")]),
+      badge.badge([badge.variant(badge.Outline)], [
+        text(blank_default(replay.status, "unknown")),
+      ]),
+    ]),
+    html.div(
+      [class("state-track")],
+      replay.state_ids
+        |> list.map(fn(state) {
+          html.div(
+            [
+              class(state_node_class(state, active_state, replay.final_state)),
+              attribute("data-state", state),
+              attribute("data-active", bool_string(state == active_state)),
+            ],
+            [
+              html.strong([], [text(state_label(state))]),
+              html.span([], [text(state)]),
+            ],
+          )
+        }),
+    ),
+    html.div(
+      [class("edge-list")],
+      state_edge_rows(replay.transitions, active_state),
+    ),
+  ])
+}
+
+fn state_edge_rows(
+  transitions: List(projection_core.StateTransition),
+  active_state: String,
+) -> List(Element(Msg)) {
+  case transitions {
+    [] -> [
+      html.div([class("state-edge")], [
+        html.strong([], [text("Default projection")]),
+        html.span([], [text("No transition table is needed for this policy.")]),
+      ]),
+    ]
+    _ ->
+      transitions
+      |> list.map(fn(transition) {
+        let #(from, event, to, action_name, node_id) = transition
+
+        html.div([class(state_edge_class(from, to, active_state))], [
+          html.strong([], [
+            text(
+              blank_default(from, "none") <> " -> " <> blank_default(to, "none"),
+            ),
+          ]),
+          html.span([], [
+            text(
+              blank_default(event, "event")
+              <> " / "
+              <> blank_default(action_name, "pass")
+              <> " / "
+              <> blank_default(node_id, "node"),
+            ),
+          ]),
         ])
       })
   }
@@ -592,7 +713,7 @@ fn state_rows(transitions: List(StateReplayStep)) -> List(Element(Msg)) {
 
 fn trace_panel(model: Model) -> Element(Msg) {
   let simulation = model.simulation
-  let trace_count = list.length(simulation.trace_events)
+  let playback_count = max_step(simulation) + 1
   let #(phase, label, detail, severity) =
     active_trace_event(simulation, model.step)
 
@@ -605,7 +726,7 @@ fn trace_panel(model: Model) -> Element(Msg) {
             "Step "
             <> int.to_string(model.step + 1)
             <> " of "
-            <> int.to_string(int.max(trace_count, 1)),
+            <> int.to_string(int.max(playback_count, 1)),
           ),
         ]),
       ]),
@@ -626,7 +747,7 @@ fn trace_panel(model: Model) -> Element(Msg) {
             disabled(model.step >= max_step(simulation)),
             event.on_click(StepForward),
           ],
-          [text("Next event")],
+          [text("Next step")],
         ),
       ]),
     ]),
@@ -652,8 +773,29 @@ fn active_trace_event(simulation: Simulation, step: Int) -> TraceEvent {
   }
 }
 
+fn active_state_at(replay: StateReplay, step: Int) -> String {
+  case replay.steps {
+    [] -> replay.final_state
+    _ ->
+      case step <= 0 {
+        True -> replay.initial_state
+        False ->
+          case replay.steps |> list.drop(step - 1) |> list.first {
+            Ok(step_row) -> {
+              let #(_, _, to, _, _, _) = step_row
+              to
+            }
+            Error(_) -> replay.final_state
+          }
+      }
+  }
+}
+
 fn max_step(simulation: Simulation) -> Int {
-  int.max(list.length(simulation.trace_events) - 1, 0)
+  int.max(
+    int.max(list.length(simulation.trace_events) - 1, 0),
+    list.length(simulation.state_replay.steps),
+  )
 }
 
 fn changed_class(changed: Bool) -> String {
@@ -674,6 +816,47 @@ fn matched_label(matched: Bool) -> String {
   case matched {
     True -> "matched"
     False -> "unmatched"
+  }
+}
+
+fn bool_string(value: Bool) -> String {
+  case value {
+    True -> "true"
+    False -> "false"
+  }
+}
+
+fn state_label(state: String) -> String {
+  state
+  |> string.replace(each: "_", with: " ")
+  |> string.replace(each: "-", with: " ")
+}
+
+fn state_node_class(
+  state: String,
+  active_state: String,
+  final_state: String,
+) -> String {
+  "state-node"
+  <> active_class(state == active_state)
+  <> final_class(state == final_state)
+}
+
+fn state_edge_class(from: String, to: String, active_state: String) -> String {
+  "state-edge" <> active_class(from == active_state || to == active_state)
+}
+
+fn active_class(active: Bool) -> String {
+  case active {
+    True -> " active"
+    False -> ""
+  }
+}
+
+fn final_class(final: Bool) -> String {
+  case final {
+    True -> " terminal"
+    False -> ""
   }
 }
 
@@ -889,6 +1072,70 @@ fn styles() -> String {
   .fact code, .fact strong {
     overflow-wrap: anywhere;
   }
+  .state-graph {
+    grid-column: 1 / -1;
+  }
+  .state-track {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 10px;
+  }
+  .state-node {
+    min-width: 0;
+    display: grid;
+    gap: 5px;
+    padding: 12px;
+    border: 1px solid #cfd8e3;
+    border-radius: 8px;
+    background: #f8fafc;
+  }
+  .state-node strong {
+    color: #1f2a37;
+    font-size: 14px;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+  .state-node span {
+    color: #66727f;
+    font-size: 12px;
+    font-weight: 750;
+    overflow-wrap: anywhere;
+  }
+  .state-node.active {
+    border-color: #16605a;
+    background: #e6f4f2;
+    box-shadow: inset 0 0 0 1px #16605a;
+  }
+  .state-node.terminal {
+    border-style: double;
+  }
+  .edge-list {
+    display: grid;
+    gap: 8px;
+  }
+  .state-edge {
+    display: grid;
+    grid-template-columns: minmax(120px, 0.65fr) minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    padding: 10px;
+    border: 1px solid #e1e7ed;
+    border-radius: 8px;
+    background: #fff;
+  }
+  .state-edge.active {
+    border-color: #9b6b18;
+    background: #fff8e8;
+  }
+  .state-edge strong, .state-edge span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .state-edge span {
+    color: #56636f;
+    font-size: 12px;
+    font-weight: 700;
+  }
   .policy-table, .state-table {
     grid-column: 1 / -1;
     overflow: hidden;
@@ -934,7 +1181,7 @@ fn styles() -> String {
       border-right: 0;
       border-bottom: 1px solid var(--border);
     }
-    .topbar, .form-header, .trace-header, .turn-grid, .results {
+    .topbar, .form-header, .trace-header, .turn-grid, .results, .state-edge {
       grid-template-columns: 1fr;
       flex-direction: column;
     }

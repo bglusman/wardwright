@@ -6,10 +6,14 @@ defmodule WardwrightWeb.LustreWorkbenchController do
   def show(conn, _params) do
     conn
     |> put_resp_content_type("text/html")
-    |> html(page_html())
+    |> html(page_html(Plug.CSRFProtection.get_csrf_token()))
   end
 
-  defp page_html do
+  defp page_html(csrf_token) do
+    socket_route =
+      "/spikes/lustre-workbench/socket/websocket?" <>
+        URI.encode_query(%{"_csrf_token" => csrf_token})
+
     """
     <!doctype html>
     <html lang="en">
@@ -52,7 +56,7 @@ defmodule WardwrightWeb.LustreWorkbenchController do
       </head>
       <body>
         <lustre-server-component
-          route="/spikes/lustre-workbench/socket/websocket"
+          route="#{socket_route}"
           data-runtime="lustre-server-component"
         ></lustre-server-component>
       </body>

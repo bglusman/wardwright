@@ -1,4 +1,5 @@
 import gleam/json
+import gleam/result
 import gleam/string
 import lustre/dev/query
 import lustre/dev/simulate
@@ -12,6 +13,26 @@ pub fn selecting_policy_slice_updates_heading(
   start()
   |> change_select("pattern_id", pattern_id)
   |> view_contains(expected_heading)
+}
+
+pub fn selecting_policy_slice_exposes_state_graph(
+  pattern_id: String,
+  expected_transition: String,
+) -> Bool {
+  let simulation = start() |> change_select("pattern_id", pattern_id)
+
+  view_contains(simulation, "State machine")
+  && view_contains(simulation, expected_transition)
+}
+
+pub fn advancing_playback_highlights_state(
+  pattern_id: String,
+  expected_state: String,
+) -> Bool {
+  start()
+  |> change_select("pattern_id", pattern_id)
+  |> simulate.click(on: query.element(matching: query.text("Next step")))
+  |> view_has_active_state(expected_state)
 }
 
 pub fn selecting_model_updates_simulation(
@@ -66,4 +87,14 @@ fn view_contains(simulation, text: String) -> Bool {
   |> simulate.view
   |> element.to_string
   |> string.contains(text)
+}
+
+fn view_has_active_state(simulation, state: String) -> Bool {
+  simulation
+  |> simulate.view
+  |> query.find(matching: query.element(
+    matching: query.class("state-node active")
+    |> query.and(query.attribute("data-state", state)),
+  ))
+  |> result.is_ok
 }

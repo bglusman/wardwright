@@ -5,8 +5,19 @@ defmodule WardwrightWeb.Endpoint do
 
   alias Phoenix.LiveView.Socket
 
+  @session_options [
+    store: :cookie,
+    key: "_wardwright_key",
+    signing_salt: "policy projection"
+  ]
+
   socket("/live", Socket)
-  socket("/spikes/lustre-workbench/socket", WardwrightWeb.LustreWorkbenchSocket, websocket: true)
+
+  socket("/spikes/lustre-workbench/socket", WardwrightWeb.LustreWorkbenchSocket,
+    websocket: [
+      connect_info: [:peer_data, :x_headers, :auth_token, session: @session_options]
+    ]
+  )
 
   plug(Plug.Static,
     at: "/",
@@ -41,11 +52,7 @@ defmodule WardwrightWeb.Endpoint do
   plug(Plug.MethodOverride)
   plug(Plug.Head)
 
-  plug(Plug.Session,
-    store: :cookie,
-    key: "_wardwright_key",
-    signing_salt: "policy projection"
-  )
+  plug(Plug.Session, @session_options)
 
   if Code.ensure_loaded?(Tidewave) do
     plug(Tidewave)

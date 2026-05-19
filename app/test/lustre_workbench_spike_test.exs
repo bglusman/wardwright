@@ -38,6 +38,25 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
     assert conn.resp_body =~ "/spikes/lustre-workbench/socket/websocket"
   end
 
+  test "spike route marks a protected browser session for websocket reuse" do
+    previous = Application.get_env(:wardwright, :basic_auth_password)
+    Application.put_env(:wardwright, :basic_auth_password, "lustre-password")
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:wardwright, :basic_auth_password, previous),
+        else: Application.delete_env(:wardwright, :basic_auth_password)
+    end)
+
+    conn =
+      build_conn()
+      |> Plug.Conn.put_req_header("authorization", basic_auth("admin", "lustre-password"))
+      |> get("/spikes/lustre-workbench")
+
+    assert html_response(conn, 200) =~ "lustre-server-component"
+    assert Plug.Conn.get_session(conn, :wardwright_protected_access) == true
+  end
+
   test "Lustre client runtime is served for the server component" do
     conn = get(build_conn(), "/vendor/lustre/lustre-server-component.mjs")
 
@@ -57,6 +76,46 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
     WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
   end
 
+  test "Lustre websocket transport requires protected access" do
+    assert {:ok, _state} =
+             WardwrightWeb.LustreWorkbenchSocket.connect(%{
+               connect_info: %{peer_data: %{address: {127, 0, 0, 1}}, x_headers: []}
+             })
+
+    assert :error =
+             WardwrightWeb.LustreWorkbenchSocket.connect(%{
+               connect_info: %{peer_data: %{address: {203, 0, 113, 10}}, x_headers: []}
+             })
+
+    assert {:ok, _state} =
+             WardwrightWeb.LustreWorkbenchSocket.connect(%{
+               connect_info: %{
+                 peer_data: %{address: {203, 0, 113, 10}},
+                 session: %{"wardwright_protected_access" => true},
+                 x_headers: []
+               }
+             })
+  end
+
+  test "Lustre websocket transport accepts admin token headers" do
+    previous = Application.get_env(:wardwright, :admin_token)
+    Application.put_env(:wardwright, :admin_token, "lustre-token")
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:wardwright, :admin_token, previous),
+        else: Application.delete_env(:wardwright, :admin_token)
+    end)
+
+    assert {:ok, _state} =
+             WardwrightWeb.LustreWorkbenchSocket.connect(%{
+               connect_info: %{
+                 peer_data: %{address: {203, 0, 113, 10}},
+                 x_headers: [{"x-wardwright-admin-token", "lustre-token"}]
+               }
+             })
+  end
+
   test "Lustre simulation updates the policy slice select" do
     assert :wardwright@lustre_workbench_test_support.selecting_policy_slice_updates_heading(
              "ambiguous-success",
@@ -68,6 +127,18 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
     assert :wardwright@lustre_workbench_test_support.selecting_policy_slice_updates_heading(
              "tts-retry",
              "Final: recording"
+           )
+  end
+
+  test "Lustre UI renders state machine graph and active playback state" do
+    assert :wardwright@lustre_workbench_test_support.selecting_policy_slice_exposes_state_graph(
+             "tts-retry",
+             "stream.match / abort_attempt / tts.no-old-client"
+           )
+
+    assert :wardwright@lustre_workbench_test_support.advancing_playback_highlights_state(
+             "tts-retry",
+             "guarding"
            )
   end
 
@@ -142,4 +213,6 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
 
     {:ok, _config} = Wardwright.put_model_config(config)
   end
+
+  defp basic_auth(username, password), do: "Basic " <> Base.encode64("#{username}:#{password}")
 end

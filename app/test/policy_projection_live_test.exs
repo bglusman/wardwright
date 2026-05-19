@@ -357,6 +357,13 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Private context route gate"
   end
 
+  test "main workbench links to the Lustre workbench for side-by-side operation" do
+    {:ok, _view, html} = live(build_conn(), "/policies/tts-retry/diagram")
+
+    assert html =~ ~s(href="/spikes/lustre-workbench")
+    assert html =~ "Lustre Workbench"
+  end
+
   test "model API key management page creates and revokes keys" do
     {:ok, view, html} = live(build_conn(), "/admin/model-api-keys")
 
@@ -364,6 +371,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "coding-balanced"
     assert html =~ "Access Policy"
     assert html =~ "href=\"/policies\""
+    assert html =~ "href=\"/spikes/lustre-workbench\""
     assert html =~ "No API keys have been created for this model."
 
     html =

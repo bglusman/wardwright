@@ -9,7 +9,15 @@ defmodule WardwrightWeb.LustreWorkbenchSocket do
   def child_spec(_opts), do: :ignore
 
   @impl true
-  def connect(state), do: {:ok, state}
+  def connect(state) do
+    connect_info = Map.get(state, :connect_info, %{})
+
+    if authorized?(connect_info) do
+      {:ok, state}
+    else
+      :error
+    end
+  end
 
   @impl true
   def init(state) do
@@ -68,6 +76,29 @@ defmodule WardwrightWeb.LustreWorkbenchSocket do
 
   defp unsubscribe(component, subject) do
     :lustre.send(component, :lustre@server_component.deregister_subject(subject))
+  end
+
+  defp authorized?(connect_info) do
+    WardwrightWeb.ProtectedAccess.authorized_session?(Map.get(connect_info, :session)) or
+      WardwrightWeb.ProtectedAccess.authorized_peer_and_headers?(
+        peer_ip(connect_info),
+        admin_headers(connect_info)
+      )
+  end
+
+  defp peer_ip(%{peer_data: %{address: address}}), do: address
+  defp peer_ip(_connect_info), do: nil
+
+  defp admin_headers(connect_info) do
+    x_headers = Map.get(connect_info, :x_headers, [])
+
+    case Map.get(connect_info, :auth_token) do
+      token when is_binary(token) and token != "" ->
+        [{"authorization", "Bearer " <> token} | x_headers]
+
+      _token ->
+        x_headers
+    end
   end
 
   defp parse_runtime_message(json) do

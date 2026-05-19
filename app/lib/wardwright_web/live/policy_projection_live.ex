@@ -897,6 +897,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           <strong>Model Management</strong>
           <span>Set keyed and unkeyed access for local models.</span>
         </a>
+        <a href="/spikes/lustre-workbench">
+          <strong>Lustre Workbench</strong>
+          <span>Run the Gleam UI beside this fallback workbench.</span>
+        </a>
 
         <form class="workbench_model_selector" phx-change="select-workbench-model">
           <label for="workbench_model">Registered model workbench</label>
@@ -1106,6 +1110,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             <p>Use these OpenAI-compatible endpoints and model IDs when pointing a local agent at Wardwright.</p>
           </div>
           <div class="topbar_actions">
+            <a class="button secondary" href="/spikes/lustre-workbench">Lustre workbench</a>
             <a class="button secondary" href="/admin/model-api-keys">Manage access</a>
             <.badge value={"#{length(@model_access["provider_models"])} provider models"} />
           </div>

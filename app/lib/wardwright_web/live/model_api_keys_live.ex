@@ -76,6 +76,10 @@ defmodule WardwrightWeb.ModelApiKeysLive do
           <strong>Policy Workbench</strong>
           <span>Review policy definitions and model routing.</span>
         </a>
+        <a href="/spikes/lustre-workbench">
+          <strong>Lustre Workbench</strong>
+          <span>Run the Gleam UI beside the LiveView workbench.</span>
+        </a>
         <a class="active" href="/admin/model-api-keys">
           <strong>Model Access</strong>
           <span>Configure keyed and unkeyed model access.</span>
@@ -101,6 +105,7 @@ defmodule WardwrightWeb.ModelApiKeysLive do
         </div>
         <div class="topbar_actions">
           <a class="button secondary" href="/policies">Workbench</a>
+          <a class="button secondary" href="/spikes/lustre-workbench">Lustre workbench</a>
         </div>
       </header>
 
