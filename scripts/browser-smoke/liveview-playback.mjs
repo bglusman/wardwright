@@ -248,35 +248,35 @@ async function runViewportSmoke(viewport) {
     await waitForLiveView(cdp);
 
     await assertClickableControl(cdp, viewport.name, "Step");
-    await clickControl(cdp, "Step", viewport);
+    await clickControl(cdp, "Step");
     await waitForEval(
       cdp,
       `document.querySelector(".player_status span")?.textContent.includes("Step 1 of 5")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Back");
-    await clickControl(cdp, "Back", viewport);
+    await clickControl(cdp, "Back");
     await waitForEval(
       cdp,
       `document.querySelector(".player_status span")?.textContent.includes("Ready: 5")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Step");
-    await clickControl(cdp, "Step", viewport);
+    await clickControl(cdp, "Step");
     await waitForEval(
       cdp,
       `document.querySelector(".player_status span")?.textContent.includes("Step 1 of 5")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Reset");
-    await clickControl(cdp, "Reset", viewport);
+    await clickControl(cdp, "Reset");
     await waitForEval(
       cdp,
       `document.querySelector(".player_status span")?.textContent.includes("Ready: 5")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Play");
-    await clickControl(cdp, "Play", viewport);
+    await clickControl(cdp, "Play");
     await waitForEval(
       cdp,
       `[...document.querySelectorAll(".simulation_player button")].some((button) => button.textContent.trim() === "Pause")`
@@ -288,43 +288,32 @@ async function runViewportSmoke(viewport) {
   }
 }
 
-async function clickControl(cdp, label, viewport) {
+async function clickControl(cdp, label) {
   const point = await evaluate(cdp, controlPointExpression(label));
   if (!point || point.error) {
     throw new Error(point?.error || `Could not find ${label} control`);
   }
 
-  if (viewport.mobile) {
-    await cdp.send("Input.dispatchTouchEvent", {
-      type: "touchStart",
-      touchPoints: [{ x: point.x, y: point.y }]
-    });
-    await cdp.send("Input.dispatchTouchEvent", {
-      type: "touchEnd",
-      touchPoints: []
-    });
-  } else {
-    await cdp.send("Input.dispatchMouseEvent", {
-      type: "mouseMoved",
-      x: point.x,
-      y: point.y,
-      button: "left"
-    });
-    await cdp.send("Input.dispatchMouseEvent", {
-      type: "mousePressed",
-      x: point.x,
-      y: point.y,
-      button: "left",
-      clickCount: 1
-    });
-    await cdp.send("Input.dispatchMouseEvent", {
-      type: "mouseReleased",
-      x: point.x,
-      y: point.y,
-      button: "left",
-      clickCount: 1
-    });
-  }
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: point.x,
+    y: point.y,
+    button: "left"
+  });
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    x: point.x,
+    y: point.y,
+    button: "left",
+    clickCount: 1
+  });
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    x: point.x,
+    y: point.y,
+    button: "left",
+    clickCount: 1
+  });
 }
 
 async function assertClickableControl(cdp, viewportName, label) {

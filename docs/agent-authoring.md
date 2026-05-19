@@ -72,7 +72,11 @@ WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000
 ```
 
 To dogfood Wardwright itself, route the in-page assistant through a specific
-local Wardwright model instead of a direct provider endpoint:
+local Wardwright model instead of a direct provider endpoint. This mode is
+intentionally stricter than direct-provider mode: the selected local Wardwright
+model must include a `structured_output.schemas.authoring_tool_plan_v1` schema
+so the assistant's `{answer, tool_calls, next_steps}` plan is validated by
+Wardwright before any draft/read tool executes.
 
 ```sh
 WARDWRIGHT_AUTHORING_AGENT_ENABLED=1
@@ -84,8 +88,12 @@ WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000
 ```
 
 That makes authoring-agent prompts visible to the same routing, receipts, and
-runtime activity surfaces as other local model calls. Omit the model key only
-when the selected Wardwright model allows unkeyed access.
+runtime activity surfaces as other local model calls, and it gives Wardwright a
+dogfood path for enforcing correct authoring tool-call JSON. Omit the model key
+only when the selected Wardwright model allows unkeyed access. If the selected
+model is callable but does not expose the `authoring_tool_plan_v1` structured
+schema, the assistant remains unconfigured rather than falling back to prompt
+discipline.
 
 OpenCode Go usage is BYOK when the account/key is configured that way; the API
 reports that in response usage metadata. The current OpenCode Go chat endpoint

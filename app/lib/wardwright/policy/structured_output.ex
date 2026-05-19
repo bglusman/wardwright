@@ -1,6 +1,12 @@
 defmodule Wardwright.Policy.StructuredOutput do
   @moduledoc false
 
+  @array_type "array"
+  @items_key "items"
+  @object_type "object"
+  @string_type "string"
+  @type_key "type"
+
   def run(nil, provider_fun) when is_function(provider_fun, 1), do: provider_fun.(0)
 
   def run(%{} = config, provider_fun) when is_function(provider_fun, 1),
@@ -176,11 +182,25 @@ defmodule Wardwright.Policy.StructuredOutput do
     )
   end
 
-  defp property_valid?(value, %{"type" => "array", "items" => %{"type" => "string"}}) do
+  defp property_valid?(value, %{
+         @type_key => @array_type,
+         @items_key => %{@type_key => @string_type}
+       }) do
     :wardwright@structured_validation_core.string_array_property_valid(
       is_list(value),
       is_list(value) and Enum.all?(value, &is_binary/1)
     )
+  end
+
+  defp property_valid?(value, %{
+         @items_key => %{@type_key => @object_type} = item_schema,
+         @type_key => @array_type
+       }) do
+    is_list(value) and Enum.all?(value, &schema_valid?(&1, item_schema))
+  end
+
+  defp property_valid?(value, %{@type_key => @object_type} = schema) do
+    schema_valid?(value, schema)
   end
 
   defp property_valid?(_value, _schema), do: false

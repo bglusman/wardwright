@@ -17,6 +17,7 @@ defmodule WardwrightWeb.AuthoringAgent do
   @default_model "qwen3.6-plus"
   @default_max_tokens 16_384
   @default_timeout_ms 120_000
+  @required_authoring_schema "authoring_tool_plan_v1"
 
   def configured?(context \\ %{}) do
     enabled?() and
@@ -36,8 +37,9 @@ defmodule WardwrightWeb.AuthoringAgent do
       timeout_ms: timeout_ms(),
       can_execute_tools: true,
       tool_access: "read_and_draft_tools",
+      required_structured_schema: if(local_wardwright_route?(), do: @required_authoring_schema),
       instructions:
-        "Set WARDWRIGHT_AUTHORING_AGENT_ENABLED=1, WARDWRIGHT_AUTHORING_AGENT_ROUTE=wardwright, and WARDWRIGHT_AUTHORING_AGENT_MODEL to dogfood a specific local Wardwright /v1 model. If that local model requires keyed access, set WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY or WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY_FILE. For direct provider calls, set WARDWRIGHT_AUTHORING_AGENT_API_KEY or WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE. Reasoning-heavy coding models may also need WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS and WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS."
+        "Set WARDWRIGHT_AUTHORING_AGENT_ENABLED=1, WARDWRIGHT_AUTHORING_AGENT_ROUTE=wardwright, and WARDWRIGHT_AUTHORING_AGENT_MODEL to dogfood a specific local Wardwright /v1 model. Dogfood mode requires that local model to expose the #{@required_authoring_schema} structured-output schema so authoring tool plans are governed by Wardwright before execution. If that local model requires keyed access, set WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY or WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY_FILE. For direct provider calls, set WARDWRIGHT_AUTHORING_AGENT_API_KEY or WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE. Reasoning-heavy coding models may also need WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS and WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS."
     }
   end
 
@@ -553,6 +555,9 @@ defmodule WardwrightWeb.AuthoringAgent do
         WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=#{@default_max_tokens}
         WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=#{@default_timeout_ms}
 
+    The selected local Wardwright model must include a structured_output schema
+    named #{@required_authoring_schema}; otherwise dogfood mode stays disabled.
+
     The prompt below is what the agent would receive:
 
     #{prompt}
@@ -628,10 +633,19 @@ defmodule WardwrightWeb.AuthoringAgent do
   end
 
   defp locally_callable_for_authoring?(config) do
-    cond do
-      Wardwright.model_requires_api_key?(config) -> blank_to_nil(local_model_api_key()) != nil
-      Wardwright.unkeyed_model_access(config) == "public" -> true
-      true -> false
+    authoring_tool_plan_schema?(config) and
+      cond do
+        Wardwright.model_requires_api_key?(config) -> blank_to_nil(local_model_api_key()) != nil
+        Wardwright.unkeyed_model_access(config) == "public" -> true
+        true -> false
+      end
+  end
+
+  defp authoring_tool_plan_schema?(config) when is_map(config) do
+    get_in(config, ["structured_output", "schemas", @required_authoring_schema])
+    |> case do
+      %{"type" => "object"} -> true
+      _ -> false
     end
   end
 

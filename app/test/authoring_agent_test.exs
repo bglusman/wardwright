@@ -97,11 +97,18 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert WardwrightWeb.AuthoringAgent.status().timeout_ms == 120_000
   end
 
-  test "local Wardwright route is configured without a provider API key" do
+  test "local Wardwright route is configured without a provider API key when the model governs tool-plan JSON" do
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", "wardwright")
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_MODEL", Wardwright.model_id())
     System.put_env("WARDWRIGHT_BIND", "0.0.0.0:8797")
+
+    refute WardwrightWeb.AuthoringAgent.configured?()
+
+    assert {:ok, _config} =
+             Wardwright.default_config()
+             |> with_authoring_tool_plan_schema()
+             |> Wardwright.put_config()
 
     assert WardwrightWeb.AuthoringAgent.configured?()
 
@@ -109,6 +116,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert status.route == "wardwright"
     assert status.base_url == "http://127.0.0.1:8797/v1"
     assert status.model == Wardwright.model_id()
+    assert status.required_structured_schema == "authoring_tool_plan_v1"
 
     selected_status = WardwrightWeb.AuthoringAgent.status(%{model_id: Wardwright.model_id()})
     assert selected_status.model == Wardwright.model_id()
@@ -136,6 +144,11 @@ defmodule WardwrightWeb.AuthoringAgentTest do
       |> Map.put("model_id", "cow-guard")
       |> Map.put("auth", %{"unkeyed_model_access" => "public"})
 
+    assert {:ok, _config} =
+             Wardwright.default_config()
+             |> with_authoring_tool_plan_schema()
+             |> Wardwright.put_config()
+
     assert {:ok, _config} = Wardwright.put_model_config(cow_config)
 
     Application.put_env(
@@ -162,6 +175,11 @@ defmodule WardwrightWeb.AuthoringAgentTest do
   end
 
   test "local Wardwright route falls back when the selected workbench model is blank" do
+    assert {:ok, _config} =
+             Wardwright.default_config()
+             |> with_authoring_tool_plan_schema()
+             |> Wardwright.put_config()
+
     Application.put_env(
       :wardwright,
       :authoring_agent_client,
@@ -196,6 +214,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
       |> Map.put("model_id", "local-fast-draft-test")
       |> Map.put("auth", %{"unkeyed_model_access" => "public"})
       |> Map.put("requires_api_key", true)
+      |> with_authoring_tool_plan_schema()
 
     assert {:ok, _config} = Wardwright.put_config(internal_config)
     assert {:ok, _config} = Wardwright.put_model_config(public_config)
@@ -261,9 +280,34 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert {:ok, _config} = Wardwright.put_model_config(local_config)
 
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_MODEL", "local-fast-draft-test")
+    refute WardwrightWeb.AuthoringAgent.configured?()
+
+    assert {:ok, _config} =
+             local_config
+             |> with_authoring_tool_plan_schema()
+             |> Wardwright.put_model_config()
 
     assert WardwrightWeb.AuthoringAgent.configured?()
     assert WardwrightWeb.AuthoringAgent.status().model == "local-fast-draft-test"
+  end
+
+  test "local Wardwright route refuses models without an authoring tool-plan schema" do
+    public_config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "plain-local-authoring")
+      |> Map.put("auth", %{"unkeyed_model_access" => "public"})
+
+    assert {:ok, _config} = Wardwright.put_model_config(public_config)
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", "wardwright")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_MODEL", "plain-local-authoring")
+
+    refute WardwrightWeb.AuthoringAgent.configured?()
+
+    status = WardwrightWeb.AuthoringAgent.status()
+    assert status.required_structured_schema == "authoring_tool_plan_v1"
+    assert status.instructions =~ "authoring_tool_plan_v1"
   end
 
   test "configured response explains token-limited reasoning-only provider responses" do
@@ -631,5 +675,42 @@ defmodule WardwrightWeb.AuthoringAgentTest do
       "WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS",
       "WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS"
     ]
+  end
+
+  defp with_authoring_tool_plan_schema(config) do
+    Map.put(config, "structured_output", %{
+      "guard_loop" => %{
+        "max_attempts" => 2,
+        "max_failures_per_rule" => 1,
+        "on_violation" => "retry_with_validation_feedback"
+      },
+      "schemas" => %{
+        "authoring_tool_plan_v1" => %{
+          "additionalProperties" => true,
+          "properties" => %{
+            "answer" => %{"minLength" => 1, "type" => "string"},
+            "next_steps" => %{"items" => %{"type" => "string"}, "type" => "array"},
+            "tool_calls" => %{
+              "items" => %{
+                "additionalProperties" => false,
+                "properties" => %{
+                  "arguments" => %{
+                    "additionalProperties" => true,
+                    "properties" => %{},
+                    "type" => "object"
+                  },
+                  "name" => %{"minLength" => 1, "type" => "string"}
+                },
+                "required" => ["name", "arguments"],
+                "type" => "object"
+              },
+              "type" => "array"
+            }
+          },
+          "required" => ["answer", "tool_calls"],
+          "type" => "object"
+        }
+      }
+    })
   end
 end

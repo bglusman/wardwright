@@ -180,6 +180,49 @@ defmodule Wardwright.StructuredOutputPolicyTest do
              )
   end
 
+  test "structured schema validates arrays of tool-call objects" do
+    config = %{
+      "schemas" => %{
+        "authoring_tool_plan_v1" => %{
+          "additionalProperties" => false,
+          "properties" => %{
+            "answer" => %{"minLength" => 1, "type" => "string"},
+            "tool_calls" => %{
+              "items" => %{
+                "additionalProperties" => false,
+                "properties" => %{
+                  "arguments" => %{
+                    "additionalProperties" => true,
+                    "properties" => %{},
+                    "type" => "object"
+                  },
+                  "name" => %{"minLength" => 1, "type" => "string"}
+                },
+                "required" => ["name", "arguments"],
+                "type" => "object"
+              },
+              "type" => "array"
+            }
+          },
+          "required" => ["answer", "tool_calls"],
+          "type" => "object"
+        }
+      }
+    }
+
+    assert {:ok, "authoring_tool_plan_v1", _parsed} =
+             Wardwright.Policy.StructuredOutput.validate_output(
+               ~s({"answer":"Drafted.","tool_calls":[{"name":"draft_wardwright_model","arguments":{"model_id":"cow"}}]}),
+               config
+             )
+
+    assert {:error, "schema_validation", "structured-json"} =
+             Wardwright.Policy.StructuredOutput.validate_output(
+               ~s({"answer":"Drafted.","tool_calls":[{"name":"draft_wardwright_model"}]}),
+               config
+             )
+  end
+
   test "structured semantic rules traverse nested JSON pointer paths" do
     config =
       structured_policy_config([~s({"answer":"unused","confidence":0.95})], 3)
