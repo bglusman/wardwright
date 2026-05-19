@@ -23,8 +23,28 @@ Elixir until the surrounding integration is also ready to move.
 - Added a small Mix compiler step that discovers imported Gleam Hex packages
   from `mix.exs` and precompiles them before the existing MixGleam compiler
   runs.
-- Left router, endpoint, LiveView, and Lustre files untouched so this branch can
-  be compared with the parallel Lustre spike cleanly.
+- Integrated the parallel Lustre workbench spike without moving Phoenix
+  transport ownership into Gleam.
+- Moved the Lustre-facing projection summary into `wardwright/projection_core`.
+  Elixir now supplies raw model/config evidence plus policy simulation results;
+  Gleam derives the workbench projection facts and state-machine replay.
+
+## Lustre integration direction
+
+The useful boundary is now one level farther out than the first state-machine
+slice. Phoenix owns HTTP, websocket transport, current config lookup, and the
+runtime policy execution path. Lustre/Gleam owns the selected pattern view model,
+projection facts, and stateful replay. That lets frontend Gleam import backend
+Gleam modules directly instead of asking Elixir for already-projected maps.
+
+Good next candidates for the same treatment:
+
+- Move workbench projection table/view-model shaping into Gleam records.
+- Port validation and error accumulation where `non_empty_list` can encode
+  "at least one issue" or "at least one viable target".
+- Move recipe/model selector normalization into Gleam while keeping persisted
+  model config retrieval in Elixir.
+- Prototype a read-only SQLite receipt/query path in Gleam before moving writes.
 
 ## Package fit notes
 
@@ -41,11 +61,3 @@ Elixir until the surrounding integration is also ready to move.
 | [`carpenter`](https://github.com/grottohub/carpenter) | Fits ETS acceleration, not durable truth. | Consider only behind existing storage/cache contracts. |
 | [`gleam_otp`](https://github.com/gleam-lang/otp) | Good candidate for moving supervised pure-ish BEAM processes into Gleam. | Trial after at least one storage or policy core has a stable Gleam API. |
 | [`lustre`](https://github.com/lustre-labs/lustre) and related packages | Relevant to the concurrent UI spike. Shared value comes from typed projection data, not from coupling this core to any UI framework. | Keep the state-machine and projection contracts frontend-agnostic so LiveView and Lustre can consume the same data. |
-
-## Conflict notes
-
-The parallel Lustre worktree also changes `app/gleam.toml`, `app/mix.exs`, and
-`app/mix.lock`, and has its own untracked `app/manifest.toml` plus Lustre test
-files. Dependency resolution will need a small manual merge. This spike
-intentionally avoids the Lustre branch's router, endpoint, socket, controller,
-and frontend files.
