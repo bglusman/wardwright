@@ -13,7 +13,7 @@ an OpenAI-compatible interface.
 
 <div class="notice">
   <strong>Current status:</strong> Wardwright is an early installable prototype,
-  not a finished product. The published <code>v0.0.6</code> release prepares
+  not a finished product. The published <code>v0.0.8</code> release prepares
   native macOS and Linux artifacts, an OpenAI-compatible gateway surface, policy
   receipts, stream governance, tool-context policy hooks, local Dune snippet
   authoring, a model-aware LiveView workbench, saved test cases, and an

@@ -336,7 +336,7 @@ later removed or made internal-only.
 
 ## Mental Model
 
-For 0.0.6, a Wardwright model is easiest to explain as four layers:
+For 0.0.8, a Wardwright model is easiest to explain as four layers:
 
 1. **Targets**: real provider models or other Wardwright models.
 2. **Model graph**: route nodes that delegate, choose, or combine targets.
@@ -364,7 +364,7 @@ reviewability:
 - require projection, trace, validation, and scenario evidence to stay engine
   neutral
 
-This is not a 0.0.6 requirement. The 0.0.6 requirement is that agents can create
+This is not a 0.0.8 requirement. The 0.0.8 requirement is that agents can create
 and modify local Wardwright models through a documented, reviewable, reversible
 workflow.
 
