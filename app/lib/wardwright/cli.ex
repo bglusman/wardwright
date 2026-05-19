@@ -80,7 +80,7 @@ defmodule Wardwright.CLI do
 
   defp admin_path(["access" | _]), do: "/admin/model-api-keys"
   defp admin_path(["keys" | _]), do: "/admin/model-api-keys"
-  defp admin_path(_rest), do: "/policies"
+  defp admin_path(_rest), do: "/workbench"
 
   defp tools_help do
     tools = WardwrightWeb.PolicyAuthoringTools.cli_descriptions() |> Enum.join("\n")

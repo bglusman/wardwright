@@ -379,9 +379,9 @@ defmodule WardwrightWeb.GraphRendererLabController do
               <strong>Graph renderer lab</strong>
               <span>Same toy state machine, hand-laid baseline vs browser graph renderer.</span>
             </div>
-            <nav class="topbar-actions" aria-label="Spike navigation">
-              <a class="button" href="/spikes/lustre-workbench">Lustre workbench</a>
-              <a class="button" href="/policies">Policy workbench</a>
+            <nav class="topbar-actions" aria-label="Workbench navigation">
+              <a class="button" href="/workbench">Workbench</a>
+              <a class="button" href="/policies">Legacy workbench</a>
             </nav>
           </header>
 
@@ -409,7 +409,7 @@ defmodule WardwrightWeb.GraphRendererLabController do
                 <div class="renderer-heading">
                   <div>
                     <strong>Hand-laid baseline</strong>
-                    <span>Deterministic layout close to the current Erlang-target Lustre page.</span>
+                    <span>Deterministic layout close to the current server-rendered page.</span>
                   </div>
                   <span class="badge">No graph lib</span>
                 </div>
@@ -425,7 +425,7 @@ defmodule WardwrightWeb.GraphRendererLabController do
                 <div class="renderer-heading">
                   <div>
                     <strong>Cytoscape-style renderer</strong>
-                    <span>Browser layout approach patterned after lustre_graph_generator.</span>
+                    <span>Browser layout approach patterned after the graph-renderer experiment.</span>
                   </div>
                   <span class="badge">Zoom + pan</span>
                 </div>

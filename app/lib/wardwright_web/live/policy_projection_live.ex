@@ -129,7 +129,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       )
 
     socket
-    |> assign(:page_title, "Policy Workbench")
+    |> assign(:page_title, "Legacy Workbench")
     |> assign(:modes, @modes)
     |> assign(:recipe_sources, recipe_sources())
     |> assign(:available_models, available_models)
@@ -887,19 +887,23 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         <span class="mark">W</span>
         <div>
           <strong>Wardwright</strong>
-          <span>Policy projection workbench</span>
+          <span>Legacy policy workbench</span>
         </div>
       </div>
 
       <nav>
         <h2 class="nav_heading">Operator</h2>
+        <a href="/workbench">
+          <strong>Workbench</strong>
+          <span>Run and inspect registered models.</span>
+        </a>
+        <a class="active" href="/policies">
+          <strong>Legacy Workbench</strong>
+          <span>Use the previous policy projection view.</span>
+        </a>
         <a href="/admin/model-api-keys">
           <strong>Model Management</strong>
           <span>Set keyed and unkeyed access for local models.</span>
-        </a>
-        <a href="/spikes/lustre-workbench">
-          <strong>Lustre Workbench</strong>
-          <span>Run the Gleam UI beside this fallback workbench.</span>
         </a>
 
         <form class="workbench_model_selector" phx-change="select-workbench-model">
@@ -1110,7 +1114,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             <p>Use these OpenAI-compatible endpoints and model IDs when pointing a local agent at Wardwright.</p>
           </div>
           <div class="topbar_actions">
-            <a class="button secondary" href="/spikes/lustre-workbench">Lustre workbench</a>
+            <a class="button secondary" href="/workbench">Workbench</a>
             <a class="button secondary" href="/admin/model-api-keys">Manage access</a>
             <.badge value={"#{length(@model_access["provider_models"])} provider models"} />
           </div>
@@ -2201,39 +2205,60 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   def styles do
     """
-    :root { color: #17202a; background: #f4f6f8; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    :root {
+      --background: #f4f6f8;
+      --foreground: #18202a;
+      --card: #ffffff;
+      --card-foreground: #18202a;
+      --primary: #16605a;
+      --primary-foreground: #ffffff;
+      --secondary: #f0b04f;
+      --secondary-foreground: #1f2933;
+      --muted: #e7eaee;
+      --muted-foreground: #66727f;
+      --accent: #dcefed;
+      --accent-foreground: #123f3c;
+      --destructive: #b42318;
+      --destructive-foreground: #ffffff;
+      --border: #d7dde3;
+      --input: #c9d2da;
+      --ring: #1c7d74;
+      color: var(--foreground);
+      background: var(--background);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; }
+    body { margin: 0; background: var(--background); color: var(--foreground); }
     a { color: inherit; text-decoration: none; }
     .shell, .shell > [data-phx-main] { min-height: 100vh; }
-    .shell > [data-phx-main] { display: grid; grid-template-columns: 260px minmax(0, 1fr); }
-    .sidebar { min-width: 0; overflow: hidden; display: flex; flex-direction: column; gap: 24px; padding: 22px 16px; color: #e6ebef; background: #25313b; }
+    .shell > [data-phx-main] { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); }
+    .sidebar { min-width: 0; overflow: hidden; display: flex; flex-direction: column; gap: 18px; padding: 24px; color: var(--foreground); border-right: 1px solid var(--border); background: #fbfcfd; }
     .brand { display: flex; align-items: center; gap: 12px; }
-    .mark { display: inline-grid; place-items: center; width: 40px; height: 40px; border: 1px solid #657583; border-radius: 6px; background: #33414c; color: #fff; font-weight: 800; }
+    .mark { display: inline-grid; place-items: center; width: 38px; height: 38px; border: 1px solid var(--primary); border-radius: 8px; background: var(--primary); color: #fff; font-weight: 800; }
     .brand div, nav, .sidebar_footer { min-width: 0; display: grid; gap: 6px; }
-    .brand span, .sidebar_footer span { color: #adbac5; font-size: 12px; }
-    nav a { display: grid; gap: 3px; padding: 10px 12px; border: 1px solid transparent; border-radius: 6px; }
-    .nav_heading { margin: 10px 12px 2px; color: #adbac5; font-size: 11px; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase; }
-    .nav_note { margin: -2px 12px 10px; color: #93a4b3; font-size: 12px; font-weight: 700; line-height: 1.35; }
-    nav a span { color: #adbac5; font-size: 12px; }
-    nav a.active, nav a:hover { border-color: #6f7f8e; background: #34424e; }
-    .recipe_group { display: grid; gap: 4px; padding: 4px 0 6px; border-top: 1px solid #3f4f5d; }
-    .recipe_group summary { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 8px; align-items: center; padding: 8px 10px; color: #dce5ec; cursor: pointer; }
+    .brand span, .sidebar_footer span { color: var(--muted-foreground); font-size: 12px; }
+    nav a { display: grid; gap: 3px; padding: 10px 12px; border: 1px solid transparent; border-radius: 8px; }
+    .nav_heading { margin: 10px 12px 2px; color: var(--muted-foreground); font-size: 11px; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase; }
+    .nav_note { margin: -2px 12px 10px; color: var(--muted-foreground); font-size: 12px; font-weight: 700; line-height: 1.35; }
+    nav a span { color: var(--muted-foreground); font-size: 12px; }
+    nav a.active, nav a:hover { border-color: var(--border); background: #eef6f5; }
+    .recipe_group { display: grid; gap: 4px; padding: 4px 0 6px; border-top: 1px solid #e1e7ed; }
+    .recipe_group summary { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 8px; align-items: center; padding: 8px 10px; color: var(--foreground); cursor: pointer; }
     .recipe_group summary strong { min-width: 0; font-size: 12px; line-height: 1.25; overflow-wrap: anywhere; }
-    .recipe_group summary small { color: #93a4b3; font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .recipe_group summary small { color: var(--muted-foreground); font-size: 11px; font-weight: 800; white-space: nowrap; }
     .recipe_group a { margin-left: 8px; }
-    .recipe_group a.active, .recipe_group a:hover { border-color: #7fb0dd; background: #344b5e; box-shadow: inset 3px 0 0 #8fc5f4; }
-    .recipe_source, .workbench_model_selector, .recipe_empty { display: grid; gap: 6px; margin-bottom: 4px; padding: 10px 12px; border: 1px solid #4d5f6f; border-radius: 6px; background: #2d3944; }
-    .recipe_source label, .recipe_source span, .recipe_source small, .workbench_model_selector label, .workbench_model_selector small, .recipe_empty span { min-width: 0; color: #adbac5; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
-    .recipe_source select, .workbench_model_selector select { width: 100%; min-width: 0; min-height: 32px; border: 1px solid #657583; border-radius: 6px; color: #e6ebef; background: #25313b; font-weight: 800; }
+    .recipe_group a.active, .recipe_group a:hover { border-color: #9fcac5; background: #eef6f5; box-shadow: inset 3px 0 0 var(--primary); }
+    .recipe_source, .workbench_model_selector, .recipe_empty { display: grid; gap: 6px; margin-bottom: 4px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+    .recipe_source label, .recipe_source span, .recipe_source small, .workbench_model_selector label, .workbench_model_selector small, .recipe_empty span { min-width: 0; color: var(--muted-foreground); font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+    .recipe_source select, .workbench_model_selector select { width: 100%; min-width: 0; min-height: 32px; border: 1px solid var(--input); border-radius: 8px; color: var(--foreground); background: #fff; font-weight: 800; }
     .recipe_source_status { line-height: 1.35; }
-    .agent_cta { min-width: 0; display: grid; gap: 6px; margin-top: 12px; padding: 11px 12px; border: 1px solid #557088; border-radius: 6px; background: #243746; }
-    .agent_cta span { color: #99b6cb; font-size: 11px; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase; }
-    .agent_cta strong { color: #f4f7f9; font-size: 13px; line-height: 1.25; }
-    .agent_cta small { color: #bdcad4; font-size: 12px; font-weight: 700; line-height: 1.35; }
-    .agent_cta code { color: #f5fbff; overflow-wrap: anywhere; }
-    .sidebar_footer { margin-top: auto; padding: 14px; border: 1px solid #4d5f6f; border-radius: 6px; background: #2d3944; overflow-wrap: anywhere; }
-    .workspace { min-width: 0; padding: 28px; }
+    .agent_cta { min-width: 0; display: grid; gap: 6px; margin-top: 12px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+    .agent_cta span { color: var(--muted-foreground); font-size: 11px; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase; }
+    .agent_cta strong { color: var(--foreground); font-size: 13px; line-height: 1.25; }
+    .agent_cta small { color: var(--muted-foreground); font-size: 12px; font-weight: 700; line-height: 1.35; }
+    .agent_cta code { color: var(--foreground); overflow-wrap: anywhere; }
+    .sidebar_footer { margin-top: auto; padding: 14px; border: 1px solid var(--border); border-radius: 8px; background: #fff; overflow-wrap: anywhere; }
+    .workspace { min-width: 0; padding: 24px; }
     .model_key_workspace { max-width: 1440px; margin: 0 auto; }
     .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
     .topbar > div:first-child, .panel_header > div { min-width: 0; flex: 1 1 auto; }
@@ -2241,16 +2266,16 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .topbar_actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
     .eyebrow { margin: 0 0 4px; color: #5e6b76; font-size: 12px; font-weight: 800; text-transform: uppercase; }
     h1, h2, h3, p { margin-top: 0; }
-    h1 { margin-bottom: 6px; font-size: 30px; line-height: 1.12; }
+    h1 { margin-bottom: 6px; font-size: 28px; line-height: 1.15; }
     h2 { margin-bottom: 6px; font-size: 19px; }
     h3 { margin: 18px 0 8px; font-size: 14px; }
-    p { color: #5e6b76; line-height: 1.45; }
-    .panel { min-width: 0; margin-bottom: 18px; padding: 20px; border: 1px solid #d3dbe2; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgb(16 24 40 / 5%); }
+    p { color: #46525f; line-height: 1.45; }
+    .panel { min-width: 0; margin-bottom: 18px; padding: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
     .panel_header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
-    .button { display: inline-flex; align-items: center; justify-content: center; max-width: 100%; min-height: 36px; padding: 7px 12px; border: 1px solid #2f74b5; border-radius: 6px; color: #fff; background: #2f74b5; font: inherit; font-size: 13px; font-weight: 800; line-height: 1.2; text-align: center; overflow-wrap: anywhere; cursor: pointer; }
-    .button:hover { border-color: #235b91; background: #235b91; }
-    .button.secondary { border-color: #c5d0d9; color: #26323c; background: #fff; }
-    .button.secondary:hover { border-color: #8fa1b2; background: #f3f6f8; }
+    .button { display: inline-flex; align-items: center; justify-content: center; max-width: 100%; min-height: 38px; padding: 8px 12px; border: 1px solid var(--primary); border-radius: 8px; color: var(--primary-foreground); background: var(--primary); font: inherit; font-size: 13px; font-weight: 800; line-height: 1.2; text-align: center; overflow-wrap: anywhere; cursor: pointer; }
+    .button:hover { border-color: #0f4b46; background: #0f4b46; color: #fff; }
+    .button.secondary { border-color: var(--border); color: var(--foreground); background: #fff; }
+    .button.secondary:hover { border-color: #b8c6ce; background: var(--accent); color: var(--accent-foreground); }
     .button.danger { border-color: #c45c5c; color: #8b2d2d; background: #fff5f5; }
     .button.danger:hover { border-color: #9d3737; background: #ffe8e8; }
     .engine_card { display: grid; gap: 6px; min-width: 260px; max-width: 100%; padding: 12px; border: 1px solid #d3dbe2; border-radius: 8px; background: #fff; overflow-wrap: anywhere; }
@@ -2313,14 +2338,14 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .model_key_grid .panel { margin-bottom: 0; }
     .access_policy_editor { grid-row: span 2; }
     .keys_panel { grid-column: 1 / -1; }
-    .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 0; }
     .metrics div { min-width: 0; padding: 10px; border: 1px solid #e1e7ed; border-radius: 7px; background: #fbfcfd; }
     .metrics dt { color: #66727c; font-size: 11px; font-weight: 900; text-transform: uppercase; }
-    .metrics dd { min-width: 0; margin: 3px 0 0; color: #17202a; font-weight: 800; overflow-wrap: anywhere; }
+    .metrics dd { min-width: 0; margin: 3px 0 0; color: #17202a; font-weight: 800; overflow-wrap: break-word; }
     .stacked_form, .inline_form { display: grid; gap: 12px; min-width: 0; }
     .inline_form { grid-template-columns: minmax(180px, 1fr) minmax(max-content, auto); align-items: end; }
     .inline_form label, .stacked_form label { display: grid; gap: 5px; min-width: 0; color: #4b5863; font-size: 13px; font-weight: 800; }
-    .inline_form input { width: 100%; min-height: 36px; padding: 7px 9px; border: 1px solid #cbd5df; border-radius: 6px; color: #17202a; background: #fbfcfd; font: inherit; }
+    .inline_form input, .stacked_form select { width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--input); border-radius: 8px; color: var(--foreground); background: #fff; font: inherit; }
     .stacked_form fieldset { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px; border: 1px solid #d8e0e7; border-radius: 8px; background: #fbfcfd; }
     .stacked_form legend { padding: 0 4px; color: #4b5863; font-size: 12px; font-weight: 900; text-transform: uppercase; }
     .radio_card { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: start; padding: 9px; border: 1px solid #d8e0e7; border-radius: 7px; background: #fff; cursor: pointer; }

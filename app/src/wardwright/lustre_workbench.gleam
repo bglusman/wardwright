@@ -391,6 +391,26 @@ pub fn view(model: Model) -> Element(Msg) {
           html.span([], [text("Workbench")]),
         ]),
       ]),
+      element("nav", [class("rail-nav")], [
+        rail_link(
+          "Workbench",
+          "Run and inspect registered models.",
+          "/workbench",
+          True,
+        ),
+        rail_link(
+          "Legacy workbench",
+          "Open the previous policy view.",
+          "/policies",
+          False,
+        ),
+        rail_link(
+          "Model access",
+          "Configure model keys and access.",
+          "/admin/model-api-keys",
+          False,
+        ),
+      ]),
       labeled_select(
         "Registered model",
         "model_id",
@@ -418,11 +438,17 @@ pub fn view(model: Model) -> Element(Msg) {
             ),
           ]),
         ]),
-        html.div([class("status-stack")], [
-          badge.badge([badge.variant(badge.Default)], [text("Lustre 5.7")]),
-          badge.badge([badge.variant(badge.Secondary)], [
-            text("Glizzy controls"),
-          ]),
+        html.div([class("topbar-actions")], [
+          element(
+            "a",
+            [class("button-link"), attribute("href", "/admin/model-api-keys")],
+            [text("Model access")],
+          ),
+          element(
+            "a",
+            [class("button-link secondary"), attribute("href", "/policies")],
+            [text("Legacy workbench")],
+          ),
         ]),
       ]),
       simulator_form(model),
@@ -430,6 +456,28 @@ pub fn view(model: Model) -> Element(Msg) {
       trace_panel(model),
     ]),
   ])
+}
+
+fn rail_link(
+  label: String,
+  description: String,
+  href: String,
+  active: Bool,
+) -> Element(Msg) {
+  element(
+    "a",
+    [
+      class(case active {
+        True -> "active"
+        False -> ""
+      }),
+      attribute("href", href),
+    ],
+    [
+      html.strong([], [text(label)]),
+      html.span([], [text(description)]),
+    ],
+  )
 }
 
 fn labeled_select(
@@ -942,7 +990,7 @@ fn state_machine_table(replay: StateReplay) -> Element(Msg) {
   table.table([class("state-table")], [
     table.table_header([], [
       table.table_header_row([], [
-        table.table_column_header([], [text("Gleam replay")]),
+        table.table_column_header([], [text("Replay")]),
         table.table_column_header([], [
           text(blank_default(replay.status, "unknown")),
         ]),
@@ -1196,6 +1244,32 @@ fn styles() -> String {
     font-size: 12px;
     font-weight: 700;
   }
+  .rail-nav {
+    display: grid;
+    gap: 6px;
+  }
+  .rail-nav a {
+    display: grid;
+    gap: 3px;
+    padding: 10px 12px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: inherit;
+    text-decoration: none;
+  }
+  .rail-nav a:hover, .rail-nav a.active {
+    border-color: var(--border);
+    background: #eef6f5;
+  }
+  .rail-nav strong {
+    font-size: 13px;
+  }
+  .rail-nav span {
+    color: var(--muted-foreground);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+  }
   .field {
     gap: 8px;
   }
@@ -1229,6 +1303,37 @@ fn styles() -> String {
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+  }
+  .topbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .button-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    padding: 8px 12px;
+    border: 1px solid var(--primary);
+    border-radius: 8px;
+    color: var(--primary-foreground);
+    background: var(--primary);
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.2;
+    text-decoration: none;
+  }
+  .button-link.secondary {
+    border-color: var(--border);
+    color: var(--foreground);
+    background: #fff;
+  }
+  .button-link:hover {
+    border-color: #0f4b46;
+    background: #0f4b46;
+    color: #fff;
   }
   .simulator, .panel, .trace-panel {
     display: flex;

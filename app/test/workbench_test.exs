@@ -1,4 +1,4 @@
-defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
+defmodule WardwrightWeb.WorkbenchTest do
   use ExUnit.Case, async: false
 
   import Phoenix.ConnTest
@@ -30,13 +30,29 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
     :ok
   end
 
-  test "spike route mounts the Lustre server component runtime" do
-    conn = get(build_conn(), "/spikes/lustre-workbench")
+  test "workbench route mounts the server component runtime" do
+    conn = get(build_conn(), "/workbench")
 
     assert html_response(conn, 200) =~ "lustre-server-component"
+    assert conn.resp_body =~ "<title>Wardwright Workbench</title>"
     assert conn.resp_body =~ "/vendor/lustre/lustre-server-component.mjs"
     assert conn.resp_body =~ "/vendor/cytoscape/cytoscape.min.js"
     assert conn.resp_body =~ "/assets/wardwright_state_graph.js"
+    assert conn.resp_body =~ "/workbench/socket/websocket"
+    refute conn.resp_body =~ "Wardwright Lustre Workbench Spike"
+  end
+
+  test "root route opens the primary workbench" do
+    conn = get(build_conn(), "/")
+
+    assert html_response(conn, 200) =~ "<title>Wardwright Workbench</title>"
+    assert conn.resp_body =~ "/workbench/socket/websocket"
+  end
+
+  test "old spike workbench route remains available during the transition" do
+    conn = get(build_conn(), "/spikes/lustre-workbench")
+
+    assert html_response(conn, 200) =~ "lustre-server-component"
     assert conn.resp_body =~ "/spikes/lustre-workbench/socket/websocket"
   end
 
@@ -58,9 +74,9 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
     assert response(conn, 200) =~ "cytoscape"
   end
 
-  test "spike route marks a protected browser session for websocket reuse" do
+  test "workbench route marks a protected browser session for websocket reuse" do
     previous = Application.get_env(:wardwright, :basic_auth_password)
-    Application.put_env(:wardwright, :basic_auth_password, "lustre-password")
+    Application.put_env(:wardwright, :basic_auth_password, "workbench-password")
 
     on_exit(fn ->
       if previous,
@@ -70,20 +86,20 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
 
     conn =
       build_conn()
-      |> Plug.Conn.put_req_header("authorization", basic_auth("admin", "lustre-password"))
-      |> get("/spikes/lustre-workbench")
+      |> Plug.Conn.put_req_header("authorization", basic_auth("admin", "workbench-password"))
+      |> get("/workbench")
 
     assert html_response(conn, 200) =~ "lustre-server-component"
     assert Plug.Conn.get_session(conn, :wardwright_protected_access) == true
   end
 
-  test "Lustre client runtime is served for the server component" do
+  test "client runtime is served for the server component" do
     conn = get(build_conn(), "/vendor/lustre/lustre-server-component.mjs")
 
     assert response(conn, 200) =~ "customElements.define"
   end
 
-  test "Lustre Cytoscape state graph renderer is served for the workbench" do
+  test "Cytoscape state graph renderer is served for the workbench" do
     conn = get(build_conn(), "/assets/wardwright_state_graph.js")
 
     assert response(conn, 200) =~ "wardwright-state-graph"
@@ -97,7 +113,7 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
     assert conn.resp_body =~ "WHEEL_ZOOM_INTENSITY"
   end
 
-  test "transport registration pushes the initial Lustre DOM payload" do
+  test "transport registration pushes the initial workbench DOM payload" do
     assert {:ok, state} = WardwrightWeb.LustreWorkbenchSocket.init(%{})
     assert_receive {ref, message} when is_tuple(message), 1_000
 
@@ -107,10 +123,21 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
     assert json =~ "Wardwright"
     assert json =~ "Selected model turn simulator"
 
+    for implementation_label <- [
+          "Lustre 5",
+          "Glizzy controls",
+          "Gleam replay",
+          "Lustre Workbench",
+          "Gleam UI",
+          "Wardwright Lustre Workbench Spike"
+        ] do
+      refute json =~ implementation_label
+    end
+
     WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
   end
 
-  test "Lustre websocket transport requires protected access" do
+  test "workbench websocket transport requires protected access" do
     assert {:ok, _state} =
              WardwrightWeb.LustreWorkbenchSocket.connect(%{
                connect_info: %{peer_data: %{address: {127, 0, 0, 1}}, x_headers: []}
@@ -131,7 +158,7 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
              })
   end
 
-  test "Lustre websocket transport accepts admin token headers" do
+  test "workbench websocket transport accepts admin token headers" do
     previous = Application.get_env(:wardwright, :admin_token)
     Application.put_env(:wardwright, :admin_token, "lustre-token")
 

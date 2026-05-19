@@ -72,13 +72,13 @@ defmodule WardwrightWeb.ModelApiKeysLive do
 
       <nav>
         <h2 class="nav_heading">Workbench</h2>
-        <a href="/policies">
-          <strong>Policy Workbench</strong>
-          <span>Review policy definitions and model routing.</span>
+        <a href="/workbench">
+          <strong>Workbench</strong>
+          <span>Run and inspect registered models.</span>
         </a>
-        <a href="/spikes/lustre-workbench">
-          <strong>Lustre Workbench</strong>
-          <span>Run the Gleam UI beside the LiveView workbench.</span>
+        <a href="/policies">
+          <strong>Legacy Workbench</strong>
+          <span>Use the previous policy projection view.</span>
         </a>
         <a class="active" href="/admin/model-api-keys">
           <strong>Model Access</strong>
@@ -104,8 +104,8 @@ defmodule WardwrightWeb.ModelApiKeysLive do
           </p>
         </div>
         <div class="topbar_actions">
-          <a class="button secondary" href="/policies">Workbench</a>
-          <a class="button secondary" href="/spikes/lustre-workbench">Lustre workbench</a>
+          <a class="button secondary" href="/workbench">Workbench</a>
+          <a class="button secondary" href="/policies">Legacy workbench</a>
         </div>
       </header>
 

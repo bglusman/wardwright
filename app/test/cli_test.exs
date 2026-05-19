@@ -48,7 +48,7 @@ defmodule Wardwright.CLITest do
                0
              end)
 
-    assert collected(collector) =~ "admin path: /policies"
+    assert collected(collector) =~ "admin path: /workbench"
   end
 
   test "admin access command opens model access controls" do
@@ -68,7 +68,7 @@ defmodule Wardwright.CLITest do
     test_pid = self()
 
     assert 0 =
-             Admin.open("/policies", collector,
+             Admin.open("/workbench", collector,
                bind: "0.0.0.0:8797",
                running?: fn url ->
                  send(test_pid, {:admin_running_probe, url})
@@ -80,9 +80,9 @@ defmodule Wardwright.CLITest do
                end
              )
 
-    assert_receive {:admin_running_probe, "http://127.0.0.1:8797/policies"}
-    assert_receive {:admin_browser_open, "http://127.0.0.1:8797/policies"}
-    assert collected(collector) =~ "Opened http://127.0.0.1:8797/policies"
+    assert_receive {:admin_running_probe, "http://127.0.0.1:8797/workbench"}
+    assert_receive {:admin_browser_open, "http://127.0.0.1:8797/workbench"}
+    assert collected(collector) =~ "Opened http://127.0.0.1:8797/workbench"
   end
 
   test "admin helper starts the service before opening when port is not responding" do

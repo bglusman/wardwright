@@ -357,11 +357,14 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Private context route gate"
   end
 
-  test "main workbench links to the Lustre workbench for side-by-side operation" do
+  test "legacy workbench links to the primary workbench for side-by-side operation" do
     {:ok, _view, html} = live(build_conn(), "/policies/tts-retry/diagram")
 
-    assert html =~ ~s(href="/spikes/lustre-workbench")
-    assert html =~ "Lustre Workbench"
+    assert html =~ ~s(href="/workbench")
+    assert html =~ "Legacy Workbench"
+    assert html =~ "Use the previous policy projection view."
+    refute html =~ "Lustre Workbench"
+    refute html =~ "Gleam UI"
   end
 
   test "model API key management page creates and revokes keys" do
@@ -370,8 +373,11 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Model Access"
     assert html =~ "coding-balanced"
     assert html =~ "Access Policy"
+    assert html =~ "href=\"/workbench\""
     assert html =~ "href=\"/policies\""
-    assert html =~ "href=\"/spikes/lustre-workbench\""
+    assert html =~ "Legacy Workbench"
+    refute html =~ "Lustre Workbench"
+    refute html =~ "Gleam UI"
     assert html =~ "No API keys have been created for this model."
 
     html =
