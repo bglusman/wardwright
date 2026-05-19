@@ -11,7 +11,7 @@ defmodule WardwrightWeb.Layouts do
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="csrf-token" content={Plug.CSRFProtection.get_csrf_token()} />
-        <title>Wardwright Policy Workbench</title>
+        <title>Wardwright</title>
         <style>
           <%= Phoenix.HTML.raw(WardwrightWeb.PolicyProjectionLive.styles()) %>
         </style>

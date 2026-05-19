@@ -1,3 +1,25 @@
+import gleam/string
+
+pub type StateTransition =
+  #(String, String, String, String, String)
+
+pub fn derive_summary(
+  pattern_id: String,
+  model_id: String,
+  config_version: String,
+) -> #(String, String, String, Bool, List(StateTransition)) {
+  let #(initial_state, default_projection, transitions) =
+    state_machine(pattern_id)
+
+  #(
+    engine_id(pattern_id),
+    artifact_label(pattern_id, model_id, config_version),
+    initial_state,
+    default_projection,
+    transitions,
+  )
+}
+
 pub fn state_ids(pattern_id: String, known_pattern: Bool) -> List(String) {
   case pattern_id, known_pattern {
     "tts-retry", _ -> ["observing", "guarding", "retrying", "recording"]
@@ -9,6 +31,133 @@ pub fn state_ids(pattern_id: String, known_pattern: Bool) -> List(String) {
     ]
     _, True -> ["active"]
     _, False -> []
+  }
+}
+
+pub fn engine_id(pattern_id: String) -> String {
+  case pattern_id {
+    "ambiguous-success" -> "hybrid-output-review"
+    "route-privacy" -> "request-route-plan"
+    "tool-governance" -> "tool-context-plan"
+    _ -> "structured-stream-primitives"
+  }
+}
+
+pub fn artifact_label(
+  pattern_id: String,
+  model_id: String,
+  config_version: String,
+) -> String {
+  "draft."
+  <> blank_default(pattern_id, "policy")
+  <> ".001 / "
+  <> blank_default(model_id, "model")
+  <> " / "
+  <> blank_default(config_version, "unversioned")
+}
+
+pub fn state_machine(
+  pattern_id: String,
+) -> #(String, Bool, List(StateTransition)) {
+  case pattern_id {
+    "tts-retry" -> #("observing", False, [
+      #(
+        "observing",
+        "stream.release",
+        "recording",
+        "release_stream",
+        "tts.receipt-events",
+      ),
+      #(
+        "observing",
+        "stream.match",
+        "guarding",
+        "abort_attempt",
+        "tts.no-old-client",
+      ),
+      #(
+        "guarding",
+        "attempt.retry",
+        "retrying",
+        "retry_with_reminder",
+        "tts.retry-arbiter",
+      ),
+      #(
+        "retrying",
+        "stream.match",
+        "guarding",
+        "abort_attempt",
+        "tts.no-old-client",
+      ),
+      #(
+        "retrying",
+        "retry.release",
+        "retrying",
+        "release_stream",
+        "tts.no-old-client",
+      ),
+      #(
+        "retrying",
+        "receipt.write",
+        "recording",
+        "annotate_receipt",
+        "tts.receipt-events",
+      ),
+    ])
+
+    "stream-rewrite-state" -> #("observing", False, [
+      #(
+        "observing",
+        "stream.release",
+        "recording",
+        "release_stream",
+        "stream.rewrite-receipt",
+      ),
+      #(
+        "observing",
+        "history.related-secret",
+        "review_required",
+        "state_transition",
+        "stream.secret-transition",
+      ),
+      #(
+        "observing",
+        "request.rewrite",
+        "observing",
+        "rewrite_span",
+        "request.rewrite-context",
+      ),
+      #(
+        "observing",
+        "regex.rewrite",
+        "rewriting",
+        "rewrite_span",
+        "stream.redact-account",
+      ),
+      #(
+        "rewriting",
+        "rewrite.release",
+        "recording",
+        "release_stream",
+        "stream.rewrite-receipt",
+      ),
+      #(
+        "rewriting",
+        "regex.related-secret",
+        "review_required",
+        "state_transition",
+        "stream.secret-transition",
+      ),
+      #(
+        "review_required",
+        "receipt.write",
+        "recording",
+        "annotate_receipt",
+        "stream.rewrite-receipt",
+      ),
+    ])
+
+    _ -> #("active", True, [])
   }
 }
 
@@ -83,5 +232,12 @@ pub fn tool_context_phase(phase: String) -> String {
     "tool.loop_governing" -> "loop_governance"
     "tool.planning" -> "planning"
     _ -> phase
+  }
+}
+
+fn blank_default(value: String, fallback: String) -> String {
+  case string.trim(value) {
+    "" -> fallback
+    trimmed -> trimmed
   }
 }

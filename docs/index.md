@@ -23,7 +23,7 @@ description: LLM model middleware, governance, and receipts for agentic workflow
 
 <div class="notice">
   <strong>Status:</strong> Wardwright is early but installable. The published
-  <code>v0.0.8</code> release ships native macOS and Linux artifacts, a
+  <code>v0.0.9</code> release ships native macOS and Linux artifacts, a
   Homebrew formula, an OpenAI-compatible gateway, a model-aware policy
   workbench, saved simulator test cases, and an experimental in-page authoring
   assistant.
@@ -84,15 +84,15 @@ providers.
 
 ## Policy Workbench
 
-The installed app includes a workbench at `/policies` for visualizing and
-simulating Wardwright models before using them behind real traffic. Load an
-example or local model, choose the registered Wardwright model being simulated,
-edit the simulated request, model output, retry attempts, and relevant history,
-then step through the resulting policy run.
+The installed app includes a workbench at `/admin` for visualizing and
+simulating Wardwright models before using them behind real traffic. Choose the
+registered Wardwright model being simulated, load a fixture, edit the simulated
+request, model output, and retry attempts, then step through the resulting
+policy run.
 
 <figure>
-  <img src="assets/workbench/stream-retry-simulator.png" alt="Wardwright policy workbench showing a stream retry simulation">
-  <figcaption>The simulator can replay stream governance, including the raw model stream, held/released output, retry attempts, and receipt evidence.</figcaption>
+  <img src="assets/workbench/registered-model-workbench.png" alt="Wardwright registered-model workbench showing a retry simulation fixture">
+  <figcaption>The simulator can replay stream governance, including editable model output, retry attempts, state transitions, and receipt evidence.</figcaption>
 </figure>
 
 Fresh installs include starter examples for output contracts, route/model
@@ -114,9 +114,10 @@ credentials on loopback-only instances or behind a trusted auth boundary. See
 
 ## Current Runtime
 
-The active app is a Phoenix/LiveView service. Elixir owns runtime plumbing,
-provider calls, HTTP/API boundaries, receipts, and the UI. Gleam is used for
-correctness-heavy pure policy logic where the boundary is stable.
+The active app is a Phoenix service with server-rendered operator workbenches.
+Elixir owns runtime plumbing, provider calls, HTTP/API boundaries, and receipts;
+Gleam is used for correctness-heavy pure policy logic where the boundary is
+stable.
 
 Current capabilities include:
 

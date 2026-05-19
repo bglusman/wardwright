@@ -12,6 +12,62 @@ defmodule Wardwright.ElixirReference.ProjectionCore do
   def state_ids(_pattern_id, true), do: ["active"]
   def state_ids(_pattern_id, false), do: []
 
+  def derive_summary(pattern_id, model_id, config_version) do
+    {initial_state, default_projection, transitions} = state_machine(pattern_id)
+
+    {
+      engine_id(pattern_id),
+      artifact_label(pattern_id, model_id, config_version),
+      initial_state,
+      default_projection,
+      transitions
+    }
+  end
+
+  def engine_id("ambiguous-success"), do: "hybrid-output-review"
+  def engine_id("route-privacy"), do: "request-route-plan"
+  def engine_id("tool-governance"), do: "tool-context-plan"
+  def engine_id(_pattern_id), do: "structured-stream-primitives"
+
+  def artifact_label(pattern_id, model_id, config_version) do
+    "draft.#{blank_default(pattern_id, "policy")}.001 / #{blank_default(model_id, "model")} / #{blank_default(config_version, "unversioned")}"
+  end
+
+  def state_machine("tts-retry") do
+    {
+      "observing",
+      false,
+      [
+        {"observing", "stream.release", "recording", "release_stream", "tts.receipt-events"},
+        {"observing", "stream.match", "guarding", "abort_attempt", "tts.no-old-client"},
+        {"guarding", "attempt.retry", "retrying", "retry_with_reminder", "tts.retry-arbiter"},
+        {"retrying", "stream.match", "guarding", "abort_attempt", "tts.no-old-client"},
+        {"retrying", "retry.release", "retrying", "release_stream", "tts.no-old-client"},
+        {"retrying", "receipt.write", "recording", "annotate_receipt", "tts.receipt-events"}
+      ]
+    }
+  end
+
+  def state_machine("stream-rewrite-state") do
+    {
+      "observing",
+      false,
+      [
+        {"observing", "stream.release", "recording", "release_stream", "stream.rewrite-receipt"},
+        {"observing", "history.related-secret", "review_required", "state_transition",
+         "stream.secret-transition"},
+        {"observing", "request.rewrite", "observing", "rewrite_span", "request.rewrite-context"},
+        {"observing", "regex.rewrite", "rewriting", "rewrite_span", "stream.redact-account"},
+        {"rewriting", "rewrite.release", "recording", "release_stream", "stream.rewrite-receipt"},
+        {"rewriting", "regex.related-secret", "review_required", "state_transition",
+         "stream.secret-transition"},
+        {"review_required", "receipt.write", "recording", "annotate_receipt", "stream.rewrite-receipt"}
+      ]
+    }
+  end
+
+  def state_machine(_pattern_id), do: {"active", true, []}
+
   def route_action("", true), do: "engine_decision"
   def route_action("", false), do: "restrict_routes"
   def route_action(action, _has_engine), do: action
@@ -58,4 +114,13 @@ defmodule Wardwright.ElixirReference.ProjectionCore do
   def tool_context_phase("tool.loop_governing"), do: "loop_governance"
   def tool_context_phase("tool.planning"), do: "planning"
   def tool_context_phase(phase), do: phase
+
+  defp blank_default(value, fallback) when is_binary(value) do
+    case String.trim(value) do
+      "" -> fallback
+      trimmed -> trimmed
+    end
+  end
+
+  defp blank_default(_value, fallback), do: fallback
 end

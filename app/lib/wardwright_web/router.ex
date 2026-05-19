@@ -32,9 +32,10 @@ defmodule WardwrightWeb.Router do
   scope "/", WardwrightWeb do
     pipe_through([:browser, :protected_browser])
 
-    live("/", PolicyProjectionLive, :index)
-    live("/admin/model-api-keys", ModelApiKeysLive, :index)
+    get("/", LustreWorkbenchController, :show)
+    get("/admin", LustreWorkbenchController, :show)
     live("/policies", PolicyProjectionLive, :index)
+    get("/spikes/graph-renderer-lab", GraphRendererLabController, :show)
     live("/policies/:pattern/:mode/recipe/:recipe/step/:step", PolicyProjectionLive, :index)
     live("/policies/:pattern/:mode/recipe/:recipe", PolicyProjectionLive, :index)
     live("/policies/:pattern/:mode/step/:step", PolicyProjectionLive, :index)

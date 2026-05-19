@@ -18,6 +18,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: erlef/setup-beam@8251c48667b97e88a0a24ec512f5b72a039fcea7 # v1
         with:
           otp-version: "29.0"
@@ -62,8 +63,11 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Check docs links
         run: ruby scripts/check-docs-site.rb
+      - name: Check UI docs acknowledgement
+        run: scripts/check-ui-docs-ack.sh
 
   test:
     name: test

@@ -163,6 +163,7 @@ defmodule Wardwright.PublicApiTest do
 
     [model] = Jason.decode!(local.resp_body)["data"]
     assert model["prompt_transforms"] == %{"preamble" => "private operator prompt"}
+    assert model["model_definition_version"] == 1
     assert is_list(model["governance"])
     assert is_map(model["route_graph"])
 

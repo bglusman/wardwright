@@ -385,6 +385,12 @@ defmodule Wardwright.GleamPolicyCoreTest do
     assert :wardwright@projection_core.state_ids("tts-retry", true) ==
              ProjectionCoreReference.state_ids("tts-retry", true)
 
+    assert :wardwright@projection_core.derive_summary("tts-retry", "coding-balanced", "unit-version") ==
+             ProjectionCoreReference.derive_summary("tts-retry", "coding-balanced", "unit-version")
+
+    assert :wardwright@projection_core.derive_summary("route-privacy", "coding-balanced", "unit-version") ==
+             ProjectionCoreReference.derive_summary("route-privacy", "coding-balanced", "unit-version")
+
     assert :wardwright@projection_core.route_action("", true) ==
              ProjectionCoreReference.route_action("", true)
 

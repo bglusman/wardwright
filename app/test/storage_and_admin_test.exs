@@ -125,10 +125,12 @@ defmodule Wardwright.StorageAndAdminTest do
 
     assert {:ok, saved_config} = Wardwright.put_config(config)
     assert saved_config["model_id"] == "persisted-unit-model"
+    assert saved_config["model_definition_version"] == 1
     :persistent_term.erase({Wardwright, :config})
 
     assert {:ok, loaded} = Wardwright.load_persisted_config()
     assert loaded["model_id"] == "persisted-unit-model"
+    assert loaded["model_definition_version"] == 1
     assert loaded["requires_api_key"] == true
     assert loaded["auth"]["unkeyed_model_access"] == "internal"
     assert Wardwright.current_config()["model_id"] == "persisted-unit-model"
