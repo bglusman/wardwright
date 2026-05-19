@@ -111,7 +111,7 @@ defmodule Wardwright.Router do
         json(
           conn,
           WardwrightWeb.ReceiptBuilder.response_status(receipt),
-          WardwrightWeb.ReceiptBuilder.chat_response(request, receipt, decision, provider.content)
+          WardwrightWeb.ReceiptBuilder.chat_response(request, receipt, decision, provider)
         )
       end
     else

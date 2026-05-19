@@ -37,13 +37,7 @@ defmodule Wardwright.ProviderCapabilities do
   @tool_choice_key "tool_choice"
   @tools_key "tools"
   @role_value_tool "tool"
-  @tool_request_fields [
-    "tools",
-    "tool_choice",
-    "message.tool_calls",
-    "message.tool_call_id",
-    "message.role:tool"
-  ]
+  @ollama_unsupported_request_fields [@tool_choice_key]
 
   def for_provider("ollama", _credential_source) do
     %__MODULE__{
@@ -54,7 +48,7 @@ defmodule Wardwright.ProviderCapabilities do
       stream_format: "ollama_ndjson",
       terminal_metadata: ["done", "done_reason", "total_duration", "load_duration", "prompt_eval_count", "eval_count"],
       unsupported_options_policy: "ignore_safe_options_fail_later_for_policy_relevant_options",
-      unsupported_request_fields: @tool_request_fields
+      unsupported_request_fields: @ollama_unsupported_request_fields
     }
     |> to_map()
   end
@@ -68,7 +62,6 @@ defmodule Wardwright.ProviderCapabilities do
       stream_format: "openai_sse",
       terminal_metadata: ["finish_reason", "choice_index", "usage", "system_fingerprint", "refusal", "done"],
       unsupported_options_policy: "ignore_safe_options_fail_later_for_policy_relevant_options",
-      unsupported_request_fields: @tool_request_fields,
       unsupported_stream_delta_fields: [@role_key, @tool_calls_key, "logprobs"]
     }
     |> to_map()

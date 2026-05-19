@@ -14,6 +14,19 @@ defmodule Wardwright do
   @managed_context_window 262_144
   @description_key "description"
   @default_description "Mock coding assistant Wardwright model with composable route selectors."
+  @choice_index_key "index"
+  @choices_key "choices"
+  @content_key "content"
+  @finish_reason_key "finish_reason"
+  @message_key "message"
+  @messages_key "messages"
+  @name_key "name"
+  @refusal_key "refusal"
+  @role_key "role"
+  @system_fingerprint_key "system_fingerprint"
+  @tool_call_id_key "tool_call_id"
+  @tool_calls_key "tool_calls"
+  @usage_key "usage"
 
   def model_id, do: @model_id
   def model_id(config) when is_map(config), do: Map.get(config, "model_id", @model_id)
@@ -989,10 +1002,11 @@ defmodule Wardwright do
 
     body =
       Jason.encode!(%{
-        messages: request_messages(request),
+        messages: provider_messages(request),
         model: model,
         stream: false
       })
+      |> encode_provider_body(request, ["tools"])
 
     http_post("#{String.trim_trailing(base_url, "/")}/api/chat", body, [])
     |> case do
@@ -1010,10 +1024,11 @@ defmodule Wardwright do
 
     body =
       Jason.encode!(%{
-        messages: request_messages(request),
+        messages: provider_messages(request),
         model: model,
         stream: true
       })
+      |> encode_provider_body(request, ["tools"])
 
     "#{String.trim_trailing(base_url, "/")}/api/chat"
     |> http_post_stream(body, [])
@@ -1032,10 +1047,11 @@ defmodule Wardwright do
 
     body =
       Jason.encode!(%{
-        messages: request_messages(request),
+        messages: provider_messages(request),
         model: model,
         stream: true
       })
+      |> encode_provider_body(request, ["tools"])
 
     "#{String.trim_trailing(base_url, "/")}/api/chat"
     |> http_post_stream_each(
@@ -1052,10 +1068,11 @@ defmodule Wardwright do
          {:ok, credential} <- provider_credential(target) do
       body =
         Jason.encode!(%{
-          messages: request_messages(request),
+          messages: provider_messages(request),
           model: provider_model(target),
           stream: false
         })
+        |> encode_provider_body(request, openai_compatible_forward_fields())
 
       headers = provider_headers(target) ++ [{~c"authorization", ~c"Bearer #{credential}"}]
 
@@ -1063,7 +1080,7 @@ defmodule Wardwright do
       |> http_post(body, headers)
       |> case do
         {:ok, response} ->
-          {:ok, get_in(response, ["choices", Access.at(0), "message", "content"]) || ""}
+          {:ok, openai_chat_message_result(response)}
 
         {:error, reason} ->
           {:error, reason}
@@ -1079,10 +1096,11 @@ defmodule Wardwright do
          {:ok, credential} <- provider_credential(target) do
       body =
         Jason.encode!(%{
-          messages: request_messages(request),
+          messages: provider_messages(request),
           model: provider_model(target),
           stream: true
         })
+        |> encode_provider_body(request, openai_compatible_forward_fields())
 
       headers = provider_headers(target) ++ [{~c"authorization", ~c"Bearer #{credential}"}]
 
@@ -1103,10 +1121,11 @@ defmodule Wardwright do
          {:ok, credential} <- provider_credential(target) do
       body =
         Jason.encode!(%{
-          messages: request_messages(request),
+          messages: provider_messages(request),
           model: provider_model(target),
           stream: true
         })
+        |> encode_provider_body(request, openai_compatible_forward_fields())
 
       headers = provider_headers(target) ++ [{~c"authorization", ~c"Bearer #{credential}"}]
 
@@ -1534,25 +1553,92 @@ defmodule Wardwright do
     |> Enum.map(fn {key, value} -> {String.to_charlist(key), String.to_charlist(value)} end)
   end
 
-  defp request_messages(request) do
+  defp provider_messages(request) do
     request
-    |> Map.get("messages", [])
-    |> Enum.map(fn message ->
-      %{
-        content: content_string(Map.get(message, "content")),
-        role: Map.get(message, "role", "")
-      }
+    |> json_get(@messages_key)
+    |> Kernel.||([])
+    |> Enum.filter(&is_map/1)
+    |> Enum.map(&provider_message/1)
+  end
+
+  defp provider_message(message) do
+    %{}
+    |> put_if_present(:content, json_get(message, @content_key))
+    |> put_if_present(:name, json_get(message, @name_key))
+    |> put_if_present(:role, json_get(message, @role_key) || "")
+    |> put_if_present(:tool_call_id, json_get(message, @tool_call_id_key))
+    |> put_if_present(:tool_calls, json_get(message, @tool_calls_key))
+  end
+
+  defp encode_provider_body(encoded_body, request, forward_fields) when is_binary(encoded_body) do
+    encoded_body
+    |> Jason.decode!()
+    |> Map.merge(forward_request_fields(request, forward_fields))
+    |> Jason.encode!()
+  end
+
+  defp forward_request_fields(request, fields) do
+    fields
+    |> Enum.reduce(%{}, fn field, acc ->
+      put_if_present(acc, field, Map.get(request, field))
     end)
   end
 
-  defp content_string(value) when is_binary(value), do: value
-  defp content_string(nil), do: ""
-  defp content_string(value), do: Jason.encode!(value)
+  defp openai_compatible_forward_fields do
+    [
+      "frequency_penalty",
+      "max_completion_tokens",
+      "max_tokens",
+      "presence_penalty",
+      "response_format",
+      "seed",
+      "stop",
+      "temperature",
+      "tool_choice",
+      "tools",
+      "top_p"
+    ]
+  end
+
+  defp openai_chat_message_result(response) do
+    choice = response |> json_get(@choices_key) |> List.wrap() |> List.first() || %{}
+
+    message =
+      case json_get(choice, @message_key) || %{} do
+        message when is_map(message) -> message
+        _message -> %{}
+      end
+
+    metadata =
+      %{}
+      |> put_if_present("choice_index", json_get(choice, @choice_index_key))
+      |> put_if_present("finish_reason", json_get(choice, @finish_reason_key))
+      |> put_if_present("refusal", json_get(message, @refusal_key))
+      |> put_if_present("system_fingerprint", json_get(response, @system_fingerprint_key))
+      |> put_if_present("usage", json_get(response, @usage_key))
+
+    {:chat_message, normalize_openai_assistant_message(message), metadata}
+  end
+
+  defp normalize_openai_assistant_message(message) when is_map(message) do
+    case json_get(message, @role_key) do
+      role when is_binary(role) and role != "" -> message
+      _role -> Map.put(message, @role_key, "assistant")
+    end
+  end
 
   defp provider_outcome_from_result({:ok, {:provider_metadata, metadata}}, started) do
     nil
     |> provider_outcome("completed", started, nil, true, false)
     |> Map.put(:provider_metadata, metadata)
+  end
+
+  defp provider_outcome_from_result({:ok, {:chat_message, message, metadata}}, started) do
+    message
+    |> json_get(@content_key)
+    |> provider_outcome("completed", started, nil, true, false)
+    |> Map.put(:provider_metadata, metadata)
+    |> Map.put(:response_message, message)
   end
 
   defp provider_outcome_from_result({:ok, content}, started) do

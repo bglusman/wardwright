@@ -99,16 +99,36 @@ defmodule WardwrightWeb.ReceiptBuilder do
     end)
   end
 
+  def chat_response(request, receipt, decision, %{response_message: response_message} = provider) do
+    chat_response(request, receipt, decision, Map.get(provider, :content), response_message)
+  end
+
+  def chat_response(request, receipt, decision, %{content: provider_content}) do
+    chat_response(request, receipt, decision, provider_content, nil)
+  end
+
   def chat_response(request, receipt, decision, provider_content) do
+    chat_response(request, receipt, decision, provider_content, nil)
+  end
+
+  defp chat_response(request, receipt, decision, provider_content, response_message) do
     completion_tokens = 18
 
     content =
       provider_content ||
         "Mock Wardwright response routed to #{decision.selected_model}. Estimated prompt tokens: #{decision.estimated_prompt_tokens}."
 
+    message =
+      response_message ||
+        %{"content" => content, "role" => "assistant"}
+
     %{
       "choices" => [
-        %{"finish_reason" => "stop", "index" => 0, "message" => %{"content" => content, "role" => "assistant"}}
+        %{
+          "finish_reason" => get_in(receipt, ["final", "provider_metadata", "finish_reason"]) || "stop",
+          "index" => 0,
+          "message" => message
+        }
       ],
       "created" => System.system_time(:second),
       "id" => "chatcmpl_" <> receipt["receipt_id"],
