@@ -143,13 +143,11 @@ defmodule Wardwright.Policy.StructuredOutput do
   defp schema_valid?(parsed, %{"type" => "object"} = schema) do
     required = Map.get(schema, "required", [])
     properties = Map.get(schema, "properties", %{})
-    allowed = MapSet.new(Map.keys(properties))
-
     required_ok? = Enum.all?(required, &Map.has_key?(parsed, &1))
 
     additional_ok? =
       schema["additionalProperties"] != false or
-        MapSet.subset?(MapSet.new(Map.keys(parsed)), allowed)
+        Enum.all?(Map.keys(parsed), &Map.has_key?(properties, &1))
 
     properties_ok? =
       Enum.all?(properties, fn {key, property_schema} ->

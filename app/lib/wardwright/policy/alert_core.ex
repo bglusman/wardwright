@@ -55,7 +55,6 @@ defmodule Wardwright.Policy.AlertCore do
   defp outcome(:dead_lettered), do: "dead_lettered"
   defp outcome(:dropped), do: "dropped"
   defp outcome(:blocked), do: "failed_closed"
-  defp outcome(_status), do: "failed_closed"
 
   defp on_full_atom("drop"), do: :drop
   defp on_full_atom("fail_closed"), do: :fail_closed

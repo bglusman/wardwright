@@ -325,8 +325,6 @@ defmodule WardwrightWeb.AuthoringAgent do
       )
   end
 
-  defp authoring_action_requested?(_message), do: false
-
   defp no_tool_executed_for_authoring_request_message(answer_text) do
     """
     #{answer_text}
@@ -336,7 +334,7 @@ defmodule WardwrightWeb.AuthoringAgent do
   end
 
   defp answer(content, extras) do
-    content = String.trim(content || "")
+    content = String.trim(content)
     status = Keyword.get(extras, :status, "completed")
 
     if content == "" do

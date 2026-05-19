@@ -1123,12 +1123,12 @@ defmodule Wardwright.PolicyProjection do
   end
 
   defp attach_state_node_fallback(state_machine, phases) do
-    known_node_ids = phase_node_ids(phases) |> MapSet.new()
+    known_node_ids = phase_node_ids(phases)
 
     states =
       state_machine["states"]
       |> Enum.map(fn state ->
-        node_ids = Enum.filter(state["node_ids"], &MapSet.member?(known_node_ids, &1))
+        node_ids = Enum.filter(state["node_ids"], &(&1 in known_node_ids))
         Map.put(state, "node_ids", node_ids)
       end)
 
@@ -2832,7 +2832,7 @@ defmodule Wardwright.PolicyProjection do
         @messages_key,
         [
           Map.new([
-            {@content_key, user_input || ""},
+            {@content_key, user_input},
             {@role_key, @default_request_role}
           ])
         ]
@@ -3273,8 +3273,6 @@ defmodule Wardwright.PolicyProjection do
     "in the last #{related_secret_history_window(turn)} request(s)"
   end
 
-  defp turn_history_window_label(_turn), do: "in session history"
-
   defp normalize_history_context(context) when is_map(context) do
     context
     |> Enum.reject(fn {key, _value} -> String.starts_with?(to_string(key), "_unused_") end)
@@ -3554,5 +3552,4 @@ defmodule Wardwright.PolicyProjection do
   end
 
   defp trace_opts(opts) when is_list(opts), do: opts
-  defp trace_opts(source_span), do: [source_span: source_span]
 end

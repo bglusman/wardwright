@@ -332,7 +332,6 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
     |> Map.put("action", action)
     |> maybe_put("pattern", pattern)
     |> maybe_put("regex", regex || if(trigger_match_key == "regex", do: trigger_match_value))
-    |> maybe_put("contains", if(trigger_match_key == "contains", do: trigger_match_value))
     |> maybe_put("replacement", replacement)
     |> Map.drop(["trigger", "replacement_text"])
   end

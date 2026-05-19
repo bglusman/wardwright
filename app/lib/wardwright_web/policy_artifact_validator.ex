@@ -1,6 +1,11 @@
 defmodule WardwrightWeb.PolicyArtifactValidator do
   @moduledoc false
 
+  @type artifact :: map()
+  @type check :: tuple()
+  @type checks :: [check()]
+  @type model_ids :: [String.t()]
+
   @supported_engines MapSet.new(["primitive", "dune", "wasm", "hybrid"])
   @supported_rule_kinds MapSet.new([
                           "request_guard",
@@ -146,7 +151,7 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
     Enum.reduce(selectors, checks, fn selector, checks ->
       selector_targets(selector)
       |> Enum.reduce(checks, fn model, checks ->
-        if MapSet.member?(targets, model) do
+        if model in targets do
           checks
         else
           error(
@@ -256,7 +261,7 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
         provider_prefixes = route_action_provider_prefixes(artifact)
 
         Enum.reduce(allowed, checks, fn model, checks ->
-          if MapSet.member?(known, model) or MapSet.member?(provider_prefixes, model) do
+          if model in known or model in provider_prefixes do
             checks
           else
             error(
@@ -272,7 +277,7 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
         known = route_action_exact_targets(artifact)
 
         Enum.reduce(allowed, checks, fn model, checks ->
-          if MapSet.member?(known, model) do
+          if model in known do
             checks
           else
             error(
@@ -289,7 +294,7 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
   end
 
   defp validate_model_graph(checks, artifact) do
-    case model_graph_cycle(artifact, MapSet.new(), []) do
+    case model_graph_cycle(artifact, [], []) do
       {:cycle, model_id, path} ->
         error(
           checks,
@@ -336,16 +341,18 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
     end)
   end
 
+  @spec model_graph_cycle(artifact(), model_ids(), [String.t()]) ::
+          :ok | {:cycle, String.t(), [String.t()]}
   defp model_graph_cycle(artifact, visited, path) when is_map(artifact) do
     model_id =
       artifact
       |> Map.get("model_id", Map.get(artifact, "model_id", "anonymous-model"))
       |> to_string()
 
-    if MapSet.member?(visited, model_id) do
+    if model_id in visited do
       {:cycle, model_id, path ++ [model_id]}
     else
-      visited = MapSet.put(visited, model_id)
+      visited = [model_id | visited]
       path = path ++ [model_id]
 
       artifact
@@ -536,6 +543,7 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
     end)
   end
 
+  @spec selectors(artifact()) :: [map()]
   defp selectors(artifact) do
     selectors =
       [
@@ -551,7 +559,7 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
         [
           %{
             "id" => Map.get(artifact, "route_root", "dispatcher.prompt_length"),
-            "models" => artifact |> target_models() |> MapSet.to_list()
+            "models" => target_models(artifact)
           }
         ]
 
@@ -560,6 +568,7 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
     end
   end
 
+  @spec selector_targets(map()) :: [String.t()]
   defp selector_targets(selector) do
     selector
     |> selector_targets_raw()
@@ -579,6 +588,7 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
     )
   end
 
+  @spec target_models(artifact()) :: model_ids()
   defp target_models(artifact) do
     artifact
     |> list_field("targets")
@@ -586,16 +596,16 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
       %{"model" => model} when is_binary(model) -> [model]
       _target -> []
     end)
-    |> MapSet.new()
+    |> Enum.uniq()
   end
 
+  @spec route_action_exact_targets(artifact()) :: model_ids()
   defp route_action_exact_targets(artifact) do
-    artifact
-    |> target_models()
-    |> MapSet.union(provider_target_models(artifact, MapSet.new(), 0))
+    Enum.uniq(target_models(artifact) ++ provider_target_models(artifact, [], 0))
   end
 
-  defp provider_target_models(_artifact, _visited, depth) when depth > 8, do: MapSet.new()
+  @spec provider_target_models(artifact(), model_ids(), non_neg_integer()) :: model_ids()
+  defp provider_target_models(_artifact, _visited, depth) when depth > 8, do: []
 
   defp provider_target_models(artifact, visited, depth) do
     model_id =
@@ -603,25 +613,25 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
       |> Map.get("model_id", "anonymous-model")
       |> to_string()
 
-    visited = MapSet.put(visited, model_id)
+    visited = [model_id | visited]
 
     artifact
     |> list_field("targets")
-    |> Enum.reduce(MapSet.new(), fn
+    |> Enum.reduce([], fn
       target, acc when is_map(target) ->
         nested = Map.get(target, "artifact")
         ref_id = model_graph_ref_id(target, nested)
 
         cond do
           wardwright_model_target?(target) and is_map(nested) and
-              not MapSet.member?(visited, ref_id) ->
-            MapSet.union(acc, provider_target_models(nested, visited, depth + 1))
+              ref_id not in visited ->
+            acc ++ provider_target_models(nested, visited, depth + 1)
 
           wardwright_model_target?(target) ->
             acc
 
           is_binary(target["model"]) ->
-            MapSet.put(acc, target["model"])
+            [target["model"] | acc]
 
           true ->
             acc
@@ -630,18 +640,20 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
       _target, acc ->
         acc
     end)
+    |> Enum.uniq()
   end
 
+  @spec route_action_provider_prefixes(artifact()) :: model_ids()
   defp route_action_provider_prefixes(artifact) do
     artifact
-    |> provider_target_models(MapSet.new(), 0)
+    |> provider_target_models([], 0)
     |> Enum.flat_map(fn model ->
       case String.split(model, "/", parts: 2) do
         [provider, _model] -> [provider]
         _other -> []
       end
     end)
-    |> MapSet.new()
+    |> Enum.uniq()
   end
 
   defp model_graph_ref_id(target, artifact) when is_map(artifact) do
@@ -652,6 +664,7 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
 
   defp model_graph_ref_id(target, _artifact), do: target |> Map.get("model", "") |> to_string()
 
+  @spec route_action_targets(map()) :: [String.t()]
   defp route_action_targets(rule) do
     rule
     |> Map.get("allowed_targets", List.wrap(Map.get(rule, "target_model", [])))

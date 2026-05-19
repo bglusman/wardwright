@@ -46,11 +46,11 @@ defmodule Wardwright.ToolContext do
 
   @hash_prefix "sha256:"
 
-  @confidence_values MapSet.new(~w(exact declared inferred ambiguous))
-  @phase_values MapSet.new(~w(planning argument_repair result_interpretation loop_governance unknown))
-  @result_status_values MapSet.new(~w(success error timeout rejected unknown))
-  @risk_values MapSet.new(~w(read_only write irreversible external_side_effect unknown))
-  @source_values MapSet.new(~w(declared_tool tool_choice assistant_tool_call tool_result caller_metadata inferred))
+  @confidence_values ~w(exact declared inferred ambiguous)
+  @phase_values ~w(planning argument_repair result_interpretation loop_governance unknown)
+  @result_status_values ~w(success error timeout rejected unknown)
+  @risk_values ~w(read_only write irreversible external_side_effect unknown)
+  @source_values ~w(declared_tool tool_choice assistant_tool_call tool_result caller_metadata inferred)
 
   def normalize(request, opts \\ [])
 
@@ -409,7 +409,7 @@ defmodule Wardwright.ToolContext do
 
   defp enum_value(value, allowed, default) do
     value = text_value(value)
-    if MapSet.member?(allowed, value), do: value, else: default
+    if value in allowed, do: value, else: default
   end
 
   defp compact(map) do

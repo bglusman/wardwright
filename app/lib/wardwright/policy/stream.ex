@@ -235,14 +235,6 @@ defmodule Wardwright.Policy.Stream do
     |> update_hold_tracking(now_ms)
   end
 
-  defp append_generated_chunk(result, generated_chunk, nil, now_ms),
-    do:
-      result
-      |> Map.update!(:stream_buffer, &(&1 <> generated_chunk))
-      |> add_generated_bytes(generated_chunk)
-      |> update_max_held_bytes()
-      |> update_hold_tracking(now_ms)
-
   defp append_generated_chunk(result, generated_chunk, released_chunk, now_ms) do
     result
     |> Map.update!(:stream_buffer, &(&1 <> generated_chunk))

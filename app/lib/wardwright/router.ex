@@ -870,7 +870,6 @@ defmodule Wardwright.Router do
 
   defp model_auth_error_type(401), do: "unauthorized"
   defp model_auth_error_type(403), do: "forbidden"
-  defp model_auth_error_type(_status), do: "invalid_request"
 
   defp request_model_api_key(conn) do
     conn
