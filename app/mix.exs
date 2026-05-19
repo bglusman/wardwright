@@ -62,6 +62,7 @@ defmodule Wardwright.MixProject do
       {:plug_cowboy, "~> 2.7"},
       {:exqlite, "~> 0.36"},
       {:hermes_mcp, "~> 0.14.1"},
+      {:jido_ai, "~> 2.1"},
       {:burrito, "~> 1.5", runtime: false},
       {:tinfoil, "~> 0.2", runtime: false},
       {:lazy_html, ">= 0.1.0", only: :test},

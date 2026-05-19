@@ -16,6 +16,22 @@ const viewports = [
   { name: "desktop", width: 1280, height: 900, mobile: false, scale: 1 }
 ];
 
+const overflowViewports = [
+  { name: "narrow", width: 360, height: 780, mobile: true, scale: 3 },
+  { name: "mobile", width: 390, height: 844, mobile: true, scale: 3 },
+  { name: "tablet", width: 768, height: 900, mobile: false, scale: 1 },
+  { name: "desktop", width: 1280, height: 900, mobile: false, scale: 1 }
+];
+
+const overflowPaths = [
+  "/policies",
+  "/admin/model-api-keys",
+  "/policies/tts-retry/diagram",
+  "/policies/tts-retry/diagram?model=browser-smoke-model",
+  "/policies/route-privacy/diagram",
+  "/policies/tool-governance/diagram"
+];
+
 if (!chromePath) {
   const message =
     "Chrome or Chromium was not found. Set CHROME_PATH to run LiveView browser smoke tests.";
@@ -63,9 +79,18 @@ const chrome = spawn(
 try {
   await waitForHttp(`${appUrl}/policies/tts-retry/diagram`, "Wardwright");
   await waitForHttp(`http://127.0.0.1:${chromePort}/json/version`, "webSocketDebuggerUrl");
+  await seedRegisteredModelWorkbench();
 
   for (const viewport of viewports) {
     await runViewportSmoke(viewport);
+  }
+
+  await assertRegisteredModelWorkbench();
+
+  for (const viewport of overflowViewports) {
+    for (const path of overflowPaths) {
+      await assertNoPageOverflow(viewport, path);
+    }
   }
 } finally {
   chrome.kill("SIGTERM");
@@ -73,6 +98,132 @@ try {
   await rm(userDataDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }).catch(
     () => {}
   );
+}
+
+async function seedRegisteredModelWorkbench() {
+  const response = await fetch(`${appUrl}/v1/policy-authoring/wardwright-models`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model_id: "browser-smoke-model",
+      version: "browser-smoke",
+      description: "Browser smoke model for registered-model workbench coverage.",
+      targets: [{ model: "local/browser-smoke", context_window: 8192 }],
+      stream_rules: [
+        {
+          id: "browser-smoke-redact",
+          pattern: "\\bmoo\\b",
+          action: "rewrite_chunk",
+          replacement: "[cow]"
+        }
+      ],
+      auth: { unkeyed_model_access: "public" }
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Could not seed registered model workbench fixture: ${response.status} ${await response.text()}`
+    );
+  }
+}
+
+async function assertRegisteredModelWorkbench() {
+  const target = await createChromeTarget();
+  const cdp = await connectCdp(target.webSocketDebuggerUrl);
+
+  try {
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 1280,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false
+    });
+
+    await cdp.send("Page.navigate", {
+      url: `${appUrl}/policies/tts-retry/diagram?model=browser-smoke-model`
+    });
+    await cdp.waitFor("Page.loadEventFired");
+    await waitForEval(
+      cdp,
+      `document.body && document.body.innerText.includes("Registered model selected")`
+    );
+    await waitForEval(cdp, `!document.documentElement.classList.contains("phx-loading")`);
+    await waitForEval(cdp, `document.body.textContent.includes("browser-smoke-redact")`);
+
+    const result = await evaluate(
+      cdp,
+      `(() => {
+        const text = document.body.innerText;
+        const forbidden = [
+          "Policy run map",
+          "State and turn model",
+          "Receipt Preview",
+          "Selected Node",
+          "Review Findings",
+          "retry arbiter"
+        ].filter((label) => text.includes(label));
+        return {
+          hasRuntime: text.includes("Runtime Visibility"),
+          hasCache: text.includes("History Cache"),
+          forbidden
+        };
+      })()`
+    );
+
+    if (!result.hasRuntime || !result.hasCache || result.forbidden.length > 0) {
+      throw new Error(
+        `registered model workbench rendered stale or missing panels: ${JSON.stringify(result)}`
+      );
+    }
+
+    console.log("ok registered model workbench hides example simulation panels");
+  } finally {
+    cdp.close();
+  }
+}
+
+async function assertNoPageOverflow(viewport, path) {
+  const target = await createChromeTarget();
+  const cdp = await connectCdp(target.webSocketDebuggerUrl);
+
+  try {
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: viewport.width,
+      height: viewport.height,
+      deviceScaleFactor: viewport.scale,
+      mobile: viewport.mobile
+    });
+
+    await cdp.send("Page.navigate", { url: `${appUrl}${path}` });
+    await cdp.waitFor("Page.loadEventFired");
+    await waitForEval(cdp, `document.body && document.body.innerText.length > 20`);
+    await waitForEval(cdp, `!document.documentElement.classList.contains("phx-loading")`);
+
+    const result = await evaluate(
+      cdp,
+      `(() => {
+        const clientWidth = document.documentElement.clientWidth;
+        const scrollWidth = document.documentElement.scrollWidth;
+        return { clientWidth, scrollWidth, overflow: scrollWidth - clientWidth };
+      })()`
+    );
+
+    if (result.overflow > 1) {
+      throw new Error(
+        `${viewport.name} ${path}: page overflow ${result.overflow}px (` +
+          `scrollWidth ${result.scrollWidth}, clientWidth ${result.clientWidth})`
+      );
+    }
+
+    console.log(`ok ${viewport.name} ${path} has no page overflow`);
+  } finally {
+    cdp.close();
+  }
 }
 
 async function runViewportSmoke(viewport) {
@@ -97,35 +248,35 @@ async function runViewportSmoke(viewport) {
     await waitForLiveView(cdp);
 
     await assertClickableControl(cdp, viewport.name, "Step");
-    await clickControl(cdp, "Step", viewport);
+    await clickControl(cdp, "Step");
     await waitForEval(
       cdp,
       `document.querySelector(".player_status span")?.textContent.includes("Step 1 of 5")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Back");
-    await clickControl(cdp, "Back", viewport);
+    await clickControl(cdp, "Back");
     await waitForEval(
       cdp,
       `document.querySelector(".player_status span")?.textContent.includes("Ready: 5")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Step");
-    await clickControl(cdp, "Step", viewport);
+    await clickControl(cdp, "Step");
     await waitForEval(
       cdp,
       `document.querySelector(".player_status span")?.textContent.includes("Step 1 of 5")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Reset");
-    await clickControl(cdp, "Reset", viewport);
+    await clickControl(cdp, "Reset");
     await waitForEval(
       cdp,
       `document.querySelector(".player_status span")?.textContent.includes("Ready: 5")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Play");
-    await clickControl(cdp, "Play", viewport);
+    await clickControl(cdp, "Play");
     await waitForEval(
       cdp,
       `[...document.querySelectorAll(".simulation_player button")].some((button) => button.textContent.trim() === "Pause")`
@@ -137,43 +288,32 @@ async function runViewportSmoke(viewport) {
   }
 }
 
-async function clickControl(cdp, label, viewport) {
+async function clickControl(cdp, label) {
   const point = await evaluate(cdp, controlPointExpression(label));
   if (!point || point.error) {
     throw new Error(point?.error || `Could not find ${label} control`);
   }
 
-  if (viewport.mobile) {
-    await cdp.send("Input.dispatchTouchEvent", {
-      type: "touchStart",
-      touchPoints: [{ x: point.x, y: point.y }]
-    });
-    await cdp.send("Input.dispatchTouchEvent", {
-      type: "touchEnd",
-      touchPoints: []
-    });
-  } else {
-    await cdp.send("Input.dispatchMouseEvent", {
-      type: "mouseMoved",
-      x: point.x,
-      y: point.y,
-      button: "left"
-    });
-    await cdp.send("Input.dispatchMouseEvent", {
-      type: "mousePressed",
-      x: point.x,
-      y: point.y,
-      button: "left",
-      clickCount: 1
-    });
-    await cdp.send("Input.dispatchMouseEvent", {
-      type: "mouseReleased",
-      x: point.x,
-      y: point.y,
-      button: "left",
-      clickCount: 1
-    });
-  }
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: point.x,
+    y: point.y,
+    button: "left"
+  });
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    x: point.x,
+    y: point.y,
+    button: "left",
+    clickCount: 1
+  });
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    x: point.x,
+    y: point.y,
+    button: "left",
+    clickCount: 1
+  });
 }
 
 async function assertClickableControl(cdp, viewportName, label) {

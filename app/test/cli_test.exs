@@ -19,6 +19,7 @@ defmodule Wardwright.CLITest do
     output = collected(collector)
     assert output =~ "Start the Wardwright HTTP service"
     assert output =~ "wardwright serve"
+    assert output =~ "wardwright admin"
     assert output =~ "wardwright tools"
     assert output =~ "WARDWRIGHT_BIND"
   end
@@ -34,6 +35,88 @@ defmodule Wardwright.CLITest do
     assert {:halt, 2} = Wardwright.CLI.run(["not-a-command"], collector)
 
     assert collected(collector) =~ "wardwright serve"
+  end
+
+  test "admin command opens the workbench through the admin helper" do
+    collector = collector()
+
+    assert {:halt, 0} =
+             Wardwright.CLI.run(["admin"], collector, fn path, write_fun ->
+               write_fun.("admin path: #{path}")
+               0
+             end)
+
+    assert collected(collector) =~ "admin path: /policies"
+  end
+
+  test "admin access command opens model access controls" do
+    collector = collector()
+
+    assert {:halt, 0} =
+             Wardwright.CLI.run(["admin", "access"], collector, fn path, write_fun ->
+               write_fun.("admin path: #{path}")
+               0
+             end)
+
+    assert collected(collector) =~ "admin path: /admin/model-api-keys"
+  end
+
+  test "admin helper opens configured port when service is running" do
+    collector = collector()
+    test_pid = self()
+
+    assert 0 =
+             Wardwright.CLI.Admin.open("/policies", collector,
+               bind: "0.0.0.0:8797",
+               running?: fn url ->
+                 send(test_pid, {:admin_running_probe, url})
+                 true
+               end,
+               open_fun: fn url ->
+                 send(test_pid, {:admin_browser_open, url})
+                 :ok
+               end
+             )
+
+    assert_receive {:admin_running_probe, "http://127.0.0.1:8797/policies"}
+    assert_receive {:admin_browser_open, "http://127.0.0.1:8797/policies"}
+    assert collected(collector) =~ "Opened http://127.0.0.1:8797/policies"
+  end
+
+  test "admin helper starts the service before opening when port is not responding" do
+    collector = collector()
+    test_pid = self()
+
+    assert 0 =
+             Wardwright.CLI.Admin.open("/admin/model-api-keys", collector,
+               bind: "127.0.0.1:8798",
+               running?: fn url ->
+                 send(test_pid, {:admin_running_probe, url})
+                 false
+               end,
+               start_fun: fn bind ->
+                 send(test_pid, {:admin_start, bind})
+                 :ok
+               end,
+               wait_fun: fn url ->
+                 send(test_pid, {:admin_wait, url})
+                 true
+               end,
+               open_fun: fn url ->
+                 send(test_pid, {:admin_browser_open, url})
+                 :ok
+               end
+             )
+
+    assert_receive {:admin_running_probe, "http://127.0.0.1:8798/admin/model-api-keys"}
+    assert_receive {:admin_start, "127.0.0.1:8798"}
+    assert_receive {:admin_wait, "http://127.0.0.1:8798/admin/model-api-keys"}
+    assert_receive {:admin_browser_open, "http://127.0.0.1:8798/admin/model-api-keys"}
+
+    output = collected(collector)
+    assert output =~ "Starting Wardwright on http://127.0.0.1:8798"
+    assert output =~ "Wardwright is ready"
+    assert output =~ "Opened http://127.0.0.1:8798/admin/model-api-keys"
   end
 
   test "tools command prints agent-usable MCP and API guidance" do
@@ -81,6 +164,7 @@ defmodule Wardwright.CLITest do
     assert "draft_wardwright_model" in names
     assert "activate_wardwright_model" in names
     assert "record_scenario" in names
+    assert "delete_scenario" in names
     assert "propose_rule_change" in names
     assert "validate_policy_artifact" in names
 

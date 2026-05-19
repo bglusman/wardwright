@@ -47,6 +47,34 @@ defmodule Wardwright.PolicyScenarioStore do
     end)
   end
 
+  def delete(pattern_id, scenario_id) when is_binary(scenario_id) do
+    with :ok <- known_pattern(pattern_id) do
+      result =
+        Agent.get_and_update(__MODULE__, fn %__MODULE__{} = state ->
+          scenario_key = key(pattern_id, scenario_id)
+
+          case Map.fetch(state.scenarios, scenario_key) do
+            {:ok, scenario} ->
+              updated = %__MODULE__{state | scenarios: Map.delete(state.scenarios, scenario_key)}
+
+              case persist(updated) do
+                :ok -> {{:ok, scenario}, updated}
+                {:error, message} -> {{:error, message}, state}
+              end
+
+            :error ->
+              {{:error, "scenario not found"}, state}
+          end
+        end)
+
+      with {:ok, scenario} <- result do
+        publish_deleted(scenario)
+      end
+    end
+  end
+
+  def delete(_pattern_id, _scenario_id), do: {:error, "scenario_id is required"}
+
   def regression_export(pattern_id) do
     with :ok <- known_pattern(pattern_id) do
       scenarios =
@@ -128,6 +156,7 @@ defmodule Wardwright.PolicyScenarioStore do
            {"atomic_rewrite", durable},
            {"receipt_import", true},
            {"regression_export", true},
+           {"delete_scenario", true},
            {"unpinned_retention", true},
            {"scenario_replay", false}
          ])}
@@ -183,6 +212,19 @@ defmodule Wardwright.PolicyScenarioStore do
         {"scenario_id", scenario.id},
         {"source", scenario.source},
         {"pinned", scenario.pinned}
+      ])
+    )
+
+    {:ok, scenario}
+  end
+
+  defp publish_deleted(scenario) do
+    Wardwright.Runtime.Events.publish(
+      Wardwright.Runtime.Events.topic(:simulations),
+      Map.new([
+        {"type", "policy_scenario.deleted"},
+        {"pattern_id", scenario.pattern_id},
+        {"scenario_id", scenario.id}
       ])
     )
 

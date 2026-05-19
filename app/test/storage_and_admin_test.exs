@@ -110,7 +110,7 @@ defmodule Wardwright.StorageAndAdminTest do
     assert body["write_health"] == "ok"
   end
 
-  test "sqlite store persists the active model definition" do
+  test "sqlite store persists a replacement model definition" do
     path = temp_sqlite_path("wardwright-model-config")
     original_path = Application.get_env(:wardwright, :sqlite_store_path)
 
@@ -137,6 +137,32 @@ defmodule Wardwright.StorageAndAdminTest do
     assert loaded["requires_api_key"] == true
     assert loaded["auth"]["unkeyed_model_access"] == "internal"
     assert Wardwright.current_config()["model_id"] == "persisted-unit-model"
+  end
+
+  test "sqlite store persists multiple registered model definitions" do
+    path = temp_sqlite_path("wardwright-model-registry")
+    original_path = Application.get_env(:wardwright, :sqlite_store_path)
+
+    Application.put_env(:wardwright, :sqlite_store_path, path)
+
+    on_exit(fn ->
+      restore_app_env(:sqlite_store_path, original_path)
+      remove_sqlite_store(path)
+    end)
+
+    alpha = unit_policy_config() |> Map.put("model_id", "persisted-alpha")
+    beta = unit_policy_config() |> Map.put("model_id", "persisted-beta")
+
+    assert {:ok, _alpha} = Wardwright.put_config(alpha)
+    assert {:ok, _beta} = Wardwright.put_model_config(beta)
+    :persistent_term.erase({Wardwright, :config})
+    :persistent_term.erase({Wardwright, :configs})
+    :persistent_term.erase({Wardwright, :active_model_id})
+
+    assert {:ok, _loaded} = Wardwright.load_persisted_config()
+
+    assert ["persisted-alpha", "persisted-beta"] ==
+             Wardwright.model_configs() |> Enum.map(& &1["model_id"]) |> Enum.sort()
   end
 
   test "sqlite store persists and deletes model API key hashes" do

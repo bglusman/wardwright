@@ -8,9 +8,10 @@ description: How Wardwright resolves provider API credentials and the security l
 
 Wardwright can call local Ollama targets without credentials and
 OpenAI-compatible targets with bearer-token credentials. In `v0.0.5`, credential
-configuration is intentionally local-operator oriented. It is useful for
-development and homelab-style evaluation, but it is not yet a complete hosted or
-multi-user authentication model.
+configuration is still local-operator oriented, but model calls can now be
+separately protected with Wardwright model API keys. That makes local and
+single-operator remote testing more realistic, but it is not yet a complete
+hosted or multi-user authorization model.
 
 ## Current Credential Sources
 
@@ -101,22 +102,47 @@ different problems.
 
 Fnox protects credential material at rest and keeps raw secrets out of model
 artifacts, logs, recipes, and git. It does not decide who may call a
-Wardwright-hosted Wardwright model. If an untrusted caller can reach
-`/v1/chat/completions`, they may be able to spend or use whatever provider
-credentials Wardwright is configured to use, even though they cannot read the
-secret value directly.
+Wardwright-hosted Wardwright model. Model API keys do that for
+`/v1/chat/completions` when a model artifact sets:
+
+```json
+{
+  "requires_api_key": true,
+  "auth": { "unkeyed_model_access": "public" }
+}
+```
+
+Generate and revoke those keys from `/admin/model-api-keys`, or through the
+protected admin API. Keys are scoped to one Wardwright model id and stored only
+as hashes. A caller can use a valid key to spend or use the provider credentials
+behind that model, but cannot read the raw provider secret.
+
+For composition-only models, set:
+
+```json
+{
+  "requires_api_key": false,
+  "auth": { "unkeyed_model_access": "internal" }
+}
+```
+
+Internal-only models do not appear in public model discovery and cannot be
+called directly without a future explicit composition path. They are useful for
+building model DAGs without exposing every intermediate model to agents.
 
 For `v0.0.5`:
 
-- keep Wardwright bound to `127.0.0.1` unless it is behind a trusted auth
-  boundary;
+- keep Wardwright bound to `127.0.0.1` unless it is behind a trusted network or
+  application auth boundary;
 - set `WARDWRIGHT_ADMIN_TOKEN` before exposing protected admin or authoring
   APIs beyond loopback;
-- do not configure real provider credentials on a Wardwright instance reachable
-  by untrusted users;
-- treat fnox support as local secret lookup, not product authentication.
+- require model API keys on every model that can reach real paid or private
+  provider credentials before exposing `/v1/chat/completions` beyond loopback;
+- keep intermediate composition models internal-only unless direct callers
+  genuinely need them;
+- treat fnox support as local secret lookup, not model-use authorization.
 
-Before Wardwright is suitable for shared or remote use with real provider
-credentials, the project needs an explicit authorization model for who can call
-which Wardwright models, who can configure providers, and how those decisions are
-audited.
+Before Wardwright is suitable for broad shared or hosted use with real provider
+credentials, the project still needs deployment-topology-specific authorization:
+who can call which Wardwright models, who can configure providers, how rate
+limits and quotas are enforced, and how those decisions are audited.

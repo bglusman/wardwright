@@ -8,6 +8,9 @@ defmodule Wardwright.PolicyScenario do
     :source,
     :input_summary,
     :expected_behavior,
+    :model_id,
+    :artifact_hash,
+    :turn,
     :verdict,
     :trace,
     :receipt_preview,
@@ -39,6 +42,9 @@ defmodule Wardwright.PolicyScenario do
       source: string_field(map, "source") || "user",
       input_summary: string_field(map, "input_summary"),
       expected_behavior: string_field(map, "expected_behavior"),
+      model_id: string_field(map, "model_id"),
+      artifact_hash: string_field(map, "artifact_hash"),
+      turn: turn_field(map),
       verdict: verdict(map),
       trace: list_field(map, "trace"),
       receipt_preview: map_field(map, "receipt_preview"),
@@ -63,12 +69,15 @@ defmodule Wardwright.PolicyScenario do
       {"pinned", scenario.pinned},
       {"input_summary", scenario.input_summary},
       {"expected_behavior", scenario.expected_behavior},
+      {"model_id", scenario.model_id},
+      {"artifact_hash", artifact_hash || scenario.artifact_hash},
+      {"source_artifact_hash", scenario.artifact_hash},
+      {"turn", scenario.turn},
       {"verdict", scenario.verdict},
       {"trace", scenario.trace},
       {"receipt_preview", scenario.receipt_preview},
       {"created_at", scenario.created_at},
-      {"updated_at", scenario.updated_at},
-      {"artifact_hash", artifact_hash}
+      {"updated_at", scenario.updated_at}
     ]
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
@@ -147,6 +156,13 @@ defmodule Wardwright.PolicyScenario do
     end
   end
 
+  defp turn_field(map) do
+    case map_field(map, "turn") do
+      turn when turn == %{} -> nil
+      turn -> turn
+    end
+  end
+
   defp receipt_attrs(receipt, pattern_id, attrs, receipt_id) do
     final = map_field(receipt, "final")
     stream_policy = map_field(final, "stream_policy")
@@ -160,6 +176,9 @@ defmodule Wardwright.PolicyScenario do
       {"input_summary", string_field(attrs, "input_summary") || receipt_summary(receipt, status)},
       {"expected_behavior",
        string_field(attrs, "expected_behavior") || "Preserve recorded final status #{status}."},
+      {"model_id", string_field(attrs, "model_id") || string_field(receipt, "model")},
+      {"artifact_hash", string_field(attrs, "artifact_hash")},
+      {"turn", map_field(attrs, "turn")},
       {"verdict", string_field(attrs, "verdict") || "inconclusive"},
       {"trace", receipt_trace(pattern_id, receipt_id, stream_policy)},
       {"receipt_preview", receipt_preview(receipt, stream_policy, status)}

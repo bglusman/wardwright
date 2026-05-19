@@ -72,9 +72,9 @@ defmodule WardwrightWeb.PolicyAuthoringTools do
         "activate_wardwright_model",
         "POST",
         "/v1/policy-authoring/wardwright-models",
-        "Validate and activate a Wardwright model artifact as the current local model so agents can call it through the OpenAI-compatible endpoint.",
+        "Validate and activate a Wardwright model artifact as a registered local model so agents can call it through the OpenAI-compatible endpoint.",
         "Use only after the user has reviewed the draft, validation output, and relevant simulations.",
-        "Write-capable. Requires protected local access and changes the current local model.",
+        "Write-capable. Requires protected local access and registers or updates one local model without replacing other active models.",
         "/agent-authoring.html#activate-only-after-review"
       ),
       tool(
@@ -90,9 +90,18 @@ defmodule WardwrightWeb.PolicyAuthoringTools do
         "record_scenario",
         "POST",
         "/v1/policy-authoring/scenarios/{pattern_id}",
-        "Persist a user, assistant, fixture, or live-replay scenario so simulations can use reviewed scenario records instead of demo fixtures.",
-        "Use when the user identifies a representative case that should remain visible in the simulator.",
-        "Write-capable. Store redacted scenario summaries unless the user explicitly wants raw text retained.",
+        "Persist a user/chat response pair, fixture, or live-replay scenario so simulations can use reviewed scenario records instead of demo fixtures.",
+        "Use when the user identifies a representative case that should remain visible in the simulator or regression pack.",
+        "Write-capable. Prefer redacted raw turns unless the user explicitly wants sensitive text retained; include model_id and artifact_hash when known.",
+        "/agent-authoring.html#record-scenarios-as-regression-evidence"
+      ),
+      tool(
+        "delete_scenario",
+        "DELETE",
+        "/v1/policy-authoring/scenarios/{pattern_id}/{scenario_id}",
+        "Remove one persisted simulator test case from the workbench scenario library.",
+        "Use when a user or authoring agent replaces a stale canned turn with a better reviewed case.",
+        "Write-capable. Deletes one scenario record; pinned records are not protected from explicit deletion.",
         "/agent-authoring.html#record-scenarios-as-regression-evidence"
       ),
       tool(

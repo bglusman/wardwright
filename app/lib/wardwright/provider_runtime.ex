@@ -79,9 +79,10 @@ defmodule Wardwright.ProviderRuntime do
     observed = Map.get(state, :stats, %{})
 
     configured =
-      Wardwright.current_config()
-      |> Map.get(@targets_key, [])
+      Wardwright.model_configs()
+      |> Enum.flat_map(&Map.get(&1, @targets_key, []))
       |> Enum.map(&provider_status(&1, observed))
+      |> Enum.uniq_by(&{Map.get(&1, @provider_id_key), Map.get(&1, @model_key)})
 
     observed_only =
       observed

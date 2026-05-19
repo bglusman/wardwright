@@ -6,14 +6,15 @@ description: How external agents should inspect, draft, validate, simulate, and 
 
 # Agent Authoring Guide
 
-Wardwright does not yet ship a first-party in-page authoring agent. It does
-ship a local MCP/API surface so an operator can point their preferred agent at a
-running Wardwright service and keep the deterministic policy artifact as the
-reviewed source of truth.
+Wardwright ships a local MCP/API surface so an operator can point their
+preferred agent at a running Wardwright service and keep the deterministic
+policy artifact as the reviewed source of truth. A separate Jido-backed
+in-page assistant spike is being evaluated against the same tool registry; it is
+convenience UI, not a replacement for review, validation, and activation gates.
 
 The safe workflow is:
 
-1. Inspect the current model and projection.
+1. Inspect the target model and projection.
 2. Simulate representative scenarios.
 3. Draft a new model or propose a narrow rule change.
 4. Validate the artifact and explain every error or review gap.
@@ -51,9 +52,66 @@ tests. Fnox is a secret lookup path, not Wardwright authentication: do not assum
 a Wardwright service with encrypted provider keys is safe for untrusted callers.
 See [Provider Credentials](provider-credentials.html).
 
+## Optional In-Page Assistant Spike
+
+The local workbench may expose an experimental **Authoring Agent** panel when it
+is enabled. It uses `jido_ai` through a small `WardwrightWeb.AuthoringAgent`
+boundary and prompts the model with the same authoring tool names used by
+MCP/API clients.
+
+To try it locally with an OpenAI-compatible backend:
+
+```bash
+WARDWRIGHT_AUTHORING_AGENT_ENABLED=1
+WARDWRIGHT_AUTHORING_AGENT_ROUTE=direct
+WARDWRIGHT_AUTHORING_AGENT_BASE_URL=https://opencode.ai/zen/go/v1
+WARDWRIGHT_AUTHORING_AGENT_MODEL=qwen3.6-plus
+WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE=/path/to/provider-key
+WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=16384
+WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000
+```
+
+To dogfood Wardwright itself, route the in-page assistant through a specific
+local Wardwright model instead of a direct provider endpoint. This mode is
+intentionally stricter than direct-provider mode: the selected local Wardwright
+model must include a `structured_output.schemas.authoring_tool_plan_v1` schema
+so the assistant's `{answer, tool_calls, next_steps}` plan is validated by
+Wardwright before any draft/read tool executes.
+
+```sh
+WARDWRIGHT_AUTHORING_AGENT_ENABLED=1
+WARDWRIGHT_AUTHORING_AGENT_ROUTE=wardwright
+WARDWRIGHT_AUTHORING_AGENT_MODEL=local-fast-draft
+WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY_FILE=/path/to/local/model-key
+WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=16384
+WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000
+```
+
+That makes authoring-agent prompts visible to the same routing, receipts, and
+runtime activity surfaces as other local model calls, and it gives Wardwright a
+dogfood path for enforcing correct authoring tool-call JSON. Omit the model key
+only when the selected Wardwright model allows unkeyed access. If the selected
+model is callable but does not expose the `authoring_tool_plan_v1` structured
+schema, the assistant remains unconfigured rather than falling back to prompt
+discipline.
+
+OpenCode Go usage is BYOK when the account/key is configured that way; the API
+reports that in response usage metadata. The current OpenCode Go chat endpoint
+does not require an additional Wardwright request-body flag. Reasoning-heavy
+coding models such as Kimi K2.6 can spend many tokens before final content, so
+use a larger token budget and timeout or choose a faster final-answer model such
+as Qwen for interactive authoring.
+
+The first spike may execute read-only and draft-only tools from chat so it can
+inspect projections, simulate scenarios, validate artifacts, and prepare
+reviewable model drafts. Durable writes still need explicit review boundaries:
+the assistant should not activate a model, delete a saved case, or persist a
+snippet unless the user approved that operation. It must not claim a model is
+active unless the activation tool reports success.
+
 ## Inspect Before You Edit
 
-Use `explain_projection` to understand the current model. A projection is the
+Use `explain_projection` to understand the target model. A projection is the
 review shape Wardwright can explain: route choices, state transitions, policy
 phases, effects, conflicts, and opaque regions.
 
@@ -80,6 +138,27 @@ pattern. Simulations should answer practical questions:
 Add or import scenarios when a behavior is important enough to preserve.
 Scenario evidence should be small, reviewable, and redacted unless the user
 explicitly asks to retain raw content.
+
+## Record Scenarios As Regression Evidence
+
+Use `record_scenario` when a simulated turn should become reusable evidence. A
+scenario should include:
+
+- `title` and `expected_behavior` in user-facing language
+- `model_id` and `artifact_hash` when known
+- a `turn` with raw user input, raw model output, optional retry-attempt outputs,
+  and any history facts the policy reads
+- a trace or receipt preview that explains why the saved case matters
+
+Use `delete_scenario` to remove a stale local case, `import_receipt_scenario` to
+turn a real receipt into pinned replay evidence, `export_regression_pack` to
+share or review pinned scenarios, and `apply_scenario_retention` to prune old
+unpinned exploratory cases.
+
+The workbench can save the same shape directly from the editable simulator. That
+is the preferred path when a human is actively reviewing the example because it
+keeps the visible user/model pair, history context, selected simulation target,
+and trace together.
 
 ## Draft A Wardwright Model
 
@@ -195,7 +274,7 @@ harder boundary such as WASM or an isolated sidecar.
 ## Activate Only After Review
 
 Use `activate_wardwright_model` only after explicit user approval. Activation
-changes the current local model available through:
+registers or updates one local model available through:
 
 ```text
 POST /v1/chat/completions
@@ -203,7 +282,8 @@ GET /v1/models
 ```
 
 The activated model can be called with either `model-id` or
-`wardwright/model-id`.
+`wardwright/model-id`. Other registered models remain callable unless they are
+later removed or made internal-only.
 
 ## Mental Model
 

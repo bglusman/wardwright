@@ -362,7 +362,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   test "model API key management page creates and revokes keys" do
     {:ok, view, html} = live(build_conn(), "/admin/model-api-keys")
 
-    assert html =~ "Model API Keys"
+    assert html =~ "Model Access"
     assert html =~ "coding-balanced"
     assert html =~ "Access Policy"
     assert html =~ "href=\"/policies\""
@@ -418,6 +418,40 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert Wardwright.unkeyed_model_access() == "public"
   end
 
+  test "model API key management page edits only the selected model" do
+    alpha =
+      Wardwright.default_config()
+      |> Map.put("model_id", "alpha-access")
+
+    beta =
+      Wardwright.default_config()
+      |> Map.put("model_id", "beta-access")
+
+    assert {:ok, _alpha} = Wardwright.put_config(alpha)
+    assert {:ok, _beta} = Wardwright.put_model_config(beta)
+
+    {:ok, view, html} = live(build_conn(), "/admin/model-api-keys?model=alpha-access")
+
+    assert html =~ "alpha-access"
+    assert html =~ "beta-access"
+
+    html =
+      view
+      |> form("#model-access-form", %{
+        "access" => %{"requires_api_key" => "true", "unkeyed_model_access" => "internal"}
+      })
+      |> render_submit()
+
+    assert html =~ "Model access saved."
+    assert {:ok, alpha_config} = Wardwright.model_config("alpha-access")
+    assert {:ok, beta_config} = Wardwright.model_config("beta-access")
+
+    assert Wardwright.model_requires_api_key?(alpha_config)
+    assert Wardwright.unkeyed_model_access(alpha_config) == "internal"
+    refute Wardwright.model_requires_api_key?(beta_config)
+    assert Wardwright.unkeyed_model_access(beta_config) == "public"
+  end
+
   test "LiveView client assets are served without an npm build step" do
     conn = get(build_conn(), "/assets/wardwright_live.js")
     assert response(conn, 200) =~ "new window.LiveView.LiveSocket"
@@ -437,12 +471,22 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Use your agent"
     assert html =~ "/mcp"
     assert html =~ "wardwright tools"
+    assert html =~ "wardwright admin"
+    assert html =~ "Registered model workbench"
+    assert html =~ "Selecting a model leaves example preview"
     assert html =~ "Model Access"
     assert html =~ "href=\"/admin/model-api-keys\""
+    assert html =~ "Manage access"
     assert html =~ "/v1/chat/completions"
     assert html =~ "coding-balanced"
     assert html =~ "wardwright/coding-balanced"
     assert html =~ Wardwright.local_model()
+    assert html =~ "Model Authoring Assistant"
+    assert html =~ "setup needed"
+    assert html =~ "qwen3.6-plus"
+    assert html =~ "Tool access"
+    assert html =~ "draft tools enabled"
+    assert html =~ "Ask agent"
     assert html =~ "Policy Simulator"
     assert html =~ "Policy run map"
     assert html =~ "State and turn model"
@@ -471,6 +515,255 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert connected_html =~ "retry selected"
     assert connected_html =~ "retry stream released"
     assert connected_html =~ "receipt preview"
+  end
+
+  test "LiveView workbench model selector drives projection and simulator config" do
+    alpha =
+      Wardwright.default_config()
+      |> Map.put("model_id", "alpha-workbench")
+
+    beta =
+      Wardwright.default_config()
+      |> Map.put("model_id", "beta-workbench")
+      |> Map.put("description", "Beta workbench catches mooing output before release.")
+      |> Map.update!("targets", fn [first | rest] ->
+        [Map.put(first, "provider_headers", %{"X-Api-Key" => "visible-secret"}) | rest]
+      end)
+      |> Map.put("stream_rules", [
+        %{"id" => "beta-moo", "pattern" => "\\bmoo+\\b", "action" => "rewrite_chunk"}
+      ])
+
+    assert {:ok, _alpha} = Wardwright.put_config(alpha)
+    assert {:ok, _beta} = Wardwright.put_model_config(beta)
+
+    beta_hash =
+      Wardwright.PolicyProjection.projection("tts-retry", beta)["artifact"]["artifact_hash"]
+
+    {:ok, view, html} = live(build_conn(), "/policies/tts-retry/diagram?model=beta-workbench")
+
+    assert html =~ "Registered model workbench:"
+    assert html =~ "<h1>beta-workbench</h1>"
+    assert html =~ "Beta workbench catches mooing output before release."
+    assert html =~ "<strong>beta-workbench</strong>"
+    assert html =~ beta_hash
+    assert html =~ "Selected Model Configuration"
+    assert html =~ "Show redacted model configuration"
+    assert html =~ "Registered model selected"
+    assert html =~ "state machines, stream traces, and receipt previews are hidden here"
+    assert html =~ "beta-moo"
+    assert html =~ "\\\\bmoo+\\\\b"
+    assert html =~ "X-Api-Key"
+    assert html =~ "[redacted]"
+    refute html =~ "visible-secret"
+    assert html =~ "Runtime Visibility"
+    assert html =~ "History Cache"
+    assert html =~ "alpha-workbench"
+    assert html =~ "beta-workbench"
+    refute html =~ "Policy run map"
+    refute html =~ "State and turn model"
+    refute html =~ "Receipt Preview"
+    refute html =~ "Selected Node"
+    refute html =~ "Review Findings"
+    refute html =~ "retry arbiter"
+    refute html =~ "Example story"
+    refute html =~ "A coding assistant keeps recommending an old client constructor"
+    refute html =~ "Choose a registered model"
+
+    updated =
+      view
+      |> element("form.workbench_model_selector")
+      |> render_change(%{"workbench_model" => "alpha-workbench"})
+
+    assert updated =~ "Registered model workbench:"
+    assert updated =~ "<h1>alpha-workbench</h1>"
+    assert updated =~ "<strong>alpha-workbench</strong>"
+    assert updated =~ "Registered model selected"
+    assert updated =~ "state machines, stream traces, and receipt previews are hidden here"
+    assert updated =~ "Runtime Visibility"
+    assert updated =~ "History Cache"
+    refute updated =~ "Policy run map"
+    refute updated =~ "State and turn model"
+    refute updated =~ "Receipt Preview"
+    refute updated =~ "Selected Node"
+    refute updated =~ "Review Findings"
+    refute updated =~ "Example story"
+
+    assert updated =~
+             "/policies/stream-rewrite-state/diagram/recipe/credential-redaction-ladder"
+
+    refute updated =~
+             "/policies/stream-rewrite-state/diagram/recipe/credential-redaction-ladder?model=alpha-workbench"
+  end
+
+  test "LiveView can save the edited user and model turn as a reusable scenario" do
+    {:ok, view, _html} = live(build_conn(), "/policies/tts-retry/diagram")
+
+    view
+    |> element("#turn-editor-form")
+    |> render_change(%{
+      "simulation" => %{
+        "user_input" => "Please mention the old client constructor.",
+        "model_response" => "The migration used Old\nClient( in a draft.",
+        "response_attempts" => %{
+          "2" => "Use the current client adapter in the migration note."
+        }
+      }
+    })
+
+    html =
+      view
+      |> element("form[phx-submit='save-simulation-scenario']")
+      |> render_submit(%{
+        "scenario" => %{"title" => "Reviewed old-client split", "pinned" => "true"}
+      })
+
+    assert html =~ "Saved Reviewed old-client split."
+    assert html =~ "Saved test cases"
+    assert html =~ "Reviewed old-client split"
+
+    assert [
+             scenario
+           ] = Wardwright.PolicyScenarioStore.list("tts-retry")
+
+    assert scenario.title == "Reviewed old-client split"
+    assert scenario.pinned
+    assert scenario.model_id == "coding-balanced"
+    assert scenario.artifact_hash =~ "sha256:"
+    assert scenario.turn["user_input"] == "Please mention the old client constructor."
+    assert scenario.turn["model_response"] =~ "Old\nClient"
+
+    assert Enum.any?(
+             scenario.turn["response_attempts"],
+             &(&1["index"] == 2 and &1["model_output"] =~ "current client adapter")
+           )
+
+    html =
+      view
+      |> element("form[phx-submit='select-simulation-input']")
+      |> render_submit(%{"simulation_input" => "saved:#{scenario.id}"})
+
+    assert html =~ "Delete selected"
+
+    html =
+      view
+      |> element("button[phx-click='delete-simulation-scenario']")
+      |> render_click()
+
+    assert html =~ "Deleted Reviewed old-client split."
+    assert Wardwright.PolicyScenarioStore.list("tts-retry") == []
+  end
+
+  test "LiveView authoring agent panel submits to the local fallback without credentials" do
+    {:ok, view, html} = live(build_conn(), "/policies/tts-retry/diagram")
+
+    assert html =~ "Model Authoring Assistant"
+
+    response =
+      render_submit(view, "authoring-agent-submit", %{
+        "authoring_agent" => %{"message" => "Help me tighten this retry model."}
+      })
+
+    assert response =~ "You"
+    assert response =~ "Wardwright assistant"
+    assert response =~ "Help me tighten this retry model."
+    assert response =~ "Working..."
+
+    completed =
+      eventually_render(
+        view,
+        "Wardwright&#39;s authoring assistant is installed but not configured"
+      )
+
+    assert completed =~ "Wardwright&#39;s authoring assistant is installed but not configured"
+    assert completed =~ "simulate_policy"
+  end
+
+  test "LiveView authoring agent keeps model drafts reviewable before activation" do
+    original_client = Application.get_env(:wardwright, :authoring_agent_client, :unset)
+    original_enabled = System.get_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED")
+    original_api_key = System.get_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY")
+    original_route = System.get_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE")
+
+    Application.put_env(:wardwright, :authoring_agent_client, __MODULE__.DraftingAuthoringClient)
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
+    System.delete_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE")
+
+    on_exit(fn ->
+      case original_client do
+        :unset -> Application.delete_env(:wardwright, :authoring_agent_client)
+        client -> Application.put_env(:wardwright, :authoring_agent_client, client)
+      end
+
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", original_enabled)
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", original_api_key)
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", original_route)
+    end)
+
+    {:ok, view, _html} = live(build_conn(), "/policies/tts-retry/diagram")
+
+    render_submit(view, "authoring-agent-submit", %{
+      "authoring_agent" => %{"message" => "Make a cow model."}
+    })
+
+    completed = eventually_render(view, "Drafts Awaiting Review", 60)
+
+    assert completed =~ "cow-lover-mode"
+    assert completed =~ "not active"
+    assert completed =~ "Activate draft"
+    assert completed =~ "Review and activate the draft from the workbench"
+    assert {:error, _message} = Wardwright.model_config("cow-lover-mode")
+
+    activated =
+      view
+      |> element("button", "Activate draft")
+      |> render_click()
+
+    assert activated =~ "Activated cow-lover-mode"
+    assert {:ok, config} = Wardwright.model_config("cow-lover-mode")
+    assert Wardwright.model_id(config) == "cow-lover-mode"
+    assert [%{"id" => "cow-art", "action" => "rewrite_chunk"}] = config["stream_rules"]
+  end
+
+  test "LiveView authoring agent reports malformed tool plans without leaking raw JSON" do
+    original_client = Application.get_env(:wardwright, :authoring_agent_client, :unset)
+    original_enabled = System.get_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED")
+    original_api_key = System.get_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY")
+    original_route = System.get_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE")
+
+    Application.put_env(
+      :wardwright,
+      :authoring_agent_client,
+      __MODULE__.MalformedToolPlanAuthoringClient
+    )
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
+    System.delete_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE")
+
+    on_exit(fn ->
+      case original_client do
+        :unset -> Application.delete_env(:wardwright, :authoring_agent_client)
+        client -> Application.put_env(:wardwright, :authoring_agent_client, client)
+      end
+
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", original_enabled)
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", original_api_key)
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", original_route)
+    end)
+
+    {:ok, view, _html} = live(build_conn(), "/policies/tts-retry/diagram")
+
+    render_submit(view, "authoring-agent-submit", %{
+      "authoring_agent" => %{"message" => "Make a cow model."}
+    })
+
+    completed = eventually_render(view, "could not parse it as valid JSON", 60)
+
+    assert completed =~ "No tool was executed"
+    refute completed =~ "\"tool_calls\""
+    refute completed =~ "\"arguments\""
+    refute completed =~ "Drafts Awaiting Review"
   end
 
   test "LiveView diagram simulation can step through matching rules and state changes" do
@@ -587,7 +880,9 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     {:ok, _view, html} = live(build_conn(), "/policies/stream-rewrite-state/diagram/step/3")
 
     assert html =~ "Regex rewrite and state transition"
-    assert html =~ "Example set"
+    assert html =~ "Example catalog"
+    assert html =~ "Example scenarios"
+    assert html =~ "Examples are read-only previews."
     assert html =~ "Project examples"
     assert html =~ "wardwright.dev/recipes"
     assert html =~ "account redactor"
@@ -820,14 +1115,13 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Workspace tool policy"
     assert html =~ "1 examples reference unsupported policy patterns for this build."
     refute html =~ "Unsupported future policy"
-    assert html =~ "Load examples"
     assert html =~ "Tool call governance"
     assert html =~ "tool receipt context"
 
     workspace =
       view
-      |> element("form[phx-submit='select-recipe-source']")
-      |> render_submit(%{"recipe_source" => "built_in"})
+      |> element("form.recipe_source")
+      |> render_change(%{"recipe_source" => "built_in"})
 
     assert workspace =~ "Project examples"
     assert workspace =~ workspace_dir
@@ -891,6 +1185,8 @@ defmodule Wardwright.PolicyProjectionLiveTest do
       live(build_conn(), "/policies/route-privacy/diagram/recipe/context-window-dispatcher")
 
     assert active_recipe_link?(direct_html, "context-window-dispatcher")
+    assert direct_html =~ "Example preview:"
+    assert direct_html =~ "Choose a registered model"
   end
 
   test "LiveView recipe selection changes ambiguous-success scenarios" do
@@ -1136,4 +1432,62 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   end
 
   defp basic_auth(username, password), do: "Basic " <> Base.encode64("#{username}:#{password}")
+
+  defp restore_env(key, nil), do: System.delete_env(key)
+  defp restore_env(key, value), do: System.put_env(key, value)
+
+  defp eventually_render(view, expected, attempts \\ 20)
+
+  defp eventually_render(view, expected, attempts) when attempts > 0 do
+    html = render(view)
+
+    if html =~ expected do
+      html
+    else
+      Process.sleep(10)
+      eventually_render(view, expected, attempts - 1)
+    end
+  end
+
+  defp eventually_render(view, _expected, 0), do: render(view)
+
+  defmodule DraftingAuthoringClient do
+    def generate_text(_prompt, _opts) do
+      {:ok,
+       Jason.encode!(%{
+         "answer" => "Drafted a cow-focused model.",
+         "tool_calls" => [
+           %{
+             "name" => "draft_wardwright_model",
+             "arguments" => %{
+               "model_id" => "cow-lover-mode",
+               "version" => "draft-cow",
+               "description" => "Responds normally except when the user sends mooing text.",
+               "targets" => [%{"model" => "ollama/gemma4:e4b", "context_window" => 8192}],
+               "route" => %{
+                 "type" => "dispatcher",
+                 "id" => "dispatcher.cow",
+                 "models" => ["ollama/gemma4:e4b"]
+               },
+               "stream_rules" => [
+                 %{
+                   "id" => "cow-art",
+                   "phase" => "response.streaming",
+                   "pattern" => "\\bmoo+\\b",
+                   "action" => "rewrite_chunk",
+                   "replacement" => "moo\n^__^\n(oo)\\\\_______"
+                 }
+               ]
+             }
+           }
+         ]
+       })}
+    end
+  end
+
+  defmodule MalformedToolPlanAuthoringClient do
+    def generate_text(_prompt, _opts) do
+      {:ok, ~s({"answer":"drafting","tool_calls":[{"name":"draft_wardwright_model","arguments":)}
+    end
+  end
 end

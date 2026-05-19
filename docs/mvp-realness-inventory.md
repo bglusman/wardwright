@@ -61,10 +61,11 @@ a clear error that names the missing capability.
 - History-aware policy cache behavior is backed by runtime storage and tests,
   not only projection fixtures.
 - The policy-authoring API has protected HTTP endpoints for tool discovery,
-  projections, simulations, validation, and persisted authoring scenarios.
-  Scenario writes are minimal but real records consumed by simulations instead
-  of hard-coded UI-only state. The store is memory-backed by default and can be
-  configured to persist records to a local JSON file.
+  projections, simulations, validation, local model drafting/activation, Dune
+  snippet management, and persisted authoring scenarios. Scenario writes are
+  minimal but real records consumed by simulations instead of hard-coded UI-only
+  state. The store is memory-backed by default and can be configured to persist
+  records to a local JSON file.
 - Pinned authoring scenarios can be exported as a versioned regression pack, and
   retention can prune oldest unpinned scenario records without deleting pinned
   regression evidence.
@@ -80,20 +81,21 @@ a clear error that names the missing capability.
 - The state-machine model is still embedded in projection code. It should move
   toward artifact-declared states/transitions or a compiler pass that emits a
   state projection from policy primitives and sandbox regions.
-- Assistant authoring is a deterministic boundary only. `validate_policy_artifact`
-  now executes a conservative structural/capability validation pass through HTTP
-  and MCP-shaped tools, while `propose_rule_change` remains an advertised future
-  draft-only tool.
+- Assistant authoring is still experimental. The in-page assistant can inspect,
+  simulate, validate, draft, and propose through the same tool registry, but
+  durable writes still need explicit review boundaries and activation must be
+  confirmed by tool output.
 - Tool discovery is available over protected HTTP, and a first Hermes-backed MCP
-  server is mounted at `/mcp` for read-only projection, simulation, and artifact
-  validation tools. Write tools are still HTTP-only until the MCP auth/review
-  boundary is explicit.
+  server is mounted at `/mcp` for projection, simulation, Dune snippet,
+  draft/activate/propose, and artifact validation tools. Scenario write/import/
+  export/retention tools remain HTTP-only until the MCP auth/review boundary is
+  explicit.
 - Tool-context normalization is receipt/projection-only. It intentionally stops
   short of selector enforcement, tool-scoped policy bundles, or trusted
   cross-session tool counters until the tool-policy contract settles.
-- The policy workbench is mostly static projection plus live runtime/cache
-  events. It can consume persisted scenario records, but does not yet execute
-  user-authored scenarios or show artifact diffs.
+- The policy workbench now runs edited turns and saved scenario/test-case records
+  through the deterministic simulator for the selected registered model. It does
+  not yet execute live-provider replay from those cases or show artifact diffs.
 - Canned providers remain first-class in tests and local configs. That is useful
   for deterministic coverage, but remote MVP needs a clear way to distinguish
   demo targets from production targets in UI and API responses.

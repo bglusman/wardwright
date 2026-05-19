@@ -16,33 +16,54 @@ defmodule Wardwright.SQLiteStore do
   end
 
   def load_active_model do
-    with {:ok, result} <-
-           with_conn(fn conn ->
-             query_one(conn, """
-             SELECT config_json
-             FROM wardwright_models
-             WHERE active = 1
-             ORDER BY updated_at DESC
-             LIMIT 1
-             """)
-           end),
-         {:row, [config_json]} <- result,
-         {:ok, config} <- Jason.decode(config_json) do
-      {:ok, Wardwright.normalize_config(config)}
-    else
-      :done -> :error
-      {:ok, :done} -> :error
+    case list_active_models() do
+      {:ok, [config | _]} -> {:ok, config}
       _ -> :error
     end
   end
 
-  def save_model_config(config) when is_map(config) do
+  def list_active_models do
+    with {:ok, result} <-
+           with_conn(fn conn ->
+             query_all(
+               conn,
+               """
+               SELECT config_json
+               FROM wardwright_models
+               WHERE active = 1
+               ORDER BY model_id ASC
+               """,
+               []
+             )
+           end),
+         configs when is_list(configs) <- result do
+      {:ok,
+       configs
+       |> Enum.flat_map(fn
+         [config_json] ->
+           case Jason.decode(config_json) do
+             {:ok, config} -> [Wardwright.normalize_config(config)]
+             _ -> []
+           end
+
+         _ ->
+           []
+       end)}
+    else
+      _ -> {:ok, []}
+    end
+  end
+
+  def save_model_config(config, opts \\ []) when is_map(config) do
     config = Wardwright.normalize_config(config)
     now = DateTime.utc_now() |> DateTime.to_iso8601()
+    replace_active? = Keyword.get(opts, :replace_active, false)
 
     with_conn(fn conn ->
       transaction!(conn, fn ->
-        execute!(conn, "UPDATE wardwright_models SET active = 0")
+        if replace_active? do
+          execute!(conn, "UPDATE wardwright_models SET active = 0")
+        end
 
         exec!(
           conn,

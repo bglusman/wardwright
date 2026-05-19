@@ -3,6 +3,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   use Phoenix.LiveView
   alias Phoenix.LiveView.JS
+  require Logger
 
   @modes ["diagram", "phase_map", "state_machine", "effect_matrix", "trace_overlay"]
 
@@ -21,19 +22,33 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   def handle_params(params, uri, socket) do
     socket = assign_projection(socket, params, uri)
 
-    if unsupported_pattern?(Map.get(params, "pattern")) do
-      {:noreply,
-       push_patch(socket,
-         to:
-           path(
-             socket.assigns.selected_pattern_id,
-             socket.assigns.mode,
-             socket.assigns.selected_recipe_source_id,
-             socket.assigns.selected_recipe_id
-           )
-       )}
-    else
-      {:noreply, socket}
+    cond do
+      unsupported_pattern?(Map.get(params, "pattern")) ->
+        {:noreply,
+         push_patch(socket,
+           to:
+             path(
+               socket.assigns.selected_pattern_id,
+               socket.assigns.mode,
+               socket.assigns.selected_recipe_source_id,
+               socket.assigns.selected_recipe_id
+             )
+         )}
+
+      Map.get(params, "recipe") not in [nil, ""] and Map.get(params, "model") not in [nil, ""] ->
+        {:noreply,
+         push_patch(socket,
+           to:
+             path(
+               socket.assigns.selected_pattern_id,
+               socket.assigns.mode,
+               socket.assigns.selected_recipe_source_id,
+               socket.assigns.selected_recipe_id
+             )
+         )}
+
+      true ->
+        {:noreply, socket}
     end
   end
 
@@ -41,11 +56,27 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     pattern_id = normalize_pattern(Map.get(params, "pattern"))
     mode = normalize_mode(Map.get(params, "mode"))
     recipe_source_id = normalize_recipe_source(Map.get(params, "source"))
+    model_workbench? = Map.get(params, "model") not in [nil, ""]
+    available_models = Wardwright.model_summaries()
+    selected_model_config = selected_workbench_model_config(Map.get(params, "model"))
+    selected_model_id = Wardwright.model_id(selected_model_config)
     recipe_catalog = recipe_catalog(recipe_source_id)
-    selected_recipe = selected_recipe(recipe_catalog, pattern_id, Map.get(params, "recipe"))
+    explicit_recipe? = not model_workbench?
+
+    selected_recipe =
+      if model_workbench? do
+        %{}
+      else
+        selected_recipe(recipe_catalog, pattern_id, Map.get(params, "recipe"))
+      end
+
     selected_recipe_id = selected_recipe["id"] || ""
-    projection = Wardwright.PolicyProjection.projection(pattern_id)
-    simulations = Wardwright.PolicyProjection.simulations(pattern_id)
+    projection = Wardwright.PolicyProjection.projection(pattern_id, selected_model_config)
+    simulations = Wardwright.PolicyProjection.simulations(pattern_id, selected_model_config)
+    origin = access_origin(uri)
+
+    authoring_context =
+      authoring_agent_context(projection, pattern_id, selected_recipe_id, origin)
 
     simulation_inputs =
       Wardwright.PolicyProjection.simulation_inputs(pattern_id, selected_recipe_id)
@@ -54,6 +85,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     simulation_user_input = simulation_field(selected_simulation_input, "user_input")
     simulation_model_response = simulation_field(selected_simulation_input, "model_response")
     simulation_history_context = simulation_history_context(selected_simulation_input)
+    simulation_response_attempts = simulation_response_attempts(selected_simulation_input)
 
     selected_simulation =
       selected_simulation(
@@ -62,8 +94,13 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         simulations,
         simulation_user_input,
         simulation_model_response,
-        simulation_history_context
+        simulation_history_context,
+        simulation_response_attempts,
+        selected_model_config
       )
+
+    simulation_response_attempts =
+      simulation_response_attempts(selected_simulation_input, selected_simulation)
 
     simulation_boundary =
       simulation_boundary(selected_simulation, simulation_user_input, simulation_model_response)
@@ -75,10 +112,16 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     |> assign(:page_title, "Policy Workbench")
     |> assign(:modes, @modes)
     |> assign(:recipe_sources, recipe_sources())
+    |> assign(:available_models, available_models)
+    |> assign(:model_workbench?, model_workbench?)
+    |> assign(:selected_model_id, selected_model_id)
+    |> assign(:selected_model_config, selected_model_config)
+    |> assign(:selected_model_config_json, selected_model_config_json(selected_model_config))
     |> assign(:selected_recipe_source_id, recipe_source_id)
     |> assign(:recipe_catalog, recipe_catalog)
     |> assign(:patterns, recipe_catalog["recipes"])
     |> assign(:recipe_groups, recipe_groups(recipe_catalog["recipes"], selected_recipe_id))
+    |> assign(:explicit_recipe?, explicit_recipe?)
     |> assign(:selected_recipe, selected_recipe)
     |> assign(:selected_recipe_id, selected_recipe_id)
     |> assign(:selected_pattern, Wardwright.PolicyProjection.pattern(pattern_id))
@@ -90,10 +133,12 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     |> assign(:selected_simulation_input_id, simulation_field(selected_simulation_input, "id"))
     |> assign(:simulation_user_input, simulation_user_input)
     |> assign(:simulation_model_response, simulation_model_response)
+    |> assign(:simulation_response_attempts, simulation_response_attempts)
     |> assign(:simulation_history_context, simulation_history_context)
     |> assign(:simulation_boundary, simulation_boundary)
     |> assign(:projection_stats, projection_stats(projection, simulations))
-    |> assign(:model_access, Wardwright.model_access(access_origin(uri)))
+    |> assign(:access_origin, origin)
+    |> assign(:model_access, Wardwright.model_access(origin))
     |> assign(:selected_simulation, selected_simulation)
     |> assign(:selected_node, selected_node)
     |> assign(:simulation_playing, false)
@@ -103,6 +148,14 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     |> assign_new(:runtime_events, fn -> [] end)
     |> assign_new(:policy_cache_status, fn -> Wardwright.PolicyCache.status() end)
     |> assign_new(:policy_cache_events, fn -> Wardwright.PolicyCache.recent(%{}, 8) end)
+    |> assign_new(:authoring_agent_messages, fn -> [] end)
+    |> assign_new(:authoring_agent_drafts, fn -> [] end)
+    |> assign(:authoring_agent_status, WardwrightWeb.AuthoringAgent.status(authoring_context))
+    |> assign_new(:authoring_agent_input, fn -> "" end)
+    |> assign_new(:authoring_agent_tasks, fn -> %{} end)
+    |> assign_new(:authoring_agent_pending, fn -> false end)
+    |> assign_new(:scenario_save_title, fn -> "" end)
+    |> assign_new(:scenario_save_status, fn -> nil end)
   end
 
   @impl true
@@ -142,6 +195,90 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   end
 
   @impl true
+  def handle_info({ref, {:authoring_agent_response, request_id, response}}, socket)
+      when is_reference(ref) do
+    Process.demonitor(ref, [:flush])
+
+    Logger.info(
+      "authoring agent response received request_id=#{request_id} status=#{response.status}"
+    )
+
+    drafts = extract_authoring_agent_drafts(response)
+
+    {:noreply,
+     socket
+     |> remove_authoring_agent_task(ref)
+     |> replace_authoring_agent_message(request_id, %{
+       "id" => request_id,
+       "role" => "assistant",
+       "content" => response.content,
+       "status" => response.status
+     })
+     |> append_authoring_agent_drafts(drafts)}
+  end
+
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, reason}, socket) when is_reference(ref) do
+    case Map.fetch(socket.assigns.authoring_agent_tasks, ref) do
+      {:ok, task_info} ->
+        request_id = authoring_agent_task_request_id(task_info)
+
+        Logger.warning(
+          "authoring agent task stopped request_id=#{request_id} reason=#{inspect(reason)}"
+        )
+
+        {:noreply,
+         socket
+         |> remove_authoring_agent_task(ref)
+         |> replace_authoring_agent_message(request_id, %{
+           "id" => request_id,
+           "role" => "assistant",
+           "content" => "The authoring agent stopped before returning an answer.",
+           "status" => "error",
+           "error" => inspect(reason)
+         })}
+
+      :error ->
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:authoring_agent_timeout, ref}, socket) when is_reference(ref) do
+    case Map.fetch(socket.assigns.authoring_agent_tasks, ref) do
+      {:ok, task_info} ->
+        request_id = authoring_agent_task_request_id(task_info)
+
+        timeout_ms =
+          Map.get(task_info, :timeout_ms, WardwrightWeb.AuthoringAgent.status().timeout_ms)
+
+        if pid = Map.get(task_info, :pid) do
+          Process.exit(pid, :kill)
+        end
+
+        Process.demonitor(ref, [:flush])
+
+        Logger.warning(
+          "authoring agent task timed out request_id=#{request_id} timeout_ms=#{timeout_ms}"
+        )
+
+        {:noreply,
+         socket
+         |> remove_authoring_agent_task(ref)
+         |> replace_authoring_agent_message(request_id, %{
+           "id" => request_id,
+           "role" => "assistant",
+           "content" =>
+             "The authoring agent timed out after #{div(timeout_ms, 1000)} seconds before the provider returned an answer.",
+           "status" => "error"
+         })}
+
+      :error ->
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
   def handle_event("play-simulation", _params, socket) do
     if socket.assigns.simulation_playing do
       {:noreply, socket}
@@ -157,13 +294,36 @@ defmodule WardwrightWeb.PolicyProjectionLive do
          path(
            socket.assigns.selected_pattern_id,
            socket.assigns.mode,
-           normalize_recipe_source(source_id)
+           normalize_recipe_source(source_id),
+           nil
          )
      )}
   end
 
   def handle_event("select-recipe-source", %{"value" => source_id}, socket) do
     handle_event("select-recipe-source", %{"recipe_source" => source_id}, socket)
+  end
+
+  def handle_event("select-workbench-model", %{"workbench_model" => ""}, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("select-workbench-model", %{"workbench_model" => model_id}, socket) do
+    {:noreply,
+     push_patch(socket,
+       to:
+         path(
+           socket.assigns.selected_pattern_id,
+           socket.assigns.mode,
+           socket.assigns.selected_recipe_source_id,
+           nil,
+           model_id
+         )
+     )}
+  end
+
+  def handle_event("select-workbench-model", %{"value" => model_id}, socket) do
+    handle_event("select-workbench-model", %{"workbench_model" => model_id}, socket)
   end
 
   def handle_event("select-simulation-input", %{"simulation_input" => input_id}, socket) do
@@ -178,14 +338,28 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     user_input = simulation_field(input, "user_input")
     model_response = simulation_field(input, "model_response")
     history_context = simulation_history_context(input)
+    response_attempts = simulation_response_attempts(input)
+
+    socket =
+      socket
+      |> assign(:selected_simulation_input_id, simulation_field(input, "id"))
+      |> assign(:simulation_user_input, user_input)
+      |> assign(:simulation_model_response, model_response)
+      |> assign(:simulation_response_attempts, response_attempts)
+      |> assign(:simulation_history_context, history_context)
+      |> assign_interactive_simulation(
+        user_input,
+        model_response,
+        history_context,
+        response_attempts
+      )
 
     {:noreply,
-     socket
-     |> assign(:selected_simulation_input_id, simulation_field(input, "id"))
-     |> assign(:simulation_user_input, user_input)
-     |> assign(:simulation_model_response, model_response)
-     |> assign(:simulation_history_context, history_context)
-     |> assign_interactive_simulation(user_input, model_response, history_context)}
+     assign(
+       socket,
+       :simulation_response_attempts,
+       simulation_response_attempts(input, socket.assigns.selected_simulation)
+     )}
   end
 
   def handle_event("select-simulation-input", %{"value" => input_id}, socket) do
@@ -201,18 +375,206 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         socket
       ) do
     history_context = simulation_history_context(simulation)
+    response_attempts = simulation_response_attempts(simulation)
 
     {:noreply,
      socket
      |> assign(:selected_simulation_input_id, "custom")
      |> assign(:simulation_user_input, user_input)
      |> assign(:simulation_model_response, model_response)
+     |> assign(:simulation_response_attempts, response_attempts)
      |> assign(:simulation_history_context, history_context)
-     |> assign_interactive_simulation(user_input, model_response, history_context)}
+     |> assign_interactive_simulation(
+       user_input,
+       model_response,
+       history_context,
+       response_attempts
+     )}
   end
 
   def handle_event("pause-simulation", _params, socket) do
     {:noreply, stop_simulation(socket)}
+  end
+
+  def handle_event("save-simulation-scenario", %{"scenario" => params}, socket) do
+    title = scenario_title(params, socket.assigns.selected_simulation)
+    pinned = Map.get(params, "pinned") == "true"
+
+    attrs =
+      socket.assigns.selected_simulation
+      |> scenario_attrs_from_simulation(title, pinned)
+      |> Map.put("model_id", socket.assigns.selected_model_id)
+      |> Map.put("artifact_hash", socket.assigns.selected_simulation["artifact_hash"])
+      |> Map.put("turn", %{
+        "user_input" => socket.assigns.simulation_user_input,
+        "model_response" => socket.assigns.simulation_model_response,
+        "response_attempts" => saved_response_attempts(socket.assigns),
+        "history_context" => socket.assigns.simulation_history_context
+      })
+
+    case Wardwright.PolicyScenarioStore.create(socket.assigns.selected_pattern_id, attrs) do
+      {:ok, scenario} ->
+        simulation_inputs =
+          Wardwright.PolicyProjection.simulation_inputs(
+            socket.assigns.selected_pattern_id,
+            socket.assigns.selected_recipe_id
+          )
+
+        {:noreply,
+         socket
+         |> assign(:simulation_inputs, simulation_inputs)
+         |> assign(:scenario_save_title, "")
+         |> assign(:scenario_save_status, "Saved #{scenario.title}.")}
+
+      {:error, message} ->
+        {:noreply,
+         socket
+         |> assign(:scenario_save_title, title)
+         |> assign(:scenario_save_status, "Could not save scenario: #{message}")}
+    end
+  end
+
+  def handle_event("delete-simulation-scenario", _params, socket) do
+    case selected_saved_scenario_id(socket.assigns.selected_simulation_input_id) do
+      nil ->
+        {:noreply, assign(socket, :scenario_save_status, "Select a saved test case to delete.")}
+
+      scenario_id ->
+        case Wardwright.PolicyScenarioStore.delete(
+               socket.assigns.selected_pattern_id,
+               scenario_id
+             ) do
+          {:ok, scenario} ->
+            simulation_inputs =
+              Wardwright.PolicyProjection.simulation_inputs(
+                socket.assigns.selected_pattern_id,
+                socket.assigns.selected_recipe_id
+              )
+
+            selected_input = default_simulation_input(simulation_inputs)
+            user_input = simulation_field(selected_input, "user_input")
+            model_response = simulation_field(selected_input, "model_response")
+            history_context = simulation_history_context(selected_input)
+            response_attempts = simulation_response_attempts(selected_input)
+
+            {:noreply,
+             socket
+             |> assign(:simulation_inputs, simulation_inputs)
+             |> assign(:selected_simulation_input_id, simulation_field(selected_input, "id"))
+             |> assign(:simulation_user_input, user_input)
+             |> assign(:simulation_model_response, model_response)
+             |> assign(:simulation_response_attempts, response_attempts)
+             |> assign(:simulation_history_context, history_context)
+             |> assign(:scenario_save_status, "Deleted #{scenario.title}.")
+             |> assign_interactive_simulation(
+               user_input,
+               model_response,
+               history_context,
+               response_attempts
+             )}
+
+          {:error, message} ->
+            {:noreply,
+             assign(socket, :scenario_save_status, "Could not delete scenario: #{message}")}
+        end
+    end
+  end
+
+  def handle_event(
+        "authoring-agent-submit",
+        %{"authoring_agent" => %{"message" => message}},
+        socket
+      ) do
+    message = String.trim(message || "")
+
+    if message == "" do
+      {:noreply, socket}
+    else
+      context =
+        authoring_agent_context(
+          socket.assigns.projection,
+          socket.assigns.selected_pattern_id,
+          socket.assigns.selected_recipe_id,
+          socket.assigns.access_origin,
+          socket.assigns.authoring_agent_drafts
+        )
+
+      request_id = authoring_agent_request_id()
+      agent_status = WardwrightWeb.AuthoringAgent.status(context)
+
+      Logger.info(
+        "authoring agent request queued request_id=#{request_id} model=#{agent_status.model} timeout_ms=#{agent_status.timeout_ms}"
+      )
+
+      messages =
+        socket.assigns.authoring_agent_messages ++
+          [
+            %{"id" => "#{request_id}:user", "role" => "user", "content" => message},
+            %{
+              "id" => request_id,
+              "role" => "assistant",
+              "content" => "Working...",
+              "status" => "pending"
+            }
+          ]
+
+      task =
+        Task.Supervisor.async_nolink(Wardwright.ProviderRuntime.TaskSupervisor, fn ->
+          {:ok, response} = WardwrightWeb.AuthoringAgent.respond(message, context)
+          {:authoring_agent_response, request_id, response}
+        end)
+
+      timeout_ref =
+        Process.send_after(
+          self(),
+          {:authoring_agent_timeout, task.ref},
+          agent_status.timeout_ms + 1_000
+        )
+
+      {:noreply,
+       socket
+       |> assign(:authoring_agent_messages, Enum.take(messages, -8))
+       |> assign(:authoring_agent_status, agent_status)
+       |> assign(:authoring_agent_input, "")
+       |> assign(
+         :authoring_agent_tasks,
+         Map.put(socket.assigns.authoring_agent_tasks, task.ref, %{
+           request_id: request_id,
+           pid: task.pid,
+           timeout_ref: timeout_ref,
+           timeout_ms: agent_status.timeout_ms
+         })
+       )
+       |> assign(:authoring_agent_pending, true)}
+    end
+  end
+
+  def handle_event("authoring-agent-clear", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:authoring_agent_messages, [])
+     |> assign(:authoring_agent_drafts, [])
+     |> assign(:authoring_agent_pending, map_size(socket.assigns.authoring_agent_tasks) > 0)}
+  end
+
+  def handle_event("activate-authoring-draft", %{"draft_id" => draft_id}, socket) do
+    case Enum.find(socket.assigns.authoring_agent_drafts, &(&1["id"] == draft_id)) do
+      nil ->
+        {:noreply,
+         append_authoring_agent_notice(
+           socket,
+           "Draft #{draft_id} is no longer available.",
+           "error"
+         )}
+
+      draft ->
+        activate_authoring_draft(socket, draft)
+    end
+  end
+
+  def handle_event("discard-authoring-draft", %{"draft_id" => draft_id}, socket) do
+    drafts = Enum.reject(socket.assigns.authoring_agent_drafts, &(&1["id"] == draft_id))
+    {:noreply, assign(socket, :authoring_agent_drafts, drafts)}
   end
 
   def handle_event("reset-simulation", _params, socket) do
@@ -266,6 +628,230 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     end
   end
 
+  defp authoring_agent_request_id do
+    "authoring_agent_#{System.unique_integer([:positive, :monotonic])}"
+  end
+
+  defp scenario_title(%{"title" => title}, simulation) when is_binary(title) do
+    title = String.trim(title)
+
+    if title == "" do
+      Map.get(simulation, "title", "Saved scenario")
+    else
+      title
+    end
+  end
+
+  defp scenario_title(_params, simulation), do: Map.get(simulation, "title", "Saved scenario")
+
+  defp scenario_attrs_from_simulation(simulation, title, pinned) do
+    scenario_id =
+      title
+      |> String.downcase()
+      |> String.replace(~r/[^a-z0-9]+/, "-")
+      |> String.trim("-")
+      |> case do
+        "" -> "saved-scenario"
+        slug -> slug
+      end
+
+    %{
+      "scenario_id" => "#{scenario_id}-#{System.unique_integer([:positive, :monotonic])}",
+      "title" => title,
+      "source" => "user",
+      "pinned" => pinned,
+      "input_summary" => Map.get(simulation, "input_summary", title),
+      "expected_behavior" =>
+        Map.get(simulation, "expected_behavior", "Preserve this simulated behavior."),
+      "verdict" => Map.get(simulation, "verdict", "inconclusive"),
+      "trace" => Map.get(simulation, "trace", []),
+      "receipt_preview" => Map.get(simulation, "receipt_preview", %{})
+    }
+  end
+
+  defp selected_saved_scenario_id("saved:" <> scenario_id) when scenario_id != "", do: scenario_id
+  defp selected_saved_scenario_id(_input_id), do: nil
+
+  defp authoring_agent_context(projection, pattern_id, recipe_id, origin, drafts \\ []) do
+    %{
+      model_id: Wardwright.ModelGraph.model_id(projection["artifact"], ""),
+      pattern_id: pattern_id,
+      recipe_id: recipe_id,
+      origin: origin,
+      pending_drafts: Enum.map(drafts, &authoring_draft_prompt_summary/1)
+    }
+  end
+
+  defp authoring_draft_prompt_summary(draft) do
+    %{
+      "draft_id" => draft["id"],
+      "model_id" => get_in(draft, ["artifact", "model_id"]),
+      "version" => get_in(draft, ["artifact", "version"]),
+      "validation_errors" => validation_count(draft, "errors"),
+      "validation_warnings" => validation_count(draft, "warnings")
+    }
+  end
+
+  defp extract_authoring_agent_drafts(response) do
+    response
+    |> Map.get(:tool_results, [])
+    |> Enum.filter(&draft_tool_result?/1)
+    |> Enum.map(&authoring_draft_from_tool_result/1)
+  end
+
+  defp draft_tool_result?(%{
+         "name" => "draft_wardwright_model",
+         "status" => "executed",
+         "result" => %{"artifact" => artifact}
+       })
+       when is_map(artifact),
+       do: true
+
+  defp draft_tool_result?(_tool_result), do: false
+
+  defp authoring_draft_from_tool_result(%{"result" => result}) do
+    artifact = Map.get(result, "artifact", %{})
+
+    %{
+      "id" => "draft_#{System.unique_integer([:positive, :monotonic])}",
+      "artifact" => artifact,
+      "validation" => Map.get(result, "validation", %{"errors" => [], "warnings" => []}),
+      "access" => Map.get(result, "access", %{}),
+      "next_steps" => Map.get(result, "next_steps", [])
+    }
+  end
+
+  defp append_authoring_agent_drafts(socket, []), do: socket
+
+  defp append_authoring_agent_drafts(socket, drafts) do
+    assign(
+      socket,
+      :authoring_agent_drafts,
+      Enum.take(socket.assigns.authoring_agent_drafts ++ drafts, -4)
+    )
+  end
+
+  defp activate_authoring_draft(socket, draft) do
+    origin = socket.assigns.access_origin || "http://127.0.0.1:8787"
+
+    case WardwrightWeb.PolicyAuthoringDrafts.activate_wardwright_model(
+           %{"artifact" => draft["artifact"]},
+           origin
+         ) do
+      {:ok, result} ->
+        model_id = get_in(result, ["artifact", "model_id"]) || "draft"
+        drafts = Enum.reject(socket.assigns.authoring_agent_drafts, &(&1["id"] == draft["id"]))
+
+        socket =
+          socket
+          |> assign(:authoring_agent_drafts, drafts)
+          |> assign(:available_models, Wardwright.model_summaries())
+          |> assign(:model_access, Wardwright.model_access(origin))
+          |> append_authoring_agent_notice(
+            "Activated #{model_id}. It is now available through /v1/models and the registered model workbench.",
+            "completed"
+          )
+
+        {:noreply,
+         push_patch(
+           socket,
+           to:
+             path(
+               socket.assigns.selected_pattern_id,
+               socket.assigns.mode,
+               socket.assigns.selected_recipe_source_id,
+               nil,
+               model_id
+             )
+         )}
+
+      {:error, message, result} ->
+        errors = get_in(result, ["validation", "errors"]) || []
+
+        {:noreply,
+         append_authoring_agent_notice(
+           socket,
+           "Could not activate #{draft_model_id(draft)}: #{message}. #{length(errors)} validation errors remain.",
+           "error"
+         )}
+    end
+  end
+
+  defp append_authoring_agent_notice(socket, content, status) do
+    message = %{
+      "id" => authoring_agent_request_id(),
+      "role" => "assistant",
+      "content" => content,
+      "status" => status
+    }
+
+    assign(
+      socket,
+      :authoring_agent_messages,
+      Enum.take(socket.assigns.authoring_agent_messages ++ [message], -8)
+    )
+  end
+
+  defp remove_authoring_agent_task(socket, ref) do
+    case Map.get(socket.assigns.authoring_agent_tasks, ref) do
+      %{timeout_ref: timeout_ref} when is_reference(timeout_ref) ->
+        Process.cancel_timer(timeout_ref)
+
+      _ ->
+        :ok
+    end
+
+    tasks = Map.delete(socket.assigns.authoring_agent_tasks, ref)
+
+    socket
+    |> assign(:authoring_agent_tasks, tasks)
+    |> assign(:authoring_agent_pending, map_size(tasks) > 0)
+  end
+
+  defp authoring_agent_task_request_id(%{request_id: request_id}), do: request_id
+  defp authoring_agent_task_request_id(request_id) when is_binary(request_id), do: request_id
+
+  defp replace_authoring_agent_message(socket, request_id, replacement) do
+    {messages, replaced?} =
+      Enum.map_reduce(socket.assigns.authoring_agent_messages, false, fn message, replaced? ->
+        if message["id"] == request_id do
+          {replacement, true}
+        else
+          {message, replaced?}
+        end
+      end)
+
+    if replaced? do
+      assign(socket, :authoring_agent_messages, messages)
+    else
+      socket
+    end
+  end
+
+  defp authoring_agent_status_label("pending"), do: "working"
+  defp authoring_agent_status_label("completed"), do: "answered"
+  defp authoring_agent_status_label("not_configured"), do: "setup needed"
+  defp authoring_agent_status_label("error"), do: "error"
+  defp authoring_agent_status_label(status), do: status
+
+  defp authoring_agent_tool_access_label("read_and_draft_tools"), do: "draft tools enabled"
+  defp authoring_agent_tool_access_label("suggestions_only"), do: "suggestions only"
+  defp authoring_agent_tool_access_label(_access), do: "approval required"
+
+  defp draft_model_id(draft), do: get_in(draft, ["artifact", "model_id"]) || "unnamed draft"
+  defp draft_version(draft), do: get_in(draft, ["artifact", "version"]) || "draft"
+
+  defp validation_count(draft, key) do
+    draft
+    |> get_in(["validation", key])
+    |> case do
+      values when is_list(values) -> length(values)
+      _ -> 0
+    end
+  end
+
+  defp draft_valid?(draft), do: validation_count(draft, "errors") == 0
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -282,11 +868,31 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         <h2 class="nav_heading">Operator</h2>
         <a href="/admin/model-api-keys">
           <strong>Model Management</strong>
-          <span>Set keyed access and rotate model API keys.</span>
+          <span>Set keyed and unkeyed access for local models.</span>
         </a>
 
-        <form class="recipe_source" phx-change="select-recipe-source" phx-submit="select-recipe-source">
-          <label for="recipe_source">Example set</label>
+        <form class="workbench_model_selector" phx-change="select-workbench-model">
+          <label for="workbench_model">Registered model workbench</label>
+          <select id="workbench_model" name="workbench_model" phx-change="select-workbench-model">
+            <option :if={@explicit_recipe?} value="" selected disabled>
+              Choose a registered model
+            </option>
+            <option
+              :for={model <- @available_models}
+              value={model["id"]}
+              selected={!@explicit_recipe? and model["id"] == @selected_model_id}
+            >
+              <%= model["id"] %>
+            </option>
+          </select>
+          <small>
+            Selecting a model leaves example preview and opens that model's
+            current policy, routes, and scenarios.
+          </small>
+        </form>
+
+        <form class="recipe_source" phx-change="select-recipe-source">
+          <label for="recipe_source">Example catalog</label>
           <select id="recipe_source" name="recipe_source" phx-change="select-recipe-source">
             <option
               :for={source <- @recipe_sources}
@@ -299,10 +905,13 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           <small><%= @recipe_catalog["source"]["endpoint"] || "compiled into this build" %></small>
           <small>Shared examples: wardwright.dev/recipes</small>
           <span class="recipe_source_status"><%= recipe_catalog_status(@recipe_catalog) %></span>
-          <button type="submit">Load examples</button>
         </form>
 
-        <h2 class="nav_heading">Example Wardwright Models</h2>
+        <h2 class="nav_heading">Example scenarios</h2>
+        <p class="nav_note">
+          Examples are read-only previews. Opening one clears the registered
+          model workbench selection until you choose a model again.
+        </p>
 
         <details :for={group <- @recipe_groups} class="recipe_group" open={group.open}>
           <summary>
@@ -345,8 +954,18 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     <section class="workspace">
       <header class="topbar">
         <div>
-          <h1><%= @selected_recipe["title"] || @selected_pattern["title"] %></h1>
-          <p><%= @selected_recipe["promise"] || @selected_pattern["promise"] %></p>
+          <h1><%= workbench_title(@selected_model_config, @selected_recipe, @selected_pattern, @explicit_recipe?) %></h1>
+          <p><%= workbench_promise(@selected_model_config, @selected_recipe, @selected_pattern, @explicit_recipe?) %></p>
+          <small class="editing_target_summary">
+            <%= if @explicit_recipe? do %>
+              Example preview:
+              <strong><%= @selected_recipe["title"] || @selected_pattern["title"] %></strong>.
+              Choose a registered model from the left rail to leave preview mode.
+            <% else %>
+              Registered model workbench:
+              <strong><%= @selected_model_id %></strong>.
+            <% end %>
+          </small>
         </div>
         <div class="engine_card">
           <.badge value={@projection["engine"]["language"]} />
@@ -356,7 +975,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         </div>
       </header>
 
-      <section :if={rich_recipe?(@selected_recipe)} class="recipe_context">
+      <section :if={@explicit_recipe? and rich_recipe?(@selected_recipe)} class="recipe_context">
         <div class="recipe_context_header">
           <div>
             <span>Example story</span>
@@ -384,7 +1003,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         </div>
       </section>
 
-      <section class="scan_strip" aria-label="Policy authoring summary">
+      <section :if={!@model_workbench?} class="scan_strip" aria-label="Policy authoring summary">
         <article>
           <span>Authority</span>
           <strong>Artifact first</strong>
@@ -412,6 +1031,47 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         </article>
       </section>
 
+      <section :if={@model_workbench?} class="panel raw_model_config" aria-label="Selected model raw configuration">
+        <div class="panel_header">
+          <div>
+            <h2>Selected Model Configuration</h2>
+            <p>
+              Registered artifact for <strong><%= @selected_model_id %></strong>, with
+              sensitive values redacted. Use this when the simulator looks surprising: this is
+              the durable model Wardwright will route and enforce.
+            </p>
+          </div>
+          <.badge value={"#{behavior_rule_count(@selected_model_config)} behavior rules"} />
+        </div>
+        <div class="config_fact_grid">
+          <article>
+            <span>Stream rules</span>
+            <strong><%= length(@selected_model_config["stream_rules"] || []) %></strong>
+          </article>
+          <article>
+            <span>Governance rules</span>
+            <strong><%= length(@selected_model_config["governance"] || []) %></strong>
+          </article>
+          <article>
+            <span>Prompt transforms</span>
+            <strong><%= map_size(@selected_model_config["prompt_transforms"] || %{}) %></strong>
+          </article>
+          <article>
+            <span>Structured output</span>
+            <strong><%= if @selected_model_config["structured_output"], do: "configured", else: "none" %></strong>
+          </article>
+        </div>
+        <p :if={behavior_rule_count(@selected_model_config) == 0} class="config_warning">
+          This model currently only routes to provider targets. It has no stream rules,
+          governance rules, prompt transforms, or structured-output contract, so Wardwright
+          will not enforce additional behavior for this model yet.
+        </p>
+        <details>
+          <summary>Show redacted model configuration</summary>
+          <pre><%= @selected_model_config_json %></pre>
+        </details>
+      </section>
+
       <section class="panel model_access" aria-label="Model and agent access">
         <div class="panel_header">
           <div>
@@ -419,7 +1079,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             <p>Use these OpenAI-compatible endpoints and model IDs when pointing a local agent at Wardwright.</p>
           </div>
           <div class="topbar_actions">
-            <a class="button secondary" href="/admin/model-api-keys">Manage keys</a>
+            <a class="button secondary" href="/admin/model-api-keys">Manage access</a>
             <.badge value={"#{length(@model_access["provider_models"])} provider models"} />
           </div>
         </div>
@@ -437,6 +1097,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
               <dd><code><%= @model_access["service"]["mcp_url"] %></code></dd>
               <dt>CLI help</dt>
               <dd><code><%= @model_access["service"]["tools_command"] %></code></dd>
+              <dt>Open UI</dt>
+              <dd><code><%= @model_access["service"]["admin_command"] %></code></dd>
             </dl>
           </article>
 
@@ -478,6 +1140,99 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         </div>
       </section>
 
+      <section class="panel authoring_agent" aria-label="In-page model authoring assistant">
+        <div class="panel_header">
+          <div>
+            <h2>Model Authoring Assistant</h2>
+            <p>
+              Draft, validate, and simulate Wardwright model changes using the same
+              authoring tools exposed to MCP clients.
+            </p>
+          </div>
+          <.badge value={if @authoring_agent_status.configured, do: "live", else: "setup needed"} />
+        </div>
+
+        <div class="authoring_agent_meta">
+          <span><strong>Assistant model</strong> <%= @authoring_agent_status.model %></span>
+          <span><strong>Route</strong> <%= @authoring_agent_status.route %></span>
+          <span>
+            <strong>Tool access</strong>
+            <%= authoring_agent_tool_access_label(@authoring_agent_status.tool_access) %>
+          </span>
+          <span><strong>Tools</strong> <%= length(WardwrightWeb.PolicyAuthoringTools.list()) %></span>
+        </div>
+
+        <div class="authoring_transcript" aria-live="polite">
+          <p :if={@authoring_agent_messages == []} class="empty_agent_message">
+            Try: "Build a reviewable route policy that keeps private context local,
+            then simulate the surprising failure cases."
+          </p>
+          <article
+            :for={message <- @authoring_agent_messages}
+            class={"agent_message #{message["role"]} #{message["status"]}"}
+          >
+            <strong>
+              <%= if message["role"] == "user", do: "You", else: "Wardwright assistant" %>
+              <span :if={message["status"]} class={"agent_status #{message["status"]}"}>
+                <%= authoring_agent_status_label(message["status"]) %>
+              </span>
+            </strong>
+            <pre><%= message["content"] %></pre>
+          </article>
+        </div>
+
+        <div :if={@authoring_agent_drafts != []} class="authoring_drafts">
+          <h3>Drafts Awaiting Review</h3>
+          <article :for={draft <- @authoring_agent_drafts} class="authoring_draft_card">
+            <div>
+              <strong><%= draft_model_id(draft) %></strong>
+              <span>not active</span>
+            </div>
+            <small>
+              Version <%= draft_version(draft) %>;
+              <%= validation_count(draft, "errors") %> validation errors,
+              <%= validation_count(draft, "warnings") %> warnings.
+            </small>
+            <small>
+              Activating registers this model immediately in <code>/v1/models</code>.
+              Review the assistant response and simulations first.
+            </small>
+            <div class="draft_actions">
+              <button
+                type="button"
+                phx-click="activate-authoring-draft"
+                phx-value-draft_id={draft["id"]}
+                disabled={!draft_valid?(draft)}
+              >
+                Activate draft
+              </button>
+              <button
+                type="button"
+                class="secondary"
+                phx-click="discard-authoring-draft"
+                phx-value-draft_id={draft["id"]}
+              >
+                Discard
+              </button>
+            </div>
+          </article>
+        </div>
+
+        <form class="authoring_form" phx-submit="authoring-agent-submit">
+          <textarea
+            name="authoring_agent[message]"
+            rows="3"
+            placeholder="Ask for a model, policy, simulation, or review plan"
+          ><%= @authoring_agent_input %></textarea>
+          <div>
+            <button type="submit" disabled={@authoring_agent_pending}>
+              <%= if @authoring_agent_pending, do: "Working...", else: "Ask agent" %>
+            </button>
+            <button type="button" phx-click="authoring-agent-clear">Clear</button>
+          </div>
+        </form>
+      </section>
+
       <section class="panel">
         <div class="panel_header">
           <div>
@@ -489,41 +1244,53 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           <.badge value={@projection["projection_schema"]} class="schema_badge" />
         </div>
 
-        <.projection_inspector_links
-          mode={@mode}
-          modes={@modes}
-          selected_pattern_id={@selected_pattern_id}
-          selected_recipe_source_id={@selected_recipe_source_id}
-          selected_recipe_id={@selected_recipe_id}
-        />
-
-        <%= if @mode == "diagram" do %>
-          <.policy_diagram
-            projection={@projection}
-            simulation={@selected_simulation}
-            simulation_inputs={@simulation_inputs}
-            selected_simulation_input_id={@selected_simulation_input_id}
-            simulation_user_input={@simulation_user_input}
-            simulation_model_response={@simulation_model_response}
-            simulation_history_context={@simulation_history_context}
-            simulation_boundary={@simulation_boundary}
-            playback_step={@simulation_step}
-            playing={@simulation_playing}
+        <%= if @model_workbench? do %>
+          <.registered_model_simulation_notice
+            selected_model_id={@selected_model_id}
+            selected_model_config={@selected_model_config}
           />
         <% else %>
-        <%= if @mode == "effect_matrix" do %>
-          <.effect_matrix projection={@projection} />
-        <% else %>
-          <%= if @mode == "trace_overlay" do %>
-            <.trace_overlay projection={@projection} simulation={@selected_simulation} />
+          <.projection_inspector_links
+            mode={@mode}
+            modes={@modes}
+            selected_pattern_id={@selected_pattern_id}
+            selected_recipe_source_id={@selected_recipe_source_id}
+            selected_recipe_id={@selected_recipe_id}
+            selected_model_id={@selected_model_id}
+            model_workbench?={!@explicit_recipe?}
+          />
+
+          <%= if @mode == "diagram" do %>
+            <.policy_diagram
+              projection={@projection}
+              simulation={@selected_simulation}
+              simulation_inputs={@simulation_inputs}
+              selected_simulation_input_id={@selected_simulation_input_id}
+              simulation_user_input={@simulation_user_input}
+              simulation_model_response={@simulation_model_response}
+              simulation_response_attempts={@simulation_response_attempts}
+              simulation_history_context={@simulation_history_context}
+              simulation_boundary={@simulation_boundary}
+              playback_step={@simulation_step}
+              playing={@simulation_playing}
+              scenario_save_title={@scenario_save_title}
+              scenario_save_status={@scenario_save_status}
+            />
           <% else %>
-            <%= if @mode == "state_machine" do %>
-              <.state_machine_view projection={@projection} />
+            <%= if @mode == "effect_matrix" do %>
+              <.effect_matrix projection={@projection} />
             <% else %>
-              <.phase_map projection={@projection} />
+              <%= if @mode == "trace_overlay" do %>
+                <.trace_overlay projection={@projection} simulation={@selected_simulation} />
+              <% else %>
+                <%= if @mode == "state_machine" do %>
+                  <.state_machine_view projection={@projection} />
+                <% else %>
+                  <.phase_map projection={@projection} />
+                <% end %>
+              <% end %>
             <% end %>
           <% end %>
-        <% end %>
         <% end %>
       </section>
 
@@ -556,7 +1323,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           </div>
         </div>
 
-        <div class="panel">
+        <div :if={!@model_workbench?} class="panel">
           <div class="panel_header">
             <div>
               <h2>Selected Node</h2>
@@ -619,7 +1386,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           </div>
         </div>
 
-        <div class="panel">
+        <div :if={!@model_workbench?} class="panel">
           <div class="panel_header">
             <div>
               <h2>Review Findings</h2>
@@ -647,7 +1414,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         </div>
       </section>
 
-      <section class="split">
+      <section :if={!@model_workbench?} class="split">
         <div class="panel">
           <div class="panel_header">
             <div>
@@ -689,6 +1456,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   attr(:selected_pattern_id, :string, required: true)
   attr(:selected_recipe_source_id, :string, required: true)
   attr(:selected_recipe_id, :string, required: true)
+  attr(:selected_model_id, :string, required: true)
+  attr(:model_workbench?, :boolean, required: true)
 
   def projection_inspector_links(assigns) do
     assigns =
@@ -706,7 +1475,16 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           <div>
             <a
               :for={mode <- @inspector_modes}
-              href={path(@selected_pattern_id, mode, @selected_recipe_source_id, @selected_recipe_id)}
+              href={
+                inspector_path(
+                  @selected_pattern_id,
+                  mode,
+                  @selected_recipe_source_id,
+                  @selected_recipe_id,
+                  @selected_model_id,
+                  @model_workbench?
+                )
+              }
             >
               <strong><%= mode_label(mode) %></strong>
               <small><%= mode_hint(mode) %></small>
@@ -715,20 +1493,76 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         </details>
       <% else %>
         <div class="inspector_nav">
-          <a class="simulator_return" href={path(@selected_pattern_id, "diagram", @selected_recipe_source_id, @selected_recipe_id)}>
+          <a
+            class="simulator_return"
+            href={
+              inspector_path(
+                @selected_pattern_id,
+                "diagram",
+                @selected_recipe_source_id,
+                @selected_recipe_id,
+                @selected_model_id,
+                @model_workbench?
+              )
+            }
+          >
             <strong>Back to simulator</strong>
             <small>primary workspace</small>
           </a>
           <a
             :for={mode <- @inspector_modes}
             class={if mode == @mode, do: "active", else: ""}
-            href={path(@selected_pattern_id, mode, @selected_recipe_source_id, @selected_recipe_id)}
+            href={
+              inspector_path(
+                @selected_pattern_id,
+                mode,
+                @selected_recipe_source_id,
+                @selected_recipe_id,
+                @selected_model_id,
+                @model_workbench?
+              )
+            }
           >
             <strong><%= mode_label(mode) %></strong>
             <small><%= mode_hint(mode) %></small>
           </a>
         </div>
       <% end %>
+    </div>
+    """
+  end
+
+  attr(:selected_model_id, :string, required: true)
+  attr(:selected_model_config, :map, required: true)
+
+  def registered_model_simulation_notice(assigns) do
+    assigns =
+      assign(assigns,
+        behavior_count: behavior_rule_count(assigns.selected_model_config),
+        target_count: length(assigns.selected_model_config["targets"] || [])
+      )
+
+    ~H"""
+    <div class="model_simulation_notice" aria-label="Registered model simulation status">
+      <div>
+        <strong>Registered model selected</strong>
+        <p>
+          <%= @selected_model_id %> is loaded as the current model workbench target. Example
+          state machines, stream traces, and receipt previews are hidden here because they belong
+          to demo examples, not this registered model.
+        </p>
+      </div>
+      <dl>
+        <dt>Provider targets</dt>
+        <dd><%= @target_count %></dd>
+        <dt>Behavior rules</dt>
+        <dd><%= @behavior_count %></dd>
+      </dl>
+      <p>
+        Use the selected model configuration above to review what this model actually enforces.
+        Select an example synthetic model from the sidebar to browse demo simulations, or add a
+        model-owned scenario before showing playback, state, stream, or receipt evidence here.
+      </p>
     </div>
     """
   end
@@ -740,9 +1574,12 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   attr(:simulation_user_input, :string, required: true)
   attr(:simulation_model_response, :string, required: true)
   attr(:simulation_history_context, :map, required: true)
+  attr(:simulation_response_attempts, :list, required: true)
   attr(:simulation_boundary, :map, required: true)
   attr(:playback_step, :integer, required: true)
   attr(:playing, :boolean, required: true)
+  attr(:scenario_save_title, :string, required: true)
+  attr(:scenario_save_status, :string, default: nil)
 
   def policy_diagram(assigns) do
     assigns =
@@ -870,8 +1707,14 @@ defmodule WardwrightWeb.PolicyProjectionLive do
               </div>
               <small><%= attempt["policy_result"] %></small>
               <label>
-                <span>Model output</span>
-                <textarea rows="4" readonly><%= attempt["model_output"] %></textarea>
+                <span><%= if attempt["index"] == 1, do: "Model output", else: "Model output for this attempt" %></span>
+                <textarea
+                  rows="4"
+                  name={if attempt["index"] == 1, do: nil, else: "simulation[response_attempts][#{attempt["index"]}]"}
+                  readonly={attempt["index"] == 1}
+                  phx-debounce="300"
+                ><%= attempt["model_output"] %></textarea>
+                <small :if={attempt["index"] == 1}>Edit attempt 1 in the raw model output field above.</small>
               </label>
               <label :if={Map.get(attempt, "retry_instruction")}>
                 <span>Retry instruction added by Wardwright</span>
@@ -898,6 +1741,35 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             <span>Changes are evaluated live; Apply is a fallback if the browser waits for field blur.</span>
             <button type="button" phx-click={JS.dispatch("change", to: "#turn-editor-form")}>Apply changes</button>
           </div>
+        </form>
+
+        <form class="scenario_save_form" phx-submit="save-simulation-scenario">
+          <div>
+            <strong>Save as a reusable test case</strong>
+            <span>Keep this editable user/model pair, policy memory, expected trace, and current simulation target for later simulation, regression export, or agent review.</span>
+          </div>
+          <label>
+            <span>Scenario title</span>
+            <input
+              name="scenario[title]"
+              value={@scenario_save_title}
+              placeholder={@simulation["title"] || "Saved simulation scenario"}
+            />
+          </label>
+          <label class="inline_checkbox">
+            <input type="checkbox" name="scenario[pinned]" value="true" />
+            <span>Pin for regression export</span>
+          </label>
+          <button type="submit">Save test case</button>
+          <button
+            :if={selected_saved_scenario_id(@selected_simulation_input_id)}
+            type="button"
+            class="danger"
+            phx-click="delete-simulation-scenario"
+          >
+            Delete selected
+          </button>
+          <small :if={@scenario_save_status}><%= @scenario_save_status %></small>
         </form>
       </div>
 
@@ -1227,6 +2099,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .brand span, .sidebar_footer span { color: #adbac5; font-size: 12px; }
     nav a { display: grid; gap: 3px; padding: 10px 12px; border: 1px solid transparent; border-radius: 6px; }
     .nav_heading { margin: 10px 12px 2px; color: #adbac5; font-size: 11px; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase; }
+    .nav_note { margin: -2px 12px 10px; color: #93a4b3; font-size: 12px; font-weight: 700; line-height: 1.35; }
     nav a span { color: #adbac5; font-size: 12px; }
     nav a.active, nav a:hover { border-color: #6f7f8e; background: #34424e; }
     .recipe_group { display: grid; gap: 4px; padding: 4px 0 6px; border-top: 1px solid #3f4f5d; }
@@ -1235,11 +2108,9 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .recipe_group summary small { color: #93a4b3; font-size: 11px; font-weight: 800; white-space: nowrap; }
     .recipe_group a { margin-left: 8px; }
     .recipe_group a.active, .recipe_group a:hover { border-color: #7fb0dd; background: #344b5e; box-shadow: inset 3px 0 0 #8fc5f4; }
-    .recipe_source, .recipe_empty { display: grid; gap: 6px; margin-bottom: 4px; padding: 10px 12px; border: 1px solid #4d5f6f; border-radius: 6px; background: #2d3944; }
-    .recipe_source label, .recipe_source span, .recipe_source small, .recipe_empty span { min-width: 0; color: #adbac5; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
-    .recipe_source select { width: 100%; min-width: 0; min-height: 32px; border: 1px solid #657583; border-radius: 6px; color: #e6ebef; background: #25313b; font-weight: 800; }
-    .recipe_source button { min-height: 30px; border: 1px solid #657583; border-radius: 6px; color: #e6ebef; background: #34424e; font-weight: 800; cursor: pointer; }
-    .recipe_source button:hover { border-color: #91a1af; background: #3d4d5b; }
+    .recipe_source, .workbench_model_selector, .recipe_empty { display: grid; gap: 6px; margin-bottom: 4px; padding: 10px 12px; border: 1px solid #4d5f6f; border-radius: 6px; background: #2d3944; }
+    .recipe_source label, .recipe_source span, .recipe_source small, .workbench_model_selector label, .workbench_model_selector small, .recipe_empty span { min-width: 0; color: #adbac5; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+    .recipe_source select, .workbench_model_selector select { width: 100%; min-width: 0; min-height: 32px; border: 1px solid #657583; border-radius: 6px; color: #e6ebef; background: #25313b; font-weight: 800; }
     .recipe_source_status { line-height: 1.35; }
     .agent_cta { min-width: 0; display: grid; gap: 6px; margin-top: 12px; padding: 11px 12px; border: 1px solid #557088; border-radius: 6px; background: #243746; }
     .agent_cta span { color: #99b6cb; font-size: 11px; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -1260,7 +2131,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     p { color: #5e6b76; line-height: 1.45; }
     .panel { min-width: 0; margin-bottom: 18px; padding: 20px; border: 1px solid #d3dbe2; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgb(16 24 40 / 5%); }
     .panel_header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
-    .button { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 7px 12px; border: 1px solid #2f74b5; border-radius: 6px; color: #fff; background: #2f74b5; font: inherit; font-size: 13px; font-weight: 800; line-height: 1.2; cursor: pointer; }
+    .button { display: inline-flex; align-items: center; justify-content: center; max-width: 100%; min-height: 36px; padding: 7px 12px; border: 1px solid #2f74b5; border-radius: 6px; color: #fff; background: #2f74b5; font: inherit; font-size: 13px; font-weight: 800; line-height: 1.2; text-align: center; cursor: pointer; }
     .button:hover { border-color: #235b91; background: #235b91; }
     .button.secondary { border-color: #c5d0d9; color: #26323c; background: #fff; }
     .button.secondary:hover { border-color: #8fa1b2; background: #f3f6f8; }
@@ -1268,6 +2139,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .button.danger:hover { border-color: #9d3737; background: #ffe8e8; }
     .engine_card { display: grid; gap: 6px; min-width: 260px; padding: 12px; border: 1px solid #d3dbe2; border-radius: 8px; background: #fff; }
     .engine_card span:last-child { color: #66727c; font-size: 12px; }
+    .editing_target_summary { display: block; margin-top: 10px; color: #5e6b76; font-size: 13px; line-height: 1.35; }
+    .editing_target_summary strong { color: #17202a; }
     .recipe_context { display: grid; gap: 10px; margin-bottom: 18px; padding: 16px; border: 1px solid #d3dbe2; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgb(16 24 40 / 4%); }
     .recipe_context_header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
     .recipe_context_header > div { display: grid; gap: 3px; min-width: 0; }
@@ -1285,6 +2158,22 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .scan_strip strong { color: #17202a; font-size: 18px; line-height: 1.2; }
     .scan_strip small { color: #5e6b76; line-height: 1.35; overflow-wrap: anywhere; }
     .model_access { background: #fbfcfd; }
+    .raw_model_config { background: #fbfcfd; }
+    .raw_model_config details { min-width: 0; }
+    .raw_model_config summary { width: fit-content; cursor: pointer; color: #2f5f87; font-size: 13px; font-weight: 800; }
+    .raw_model_config pre { margin-top: 10px; max-height: 520px; }
+    .config_fact_grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+    .config_fact_grid article { min-width: 0; padding: 10px; border: 1px solid #dce4eb; border-radius: 7px; background: #fff; }
+    .config_fact_grid span { display: block; margin-bottom: 4px; color: #66727c; font-size: 11px; font-weight: 900; text-transform: uppercase; }
+    .config_fact_grid strong { color: #17202a; overflow-wrap: anywhere; }
+    .config_warning { margin-bottom: 12px; padding: 10px 12px; border: 1px solid #e6c779; border-radius: 7px; color: #624b12; background: #fff8e1; }
+    .model_simulation_notice { display: grid; gap: 12px; padding: 14px; border: 1px solid #d5dde4; border-radius: 8px; background: #fbfcfd; }
+    .model_simulation_notice strong { color: #17202a; font-size: 18px; }
+    .model_simulation_notice p { margin: 0; color: #4c5964; line-height: 1.5; }
+    .model_simulation_notice dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
+    .model_simulation_notice dt, .model_simulation_notice dd { margin: 0; }
+    .model_simulation_notice dt { color: #66727c; font-size: 11px; font-weight: 900; text-transform: uppercase; }
+    .model_simulation_notice dd { color: #17202a; font-size: 20px; font-weight: 850; }
     .access_grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr); gap: 12px; }
     .access_card, .provider_model_card { display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid #d5dde4; border-radius: 8px; background: #fff; }
     .access_card > span, .provider_model_card span, .provider_model_list h3 { color: #66727c; font-size: 12px; font-weight: 800; text-transform: uppercase; }
@@ -1307,7 +2196,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .metrics dt { color: #66727c; font-size: 11px; font-weight: 900; text-transform: uppercase; }
     .metrics dd { min-width: 0; margin: 3px 0 0; color: #17202a; font-weight: 800; overflow-wrap: anywhere; }
     .stacked_form, .inline_form { display: grid; gap: 12px; min-width: 0; }
-    .inline_form { grid-template-columns: minmax(220px, 1fr) max-content; align-items: end; }
+    .inline_form { grid-template-columns: minmax(180px, 1fr) minmax(max-content, auto); align-items: end; }
     .inline_form label, .stacked_form label { display: grid; gap: 5px; min-width: 0; color: #4b5863; font-size: 13px; font-weight: 800; }
     .inline_form input { width: 100%; min-height: 36px; padding: 7px 9px; border: 1px solid #cbd5df; border-radius: 6px; color: #17202a; background: #fbfcfd; font: inherit; }
     .stacked_form fieldset { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px; border: 1px solid #d8e0e7; border-radius: 8px; background: #fbfcfd; }
@@ -1320,10 +2209,42 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .notice_panel { margin-bottom: 18px; padding: 12px 14px; border: 1px solid #94c7b5; border-radius: 8px; color: #1c654f; background: #edf8f3; }
     .notice_panel.error { border-color: #df9a9a; color: #8b2d2d; background: #fff1f1; }
     .success_panel { border-color: #94c7b5; background: #f0faf6; }
-    table { width: 100%; border-collapse: collapse; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     th, td { padding: 9px 10px; border-bottom: 1px solid #e1e7ed; text-align: left; vertical-align: top; }
     th { color: #66727c; background: #f8fafc; font-size: 12px; font-weight: 900; text-transform: uppercase; }
     td { color: #26323c; font-size: 13px; }
+    th, td { overflow-wrap: anywhere; }
+    .authoring_agent { border-color: #c7d8e6; background: #f8fbfd; }
+    .authoring_agent_meta { display: flex; flex-wrap: wrap; gap: 8px; color: #51606d; font-size: 12px; font-weight: 800; }
+    .authoring_agent_meta span { border: 1px solid #d8e2ea; border-radius: 999px; padding: 5px 8px; background: #fff; }
+    .authoring_transcript { display: grid; gap: 10px; max-height: 360px; overflow: auto; }
+    .empty_agent_message { margin: 0; color: #647482; font-size: 13px; line-height: 1.45; }
+    .agent_message { display: grid; gap: 5px; border: 1px solid #dbe5ed; border-radius: 8px; padding: 10px; background: #fff; }
+    .agent_message.assistant { background: #eef8f4; border-color: #b8dfd0; }
+    .agent_message.pending { background: #fff8eb; border-color: #ebd19f; }
+    .agent_message.error { background: #fff2f2; border-color: #efb5b5; }
+    .agent_message strong { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: #17212b; }
+    .agent_status { border: 1px solid #cdd9e2; border-radius: 999px; padding: 2px 6px; color: #52616e; background: #fff; font-size: 10px; text-transform: uppercase; letter-spacing: 0.02em; }
+    .agent_status.pending { color: #8a5c00; border-color: #e5c06e; background: #fff7df; }
+    .agent_status.error { color: #9f2525; border-color: #efb5b5; background: #fff8f8; }
+    .agent_message pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #354554; }
+    .authoring_drafts { display: grid; gap: 10px; padding: 10px; border: 1px solid #cbd9e4; border-radius: 8px; background: #fff; }
+    .authoring_drafts h3 { margin: 0; color: #17212b; font-size: 13px; }
+    .authoring_draft_card { display: grid; gap: 7px; padding: 10px; border: 1px solid #b9d9c9; border-radius: 8px; background: #f0fbf5; }
+    .authoring_draft_card > div:first-child { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+    .authoring_draft_card strong { color: #15212b; }
+    .authoring_draft_card span { border: 1px solid #d4e2ec; border-radius: 999px; padding: 3px 7px; color: #5c6b77; background: #fff; font-size: 11px; font-weight: 900; text-transform: uppercase; }
+    .authoring_draft_card small { color: #435261; line-height: 1.4; }
+    .draft_actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .draft_actions button { border: 1px solid #7ca98f; border-radius: 6px; padding: 7px 10px; color: #fff; background: #1f6b48; font-weight: 900; cursor: pointer; }
+    .draft_actions button.secondary { color: #17212b; border-color: #c9d5df; background: #fff; }
+    .draft_actions button:disabled { cursor: not-allowed; opacity: 0.55; }
+    .authoring_form { display: grid; gap: 8px; }
+    .authoring_form textarea { width: 100%; box-sizing: border-box; border: 1px solid #cbd9e4; border-radius: 8px; padding: 10px; resize: vertical; font: inherit; }
+    .authoring_form div { display: flex; gap: 8px; flex-wrap: wrap; }
+    .authoring_form button { border: 1px solid #b8c8d5; background: #fff; color: #162330; border-radius: 6px; padding: 8px 10px; font-weight: 900; cursor: pointer; }
+    .authoring_form button[type="submit"] { background: #17212b; border-color: #17212b; color: #fff; }
+    .authoring_form button:disabled { cursor: wait; opacity: 0.65; }
     .projection_inspector_links { margin-bottom: 14px; }
     .projection_inspector_links details { padding: 9px 11px; border: 1px solid #d8e0e7; border-radius: 8px; color: #4b5863; background: #f8fafc; }
     .projection_inspector_links summary { width: fit-content; cursor: pointer; color: #3a4650; font-size: 13px; font-weight: 800; }
@@ -1447,6 +2368,18 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .turn_editor_actions span { color: #5e6b76; font-size: 12px; line-height: 1.35; }
     .turn_editor_actions button, .turn_editor_header form button { min-height: 34px; padding: 6px 11px; border: 1px solid #b8c6d1; border-radius: 6px; color: #26323c; background: #fff; font-weight: 800; cursor: pointer; white-space: nowrap; }
     .turn_editor_actions button:hover, .turn_editor_header form button:hover { border-color: #8fa1b2; background: #f3f6f8; }
+    .scenario_save_form { display: grid; grid-template-columns: minmax(220px, 1fr) auto auto; gap: 8px 10px; align-items: end; padding: 10px; border: 1px solid #d6e1dc; border-radius: 8px; background: #f8fbf9; }
+    .scenario_save_form > div { grid-column: 1 / -1; display: grid; gap: 3px; }
+    .scenario_save_form > div span, .scenario_save_form small { color: #5e6b76; font-size: 12px; line-height: 1.35; }
+    .scenario_save_form label { display: grid; gap: 5px; min-width: 0; }
+    .scenario_save_form label span { color: #45525d; font-size: 12px; font-weight: 800; }
+    .scenario_save_form input[type="text"], .scenario_save_form input:not([type]) { width: 100%; min-height: 34px; border: 1px solid #cbd6dd; border-radius: 6px; padding: 7px 9px; font: inherit; color: #17202a; background: #fff; }
+    .scenario_save_form .inline_checkbox { grid-auto-flow: column; align-items: center; justify-content: start; gap: 7px; }
+    .scenario_save_form button { min-height: 34px; padding: 6px 11px; border: 1px solid #6fa78f; border-radius: 6px; color: #183d31; background: #edf8f2; font-weight: 800; cursor: pointer; white-space: nowrap; }
+    .scenario_save_form button:hover { border-color: #4f8d73; background: #e1f2e9; }
+    .scenario_save_form button.danger { border-color: #d7a0a0; color: #6f2424; background: #fff2f2; }
+    .scenario_save_form button.danger:hover { border-color: #c77c7c; background: #ffe9e9; }
+    .scenario_save_form small { grid-column: 1 / -1; font-weight: 800; }
     .trace_event.pending { opacity: 0.74; }
     .trace_event.active { border-color: #84b9e8; background: #eef6ff; }
     .phase_grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
@@ -1521,7 +2454,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       .shell > [data-phx-main] { display: block; min-height: 100vh; }
       .sidebar { position: static; overflow: visible; gap: 16px; padding: 18px 16px; }
       .workspace { padding: 18px 16px; }
-      .split, .scan_strip, .access_grid, .provider_model_card, .model_key_grid, .metrics, .inline_form, .state_columns, .simulation_player, .player_event, .turn_editor_grid, .boundary_pair.changed, .attempt_step, .state_run_strip { grid-template-columns: 1fr; }
+      .split, .scan_strip, .access_grid, .config_fact_grid, .model_simulation_notice dl, .provider_model_card, .model_key_grid, .metrics, .inline_form, .state_columns, .simulation_player, .player_event, .turn_editor_grid, .boundary_pair.changed, .attempt_step, .state_run_strip, .scenario_save_form { grid-template-columns: 1fr; }
       .topbar, .panel_header, .state_machine_summary, .assistant_boundary, .diagram_header, .turn_editor_header { display: grid; }
       .topbar { gap: 12px; }
       .sidebar_footer { margin-top: 0; }
@@ -1585,6 +2518,49 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     |> Jason.encode!(pretty: true)
   end
 
+  defp selected_model_config_json(config) do
+    config
+    |> redact_config_for_display()
+    |> Jason.encode!(pretty: true)
+  end
+
+  defp redact_config_for_display(config) when is_map(config) do
+    config
+    |> Enum.map(fn
+      {"provider_headers", headers} when is_map(headers) ->
+        {"provider_headers", Map.new(headers, fn {key, _value} -> {key, "[redacted]"} end)}
+
+      {key, value} when is_binary(key) ->
+        if sensitive_config_key?(key) do
+          {key, "[redacted]"}
+        else
+          {key, redact_config_for_display(value)}
+        end
+
+      {key, value} ->
+        {key, redact_config_for_display(value)}
+    end)
+    |> Map.new()
+  end
+
+  defp redact_config_for_display(values) when is_list(values),
+    do: Enum.map(values, &redact_config_for_display/1)
+
+  defp redact_config_for_display(value), do: value
+
+  defp sensitive_config_key?(key) do
+    normalized = key |> String.downcase() |> String.replace(["-", "_"], "")
+
+    normalized in ["apikey", "authorization", "bearer", "token", "secret", "password"]
+  end
+
+  defp behavior_rule_count(config) do
+    length(config["stream_rules"] || []) +
+      length(config["governance"] || []) +
+      map_size(config["prompt_transforms"] || %{}) +
+      if(config["structured_output"], do: 1, else: 0)
+  end
+
   defp selected_recipe(%{"recipes" => recipes}, pattern_id, recipe_id) when is_list(recipes) do
     normalized_recipe_id =
       case recipe_id do
@@ -1632,8 +2608,17 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   defp rich_recipe?(_recipe), do: false
 
-  defp selected_simulation(_pattern_id, _recipe_id, simulations, "", "", history_context)
-       when history_context == %{} do
+  defp selected_simulation(
+         _pattern_id,
+         _recipe_id,
+         simulations,
+         "",
+         "",
+         history_context,
+         response_attempts,
+         _config
+       )
+       when history_context == %{} and response_attempts == [] do
     List.first(simulations)
   end
 
@@ -1643,25 +2628,37 @@ defmodule WardwrightWeb.PolicyProjectionLive do
          _simulations,
          user_input,
          model_response,
-         history_context
+         history_context,
+         response_attempts,
+         config
        ) do
-    Wardwright.PolicyProjection.simulate_recipe_turn(
+    Wardwright.PolicyProjection.simulate_recipe_turn_with_attempts(
       pattern_id,
       recipe_id,
       user_input,
       model_response,
-      history_context
+      history_context,
+      response_attempts,
+      config
     )
   end
 
-  defp assign_interactive_simulation(socket, user_input, model_response, history_context) do
+  defp assign_interactive_simulation(
+         socket,
+         user_input,
+         model_response,
+         history_context,
+         response_attempts
+       ) do
     simulation =
-      Wardwright.PolicyProjection.simulate_recipe_turn(
+      Wardwright.PolicyProjection.simulate_recipe_turn_with_attempts(
         socket.assigns.selected_pattern_id,
         socket.assigns.selected_recipe_id,
         user_input,
         model_response,
-        history_context
+        history_context,
+        response_attempts,
+        socket.assigns.selected_model_config
       )
 
     socket
@@ -1729,6 +2726,76 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   defp simulation_field(nil, _field), do: ""
   defp simulation_field(input, field), do: Map.get(input, field, "")
 
+  defp simulation_response_attempts(input, simulation \\ nil)
+
+  defp simulation_response_attempts(%{"response_attempts" => attempts}, _simulation)
+       when is_list(attempts),
+       do: normalize_response_attempts(attempts)
+
+  defp simulation_response_attempts(%{"response_attempts" => attempts}, _simulation)
+       when is_map(attempts) do
+    attempts
+    |> Enum.flat_map(fn {index, output} ->
+      case Integer.parse(to_string(index)) do
+        {index, ""} when is_binary(output) ->
+          [%{"index" => index, "model_output" => output}]
+
+        _ ->
+          []
+      end
+    end)
+    |> normalize_response_attempts()
+  end
+
+  defp simulation_response_attempts(_input, %{"receipt_preview" => %{"stream" => stream}}),
+    do: stream |> stream_attempts() |> normalize_response_attempts()
+
+  defp simulation_response_attempts(_input, _simulation), do: []
+
+  defp normalize_response_attempts(attempts) do
+    attempts
+    |> Enum.flat_map(&normalize_response_attempt/1)
+    |> Enum.sort_by(&Map.get(&1, "index", 0))
+  end
+
+  defp normalize_response_attempt(%{"index" => index} = attempt) when is_integer(index) do
+    output = Map.get(attempt, "model_output") || Map.get(attempt, "model_response")
+
+    if is_binary(output) and String.trim(output) != "" do
+      [
+        Map.new([
+          {"index", index},
+          {"model_output", output},
+          {"status", string_or_nil(Map.get(attempt, "status"))},
+          {"user_output", string_or_nil(Map.get(attempt, "user_output"))},
+          {"retry_instruction", string_or_nil(Map.get(attempt, "retry_instruction"))},
+          {"policy_result", string_or_nil(Map.get(attempt, "policy_result"))}
+        ])
+        |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+        |> Map.new()
+      ]
+    else
+      []
+    end
+  end
+
+  defp normalize_response_attempt(_attempt), do: []
+
+  defp saved_response_attempts(assigns) do
+    assigns.simulation_boundary.attempts
+    |> normalize_response_attempts()
+    |> Enum.map(fn
+      %{"index" => 1} = attempt ->
+        Map.put(attempt, "model_output", assigns.simulation_model_response)
+
+      attempt ->
+        attempt
+    end)
+  end
+
+  defp string_or_nil(value) when is_binary(value), do: value
+  defp string_or_nil(_value), do: nil
+
   defp simulation_history_context(nil), do: %{}
 
   defp simulation_history_context(%{"history_context" => context}) when is_map(context) do
@@ -1769,13 +2836,17 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   defp simulation_input_groups(inputs) do
     direct = Enum.filter(inputs, &(&1["relationship"] == "direct"))
-    probes = Enum.reject(inputs, &(&1["relationship"] == "direct"))
+    saved = Enum.filter(inputs, &(&1["relationship"] == "saved_scenario"))
 
-    [{"direct", direct}, {"cross_policy_probe", probes}]
+    probes =
+      Enum.reject(inputs, &(&1["relationship"] in ["direct", "saved_scenario"]))
+
+    [{"direct", direct}, {"saved_scenario", saved}, {"cross_policy_probe", probes}]
     |> Enum.reject(fn {_relationship, grouped_inputs} -> grouped_inputs == [] end)
   end
 
   defp simulation_relationship_label("direct"), do: "Relevant examples"
+  defp simulation_relationship_label("saved_scenario"), do: "Saved test cases"
   defp simulation_relationship_label("cross_policy_probe"), do: "Cross-policy probes"
   defp simulation_relationship_label(_relationship), do: "Other scenarios"
 
@@ -1954,6 +3025,15 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     end
   end
 
+  defp selected_workbench_model_config(model_id) when is_binary(model_id) do
+    case Wardwright.model_config(model_id) do
+      {:ok, config} -> config
+      {:error, _message} -> Wardwright.current_config()
+    end
+  end
+
+  defp selected_workbench_model_config(_model_id), do: Wardwright.current_config()
+
   defp recipe_sources do
     Wardwright.PolicyRecipeCatalog.sources()
     |> Enum.reject(&(&1.id == "built_in"))
@@ -2038,12 +3118,14 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   defp path(pattern_id, mode), do: "/policies/#{pattern_id}/#{mode}"
 
-  defp path(pattern_id, mode, source_id), do: path(pattern_id, mode, source_id, nil)
+  defp path(pattern_id, mode, source_id, recipe_id),
+    do: path(pattern_id, mode, source_id, recipe_id, nil)
 
-  defp path(pattern_id, mode, source_id, recipe_id) when recipe_id in [nil, ""] do
+  defp path(pattern_id, mode, source_id, recipe_id, model_id) when recipe_id in [nil, ""] do
     query =
       %{}
       |> maybe_put_query("source", source_query_value(source_id))
+      |> maybe_put_query("model", model_query_value(model_id))
 
     case map_size(query) do
       0 -> path(pattern_id, mode)
@@ -2051,10 +3133,11 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     end
   end
 
-  defp path(pattern_id, mode, source_id, recipe_id) do
+  defp path(pattern_id, mode, source_id, recipe_id, model_id) do
     query =
       %{}
       |> maybe_put_query("source", source_query_value(source_id))
+      |> maybe_put_query("model", model_query_value(model_id))
 
     path = "#{path(pattern_id, mode)}/recipe/#{URI.encode_www_form(recipe_id)}"
 
@@ -2067,8 +3150,38 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   defp source_query_value(source_id) when source_id in ["built_in", "workspace"], do: nil
   defp source_query_value(source_id), do: source_id
 
+  defp model_query_value(model_id) when model_id in [nil, ""], do: nil
+
+  defp model_query_value(model_id) do
+    if model_id == Wardwright.model_id(), do: nil, else: model_id
+  end
+
+  defp inspector_path(pattern_id, mode, source_id, _recipe_id, model_id, true) do
+    path(pattern_id, mode, source_id, nil, model_id)
+  end
+
+  defp inspector_path(pattern_id, mode, source_id, recipe_id, _model_id, false) do
+    path(pattern_id, mode, source_id, recipe_id)
+  end
+
   defp maybe_put_query(query, _key, value) when value in [nil, ""], do: query
   defp maybe_put_query(query, key, value), do: Map.put(query, key, value)
+
+  defp workbench_title(config, _recipe, _pattern, false) do
+    Wardwright.model_id(config)
+  end
+
+  defp workbench_title(_config, recipe, pattern, true) do
+    recipe["title"] || pattern["title"]
+  end
+
+  defp workbench_promise(config, _recipe, pattern, false) do
+    config["description"] || pattern["promise"]
+  end
+
+  defp workbench_promise(_config, recipe, pattern, true) do
+    recipe["promise"] || pattern["promise"]
+  end
 
   defp workbench_title("diagram"), do: "Policy Simulator"
   defp workbench_title(_mode), do: "Artifact Inspector"
