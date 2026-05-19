@@ -1,3 +1,95 @@
+defmodule Mix.Tasks.Compile.GleamDeps do
+  use Mix.Task.Compiler
+
+  @recursive true
+
+  @impl Mix.Task.Compiler
+  def run(_args) do
+    build_lib = Path.join(Mix.Project.build_path(), "lib")
+    File.mkdir_p!(build_lib)
+
+    case System.find_executable("gleam") do
+      nil ->
+        Mix.shell().error("Could not find the gleam executable")
+        {:error, []}
+
+      gleam ->
+        compile_packages(gleam, build_lib)
+    end
+  end
+
+  defp compile_packages(gleam, build_lib) do
+    gleam_package_names()
+    |> Enum.reduce_while(:ok, fn package, :ok ->
+      case compile_package(gleam, build_lib, package) do
+        :ok -> {:cont, :ok}
+        :error -> {:halt, :error}
+      end
+    end)
+    |> case do
+      :ok -> {:ok, []}
+      :error -> {:error, []}
+    end
+  end
+
+  defp gleam_package_names do
+    Mix.Project.config()
+    |> Keyword.get(:deps, [])
+    |> Enum.map(&dependency_name/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.filter(&gleam_dependency?/1)
+  end
+
+  defp dependency_name({package, _requirement}) when is_atom(package), do: Atom.to_string(package)
+
+  defp dependency_name({package, _requirement, _opts}) when is_atom(package), do: Atom.to_string(package)
+
+  defp dependency_name(_dependency), do: nil
+
+  defp gleam_dependency?(package) do
+    File.regular?(Path.join(["deps", package, "gleam.toml"]))
+  end
+
+  defp compile_package(gleam, build_lib, package) do
+    dep_path = Path.join("deps", package)
+    output_path = Path.join(build_lib, package)
+
+    if File.regular?(Path.join(dep_path, "gleam.toml")) do
+      File.rm_rf!(output_path)
+      Mix.shell().info("Compiling Gleam dependency #{package}")
+
+      args = [
+        "compile-package",
+        "--target",
+        "erlang",
+        "--package",
+        ".",
+        "--out",
+        Path.expand(output_path),
+        "--lib",
+        Path.expand(build_lib)
+      ]
+
+      case System.cmd(gleam, args, cd: dep_path, stderr_to_stdout: true) do
+        {_output, 0} ->
+          output_path
+          |> Path.join("ebin")
+          |> Path.expand()
+          |> Code.prepend_path()
+
+          :ok
+
+        {output, _status} ->
+          Mix.shell().error(output)
+          :error
+      end
+    else
+      Mix.shell().error("Missing Gleam dependency #{package}; run mix deps.get")
+      :error
+    end
+  end
+end
+
 defmodule Wardwright.MixProject do
   use Mix.Project
 
@@ -6,7 +98,7 @@ defmodule Wardwright.MixProject do
       app: :wardwright,
       version: "0.0.8",
       elixir: "~> 1.17",
-      compilers: [:gleam] ++ Mix.compilers(),
+      compilers: [:gleam_deps, :gleam] ++ Mix.compilers(),
       aliases: ["deps.get": ["deps.get", "gleam.deps.get"]],
       erlc_paths: [
         "_build/#{Mix.env()}/lib/wardwright/_gleam_artefacts"
@@ -51,7 +143,10 @@ defmodule Wardwright.MixProject do
     [
       {:jason, "~> 1.4"},
       {:dune, "~> 0.3.15"},
-      {:gleam_stdlib, "~> 1.0", compile: false, app: false},
+      {:gleam_stdlib, "~> 1.0", compile: false, app: false, override: true},
+      {:act, "~> 0.4", compile: false, app: false},
+      {:non_empty_list, "~> 2.3", compile: false, app: false},
+      {:trie_again, "~> 1.1", compile: false, app: false},
       {:mix_gleam, "~> 0.6", runtime: false},
       {:phoenix, "~> 1.7"},
       {:phoenix_html, "~> 4.1"},
