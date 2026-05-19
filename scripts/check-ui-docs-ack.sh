@@ -15,6 +15,10 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --base)
+      if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        echo "missing value for --base" >&2
+        exit 2
+      fi
       BASE="${2:-}"
       shift 2
       ;;
@@ -45,7 +49,7 @@ if [[ -z "$changed_files" ]]; then
   exit 0
 fi
 
-ui_changes="$(printf '%s\n' "$changed_files" | grep -E '^(app/src/wardwright/lustre_(workbench|model_access).*\.gleam|app/lib/wardwright_web/(live|components|controllers?|templates?)/|app/lib/wardwright_web/(lustre_workbench_controller|lustre_model_access_(controller|socket|data)|policy_projection_live|model_api_keys_live)\.ex|app/priv/static/assets/|app/assets/)' || true)"
+ui_changes="$(printf '%s\n' "$changed_files" | grep -E '^(app/src/wardwright/lustre_(workbench|model_access).*\.gleam|app/lib/wardwright_web/(live|components|controllers?|templates?|layouts?)/|app/lib/wardwright_web/(lustre_workbench_controller|lustre_model_access_(controller|socket|data)|policy_projection_live|model_api_keys_live|layouts)\.ex|app/priv/static/assets/|app/assets/)' || true)"
 
 if [[ -z "$ui_changes" ]]; then
   exit 0
