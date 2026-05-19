@@ -10,6 +10,7 @@ const appPort = Number(process.env.WARDWRIGHT_BROWSER_TEST_PORT || randomPort(18
 const chromePort = Number(process.env.WARDWRIGHT_CHROME_DEBUG_PORT || randomPort(28_000, 37_999));
 const appUrl = `http://127.0.0.1:${appPort}`;
 const chromePath = process.env.CHROME_PATH || findChromePath();
+const serverStartTimeoutMs = Number(process.env.WARDWRIGHT_BROWSER_SERVER_TIMEOUT_MS || 120_000);
 
 const viewports = [
   { name: "mobile", width: 390, height: 844, mobile: true, scale: 3 },
@@ -25,7 +26,7 @@ const overflowViewports = [
 
 const overflowPaths = [
   "/policies",
-  "/admin/model-api-keys",
+  "/admin",
   "/policies/tts-retry/diagram",
   "/policies/tts-retry/diagram?model=browser-smoke-model",
   "/policies/route-privacy/diagram",
@@ -78,7 +79,7 @@ const chrome = spawn(
 );
 
 try {
-  await waitForHttp(`${appUrl}/policies/tts-retry/diagram`, "Wardwright");
+  await waitForHttp(`${appUrl}/policies/tts-retry/diagram`, "Wardwright", serverStartTimeoutMs);
   await waitForHttp(`http://127.0.0.1:${chromePort}/json/version`, "webSocketDebuggerUrl");
   await seedRegisteredModelWorkbench();
 
