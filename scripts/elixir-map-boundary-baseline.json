@@ -12,11 +12,11 @@
   },
   "files": {
     "app/lib/wardwright.ex": {
-      "total": 289,
+      "total": 292,
       "patterns": {
-        "string_key_entry": 155,
+        "string_key_entry": 156,
         "string_key_access": 30,
-        "map_call_string_key": 98,
+        "map_call_string_key": 100,
         "get_in_string_path": 6
       }
     },
@@ -65,6 +65,15 @@
         "get_in_string_path": 0
       }
     },
+    "app/lib/wardwright/paths.ex": {
+      "total": 0,
+      "patterns": {
+        "string_key_entry": 0,
+        "string_key_access": 0,
+        "map_call_string_key": 0,
+        "get_in_string_path": 0
+      }
+    },
     "app/lib/wardwright/policy/action.ex": {
       "total": 60,
       "patterns": {
@@ -95,9 +104,9 @@
     "app/lib/wardwright/policy/engine.ex": {
       "total": 49,
       "patterns": {
-        "string_key_entry": 31,
+        "string_key_entry": 30,
         "string_key_access": 0,
-        "map_call_string_key": 18,
+        "map_call_string_key": 19,
         "get_in_string_path": 0
       }
     },
@@ -165,9 +174,9 @@
       }
     },
     "app/lib/wardwright/policy/structured_output.ex": {
-      "total": 46,
+      "total": 43,
       "patterns": {
-        "string_key_entry": 30,
+        "string_key_entry": 27,
         "string_key_access": 10,
         "map_call_string_key": 6,
         "get_in_string_path": 0
@@ -192,11 +201,11 @@
       }
     },
     "app/lib/wardwright/policy_projection.ex": {
-      "total": 796,
+      "total": 800,
       "patterns": {
         "string_key_entry": 645,
         "string_key_access": 59,
-        "map_call_string_key": 92,
+        "map_call_string_key": 96,
         "get_in_string_path": 0
       }
     },
@@ -321,8 +330,8 @@
       "total": 165,
       "patterns": {
         "string_key_entry": 75,
-        "string_key_access": 50,
-        "map_call_string_key": 30,
+        "string_key_access": 49,
+        "map_call_string_key": 31,
         "get_in_string_path": 10
       }
     },
@@ -331,6 +340,15 @@
       "patterns": {
         "string_key_entry": 6,
         "string_key_access": 7,
+        "map_call_string_key": 0,
+        "get_in_string_path": 0
+      }
+    },
+    "app/lib/wardwright/structured_output_retry_feedback.ex": {
+      "total": 0,
+      "patterns": {
+        "string_key_entry": 0,
+        "string_key_access": 0,
         "map_call_string_key": 0,
         "get_in_string_path": 0
       }
