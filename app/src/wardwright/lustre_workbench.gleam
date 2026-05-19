@@ -482,15 +482,6 @@ pub fn view(model: Model) -> Element(Msg) {
           ]),
         ]),
       ]),
-      html.section([class("context-controls")], [
-        labeled_select(
-          "Policy slice",
-          "pattern_id",
-          model.pattern_id,
-          pattern_options(model.model_id, model.pattern_id),
-          PatternChanged,
-        ),
-      ]),
       simulator_form(model),
       results_grid(model),
       trace_panel(model),
@@ -616,6 +607,16 @@ fn fixture_options(
   }
 }
 
+fn policy_projection_select(model: Model) -> Element(Msg) {
+  labeled_select(
+    "Policy projection",
+    "pattern_id",
+    model.pattern_id,
+    pattern_options(model.model_id, model.pattern_id),
+    PatternChanged,
+  )
+}
+
 fn simulator_form(model: Model) -> Element(Msg) {
   html.form([class("simulator"), event.on_submit(SubmitSimulation)], [
     html.div([class("form-header")], [
@@ -701,6 +702,7 @@ fn text_area(
         name(field_name),
         rows(6),
         placeholder(hint),
+        value(content),
         event.on_input(to_msg),
       ],
       content,
@@ -915,7 +917,10 @@ fn state_machine_graph(model: Model) -> Element(Msg) {
           text(path_label(replay)),
         ]),
       ]),
-      playback_actions(model),
+      html.div([class("graph-toolbar")], [
+        policy_projection_select(model),
+        playback_actions(model),
+      ]),
     ]),
     element(
       "wardwright-state-graph",
@@ -1444,20 +1449,6 @@ fn styles() -> String {
     align-items: flex-start;
     gap: 14px;
   }
-  .context-controls {
-    position: sticky;
-    top: 0;
-    z-index: 3;
-    display: grid;
-    grid-template-columns: minmax(260px, 460px);
-    gap: 8px;
-    padding: 12px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: rgba(251, 252, 253, 0.96);
-    box-shadow: 0 10px 24px rgb(16 24 40 / 6%);
-    backdrop-filter: blur(8px);
-  }
   h1 {
     margin: 0;
     font-size: 28px;
@@ -1483,6 +1474,13 @@ fn styles() -> String {
     gap: 12px;
     align-items: end;
     min-width: 0;
+  }
+  .graph-toolbar {
+    display: grid;
+    grid-template-columns: minmax(240px, 380px) max-content;
+    gap: 12px;
+    align-items: end;
+    min-width: min(100%, 560px);
   }
   .simulator, .panel, .trace-panel {
     display: flex;
@@ -1686,7 +1684,7 @@ fn styles() -> String {
       border-right: 0;
       border-bottom: 1px solid var(--border);
     }
-    .context-controls, .topbar, .form-header, .trace-header, .turn-grid, .results, .state-edge, .simulator-toolbar {
+    .topbar, .form-header, .trace-header, .turn-grid, .results, .state-edge, .simulator-toolbar, .graph-toolbar {
       grid-template-columns: 1fr;
       flex-direction: column;
     }

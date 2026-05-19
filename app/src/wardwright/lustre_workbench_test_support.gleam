@@ -108,6 +108,20 @@ pub fn selecting_fixture_updates_simulation(
   |> view_contains(expected_text)
 }
 
+pub fn selecting_fixture_controls_textarea(
+  pattern_id: String,
+  model_id: String,
+  fixture_id: String,
+  field_id: String,
+  expected_value: String,
+) -> Bool {
+  start()
+  |> change_select("model_id", model_id)
+  |> change_select("pattern_id", pattern_id)
+  |> change_select("fixture_id", fixture_id)
+  |> view_has_control_value(field_id, expected_value)
+}
+
 pub fn editing_retry_output_updates_simulation(
   model_id: String,
   first_response: String,
@@ -189,6 +203,21 @@ fn view_has_active_state(simulation, state: String) -> Bool {
   |> query.find(matching: query.element(
     matching: query.tag("wardwright-state-graph")
     |> query.and(query.attribute("data-active-state", state)),
+  ))
+  |> result.is_ok
+}
+
+fn view_has_control_value(
+  simulation,
+  field_id: String,
+  expected_value: String,
+) -> Bool {
+  simulation
+  |> simulate.view
+  |> query.find(matching: query.element(
+    matching: query.tag("textarea")
+    |> query.and(query.id(field_id))
+    |> query.and(query.attribute("value", expected_value)),
   ))
   |> result.is_ok
 }

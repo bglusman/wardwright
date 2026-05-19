@@ -122,7 +122,7 @@ defmodule WardwrightWeb.WorkbenchTest do
 
     assert json =~ "Wardwright"
     assert json =~ "Selected model turn simulator"
-    assert json =~ "Policy slice"
+    assert json =~ "Policy projection"
     assert json =~ "Fixture"
     refute json =~ "topbar-actions"
 
@@ -370,6 +370,14 @@ defmodule WardwrightWeb.WorkbenchTest do
              "retry-workbench",
              "safe-stream",
              "Use the current client adapter."
+           )
+
+    assert :wardwright@lustre_workbench_test_support.selecting_fixture_controls_textarea(
+             "tts-retry",
+             "retry-workbench",
+             "safe-stream",
+             "model_response",
+             "Use the current client adapter.\nAvoid legacy constructor names."
            )
   end
 

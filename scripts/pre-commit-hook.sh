@@ -22,7 +22,10 @@ if echo "$staged_files" | grep -qE '^app/'; then
   (
     cd app &&
       mise exec -- gleam format --check src &&
+      mise exec -- gleam check --target erlang &&
+      mise exec -- gleam run -m glinter &&
       mise exec -- mix format --check-formatted &&
+      ../scripts/check-lustre-controlled-inputs.py src &&
       mise exec -- mix test
   ) || fail "App checks failed"
   ok "App checks clean"

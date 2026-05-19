@@ -13,3 +13,34 @@ trie_again = ">= 1.1.4 and < 2.0.0"
 
 [dev_dependencies]
 gleeunit = ">= 1.0.0 and < 2.0.0"
+glinter = ">= 2.19.0 and < 3.0.0"
+
+[tools.glinter]
+include = ["src/"]
+
+[tools.glinter.rules]
+assert_ok_pattern = "off"
+discarded_result = "off"
+echo = "off"
+error_context_lost = "off"
+deep_nesting = "off"
+duplicate_import = "off"
+function_complexity = "off"
+label_possible = "off"
+missing_labels = "off"
+missing_type_annotation = "off"
+module_complexity = "off"
+panic_without_message = "off"
+prefer_guard_clause = "off"
+redundant_case = "off"
+short_variable_name = "off"
+string_inspect = "off"
+stringly_typed_error = "off"
+thrown_away_error = "off"
+todo_without_message = "off"
+trailing_underscore = "off"
+unnecessary_string_concatenation = "off"
+unnecessary_variable = "off"
+unqualified_import = "off"
+unused_exports = "off"
+unwrap_used = "off"
