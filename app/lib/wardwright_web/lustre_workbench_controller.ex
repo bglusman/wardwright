@@ -21,6 +21,8 @@ defmodule WardwrightWeb.LustreWorkbenchController do
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Wardwright Lustre Workbench Spike</title>
+        <script src="/vendor/cytoscape/cytoscape.min.js"></script>
+        <script type="module" src="/assets/wardwright_state_graph.js"></script>
         <script type="module" src="/vendor/lustre/lustre-server-component.mjs"></script>
         <style>
           :root {

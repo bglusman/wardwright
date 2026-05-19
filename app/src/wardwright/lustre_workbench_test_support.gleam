@@ -93,8 +93,8 @@ fn view_has_active_state(simulation, state: String) -> Bool {
   simulation
   |> simulate.view
   |> query.find(matching: query.element(
-    matching: query.class("state-node active")
-    |> query.and(query.attribute("data-state", state)),
+    matching: query.tag("wardwright-state-graph")
+    |> query.and(query.attribute("data-active-state", state)),
   ))
   |> result.is_ok
 }

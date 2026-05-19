@@ -35,6 +35,8 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
 
     assert html_response(conn, 200) =~ "lustre-server-component"
     assert conn.resp_body =~ "/vendor/lustre/lustre-server-component.mjs"
+    assert conn.resp_body =~ "/vendor/cytoscape/cytoscape.min.js"
+    assert conn.resp_body =~ "/assets/wardwright_state_graph.js"
     assert conn.resp_body =~ "/spikes/lustre-workbench/socket/websocket"
   end
 
@@ -79,6 +81,13 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
     conn = get(build_conn(), "/vendor/lustre/lustre-server-component.mjs")
 
     assert response(conn, 200) =~ "customElements.define"
+  end
+
+  test "Lustre Cytoscape state graph renderer is served for the workbench" do
+    conn = get(build_conn(), "/assets/wardwright_state_graph.js")
+
+    assert response(conn, 200) =~ "wardwright-state-graph"
+    assert conn.resp_body =~ "showEdgeDetail"
   end
 
   test "transport registration pushes the initial Lustre DOM payload" do

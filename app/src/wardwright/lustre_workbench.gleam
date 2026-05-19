@@ -1,4 +1,5 @@
 import gleam/int
+import gleam/json
 import gleam/list
 import gleam/string
 import lustre
@@ -6,7 +7,7 @@ import lustre/attribute.{
   attribute, class, disabled, id, name, placeholder, rows, selected, type_,
   value,
 }
-import lustre/element.{type Element, text}
+import lustre/element.{type Element, element, text}
 import lustre/element/html
 import lustre/event
 import ui/badge
@@ -592,28 +593,82 @@ fn state_machine_graph(
         text(blank_default(replay.status, "unknown")),
       ]),
     ]),
-    html.div(
-      [class("state-track")],
-      replay.state_ids
-        |> list.map(fn(state) {
-          html.div(
-            [
-              class(state_node_class(state, active_state, replay.final_state)),
-              attribute("data-state", state),
-              attribute("data-active", bool_string(state == active_state)),
-            ],
-            [
-              html.strong([], [text(state_label(state))]),
-              html.span([], [text(state)]),
-            ],
-          )
-        }),
+    element(
+      "wardwright-state-graph",
+      [
+        class("state-cytoscape"),
+        attribute("data-states", state_graph_states_json(replay, active_state)),
+        attribute(
+          "data-transitions",
+          state_graph_transitions_json(replay.transitions),
+        ),
+        attribute("data-active-state", active_state),
+        attribute("data-final-state", replay.final_state),
+      ],
+      [],
     ),
-    html.div(
-      [class("edge-list")],
-      state_edge_rows(replay.transitions, active_state),
-    ),
+    html.details([class("state-evidence")], [
+      html.summary([], [text("Transition evidence")]),
+      html.div(
+        [class("edge-list")],
+        state_edge_rows(replay.transitions, active_state),
+      ),
+    ]),
   ])
+}
+
+fn state_graph_states_json(
+  replay: StateReplay,
+  active_state: String,
+) -> String {
+  replay.state_ids
+  |> json.array(fn(state) {
+    json.object([
+      #("id", json.string(state)),
+      #("label", json.string(state_label(state))),
+      #("active", json.bool(state == active_state)),
+      #("terminal", json.bool(state == replay.final_state)),
+    ])
+  })
+  |> json.to_string
+}
+
+fn state_graph_transitions_json(
+  transitions: List(projection_core.StateTransition),
+) -> String {
+  transitions
+  |> list.index_map(fn(transition, index) {
+    let #(from, event, to, action_name, node_id) = transition
+
+    json.object([
+      #("id", json.string("edge-" <> int.to_string(index))),
+      #("from", json.string(from)),
+      #("to", json.string(to)),
+      #("event", json.string(blank_default(event, "event"))),
+      #("action", json.string(blank_default(action_name, "pass"))),
+      #("node", json.string(blank_default(node_id, "node"))),
+      #("short_label", json.string(short_edge_label(event, action_name))),
+      #(
+        "detail",
+        json.string(
+          blank_default(event, "event")
+          <> " / "
+          <> blank_default(action_name, "pass")
+          <> " / "
+          <> blank_default(node_id, "node"),
+        ),
+      ),
+    ])
+  })
+  |> json.array(fn(transition) { transition })
+  |> json.to_string
+}
+
+fn short_edge_label(event: String, action_name: String) -> String {
+  case string.trim(event) {
+    "" -> blank_default(action_name, "transition")
+    event_name -> event_name
+  }
 }
 
 fn state_edge_rows(
@@ -819,27 +874,10 @@ fn matched_label(matched: Bool) -> String {
   }
 }
 
-fn bool_string(value: Bool) -> String {
-  case value {
-    True -> "true"
-    False -> "false"
-  }
-}
-
 fn state_label(state: String) -> String {
   state
   |> string.replace(each: "_", with: " ")
   |> string.replace(each: "-", with: " ")
-}
-
-fn state_node_class(
-  state: String,
-  active_state: String,
-  final_state: String,
-) -> String {
-  "state-node"
-  <> active_class(state == active_state)
-  <> final_class(state == final_state)
 }
 
 fn state_edge_class(from: String, to: String, active_state: String) -> String {
@@ -849,13 +887,6 @@ fn state_edge_class(from: String, to: String, active_state: String) -> String {
 fn active_class(active: Bool) -> String {
   case active {
     True -> " active"
-    False -> ""
-  }
-}
-
-fn final_class(final: Bool) -> String {
-  case final {
-    True -> " terminal"
     False -> ""
   }
 }
@@ -1075,43 +1106,26 @@ fn styles() -> String {
   .state-graph {
     grid-column: 1 / -1;
   }
-  .state-track {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-    gap: 10px;
+  .state-cytoscape {
+    display: block;
+    min-height: 460px;
   }
-  .state-node {
-    min-width: 0;
-    display: grid;
-    gap: 5px;
-    padding: 12px;
-    border: 1px solid #cfd8e3;
+  .state-evidence {
+    border: 1px solid #e1e7ed;
     border-radius: 8px;
-    background: #f8fafc;
+    background: #fbfcfd;
   }
-  .state-node strong {
-    color: #1f2a37;
-    font-size: 14px;
-    line-height: 1.2;
-    overflow-wrap: anywhere;
-  }
-  .state-node span {
-    color: #66727f;
+  .state-evidence summary {
+    cursor: pointer;
+    padding: 10px 12px;
+    color: #46525f;
     font-size: 12px;
-    font-weight: 750;
-    overflow-wrap: anywhere;
-  }
-  .state-node.active {
-    border-color: #16605a;
-    background: #e6f4f2;
-    box-shadow: inset 0 0 0 1px #16605a;
-  }
-  .state-node.terminal {
-    border-style: double;
+    font-weight: 800;
   }
   .edge-list {
     display: grid;
     gap: 8px;
+    padding: 0 12px 12px;
   }
   .state-edge {
     display: grid;
