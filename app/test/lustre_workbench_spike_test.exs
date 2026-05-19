@@ -38,6 +38,24 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
     assert conn.resp_body =~ "/spikes/lustre-workbench/socket/websocket"
   end
 
+  test "graph renderer lab compares the hand-laid and browser-rendered toy graphs" do
+    conn = get(build_conn(), "/spikes/graph-renderer-lab")
+
+    assert html_response(conn, 200) =~ "Graph renderer lab"
+    assert conn.resp_body =~ "Hand-laid baseline"
+    assert conn.resp_body =~ "Cytoscape-style renderer"
+    assert conn.resp_body =~ "/vendor/cytoscape/cytoscape.min.js"
+    assert conn.resp_body =~ "Streaming retry policy"
+    assert conn.resp_body =~ "Model route composition"
+    assert conn.resp_body =~ "tts.no-old-client"
+  end
+
+  test "vendored Cytoscape renderer asset is served locally for the graph lab" do
+    conn = get(build_conn(), "/vendor/cytoscape/cytoscape.min.js")
+
+    assert response(conn, 200) =~ "cytoscape"
+  end
+
   test "spike route marks a protected browser session for websocket reuse" do
     previous = Application.get_env(:wardwright, :basic_auth_password)
     Application.put_env(:wardwright, :basic_auth_password, "lustre-password")

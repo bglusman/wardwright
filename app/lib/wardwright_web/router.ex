@@ -35,6 +35,7 @@ defmodule WardwrightWeb.Router do
     live("/", PolicyProjectionLive, :index)
     live("/admin/model-api-keys", ModelApiKeysLive, :index)
     live("/policies", PolicyProjectionLive, :index)
+    get("/spikes/graph-renderer-lab", GraphRendererLabController, :show)
     get("/spikes/lustre-workbench", LustreWorkbenchController, :show)
     live("/policies/:pattern/:mode/recipe/:recipe/step/:step", PolicyProjectionLive, :index)
     live("/policies/:pattern/:mode/recipe/:recipe", PolicyProjectionLive, :index)

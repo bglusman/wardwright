@@ -47,6 +47,13 @@ defmodule WardwrightWeb.Endpoint do
     only: ~w(lustre-server-component.mjs lustre-server-component.min.mjs)
   )
 
+  plug(Plug.Static,
+    at: "/vendor/cytoscape",
+    from: {:wardwright, "priv/static/vendor/cytoscape"},
+    gzip: false,
+    only: ~w(cytoscape.min.js)
+  )
+
   plug(Plug.RequestId)
   plug(Plug.Telemetry, event_prefix: [:phoenix, :endpoint])
   plug(Plug.MethodOverride)

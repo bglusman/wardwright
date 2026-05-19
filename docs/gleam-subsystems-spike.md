@@ -32,6 +32,11 @@ Elixir until the surrounding integration is also ready to move.
   LiveView workbench while it evolves.
 - Added a first Lustre state-machine graph that labels transition edges with
   event/action/node evidence and highlights the active state during playback.
+- Added `/spikes/graph-renderer-lab` as a deliberately isolated comparison of
+  the current hand-laid graph approach against a browser graph renderer on the
+  same toy state machines, before wiring any renderer into Wardwright data. The
+  lab vendors Cytoscape locally instead of loading a CDN script in the protected
+  admin UI.
 
 ## Lustre integration direction
 
@@ -69,5 +74,5 @@ Good next candidates for the same treatment:
 | [`gleam_otp`](https://github.com/gleam-lang/otp) | Good candidate for moving supervised pure-ish BEAM processes into Gleam. | Trial after at least one storage or policy core has a stable Gleam API. |
 | [`lustre`](https://github.com/lustre-labs/lustre) and related packages | Relevant to the concurrent UI spike. Shared value comes from typed projection data, not from coupling this core to any UI framework. | Keep the state-machine and projection contracts frontend-agnostic so LiveView and Lustre can consume the same data. |
 | [`yog`](https://hexdocs.pm/yog) | Worth evaluating for larger model-composition graphs. It has DOT/Graphviz and Mermaid renderers with highlighting, but it is a graph algorithm/export library rather than a Lustre-native interactive canvas. | Keep the first Lustre graph hand-laid; trial `yog/render/mermaid` or `yog/render/dot` when diagrams need nested model composition, layout engines, export, or docs embedding. |
-| [`lustre_graph_generator`](https://github.com/code-shoily/lustre_graph_generator) | Strong reference implementation for client-side graph visualization in Lustre. It combines Yog with Cytoscape, Mermaid, and Graphviz renderers, but it targets JavaScript and relies on browser JS FFI/CDN assets, while this Wardwright spike currently runs Lustre as an Erlang/Phoenix server component. | Do not add as a direct dependency in this slice. Reuse its approach if we move this UI to a client-side Lustre bundle or add a dedicated JS graph renderer for zoom/pan/export. |
+| [`lustre_graph_generator`](https://github.com/code-shoily/lustre_graph_generator) | Strong reference implementation for client-side graph visualization in Lustre. It combines Yog with Cytoscape, Mermaid, and Graphviz renderers, but it targets JavaScript and relies on browser JS FFI/CDN assets, while this Wardwright spike currently runs Lustre as an Erlang/Phoenix server component. | Do not add as a direct dependency in this slice. The graph lab adapts the browser-renderer shape without copying project code; use that comparison to decide whether the production path should be a JS-target Lustre bundle, a small owned renderer adapter, or the hand-laid server-component graph. |
 | [`paint`](https://hexdocs.pm/paint) / [`dnd`](https://hexdocs.pm/dnd) | Useful primitives for custom canvas drawing or drag/drop interactions, not automatic graph layout. | Revisit only if the state-machine surface needs freeform canvas interaction or node repositioning. |
