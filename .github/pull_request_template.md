@@ -5,6 +5,7 @@ Briefly describe the change and why it matters.
 ## Testing
 
 - [ ] App: `(cd app && mise exec -- mix format --check-formatted && mise exec -- mix test)`
+- [ ] Types: `(cd app && mise exec -- mix assay)`
 - [ ] Docs: `ruby scripts/check-docs-site.rb`
 
 ## Contract Impact

@@ -29,6 +29,12 @@ jobs:
       - name: Install deps
         run: mix deps.get
         working-directory: app
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: app/_build/assay
+          key: ${{ runner.os }}-beam-otp29-elixir120-gleam116-assay-${{ hashFiles('app/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-beam-otp29-elixir120-gleam116-assay-
       - name: Check Gleam formatting
         run: gleam format --check src
         working-directory: app
@@ -37,6 +43,9 @@ jobs:
         working-directory: app
       - name: Run Credo ratchets
         run: mix credo --format=oneline
+        working-directory: app
+      - name: Run Dialyzer
+        run: mix assay
         working-directory: app
       - name: Run tests
         run: mix test

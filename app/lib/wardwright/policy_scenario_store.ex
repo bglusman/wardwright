@@ -172,11 +172,11 @@ defmodule Wardwright.PolicyScenarioStore do
   end
 
   defp valid_trace_states(pattern_id, scenario) do
-    state_ids = Wardwright.PolicyProjection.state_ids(pattern_id) |> MapSet.new()
+    state_ids = Wardwright.PolicyProjection.state_ids(pattern_id)
 
     scenario
     |> PolicyScenario.trace_state_ids()
-    |> Enum.find(&(not MapSet.member?(state_ids, &1)))
+    |> Enum.find(&(&1 not in state_ids))
     |> case do
       nil -> :ok
       state_id -> {:error, "trace state_id #{state_id} is not valid for pattern #{pattern_id}"}
@@ -310,7 +310,6 @@ defmodule Wardwright.PolicyScenarioStore do
     else
       {:error, reason} when is_atom(reason) -> {:error, :file.format_error(reason)}
       {:error, %Jason.EncodeError{} = error} -> {:error, Exception.message(error)}
-      {:error, message} when is_binary(message) -> {:error, message}
     end
   end
 

@@ -20,6 +20,10 @@ run = "ruby scripts/check-elixir-map-boundaries.rb"
 description = "Run gradual Elixir static-analysis ratchets"
 run = "cd app && mix credo --format=oneline"
 
+[tasks."check:types"]
+description = "Run incremental Dialyzer through Assay"
+run = "cd app && mix assay"
+
 [tasks."check:browser"]
 description = "Run headless Chrome smoke tests for responsive LiveView playback"
 run = "node scripts/browser-smoke/liveview-playback.mjs"
@@ -31,6 +35,7 @@ run = [
   "mise run check:docs",
   "mise run check:maps",
   "mise run check:style",
+  "mise run check:types",
   "mise run check:browser",
 ]
 

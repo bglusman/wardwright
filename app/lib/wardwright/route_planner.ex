@@ -19,10 +19,18 @@ defmodule Wardwright.RoutePlanner do
 
   @max_route_dag_depth ModelGraph.max_depth()
 
+  @type artifact :: map()
+  @type attrs :: map()
+  @type decision :: map()
+  @type visited_models :: [String.t()]
+  @type validation_result :: :ok | {:error, String.t()}
+
+  @spec select(artifact(), integer(), attrs()) :: decision()
   def select(config, estimated_prompt_tokens, attrs \\ %{}) when is_map(config) do
-    select_config(config, estimated_prompt_tokens, attrs, MapSet.new())
+    select_config(config, estimated_prompt_tokens, attrs, [])
   end
 
+  @spec select_config(artifact(), integer(), attrs(), visited_models()) :: decision()
   defp select_config(config, estimated_prompt_tokens, attrs, visited) do
     targets =
       config
@@ -63,12 +71,14 @@ defmodule Wardwright.RoutePlanner do
     |> Map.put(:policy_route_constraints, route_constraints(attrs))
   end
 
+  @spec validate(artifact()) :: validation_result()
   def validate(config) when is_map(config) do
     with :ok <- validate_local_config(config) do
-      validate_model_graph(config, MapSet.new(), 0)
+      validate_model_graph(config, [], 0)
     end
   end
 
+  @spec validate_local_config(artifact()) :: validation_result()
   defp validate_local_config(config) when is_map(config) do
     targets = target_index(ModelGraph.targets(config))
 
@@ -79,6 +89,7 @@ defmodule Wardwright.RoutePlanner do
     end
   end
 
+  @spec resolve_model_graph_target(decision(), artifact(), map(), integer(), attrs(), visited_models()) :: decision()
   defp resolve_model_graph_target(decision, config, targets, estimated, attrs, visited) do
     decision = Map.put_new(decision, :route_lineage, [ModelGraph.lineage_step(config, decision)])
 
@@ -98,6 +109,7 @@ defmodule Wardwright.RoutePlanner do
     end
   end
 
+  @spec resolve_wardwright_target(decision(), artifact(), map(), integer(), attrs(), visited_models()) :: decision()
   defp resolve_wardwright_target(decision, config, target, estimated, attrs, visited) do
     artifact = ModelGraph.target_artifact(target)
     ref_id = ModelGraph.ref_id(target, artifact)
@@ -110,14 +122,14 @@ defmodule Wardwright.RoutePlanner do
           "model target #{inspect(ModelGraph.target_model(target))} is missing an embedded artifact"
         )
 
-      MapSet.size(visited) >= @max_route_dag_depth ->
+      length(visited) >= @max_route_dag_depth ->
         blocked_graph_decision(
           decision,
           config,
           "model graph exceeded max depth #{@max_route_dag_depth}"
         )
 
-      MapSet.member?(visited, ref_id) ->
+      ref_id in visited ->
         blocked_graph_decision(
           decision,
           config,
@@ -125,7 +137,7 @@ defmodule Wardwright.RoutePlanner do
         )
 
       true ->
-        nested = select_config(artifact, estimated, attrs, MapSet.put(visited, ref_id))
+        nested = select_config(artifact, estimated, attrs, [ref_id | visited])
 
         nested
         |> Map.put(:route_type, "model_graph")
@@ -688,6 +700,7 @@ defmodule Wardwright.RoutePlanner do
     end
   end
 
+  @spec validate_model_graph(artifact(), visited_models(), non_neg_integer()) :: validation_result()
   defp validate_model_graph(config, visited, depth) do
     model_id = ModelGraph.model_id(config)
 
@@ -695,11 +708,11 @@ defmodule Wardwright.RoutePlanner do
       depth > @max_route_dag_depth ->
         {:error, "model graph exceeds max depth #{@max_route_dag_depth}"}
 
-      model_id != "" and MapSet.member?(visited, model_id) ->
+      model_id != "" and model_id in visited ->
         {:error, "model graph cycle detected at #{model_id}"}
 
       true ->
-        visited = if model_id == "", do: visited, else: MapSet.put(visited, model_id)
+        visited = if model_id == "", do: visited, else: [model_id | visited]
 
         config
         |> ModelGraph.targets()
@@ -713,6 +726,8 @@ defmodule Wardwright.RoutePlanner do
     end
   end
 
+  @spec validate_model_graph_target(map(), visited_models(), non_neg_integer()) ::
+          {:cont, validation_result()} | {:halt, {:error, String.t()}}
   defp validate_model_graph_target(target, visited, depth) do
     artifact = ModelGraph.target_artifact(target)
     ref_id = ModelGraph.ref_id(target, artifact)
@@ -721,7 +736,7 @@ defmodule Wardwright.RoutePlanner do
       not is_map(artifact) ->
         {:halt, {:error, "model target #{ModelGraph.target_model(target)} must include artifact"}}
 
-      MapSet.member?(visited, ref_id) ->
+      ref_id in visited ->
         {:halt, {:error, "model graph cycle detected at #{ref_id}"}}
 
       true ->

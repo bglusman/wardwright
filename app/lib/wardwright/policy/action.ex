@@ -221,7 +221,6 @@ defmodule Wardwright.Policy.Action do
 
   defp integer_value(_value), do: nil
 
-  defp blank_to_nil(nil), do: nil
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
 end

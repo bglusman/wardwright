@@ -16,6 +16,12 @@ defmodule Wardwright.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       releases: releases(),
+      assay: [
+        dialyzer: [
+          apps: [:project_plus_deps, :crypto, :inets, :ssl, :public_key, :mix],
+          warning_apps: :project
+        ]
+      ],
       tinfoil: [
         targets: [:darwin_arm64, :darwin_x86_64, :linux_x86_64, :linux_arm64],
         github: [
@@ -65,6 +71,7 @@ defmodule Wardwright.MixProject do
       {:jido_ai, "~> 2.1"},
       {:burrito, "~> 1.5", runtime: false},
       {:tinfoil, "~> 0.2", runtime: false},
+      {:assay, "~> 0.5.2", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:quokka, "~> 2.13", only: [:dev, :test], runtime: false},
       {:tidewave, "~> 0.5", only: :dev},

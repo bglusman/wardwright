@@ -3204,11 +3204,11 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   end
 
   defp filter_supported_recipes(%{"recipes" => recipes} = catalog) do
-    supported_patterns = MapSet.new(Wardwright.PolicyProjection.pattern_ids())
+    supported_patterns = Wardwright.PolicyProjection.pattern_ids()
 
     {supported_recipes, unsupported_recipes} =
       Enum.split_with(recipes, fn recipe ->
-        MapSet.member?(supported_patterns, recipe["pattern_id"])
+        recipe["pattern_id"] in supported_patterns
       end)
 
     warnings =
@@ -3482,7 +3482,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       |> Enum.take(playback_step)
       |> Enum.map(& &1["node_id"])
       |> Enum.reject(&is_nil/1)
-      |> MapSet.new()
+      |> Map.new(&{&1, true})
 
     active_node_id = current_trace_event(simulation, playback_step) |> active_node_id()
     phase_x = Map.new(phases, &{&1.id, &1.x})
@@ -3495,7 +3495,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         %{
           active: node["id"] == active_node_id,
           confidence: node["confidence"],
-          executed: MapSet.member?(executed, node["id"]),
+          executed: Map.has_key?(executed, node["id"]),
           height: 74,
           id: node["id"],
           kind: node["kind"],
