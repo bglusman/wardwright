@@ -13,8 +13,9 @@ decision happened.
 ## Install
 
 Wardwright publishes early native binaries for macOS and Linux. The latest
-published release is `v0.0.5`; these docs also cover next-release-candidate
-workbench and authoring features before they are tagged.
+published release is `v0.0.6`, with a model-aware workbench, saved simulator
+test cases, an experimental in-page authoring assistant, and local ratchets for
+style and browser-regression checks.
 
 ### macOS Homebrew
 
@@ -44,7 +45,7 @@ WARDWRIGHT_BIND=127.0.0.1:8787 \
 For a pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.5
+curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.6
 ```
 
 Set `WARDWRIGHT_ADMIN_TOKEN` before exposing Wardwright beyond loopback. See

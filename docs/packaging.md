@@ -6,10 +6,10 @@ description: Release, native binary, and Homebrew packaging plan for Wardwright.
 
 # Packaging
 
-Status: initial Burrito/Tinfoil packaging path in place. Release `v0.0.5` is
-the latest published usable early release. The current development line prepares
-the next release candidate with a stronger workbench, saved simulator test
-cases, and an experimental in-page authoring assistant.
+Status: initial Burrito/Tinfoil packaging path in place. Release `v0.0.6` is
+the latest published usable early release, with the stronger model-aware
+workbench, saved simulator test cases, and an experimental in-page authoring
+assistant.
 
 Wardwright is a BEAM application with a Phoenix/LiveView operator UI and Gleam
 decision cores. The packaging goal is a user-facing binary that does not require
@@ -58,7 +58,7 @@ curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/in
 For a pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.5
+curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.6
 ```
 
 The script downloads the matching release archive, requires
@@ -66,10 +66,10 @@ The script downloads the matching release archive, requires
 to `~/.local/bin` by default. A manual install is equivalent:
 
 ```bash
-curl -fLO https://github.com/bglusman/wardwright/releases/download/v0.0.5/wardwright-0.0.5-x86_64-unknown-linux-musl.tar.gz
-curl -fLO https://github.com/bglusman/wardwright/releases/download/v0.0.5/checksums-sha256.txt
+curl -fLO https://github.com/bglusman/wardwright/releases/download/v0.0.6/wardwright-0.0.6-x86_64-unknown-linux-musl.tar.gz
+curl -fLO https://github.com/bglusman/wardwright/releases/download/v0.0.6/checksums-sha256.txt
 sha256sum -c checksums-sha256.txt --ignore-missing
-tar -xzf wardwright-0.0.5-x86_64-unknown-linux-musl.tar.gz
+tar -xzf wardwright-0.0.6-x86_64-unknown-linux-musl.tar.gz
 install -m 0755 wardwright ~/.local/bin/wardwright
 ```
 
@@ -223,7 +223,7 @@ The root workflow `.github/workflows/wardwright-release.yml` is adapted from
 Tinfoil's generated workflow because this repository keeps the Mix app under
 `app/`.
 
-Tagging `v0.0.5` or later should:
+Tagging a stable `v*` release should:
 
 1. Build Burrito binaries for each configured target.
 2. Upload archives and checksums to a GitHub Release.
@@ -250,12 +250,13 @@ where the policy UI and validation story are useful enough to promote.
   prepares the next package version.
 - Release `v0.0.5` adds workspace Dune snippet save/evaluate/compose/delete
   support for local agents and a Homebrew service bind file for port overrides.
-- The next release candidate adds simulation-target selection, editable retry
-  attempts, saved simulator test cases, screenshots/docs for the stronger
-  simulator loop, and an experimental in-page authoring assistant.
+- Release `v0.0.6` adds simulation-target selection, editable retry attempts,
+  saved simulator test cases, screenshots/docs for the stronger simulator loop,
+  an experimental in-page authoring assistant, Tidewave-assisted development
+  setup, and Credo/Quokka/browser ratchets.
 - Fnox-backed provider credentials are runtime-supported but not package-managed;
   fnox installation/profile management and product authorization remain
-  post-`0.0.5` hardening work.
+  post-`0.0.6` hardening work.
 - The first CI run may expose platform-specific Burrito, Zig, or NIF issues.
   macOS builds intentionally install Homebrew `zig@0.15` because upstream Zig
   0.15.2 can fail to link on newer macOS/Xcode combinations.
