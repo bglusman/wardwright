@@ -32,6 +32,8 @@ defmodule WardwrightWeb.Router do
   scope "/", WardwrightWeb do
     pipe_through([:browser, :protected_browser])
 
+    get("/spikes/sprocket-workbench", SprocketSimulatorController, :index)
+    get("/spikes/sprocket-simulator", SprocketSimulatorController, :index)
     live("/", PolicyProjectionLive, :index)
     live("/admin/model-api-keys", ModelApiKeysLive, :index)
     live("/policies", PolicyProjectionLive, :index)

@@ -6,7 +6,7 @@ defmodule Wardwright.MixProject do
       app: :wardwright,
       version: "0.0.8",
       elixir: "~> 1.17",
-      compilers: [:gleam] ++ Mix.compilers(),
+      compilers: [:gleam_deps, :gleam] ++ Mix.compilers(),
       aliases: ["deps.get": ["deps.get", "gleam.deps.get"]],
       erlc_paths: [
         "_build/#{Mix.env()}/lib/wardwright/_gleam_artefacts"
@@ -51,7 +51,7 @@ defmodule Wardwright.MixProject do
     [
       {:jason, "~> 1.4"},
       {:dune, "~> 0.3.15"},
-      {:gleam_stdlib, "~> 1.0", compile: false, app: false},
+      {:gleam_stdlib, ">= 0.61.0 and < 1.0.0", compile: false, app: false},
       {:mix_gleam, "~> 0.6", runtime: false},
       {:phoenix, "~> 1.7"},
       {:phoenix_html, "~> 4.1"},
@@ -89,5 +89,67 @@ defmodule Wardwright.MixProject do
         ]
       ]
     ]
+  end
+end
+
+defmodule Mix.Tasks.Compile.GleamDeps do
+  @moduledoc false
+
+  use Mix.Task.Compiler
+
+  @impl true
+  def run(_args) do
+    project_root = File.cwd!()
+    app = Mix.Project.config() |> Keyword.fetch!(:app) |> Atom.to_string()
+
+    with {:ok, _output} <- gleam_build(project_root),
+         :ok <- link_gleam_packages(project_root, app) do
+      {:ok, []}
+    else
+      {:error, output} ->
+        Mix.shell().error(output)
+        {:error, []}
+    end
+  end
+
+  defp gleam_build(project_root) do
+    case System.cmd("gleam", ["build"], cd: project_root, stderr_to_stdout: true) do
+      {_output, 0} = result -> {:ok, result}
+      {output, _status} -> {:error, output}
+    end
+  end
+
+  defp link_gleam_packages(project_root, app) do
+    source_root = gleam_build_root(project_root)
+    target_root = Path.join([project_root, "_build", Atom.to_string(Mix.env()), "lib"])
+
+    source_root
+    |> File.ls!()
+    |> Enum.reject(&(&1 == app))
+    |> Enum.each(fn package ->
+      source = Path.join(source_root, package)
+      target = Path.join(target_root, package)
+
+      File.rm_rf!(target)
+      File.mkdir_p!(Path.dirname(target))
+
+      case File.ln_s(source, target) do
+        :ok -> :ok
+        {:error, _reason} -> File.cp_r!(source, target)
+      end
+
+      target
+      |> Path.join("ebin")
+      |> Code.prepend_path()
+    end)
+
+    :ok
+  end
+
+  defp gleam_build_root(project_root) do
+    env_root = Path.join([project_root, "build", Atom.to_string(Mix.env()), "erlang"])
+    dev_root = Path.join([project_root, "build", "dev", "erlang"])
+
+    if File.dir?(env_root), do: env_root, else: dev_root
   end
 end
