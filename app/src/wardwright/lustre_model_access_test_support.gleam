@@ -12,6 +12,11 @@ pub fn initial_view_contains(expected_text: String) -> Bool {
   |> view_contains(expected_text)
 }
 
+pub fn initial_view_omits(unwanted_text: String) -> Bool {
+  start()
+  |> view_omits(unwanted_text)
+}
+
 pub fn initial_model_view_contains(
   model_id: String,
   expected_text: String,
@@ -61,6 +66,25 @@ pub fn saving_access_updates_mode(
   |> view_contains(expected_text)
 }
 
+pub fn selecting_keyed_mode_hides_unkeyed_options() -> Bool {
+  let simulation =
+    start()
+    |> change_select("requires_api_key_true", "true")
+
+  view_contains(simulation, "Keyed")
+  && !view_contains(simulation, "Composition only")
+}
+
+pub fn selecting_unkeyed_mode_shows_unkeyed_options() -> Bool {
+  let simulation =
+    start()
+    |> change_select("requires_api_key_true", "true")
+    |> change_select("requires_api_key_false", "false")
+
+  view_contains(simulation, "Composition only")
+  && view_contains(simulation, "Public")
+}
+
 pub fn selecting_model_shows(model_id: String, expected_text: String) -> Bool {
   start()
   |> change_select("model", model_id)
@@ -100,6 +124,10 @@ fn view_contains(simulation, text: String) -> Bool {
   |> simulate.view
   |> element.to_string
   |> string.contains(text)
+}
+
+fn view_omits(simulation, text: String) -> Bool {
+  !view_contains(simulation, text)
 }
 
 pub fn view_has_key_count(count: Int) -> Bool {

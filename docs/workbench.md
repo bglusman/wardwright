@@ -6,7 +6,7 @@ description: Inspect, simulate, and refine Wardwright registered models.
 
 # Workbench
 
-The primary Wardwright workbench lives at `/workbench`. It is the operator
+The primary Wardwright workbench lives at `/admin`. It is the operator
 surface for choosing a registered Wardwright model, loading a simulation
 fixture, editing caller input, backend model output, retry attempts, and then
 stepping through the resulting policy run.
@@ -18,11 +18,11 @@ Loopback access is allowed by default. If the workbench is exposed beyond local
 operator access, set `BASIC_AUTH_PASSWORD`; the Basic Auth username is always
 `admin`.
 
-The protected Model Access page at `/admin/model-api-keys` can select any
-registered model, generate and revoke model-scoped API keys for it, and edit
-whether that model is keyed or unkeyed. Those keys authorize model calls only
-when the model artifact sets `requires_api_key` to `true`; unkeyed models remain
-public or composition-only according to `auth.unkeyed_model_access`.
+The Model Access view is part of the same protected `/admin` shell. It can
+select any registered model, generate and revoke model-scoped API keys for it,
+and edit whether that model is keyed or unkeyed. Those keys authorize model
+calls only when the model artifact sets `requires_api_key` to `true`; unkeyed
+models remain public or composition-only according to `auth.unkeyed_model_access`.
 
 The deterministic model artifact remains the source of truth. The workbench is
 the review surface for understanding how that artifact compiles into routes,

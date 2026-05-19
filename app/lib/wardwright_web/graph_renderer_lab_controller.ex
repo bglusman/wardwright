@@ -380,7 +380,7 @@ defmodule WardwrightWeb.GraphRendererLabController do
               <span>Same toy state machine, hand-laid baseline vs browser graph renderer.</span>
             </div>
             <nav class="topbar-actions" aria-label="Workbench navigation">
-              <a class="button" href="/workbench">Workbench</a>
+              <a class="button" href="/admin">Workbench</a>
               <a class="button" href="/policies">Legacy workbench</a>
             </nav>
           </header>

@@ -30,40 +30,37 @@ defmodule WardwrightWeb.WorkbenchTest do
     :ok
   end
 
-  test "workbench route mounts the server component runtime" do
-    conn = get(build_conn(), "/workbench")
+  test "admin route mounts the server component runtime" do
+    conn = get(build_conn(), "/admin")
 
     assert html_response(conn, 200) =~ "lustre-server-component"
-    assert conn.resp_body =~ "<title>Wardwright Workbench</title>"
+    assert conn.resp_body =~ "<title>Wardwright Admin</title>"
     assert conn.resp_body =~ "/vendor/lustre/lustre-server-component.mjs"
     assert conn.resp_body =~ "/vendor/cytoscape/cytoscape.min.js"
     assert conn.resp_body =~ "/assets/wardwright_state_graph.js"
-    assert conn.resp_body =~ "/workbench/socket/websocket"
+    assert conn.resp_body =~ "/admin/socket/websocket"
+    assert conn.resp_body =~ "page=workbench"
     refute conn.resp_body =~ "Wardwright Lustre Workbench Spike"
   end
 
-  test "root route opens the primary workbench" do
+  test "root route opens the admin workbench" do
     conn = get(build_conn(), "/")
 
-    assert html_response(conn, 200) =~ "<title>Wardwright Workbench</title>"
-    assert conn.resp_body =~ "/workbench/socket/websocket"
+    assert html_response(conn, 200) =~ "<title>Wardwright Admin</title>"
+    assert conn.resp_body =~ "/admin/socket/websocket"
+    assert conn.resp_body =~ "page=workbench"
   end
 
-  test "model access route mounts the server component runtime" do
-    conn = get(build_conn(), "/admin/model-api-keys")
+  test "admin model access view mounts through the shared runtime" do
+    conn = get(build_conn(), "/admin?view=model_access&model=coding-balanced")
 
     assert html_response(conn, 200) =~ "lustre-server-component"
-    assert conn.resp_body =~ "<title>Wardwright Model Access</title>"
+    assert conn.resp_body =~ "<title>Wardwright Admin</title>"
     assert conn.resp_body =~ "/vendor/lustre/lustre-server-component.mjs"
-    assert conn.resp_body =~ "/admin/model-api-keys/socket/websocket"
+    assert conn.resp_body =~ "/admin/socket/websocket"
+    assert conn.resp_body =~ "page=model_access"
+    assert conn.resp_body =~ "model=coding-balanced"
     refute conn.resp_body =~ "Phoenix.LiveView"
-  end
-
-  test "old spike workbench route remains available during the transition" do
-    conn = get(build_conn(), "/spikes/lustre-workbench")
-
-    assert html_response(conn, 200) =~ "lustre-server-component"
-    assert conn.resp_body =~ "/spikes/lustre-workbench/socket/websocket"
   end
 
   test "graph renderer lab compares the hand-laid and browser-rendered toy graphs" do
@@ -97,7 +94,7 @@ defmodule WardwrightWeb.WorkbenchTest do
     conn =
       build_conn()
       |> Plug.Conn.put_req_header("authorization", basic_auth("admin", "workbench-password"))
-      |> get("/workbench")
+      |> get("/admin")
 
     assert html_response(conn, 200) =~ "lustre-server-component"
     assert Plug.Conn.get_session(conn, :wardwright_protected_access) == true
@@ -151,11 +148,11 @@ defmodule WardwrightWeb.WorkbenchTest do
   end
 
   test "transport registration pushes the initial model access DOM payload" do
-    assert {:ok, state} = WardwrightWeb.LustreModelAccessSocket.init(%{})
+    assert {:ok, state} = WardwrightWeb.LustreWorkbenchSocket.init(%{params: %{"page" => "model_access"}})
     assert_receive {ref, message} when is_tuple(message), 1_000
 
     assert {:push, {:text, json}, _state} =
-             WardwrightWeb.LustreModelAccessSocket.handle_info({ref, message}, state)
+             WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
 
     assert json =~ "Model Access"
     assert json =~ "Access Policy"
@@ -164,32 +161,10 @@ defmodule WardwrightWeb.WorkbenchTest do
     refute json =~ "Lustre Workbench"
     refute json =~ "Gleam UI"
 
-    WardwrightWeb.LustreModelAccessSocket.terminate(:normal, state)
+    WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
   end
 
-  test "model access transport honors the selected model session value" do
-    config =
-      Wardwright.default_config()
-      |> Map.put("model_id", "session-selected-model")
-
-    assert {:ok, _config} = Wardwright.put_model_config(config)
-
-    assert {:ok, state} =
-             WardwrightWeb.LustreModelAccessSocket.init(%{
-               connect_info: %{session: %{"wardwright_model_access_model" => "session-selected-model"}}
-             })
-
-    assert_receive {ref, message} when is_tuple(message), 1_000
-
-    assert {:push, {:text, json}, _state} =
-             WardwrightWeb.LustreModelAccessSocket.handle_info({ref, message}, state)
-
-    assert json =~ "session-selected-model"
-
-    WardwrightWeb.LustreModelAccessSocket.terminate(:normal, state)
-  end
-
-  test "model access transport honors the selected model websocket parameter" do
+  test "admin transport honors the selected model websocket parameter" do
     config =
       Wardwright.default_config()
       |> Map.put("model_id", "query-selected-model")
@@ -197,41 +172,19 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert {:ok, _config} = Wardwright.put_model_config(config)
 
     assert {:ok, state} =
-             WardwrightWeb.LustreModelAccessSocket.init(%{
+             WardwrightWeb.LustreWorkbenchSocket.init(%{
                connect_info: %{session: %{}},
-               params: %{"model" => "query-selected-model"}
+               params: %{"model" => "query-selected-model", "page" => "model_access"}
              })
 
     assert_receive {ref, message} when is_tuple(message), 1_000
 
     assert {:push, {:text, json}, _state} =
-             WardwrightWeb.LustreModelAccessSocket.handle_info({ref, message}, state)
+             WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
 
     assert json =~ "query-selected-model"
 
-    WardwrightWeb.LustreModelAccessSocket.terminate(:normal, state)
-  end
-
-  test "model access transport honors atom-keyed session values" do
-    config =
-      Wardwright.default_config()
-      |> Map.put("model_id", "atom-session-selected-model")
-
-    assert {:ok, _config} = Wardwright.put_model_config(config)
-
-    assert {:ok, state} =
-             WardwrightWeb.LustreModelAccessSocket.init(%{
-               connect_info: %{session: %{wardwright_model_access_model: "atom-session-selected-model"}}
-             })
-
-    assert_receive {ref, message} when is_tuple(message), 1_000
-
-    assert {:push, {:text, json}, _state} =
-             WardwrightWeb.LustreModelAccessSocket.handle_info({ref, message}, state)
-
-    assert json =~ "atom-session-selected-model"
-
-    WardwrightWeb.LustreModelAccessSocket.terminate(:normal, state)
+    WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
   end
 
   test "workbench websocket transport requires protected access" do
@@ -247,27 +200,6 @@ defmodule WardwrightWeb.WorkbenchTest do
 
     assert {:ok, _state} =
              WardwrightWeb.LustreWorkbenchSocket.connect(%{
-               connect_info: %{
-                 peer_data: %{address: {203, 0, 113, 10}},
-                 session: %{"wardwright_protected_access" => true},
-                 x_headers: []
-               }
-             })
-  end
-
-  test "model access websocket transport requires protected access" do
-    assert {:ok, _state} =
-             WardwrightWeb.LustreModelAccessSocket.connect(%{
-               connect_info: %{peer_data: %{address: {127, 0, 0, 1}}, x_headers: []}
-             })
-
-    assert :error =
-             WardwrightWeb.LustreModelAccessSocket.connect(%{
-               connect_info: %{peer_data: %{address: {203, 0, 113, 10}}, x_headers: []}
-             })
-
-    assert {:ok, _state} =
-             WardwrightWeb.LustreModelAccessSocket.connect(%{
                connect_info: %{
                  peer_data: %{address: {203, 0, 113, 10}},
                  session: %{"wardwright_protected_access" => true},
@@ -405,6 +337,15 @@ defmodule WardwrightWeb.WorkbenchTest do
            )
   end
 
+  test "admin shell keeps selected model synced between access and workbench pages" do
+    put_cow_transform_model_config()
+
+    assert :wardwright@lustre_admin_test_support.selecting_model_access_model_syncs_workbench(
+             "cow-transform-workbench",
+             "system/wardwright_policy_reminder: Include a small ASCII cow"
+           )
+  end
+
   test "Lustre simulation reruns after editing and submitting the form" do
     put_cow_transform_model_config()
 
@@ -493,6 +434,39 @@ defmodule WardwrightWeb.WorkbenchTest do
              "safe-stream",
              "model_response",
              "Use the current client adapter.\nAvoid legacy constructor names."
+           )
+  end
+
+  test "workbench model selector hides route-type framing" do
+    assert :wardwright@lustre_workbench_test_support.initial_view_omits("dispatcher /")
+    assert :wardwright@lustre_workbench_test_support.initial_view_omits("cascade /")
+    assert :wardwright@lustre_workbench_test_support.initial_view_omits("alloy /")
+  end
+
+  test "saved fixtures are available to another model on the same projection" do
+    put_retry_model_config()
+
+    {ok?, message, fixture_id} =
+      WardwrightWeb.LustreWorkbenchData.save_fixture(
+        "tts-retry",
+        "retry-workbench",
+        "Reusable release fixture",
+        "Use the current client.",
+        "Use NewClient(arg) in the migration.",
+        [{2, "Use NewClient(arg) in the migration."}]
+      )
+
+    assert ok?
+    assert message =~ "Fixture saved"
+    assert fixture_id =~ "saved:"
+
+    assert Enum.any?(
+             WardwrightWeb.LustreWorkbenchData.fixture_options("tts-retry", "coding-balanced"),
+             fn {id, title, _description, user_input, model_response, _retries} ->
+               id == fixture_id and title == "Saved: Reusable release fixture" and
+                 user_input == "Use the current client." and
+                 model_response == "Use NewClient(arg) in the migration."
+             end
            )
   end
 

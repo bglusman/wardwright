@@ -4,15 +4,27 @@ defmodule WardwrightWeb.LustreWorkbenchController do
   use Phoenix.Controller, formats: [:html]
 
   def show(conn, _params) do
+    conn = fetch_query_params(conn)
+
     conn
     |> put_resp_content_type("text/html")
-    |> html(page_html(Plug.CSRFProtection.get_csrf_token(), socket_route(conn.request_path)))
+    |> html(
+      page_html(
+        Plug.CSRFProtection.get_csrf_token(),
+        page_param(conn.query_params),
+        Map.get(conn.query_params, "model", "")
+      )
+    )
   end
 
-  defp page_html(csrf_token, socket_path) do
+  defp page_html(csrf_token, page, model) do
     socket_route =
-      socket_path <>
-        URI.encode_query(%{"_csrf_token" => csrf_token})
+      "/admin/socket/websocket?" <>
+        URI.encode_query(%{
+          "_csrf_token" => csrf_token,
+          "model" => model,
+          "page" => page
+        })
 
     """
     <!doctype html>
@@ -20,7 +32,7 @@ defmodule WardwrightWeb.LustreWorkbenchController do
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Wardwright Workbench</title>
+        <title>Wardwright Admin</title>
         <script src="/vendor/cytoscape/cytoscape.min.js"></script>
         <script type="module" src="/assets/wardwright_state_graph.js?v=graph-boundaries-5"></script>
         <script type="module" src="/vendor/lustre/lustre-server-component.mjs"></script>
@@ -66,6 +78,7 @@ defmodule WardwrightWeb.LustreWorkbenchController do
     """
   end
 
-  defp socket_route("/spikes/" <> _path), do: "/spikes/lustre-workbench/socket/websocket?"
-  defp socket_route(_path), do: "/workbench/socket/websocket?"
+  defp page_param(%{"view" => "model_access"}), do: "model_access"
+  defp page_param(%{"page" => "model_access"}), do: "model_access"
+  defp page_param(_query_params), do: "workbench"
 end

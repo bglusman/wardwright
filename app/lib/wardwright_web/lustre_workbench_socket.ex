@@ -25,7 +25,8 @@ defmodule WardwrightWeb.LustreWorkbenchSocket do
 
   @impl true
   def init(state) do
-    with {:ok, component} <- :wardwright@lustre_workbench.component() |> :lustre.start_server_component(nil) do
+    with {:ok, component} <-
+           :wardwright@lustre_admin.component() |> :lustre.start_server_component(initial_flags(state)) do
       subject = subscribe(component)
 
       {:ok,
@@ -34,6 +35,13 @@ defmodule WardwrightWeb.LustreWorkbenchSocket do
        |> Map.put(:subject, subject)}
     end
   end
+
+  defp initial_flags(%{params: %{"model" => model, "page" => "model_access"}}) when is_binary(model),
+    do: "model_access:" <> model
+
+  defp initial_flags(%{params: %{"page" => "model_access"}}), do: "model_access"
+
+  defp initial_flags(_state), do: "workbench"
 
   @impl true
   def handle_in({json, _opts}, state) when is_binary(json) do

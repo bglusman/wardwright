@@ -14,6 +14,7 @@ import ui/badge
 import ui/button
 import ui/select as select_ui
 import ui/table
+import wardwright/lustre_shell
 import wardwright/projection_core
 import wardwright/state_machine_core
 
@@ -76,6 +77,9 @@ pub type Model {
     user_input: String,
     model_response: String,
     retry_responses: List(RetryResponse),
+    fixture_title: String,
+    fixture_status: String,
+    fixture_error: String,
     step: Int,
     simulation: Simulation,
   )
@@ -88,6 +92,8 @@ pub type Msg {
   UserInputChanged(String)
   ModelResponseChanged(String)
   RetryResponseChanged(Int, String)
+  FixtureTitleChanged(String)
+  SaveFixture
   RunSimulation
   SubmitSimulation(List(#(String, String)))
   StepBack
@@ -149,6 +155,16 @@ fn external_run_simulation(
   String,
 )
 
+@external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "save_fixture")
+fn external_save_fixture(
+  pattern_id: String,
+  model_id: String,
+  title: String,
+  user_input: String,
+  model_response: String,
+  retry_responses: List(RetryResponse),
+) -> #(Bool, String, String)
+
 pub fn component() {
   lustre.simple(init, update, view)
 }
@@ -167,6 +183,9 @@ pub fn init(_flags: Nil) -> Model {
     user_input:,
     model_response:,
     retry_responses:,
+    fixture_title: "",
+    fixture_status: "",
+    fixture_error: "",
     step: 0,
     simulation: run_simulation(
       pattern_id,
@@ -193,6 +212,8 @@ pub fn update(model: Model, msg: Msg) -> Model {
           user_input: user_input,
           model_response: model_response,
           retry_responses: retry_responses,
+          fixture_status: "",
+          fixture_error: "",
           step: 0,
         ),
       )
@@ -213,6 +234,8 @@ pub fn update(model: Model, msg: Msg) -> Model {
           user_input: user_input,
           model_response: model_response,
           retry_responses: retry_responses,
+          fixture_status: "",
+          fixture_error: "",
           step: 0,
         ),
       )
@@ -229,6 +252,8 @@ pub fn update(model: Model, msg: Msg) -> Model {
           user_input: user_input,
           model_response: model_response,
           retry_responses: retry_responses,
+          fixture_status: "",
+          fixture_error: "",
           step: 0,
         ),
       )
@@ -258,6 +283,33 @@ pub fn update(model: Model, msg: Msg) -> Model {
       )
       |> reset_and_run_model
 
+    FixtureTitleChanged(title) -> Model(..model, fixture_title: title)
+
+    SaveFixture -> {
+      let #(ok, message, fixture_id) =
+        external_save_fixture(
+          model.pattern_id,
+          model.model_id,
+          model.fixture_title,
+          model.user_input,
+          model.model_response,
+          model.retry_responses,
+        )
+
+      case ok {
+        True ->
+          run_model(
+            Model(
+              ..model,
+              fixture_id: fixture_id,
+              fixture_status: message,
+              fixture_error: "",
+            ),
+          )
+        False -> Model(..model, fixture_status: "", fixture_error: message)
+      }
+    }
+
     RunSimulation | SubmitSimulation(_) -> run_model(Model(..model, step: 0))
 
     StepBack -> Model(..model, step: int.max(model.step - 1, 0))
@@ -277,6 +329,8 @@ pub fn update(model: Model, msg: Msg) -> Model {
           user_input: user_input,
           model_response: model_response,
           retry_responses: retry_responses,
+          fixture_status: "",
+          fixture_error: "",
           step: 0,
         ),
       )
@@ -433,29 +487,7 @@ fn add_unique(states: List(String), state: String) -> List(String) {
 pub fn view(model: Model) -> Element(Msg) {
   html.div([class("lustre-workbench")], [
     html.style([], styles()),
-    html.aside([class("rail")], [
-      html.div([class("brand")], [
-        html.span([class("mark")], [text("W")]),
-        html.div([], [
-          html.strong([], [text("Wardwright")]),
-          html.span([], [text("Workbench")]),
-        ]),
-      ]),
-      element("nav", [class("rail-nav")], [
-        rail_link(
-          "Workbench",
-          "Run and inspect registered models.",
-          "/workbench",
-          True,
-        ),
-        rail_link(
-          "Model access",
-          "Configure model keys and access.",
-          "/admin/model-api-keys",
-          False,
-        ),
-        deprecated_rail_link(),
-      ]),
+    lustre_shell.sidebar(lustre_shell.Workbench, "Workbench", [
       labeled_select(
         "Registered model",
         "model_id",
@@ -464,53 +496,40 @@ pub fn view(model: Model) -> Element(Msg) {
         ModelChanged,
       ),
     ]),
-    html.main([class("workspace")], [
-      html.header([class("topbar")], [
-        html.div([], [
-          html.h1([], [text(model.model_id)]),
-          html.p([], [
-            text(
-              model.simulation.pattern_title
-              <> ": "
-              <> model.simulation.pattern_promise,
-            ),
-          ]),
+    workspace(model),
+  ])
+}
+
+pub fn workspace(model: Model) -> Element(Msg) {
+  html.main([class("workspace")], [
+    html.header([class("topbar")], [
+      html.div([], [
+        html.h1([], [text(model.model_id)]),
+        html.p([], [
+          text(
+            model.simulation.pattern_title
+            <> ": "
+            <> model.simulation.pattern_promise,
+          ),
         ]),
       ]),
-      simulator_form(model),
-      results_grid(model),
-      trace_panel(model),
     ]),
+    simulator_form(model),
+    results_grid(model),
+    trace_panel(model),
   ])
 }
 
-fn rail_link(
-  label: String,
-  description: String,
-  href: String,
-  active: Bool,
-) -> Element(Msg) {
-  element(
-    "a",
-    [
-      class(case active {
-        True -> "active"
-        False -> ""
-      }),
-      attribute("href", href),
-    ],
-    [
-      html.strong([], [text(label)]),
-      html.span([], [text(description)]),
-    ],
-  )
-}
-
-fn deprecated_rail_link() -> Element(Msg) {
-  element("a", [class("deprecated"), attribute("href", "/policies")], [
-    html.strong([], [text("Legacy workbench (deprecated)")]),
-    html.span([], [text("Previous policy view.")]),
-  ])
+pub fn sidebar_controls(model: Model) -> List(Element(Msg)) {
+  [
+    labeled_select(
+      "Registered model",
+      "model_id",
+      model.model_id,
+      model_options(model.model_id),
+      ModelChanged,
+    ),
+  ]
 }
 
 fn labeled_select(
@@ -573,10 +592,10 @@ fn selected_pattern_from(
 fn model_options(selected_id: String) -> List(Element(Msg)) {
   external_model_options()
   |> list.map(fn(option) {
-    let #(option_id, _, route_type, access) = option
+    let #(option_id, _, _, access) = option
     select_ui.option(
       [selected(option_id == selected_id)],
-      option_id <> " - " <> route_type <> " / " <> access,
+      option_id <> " - " <> access,
       option_id,
     )
   })
@@ -610,13 +629,30 @@ fn fixture_options(
 }
 
 fn policy_projection_select(model: Model) -> Element(Msg) {
-  labeled_select(
-    "Policy projection",
-    "pattern_id",
-    model.pattern_id,
-    pattern_options(model.model_id, model.pattern_id),
-    PatternChanged,
-  )
+  html.label([class("field projection-field"), attribute("for", "pattern_id")], [
+    html.span([], [
+      text("Policy projection"),
+      html.span(
+        [
+          class("help-dot"),
+          attribute(
+            "title",
+            "Projection chooses the policy lens for this model. The graph shows possible transitions for the selected model, then highlights the replay path driven by the current fixture and edits.",
+          ),
+        ],
+        [text("?")],
+      ),
+    ]),
+    select_ui.select(
+      [
+        id("pattern_id"),
+        name("pattern_id"),
+        value(model.pattern_id),
+        event.on_change(PatternChanged),
+      ],
+      pattern_options(model.model_id, model.pattern_id),
+    ),
+  ])
 }
 
 fn simulator_form(model: Model) -> Element(Msg) {
@@ -665,6 +701,43 @@ fn simulator_form(model: Model) -> Element(Msg) {
       ),
     ]),
     retry_response_fields(model),
+    fixture_save_panel(model),
+  ])
+}
+
+fn fixture_save_panel(model: Model) -> Element(Msg) {
+  html.div([class("fixture-save")], [
+    html.label([class("field")], [
+      html.span([], [text("Save fixture")]),
+      html.input([
+        id("fixture_title"),
+        name("fixture_title"),
+        placeholder("Reviewed retry turn"),
+        value(model.fixture_title),
+        event.on_input(FixtureTitleChanged),
+      ]),
+    ]),
+    button.button(
+      [
+        button.variant(button.Ghost),
+        type_("button"),
+        event.on_click(SaveFixture),
+      ],
+      [text("Save current turn")],
+    ),
+    html.span([class("fixture-note")], [
+      text(
+        "Saved fixtures are available to every model on this projection; the source model is recorded.",
+      ),
+    ]),
+    case model.fixture_status {
+      "" -> html.span([], [])
+      status -> html.strong([class("fixture-status")], [text(status)])
+    },
+    case model.fixture_error {
+      "" -> html.span([], [])
+      error -> html.strong([class("fixture-error")], [text(error)])
+    },
   ])
 }
 
@@ -1362,8 +1435,8 @@ fn severity_class(severity: String) -> String {
   }
 }
 
-fn styles() -> String {
-  "
+pub fn styles() -> String {
+  lustre_shell.styles() <> "
   .lustre-workbench {
     min-height: 100vh;
     display: grid;
@@ -1371,83 +1444,34 @@ fn styles() -> String {
     background: var(--background);
     color: var(--foreground);
   }
-  .rail {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-    padding: 24px;
-    border-right: 1px solid var(--border);
-    background: #fbfcfd;
-  }
-  .brand {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .brand div, .field, .form-header div, .trace-header div {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .mark {
-    display: grid;
-    place-items: center;
-    width: 38px;
-    height: 38px;
-    border-radius: 8px;
-    color: white;
-    background: var(--primary);
-    font-weight: 800;
-  }
-  .brand strong, .form-header strong, .trace-header strong {
+  .form-header strong, .trace-header strong {
     font-size: 17px;
   }
-  .brand span, .form-header span, .trace-header span, .field > span, .fact span {
+  .form-header span, .trace-header span, .fact span {
     color: var(--muted-foreground);
     font-size: 12px;
     font-weight: 700;
-  }
-  .rail-nav {
-    display: grid;
-    gap: 6px;
-  }
-  .rail-nav a {
-    display: grid;
-    gap: 3px;
-    padding: 10px 12px;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    color: inherit;
-    text-decoration: none;
-  }
-  .rail-nav a:hover, .rail-nav a.active {
-    border-color: var(--border);
-    background: #eef6f5;
-  }
-  .rail-nav strong {
-    font-size: 13px;
-  }
-  .rail-nav span {
-    color: var(--muted-foreground);
-    font-size: 12px;
-    font-weight: 700;
-    line-height: 1.35;
-  }
-  .rail-nav a.deprecated {
-    margin-top: 4px;
-    padding: 7px 10px;
-    opacity: 0.72;
-  }
-  .rail-nav a.deprecated strong {
-    font-size: 11px;
-    font-weight: 700;
-  }
-  .rail-nav a.deprecated span {
-    font-size: 10px;
-    font-weight: 600;
   }
   .field {
     gap: 8px;
+  }
+  .projection-field > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .help-dot {
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    font-weight: 900;
+    cursor: help;
   }
   .runtime-note {
     margin-top: auto;
@@ -1506,6 +1530,26 @@ fn styles() -> String {
     border-radius: 8px;
     background: var(--card);
   }
+  .fixture-save {
+    display: grid;
+    grid-template-columns: minmax(220px, 320px) max-content minmax(240px, 1fr);
+    gap: 10px;
+    align-items: end;
+    padding-top: 4px;
+  }
+  .fixture-note, .fixture-status, .fixture-error {
+    align-self: center;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+  .fixture-status {
+    color: var(--primary);
+  }
+  .fixture-error {
+    color: var(--destructive);
+  }
   .turn-grid, .results {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1514,7 +1558,7 @@ fn styles() -> String {
   .results {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .editor textarea, textarea, select {
+  .editor textarea, textarea, select, input {
     width: 100%;
     border: 1px solid var(--input);
     border-radius: 8px;
@@ -1531,6 +1575,10 @@ fn styles() -> String {
   select {
     min-height: 42px;
     padding: 8px 34px 8px 10px;
+  }
+  input {
+    min-height: 40px;
+    padding: 8px 10px;
   }
   button {
     min-height: 38px;
@@ -1699,7 +1747,7 @@ fn styles() -> String {
       border-right: 0;
       border-bottom: 1px solid var(--border);
     }
-    .topbar, .form-header, .trace-header, .turn-grid, .results, .state-edge, .simulator-toolbar, .graph-toolbar {
+    .topbar, .form-header, .trace-header, .turn-grid, .results, .state-edge, .simulator-toolbar, .graph-toolbar, .fixture-save {
       grid-template-columns: 1fr;
       flex-direction: column;
     }

@@ -2,6 +2,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   @moduledoc false
 
   use Phoenix.LiveView
+  use Phoenix.VerifiedRoutes, endpoint: WardwrightWeb.Endpoint, router: WardwrightWeb.Router
 
   alias Phoenix.LiveView.JS
   alias Wardwright.ProviderRuntime.TaskSupervisor
@@ -31,7 +32,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         {:noreply,
          push_patch(socket,
            to:
-             path(
+             projection_path(
                socket.assigns.selected_pattern_id,
                socket.assigns.mode,
                socket.assigns.selected_recipe_source_id,
@@ -43,7 +44,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         {:noreply,
          push_patch(socket,
            to:
-             path(
+             projection_path(
                socket.assigns.selected_pattern_id,
                socket.assigns.mode,
                socket.assigns.selected_recipe_source_id,
@@ -308,7 +309,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     {:noreply,
      push_patch(socket,
        to:
-         path(
+         projection_path(
            socket.assigns.selected_pattern_id,
            socket.assigns.mode,
            normalize_recipe_source(source_id),
@@ -329,7 +330,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     {:noreply,
      push_patch(socket,
        to:
-         path(
+         projection_path(
            socket.assigns.selected_pattern_id,
            socket.assigns.mode,
            socket.assigns.selected_recipe_source_id,
@@ -783,7 +784,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
          push_patch(
            socket,
            to:
-             path(
+             projection_path(
                socket.assigns.selected_pattern_id,
                socket.assigns.mode,
                socket.assigns.selected_recipe_source_id,
@@ -893,15 +894,15 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
       <nav>
         <h2 class="nav_heading">Operator</h2>
-        <a href="/workbench">
+        <a href={~p"/admin"}>
           <strong>Workbench</strong>
           <span>Run and inspect registered models.</span>
         </a>
-        <a class="active" href="/policies">
+        <a class="active" href={~p"/policies"}>
           <strong>Legacy Workbench</strong>
           <span>Use the previous policy projection view.</span>
         </a>
-        <a href="/admin/model-api-keys">
+        <a href={~p"/admin?view=model_access"}>
           <strong>Model Management</strong>
           <span>Set keyed and unkeyed access for local models.</span>
         </a>
@@ -955,7 +956,12 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           </summary>
           <.link
             :for={pattern <- group.recipes}
-            patch={path(pattern["pattern_id"], "diagram", @selected_recipe_source_id, pattern["id"])}
+            patch={projection_path(
+              pattern["pattern_id"],
+              "diagram",
+              @selected_recipe_source_id,
+              pattern["id"]
+            )}
             class={if pattern["id"] == @selected_recipe_id, do: "active", else: ""}
           >
             <strong><%= pattern["title"] %></strong>
@@ -3292,29 +3298,30 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   defp normalize_step(_step, _simulation), do: 0
 
-  defp path(pattern_id, mode), do: "/policies/#{pattern_id}/#{mode}"
+  defp projection_path(pattern_id, mode), do: "/policies/#{pattern_id}/#{mode}"
 
-  defp path(pattern_id, mode, source_id, recipe_id), do: path(pattern_id, mode, source_id, recipe_id, nil)
+  defp projection_path(pattern_id, mode, source_id, recipe_id),
+    do: projection_path(pattern_id, mode, source_id, recipe_id, nil)
 
-  defp path(pattern_id, mode, source_id, recipe_id, model_id) when recipe_id in [nil, ""] do
+  defp projection_path(pattern_id, mode, source_id, recipe_id, model_id) when recipe_id in [nil, ""] do
     query =
       %{}
       |> maybe_put_query("source", source_query_value(source_id))
       |> maybe_put_query("model", model_query_value(model_id))
 
     case map_size(query) do
-      0 -> path(pattern_id, mode)
-      _ -> path(pattern_id, mode) <> "?" <> URI.encode_query(query)
+      0 -> projection_path(pattern_id, mode)
+      _ -> projection_path(pattern_id, mode) <> "?" <> URI.encode_query(query)
     end
   end
 
-  defp path(pattern_id, mode, source_id, recipe_id, model_id) do
+  defp projection_path(pattern_id, mode, source_id, recipe_id, model_id) do
     query =
       %{}
       |> maybe_put_query("source", source_query_value(source_id))
       |> maybe_put_query("model", model_query_value(model_id))
 
-    path = "#{path(pattern_id, mode)}/recipe/#{URI.encode_www_form(recipe_id)}"
+    path = "#{projection_path(pattern_id, mode)}/recipe/#{URI.encode_www_form(recipe_id)}"
 
     case map_size(query) do
       0 -> path
@@ -3332,11 +3339,11 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   end
 
   defp inspector_path(pattern_id, mode, source_id, _recipe_id, model_id, true) do
-    path(pattern_id, mode, source_id, nil, model_id)
+    projection_path(pattern_id, mode, source_id, nil, model_id)
   end
 
   defp inspector_path(pattern_id, mode, source_id, recipe_id, _model_id, false) do
-    path(pattern_id, mode, source_id, recipe_id)
+    projection_path(pattern_id, mode, source_id, recipe_id)
   end
 
   defp maybe_put_query(query, _key, value) when value in [nil, ""], do: query

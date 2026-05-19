@@ -112,7 +112,7 @@ Wardwright-hosted Wardwright model. Model API keys do that for
 }
 ```
 
-Generate and revoke those keys from `/admin/model-api-keys`, or through the
+Generate and revoke those keys from the protected `/admin` operator UI or the
 protected admin API. Keys are scoped to one Wardwright model id and stored only
 as hashes. A caller can use a valid key to spend or use the provider credentials
 behind that model, but cannot read the raw provider secret.

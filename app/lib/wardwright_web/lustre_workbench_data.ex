@@ -43,6 +43,48 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     end)
   end
 
+  def save_fixture(pattern_id, model_id, title, user_input, model_response, response_attempts) do
+    title = title |> to_string() |> String.trim()
+
+    if title == "" do
+      {false, "Name the fixture before saving.", ""}
+    else
+      scenario_id = "fixture-#{slug(title)}-#{System.unique_integer([:positive])}"
+
+      attrs =
+        %{
+          "expected_behavior" => "Replay saved fixture #{title}.",
+          "input_summary" => String.slice(blank_fallback(user_input, title), 0, 120),
+          "model_id" => model_id,
+          "scenario_id" => scenario_id,
+          "source" => "user",
+          "title" => title,
+          "trace" => [
+            %{
+              "id" => "#{scenario_id}:saved",
+              "label" => "Saved workbench fixture",
+              "node_id" => "workbench.fixture",
+              "severity" => "info"
+            }
+          ],
+          "turn" => %{
+            "model_response" => model_response || "",
+            "response_attempts" =>
+              response_attempts |> normalize_response_attempts() |> Enum.reject(&(&1["model_output"] in [nil, ""])),
+            "user_input" => user_input || ""
+          }
+        }
+
+      case Wardwright.PolicyScenarioStore.create(pattern_id, attrs) do
+        {:ok, scenario} ->
+          {true, "Fixture saved for this projection. Source model recorded as #{model_id}.", "saved:#{scenario.id}"}
+
+        {:error, message} ->
+          {false, message, ""}
+      end
+    end
+  end
+
   def fixture_options(pattern_id, model_id) do
     config = model_config(model_id)
 
@@ -181,6 +223,26 @@ defmodule WardwrightWeb.LustreWorkbenchData do
   end
 
   defp parse_attempt_index(_index), do: nil
+
+  defp slug(value) do
+    value
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
+    |> case do
+      "" -> "turn"
+      slug -> slug
+    end
+  end
+
+  defp blank_fallback(value, fallback) when is_binary(value) do
+    case String.trim(value) do
+      "" -> fallback
+      value -> value
+    end
+  end
+
+  defp blank_fallback(_value, fallback), do: fallback
 
   def projection_summary(pattern_id, model_id) do
     config = model_config(model_id)

@@ -5,11 +5,12 @@ import lustre
 import lustre/attribute.{
   attribute, checked, class, id, name, placeholder, selected, type_, value,
 }
-import lustre/element.{type Element, element, text}
+import lustre/element.{type Element, text}
 import lustre/element/html
 import lustre/event
 import ui/button
 import ui/select as select_ui
+import wardwright/lustre_shell
 
 type ModelOption =
   #(String, String, String, String)
@@ -32,6 +33,8 @@ pub type Model {
 
 pub type Msg {
   ModelChanged(String)
+  AccessModeChanged(String)
+  UnkeyedAccessChanged(String)
   KeyLabelChanged(String)
   CreateKey(List(#(String, String)))
   RevokeKey(String)
@@ -82,6 +85,10 @@ pub fn init(selected_model_id: String) -> Model {
 pub fn update(model: Model, msg: Msg) -> Model {
   case msg {
     ModelChanged(model_id) -> load_model(model_id, "", "", "")
+
+    AccessModeChanged(mode) -> Model(..model, requires_api_key: mode == "true")
+
+    UnkeyedAccessChanged(access) -> Model(..model, unkeyed_access: access)
 
     KeyLabelChanged(label) -> Model(..model, key_label: label)
 
@@ -170,53 +177,35 @@ pub fn view(model: Model) -> Element(Msg) {
   html.div([class("model-access-app")], [
     html.style([], styles()),
     sidebar(model),
-    html.main([class("workspace")], [
-      html.header([class("topbar")], [
-        html.div([], [
-          html.p([class("eyebrow")], [text("Access control")]),
-          html.h1([], [text("Model Access")]),
-          html.p([], [
-            text(
-              "Choose a Wardwright model, then configure API-key requirements and unkeyed access.",
-            ),
-          ]),
+    workspace(model),
+  ])
+}
+
+pub fn workspace(model: Model) -> Element(Msg) {
+  html.main([class("workspace")], [
+    html.header([class("topbar")], [
+      html.div([], [
+        html.p([class("eyebrow")], [text("Access control")]),
+        html.h1([], [text("Model Access")]),
+        html.p([], [
+          text(
+            "Choose a Wardwright model, then configure API-key requirements and unkeyed access.",
+          ),
         ]),
       ]),
-      notices(model),
-      html.section([class("model-key-grid")], [
-        model_summary(model),
-        access_policy_editor(model),
-        create_key_panel(model),
-        keys_panel(model),
-      ]),
+    ]),
+    notices(model),
+    html.section([class("model-key-grid")], [
+      model_summary(model),
+      access_policy_editor(model),
+      create_key_panel(model),
+      keys_panel(model),
     ]),
   ])
 }
 
-fn sidebar(model: Model) -> Element(Msg) {
-  html.aside([class("rail")], [
-    html.div([class("brand")], [
-      html.span([class("mark")], [text("W")]),
-      html.div([], [
-        html.strong([], [text("Wardwright")]),
-        html.span([], [text("Model access controls")]),
-      ]),
-    ]),
-    element("nav", [class("rail-nav")], [
-      rail_link(
-        "Workbench",
-        "Run and inspect registered models.",
-        "/workbench",
-        False,
-      ),
-      rail_link(
-        "Model Access",
-        "Configure keyed and unkeyed model access.",
-        "/admin/model-api-keys",
-        True,
-      ),
-      deprecated_rail_link(),
-    ]),
+pub fn sidebar_controls(model: Model) -> List(Element(Msg)) {
+  [
     html.div([class("sidebar-footer")], [
       html.span([], [text("Selected model")]),
       html.strong([], [text(model.model_id)]),
@@ -228,36 +217,15 @@ fn sidebar(model: Model) -> Element(Msg) {
         }),
       ]),
     ]),
-  ])
+  ]
 }
 
-fn rail_link(
-  label: String,
-  description: String,
-  href: String,
-  active: Bool,
-) -> Element(Msg) {
-  element(
-    "a",
-    [
-      class(case active {
-        True -> "active"
-        False -> ""
-      }),
-      attribute("href", href),
-    ],
-    [
-      html.strong([], [text(label)]),
-      html.span([], [text(description)]),
-    ],
+fn sidebar(model: Model) -> Element(Msg) {
+  lustre_shell.sidebar(
+    lustre_shell.ModelAccess,
+    "Model access",
+    sidebar_controls(model),
   )
-}
-
-fn deprecated_rail_link() -> Element(Msg) {
-  element("a", [class("deprecated"), attribute("href", "/policies")], [
-    html.strong([], [text("Legacy workbench (deprecated)")]),
-    html.span([], [text("Previous policy view.")]),
-  ])
 }
 
 fn notices(model: Model) -> Element(Msg) {
@@ -341,10 +309,10 @@ fn model_summary(model: Model) -> Element(Msg) {
 fn model_options(selected_id: String) -> List(Element(Msg)) {
   external_model_options()
   |> list.map(fn(option) {
-    let #(option_id, _, route_type, access) = option
+    let #(option_id, _, _, access) = option
     select_ui.option(
       [selected(option_id == selected_id)],
-      option_id <> " - " <> route_type <> " / " <> access,
+      option_id <> " - " <> access,
       option_id,
     )
   })
@@ -372,10 +340,12 @@ fn access_policy_editor(model: Model) -> Element(Msg) {
           html.div([class("radio-card access-mode-card")], [
             html.label([class("radio-card-main")], [
               html.input([
+                id("requires_api_key_false"),
                 type_("radio"),
                 name("requires_api_key"),
                 value("false"),
                 checked(!model.requires_api_key),
+                event.on_change(AccessModeChanged),
               ]),
               html.span([], [
                 html.strong([], [text("Unkeyed")]),
@@ -391,10 +361,12 @@ fn access_policy_editor(model: Model) -> Element(Msg) {
           ]),
           html.label([class("radio-card")], [
             html.input([
+              id("requires_api_key_true"),
               type_("radio"),
               name("requires_api_key"),
               value("true"),
               checked(model.requires_api_key),
+              event.on_change(AccessModeChanged),
             ]),
             html.span([], [
               html.strong([], [text("Keyed")]),
@@ -421,6 +393,7 @@ fn unkeyed_access_options(model: Model) -> Element(Msg) {
       model.unkeyed_access == "public",
       "Public",
       "Show the model in discovery and allow direct unkeyed calls.",
+      UnkeyedAccessChanged,
     ),
     radio_card(
       "unkeyed_access",
@@ -428,6 +401,7 @@ fn unkeyed_access_options(model: Model) -> Element(Msg) {
       model.unkeyed_access == "internal",
       "Composition only",
       "Hide unkeyed direct calls while keeping internal composition possible.",
+      UnkeyedAccessChanged,
     ),
   ])
 }
@@ -438,13 +412,16 @@ fn radio_card(
   is_checked: Bool,
   label: String,
   detail: String,
+  to_msg: fn(String) -> Msg,
 ) -> Element(Msg) {
   html.label([class("radio-card compact")], [
     html.input([
+      id(field_name <> "_" <> field_value),
       type_("radio"),
       name(field_name),
       value(field_value),
       checked(is_checked),
+      event.on_change(to_msg),
     ]),
     html.span([], [
       html.strong([], [text(label)]),
@@ -531,90 +508,23 @@ fn key_row(key: KeyOption) -> Element(Msg) {
   ])
 }
 
-fn styles() -> String {
-  "
+pub fn styles() -> String {
+  lustre_shell.styles() <> "
   .model-access-app {
     min-height: 100vh;
     display: grid;
     grid-template-columns: 320px minmax(0, 1fr);
   }
-  .rail {
-    display: flex;
-    flex-direction: column;
-    gap: 28px;
-    padding: 24px;
-    border-right: 1px solid var(--border);
-    background: #fbfcfd;
-  }
-  .brand {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .brand div, .field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .mark {
-    display: grid;
-    place-items: center;
-    width: 38px;
-    height: 38px;
-    border-radius: 8px;
-    color: white;
-    background: var(--primary);
-    font-weight: 800;
-  }
-  .brand span, .field > span, .eyebrow, dt {
+  .eyebrow, dt {
     color: var(--muted-foreground);
     font-size: 12px;
     font-weight: 800;
   }
-  .rail-nav {
-    display: grid;
-    gap: 8px;
-  }
-  .rail-nav a {
-    display: grid;
-    gap: 4px;
-    padding: 12px;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    color: inherit;
-    text-decoration: none;
-  }
-  .rail-nav a:hover, .rail-nav a.active {
-    border-color: var(--border);
-    background: #eef6f5;
-  }
-  .rail-nav span, small {
+  small {
     color: var(--muted-foreground);
     font-size: 12px;
     font-weight: 700;
     line-height: 1.35;
-  }
-  .rail-nav a.deprecated {
-    margin-top: 4px;
-    padding: 7px 10px;
-    opacity: 0.72;
-  }
-  .rail-nav a.deprecated strong {
-    font-size: 11px;
-    font-weight: 700;
-  }
-  .rail-nav a.deprecated span {
-    font-size: 10px;
-    font-weight: 600;
-  }
-  .sidebar-footer {
-    margin-top: auto;
-    display: grid;
-    gap: 6px;
-    padding: 14px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: #fff;
   }
   .workspace {
     display: flex;

@@ -84,7 +84,7 @@ providers.
 
 ## Policy Workbench
 
-The installed app includes a workbench at `/workbench` for visualizing and
+The installed app includes a workbench at `/admin` for visualizing and
 simulating Wardwright models before using them behind real traffic. Choose the
 registered Wardwright model being simulated, load a fixture, edit the simulated
 request, model output, and retry attempts, then step through the resulting

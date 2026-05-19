@@ -167,7 +167,7 @@ local model/provider selection that was only present in one shell session.
 `WARDWRIGHT_ADMIN_TOKEN` remains optional for loopback-only use. For browser
 access to the operator workbench and protected control APIs beyond loopback, set
 `BASIC_AUTH_PASSWORD`; the Basic Auth username is always `admin`. This protects
-operator surfaces such as `/workbench`, `/policies`, `/mcp`, `/admin/*`,
+operator surfaces such as `/admin`, `/policies`, `/mcp`, `/admin/*`,
 receipts, and policy-authoring and simulation APIs. OpenAI-compatible model
 endpoints remain governed by model access configuration. Generated model API
 keys and the active model definition are stored in the SQLite database at

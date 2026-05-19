@@ -48,7 +48,7 @@ defmodule Wardwright.CLITest do
                0
              end)
 
-    assert collected(collector) =~ "admin path: /workbench"
+    assert collected(collector) =~ "admin path: /admin"
   end
 
   test "admin access command opens model access controls" do
@@ -60,7 +60,7 @@ defmodule Wardwright.CLITest do
                0
              end)
 
-    assert collected(collector) =~ "admin path: /admin/model-api-keys"
+    assert collected(collector) =~ "admin path: /admin?view=model_access"
   end
 
   test "admin helper opens configured port when service is running" do
@@ -68,7 +68,7 @@ defmodule Wardwright.CLITest do
     test_pid = self()
 
     assert 0 =
-             Admin.open("/workbench", collector,
+             Admin.open("/admin", collector,
                bind: "0.0.0.0:8797",
                running?: fn url ->
                  send(test_pid, {:admin_running_probe, url})
@@ -80,9 +80,9 @@ defmodule Wardwright.CLITest do
                end
              )
 
-    assert_receive {:admin_running_probe, "http://127.0.0.1:8797/workbench"}
-    assert_receive {:admin_browser_open, "http://127.0.0.1:8797/workbench"}
-    assert collected(collector) =~ "Opened http://127.0.0.1:8797/workbench"
+    assert_receive {:admin_running_probe, "http://127.0.0.1:8797/admin"}
+    assert_receive {:admin_browser_open, "http://127.0.0.1:8797/admin"}
+    assert collected(collector) =~ "Opened http://127.0.0.1:8797/admin"
   end
 
   test "admin helper starts the service before opening when port is not responding" do
@@ -90,7 +90,7 @@ defmodule Wardwright.CLITest do
     test_pid = self()
 
     assert 0 =
-             Admin.open("/admin/model-api-keys", collector,
+             Admin.open("/admin?view=model_access", collector,
                bind: "127.0.0.1:8798",
                running?: fn url ->
                  send(test_pid, {:admin_running_probe, url})
@@ -110,15 +110,15 @@ defmodule Wardwright.CLITest do
                end
              )
 
-    assert_receive {:admin_running_probe, "http://127.0.0.1:8798/admin/model-api-keys"}
+    assert_receive {:admin_running_probe, "http://127.0.0.1:8798/admin?view=model_access"}
     assert_receive {:admin_start, "127.0.0.1:8798"}
-    assert_receive {:admin_wait, "http://127.0.0.1:8798/admin/model-api-keys"}
-    assert_receive {:admin_browser_open, "http://127.0.0.1:8798/admin/model-api-keys"}
+    assert_receive {:admin_wait, "http://127.0.0.1:8798/admin?view=model_access"}
+    assert_receive {:admin_browser_open, "http://127.0.0.1:8798/admin?view=model_access"}
 
     output = collected(collector)
     assert output =~ "Starting Wardwright on http://127.0.0.1:8798"
     assert output =~ "Wardwright is ready"
-    assert output =~ "Opened http://127.0.0.1:8798/admin/model-api-keys"
+    assert output =~ "Opened http://127.0.0.1:8798/admin?view=model_access"
   end
 
   test "tools command prints agent-usable MCP and API guidance" do

@@ -15,6 +15,11 @@ pub fn selecting_policy_slice_updates_heading(
   |> view_contains(expected_heading)
 }
 
+pub fn initial_view_omits(unwanted_text: String) -> Bool {
+  start()
+  |> view_omits(unwanted_text)
+}
+
 pub fn selecting_policy_slice_exposes_state_graph(
   pattern_id: String,
   expected_transition: String,
@@ -195,6 +200,10 @@ fn view_contains(simulation, text: String) -> Bool {
   |> simulate.view
   |> element.to_string
   |> string.contains(text)
+}
+
+fn view_omits(simulation, text: String) -> Bool {
+  !view_contains(simulation, text)
 }
 
 fn view_has_active_state(simulation, state: String) -> Bool {

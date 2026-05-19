@@ -360,7 +360,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   test "legacy workbench links to the primary workbench for side-by-side operation" do
     {:ok, _view, html} = live(build_conn(), "/policies/tts-retry/diagram")
 
-    assert html =~ ~s(href="/workbench")
+    assert html =~ ~s(href="/admin")
     assert html =~ "Legacy Workbench"
     assert html =~ "Use the previous policy projection view."
     refute html =~ "Lustre Workbench"
@@ -368,11 +368,12 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   end
 
   test "model API key management page creates and revokes keys" do
-    conn = get(build_conn(), "/admin/model-api-keys")
+    conn = get(build_conn(), "/admin?view=model_access")
 
     assert html_response(conn, 200) =~ "lustre-server-component"
-    assert conn.resp_body =~ "<title>Wardwright Model Access</title>"
-    assert conn.resp_body =~ "/admin/model-api-keys/socket/websocket"
+    assert conn.resp_body =~ "<title>Wardwright Admin</title>"
+    assert conn.resp_body =~ "/admin/socket/websocket"
+    assert conn.resp_body =~ "page=model_access"
     refute conn.resp_body =~ "live_socket"
 
     assert :wardwright@lustre_model_access_test_support.initial_view_contains("Model Access")
@@ -403,8 +404,12 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   test "model API key management page edits keyed and unkeyed access" do
     assert :wardwright@lustre_model_access_test_support.initial_view_contains("Unkeyed")
     assert :wardwright@lustre_model_access_test_support.initial_view_contains("Unkeyed access")
+    assert :wardwright@lustre_model_access_test_support.initial_view_omits("dispatcher /")
     refute Wardwright.model_requires_api_key?()
     assert Wardwright.unkeyed_model_access() == "public"
+
+    assert :wardwright@lustre_model_access_test_support.selecting_keyed_mode_hides_unkeyed_options()
+    assert :wardwright@lustre_model_access_test_support.selecting_unkeyed_mode_shows_unkeyed_options()
 
     assert :wardwright@lustre_model_access_test_support.saving_access_updates_mode(
              "coding-balanced",
@@ -449,9 +454,8 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert {:ok, _alpha} = Wardwright.put_config(alpha)
     assert {:ok, _beta} = Wardwright.put_model_config(beta)
 
-    conn = get(build_conn(), "/admin/model-api-keys?model=alpha-access")
+    conn = get(build_conn(), "/admin?view=model_access&model=alpha-access")
 
-    assert Plug.Conn.get_session(conn, :wardwright_model_access_model) == "alpha-access"
     assert html_response(conn, 200) =~ "model=alpha-access"
     assert :wardwright@lustre_model_access_test_support.initial_model_view_contains("alpha-access", "alpha-access")
     assert :wardwright@lustre_model_access_test_support.initial_view_contains("beta-access")
@@ -495,7 +499,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Registered model workbench"
     assert html =~ "Selecting a model leaves example preview"
     assert html =~ "Model Access"
-    assert html =~ "href=\"/admin/model-api-keys\""
+    assert html =~ "href=\"/admin?view=model_access\""
     assert html =~ "/v1/chat/completions"
     assert html =~ "coding-balanced"
     assert html =~ "wardwright/coding-balanced"

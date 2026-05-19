@@ -52,7 +52,7 @@ Set `WARDWRIGHT_ADMIN_TOKEN` before exposing Wardwright beyond loopback. See
 [Packaging](docs/packaging.md) for release targets, manual archive install
 steps, and service details.
 
-Then visit `http://127.0.0.1:8787/workbench`. Set `BASIC_AUTH_PASSWORD` before
+Then visit `http://127.0.0.1:8787/admin`. Set `BASIC_AUTH_PASSWORD` before
 exposing the workbench or protected control APIs beyond loopback; the Basic Auth
 username is always `admin`. Model calls remain governed separately by model
 access configuration.
@@ -69,8 +69,8 @@ model-scoped API key, or set unkeyed models to internal-only composition:
 }
 ```
 
-Use the protected `/admin/model-api-keys` page to select a registered model and
-generate or revoke keys for that model. Raw keys are shown once; Wardwright
+Use the protected `/admin` operator UI to select a registered model and generate
+or revoke keys for that model. Raw keys are shown once; Wardwright
 stores only a hash in the SQLite store at
 `~/.local/share/wardwright/wardwright.sqlite3` unless `XDG_DATA_HOME` or
 `WARDWRIGHT_SQLITE_STORE` points somewhere else. The same store persists
@@ -97,7 +97,7 @@ wardwright tools --json
 Wardwright exposes:
 
 - OpenAI-compatible `/v1/chat/completions` and `/v1/models` endpoints.
-- A registered-model workbench at `/workbench`, with the legacy policy
+- A registered-model workbench at `/admin`, with the legacy policy
   projection workbench still available at `/policies`.
 - Protected authoring APIs, plus MCP tools at `/mcp`.
 - Receipts, simulations, model access details, and admin status endpoints.
@@ -124,7 +124,7 @@ provider credentials on an instance reachable by untrusted users. See
 
 ## Policy Workbench
 
-The installed service includes a registered-model workbench at `/workbench`. It
+The installed service includes a registered-model workbench at `/admin`. It
 lets you choose the Wardwright model being simulated, load a fixture, edit caller
 input, backend model output, and retry attempts, then step through routing,
 state transitions, stream retries, rewrites, tool decisions, and receipt events.
