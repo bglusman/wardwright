@@ -243,10 +243,13 @@ defmodule Wardwright.StreamProviderTransportTest do
              "stop"
   end
 
-  test "openai-compatible targets fail loudly instead of dropping tool request fields" do
+  test "openai-compatible targets forward tool request fields and preserve provider tool calls" do
+    base_url = streaming_provider_base_url("/openai")
     System.put_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS", "1")
+    System.put_env("WARDWRIGHT_TEST_OPENAI_KEY", "test-openai-key")
 
     on_exit(fn ->
+      System.delete_env("WARDWRIGHT_TEST_OPENAI_KEY")
       System.delete_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS")
     end)
 
@@ -257,7 +260,7 @@ defmodule Wardwright.StreamProviderTransportTest do
           "context_window" => 256,
           "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY",
           "model" => "openai-compatible/live-test",
-          "provider_base_url" => "http://127.0.0.1:9",
+          "provider_base_url" => base_url,
           "provider_kind" => "openai-compatible"
         }
       ])
@@ -281,21 +284,26 @@ defmodule Wardwright.StreamProviderTransportTest do
         tools: [%{function: %{name: "create_pull_request", parameters: %{type: "object"}}, type: "function"}]
       })
 
-    assert conn.status == 502
+    assert conn.status == 200
 
     body = Jason.decode!(conn.resp_body)
-    assert get_in(body, ["wardwright", "status"]) == "provider_error"
-    assert get_in(body, ["wardwright", "provider_error"]) =~ "does not support request fields"
-    assert get_in(body, ["wardwright", "provider_error"]) =~ "tools"
-    assert get_in(body, ["wardwright", "provider_error"]) =~ "tool_choice"
-    assert get_in(body, ["wardwright", "provider_error"]) =~ "message.tool_calls"
-    assert get_in(body, ["wardwright", "provider_error"]) =~ "message.tool_call_id"
-    assert get_in(body, ["wardwright", "provider_error"]) =~ "message.role:tool"
+    assert get_in(body, ["wardwright", "status"]) == "completed"
+    assert get_in(body, ["wardwright", "provider_error"]) == nil
+
+    assert get_in(body, ["choices", Access.at(0), "finish_reason"]) == "tool_calls"
+
+    assert [
+             %{
+               "function" => %{"arguments" => ~s({"title":"Forwarded tools"}), "name" => "create_pull_request"},
+               "id" => "call_forwarded_1",
+               "type" => "function"
+             }
+           ] = get_in(body, ["choices", Access.at(0), "message", "tool_calls"])
 
     [receipt_id] = get_resp_header(conn, "x-wardwright-receipt-id")
     receipt = Wardwright.ReceiptStore.get(receipt_id)
 
-    assert get_in(receipt, ["attempts", Access.at(0), "called_provider"]) == false
+    assert get_in(receipt, ["attempts", Access.at(0), "called_provider"]) == true
 
     assert get_in(receipt, ["decision", "tool_context", "schema"]) ==
              "wardwright.tool_context.v1"
@@ -318,7 +326,8 @@ defmodule Wardwright.StreamProviderTransportTest do
              "source"
            ]) == "assistant_tool_call"
 
-    assert get_in(receipt, ["attempts", Access.at(0), "provider_error"]) =~
-             "does not support request fields"
+    assert get_in(receipt, ["attempts", Access.at(0), "provider_error"]) == nil
+    assert get_in(receipt, ["final", "provider_metadata", "finish_reason"]) == "tool_calls"
+    assert get_in(receipt, ["final", "provider_metadata", "usage", "total_tokens"]) == 5
   end
 end

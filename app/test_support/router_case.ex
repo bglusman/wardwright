@@ -73,49 +73,88 @@ defmodule Wardwright.Test.StreamingProvider do
   end
 
   post "/openai/chat/completions" do
-    {:ok, _body, conn} = Plug.Conn.read_body(conn)
+    {:ok, body, conn} = Plug.Conn.read_body(conn)
 
     case Plug.Conn.get_req_header(conn, "authorization") do
       ["Bearer test-openai-key"] ->
-        conn =
+        request = Jason.decode!(body)
+
+        if request["stream"] == true do
+          conn =
+            conn
+            |> Plug.Conn.put_resp_content_type("text/event-stream")
+            |> Plug.Conn.send_chunked(200)
+
+          {:ok, conn} =
+            Plug.Conn.chunk(
+              conn,
+              "data: " <>
+                Jason.encode!(%{"choices" => [%{"delta" => %{"content" => "hello "}}]}) <>
+                "\n\n"
+            )
+
+          {:ok, conn} =
+            Plug.Conn.chunk(
+              conn,
+              "event: completion.delta\n" <>
+                "data:" <>
+                Jason.encode!(%{"choices" => [%{"delta" => %{"content" => "world"}}]}) <>
+                "\n\n"
+            )
+
+          {:ok, conn} =
+            Plug.Conn.chunk(
+              conn,
+              "data: " <>
+                Jason.encode!(%{
+                  "choices" => [%{"delta" => %{}, "finish_reason" => "stop", "index" => 0}],
+                  "usage" => %{"completion_tokens" => 2, "prompt_tokens" => 3, "total_tokens" => 5}
+                }) <>
+                "\n\n"
+            )
+
+          {:ok, conn} = Plug.Conn.chunk(conn, "data: [DONE]\n\n")
           conn
-          |> Plug.Conn.put_resp_content_type("text/event-stream")
-          |> Plug.Conn.send_chunked(200)
+        else
+          {finish_reason, message} =
+            if forwarded_tool_request?(request) do
+              {"tool_calls",
+               %{
+                 "content" => nil,
+                 "role" => "assistant",
+                 "tool_calls" => [
+                   %{
+                     "function" => %{"arguments" => ~s({"title":"Forwarded tools"}), "name" => "create_pull_request"},
+                     "id" => "call_forwarded_1",
+                     "type" => "function"
+                   }
+                 ]
+               }}
+            else
+              {"stop", %{"content" => "openai-compatible text response", "role" => "assistant"}}
+            end
 
-        {:ok, conn} =
-          Plug.Conn.chunk(
+          Plug.Conn.send_resp(
             conn,
-            "data: " <>
-              Jason.encode!(%{"choices" => [%{"delta" => %{"content" => "hello "}}]}) <>
-              "\n\n"
+            200,
+            Jason.encode!(%{
+              "choices" => [%{"finish_reason" => finish_reason, "index" => 0, "message" => message}],
+              "usage" => %{"completion_tokens" => 2, "prompt_tokens" => 3, "total_tokens" => 5}
+            })
           )
-
-        {:ok, conn} =
-          Plug.Conn.chunk(
-            conn,
-            "event: completion.delta\n" <>
-              "data:" <>
-              Jason.encode!(%{"choices" => [%{"delta" => %{"content" => "world"}}]}) <>
-              "\n\n"
-          )
-
-        {:ok, conn} =
-          Plug.Conn.chunk(
-            conn,
-            "data: " <>
-              Jason.encode!(%{
-                "choices" => [%{"delta" => %{}, "finish_reason" => "stop", "index" => 0}],
-                "usage" => %{"completion_tokens" => 2, "prompt_tokens" => 3, "total_tokens" => 5}
-              }) <>
-              "\n\n"
-          )
-
-        {:ok, conn} = Plug.Conn.chunk(conn, "data: [DONE]\n\n")
-        conn
+        end
 
       _ ->
         Plug.Conn.send_resp(conn, 401, "missing authorization")
     end
+  end
+
+  defp forwarded_tool_request?(request) do
+    is_list(request["tools"]) and request["tools"] != [] and
+      request["tool_choice"] == "auto" and
+      Enum.any?(request["messages"] || [], fn message ->
+        is_list(message["tool_calls"]) or message["tool_call_id"] == "call_1" or message["role"] == "tool"
+      end)
   end
 
   match _ do
