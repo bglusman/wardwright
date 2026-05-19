@@ -1,6 +1,7 @@
 defmodule Wardwright.Policy.History do
   @moduledoc false
 
+  alias Wardwright.Policy.HistoryCore
   alias Wardwright.Policy.Regex, as: PolicyRegex
 
   @kind_key "kind"
@@ -45,7 +46,7 @@ defmodule Wardwright.Policy.History do
         PolicyRegex.match?(to_string(text), pattern)
       end)
 
-    Wardwright.Policy.HistoryCore.count_recent_matches(matches, recent_limit: length(matches))
+    HistoryCore.count_recent_matches(matches, recent_limit: length(matches))
   end
 
   def scope_from_caller(_caller, scope_name) when scope_name in [nil, ""], do: %{}
@@ -62,11 +63,11 @@ defmodule Wardwright.Policy.History do
 
   defp add_text_event(kind, key, caller, text) do
     case Wardwright.PolicyCache.add(%{
-           "kind" => kind,
+           "created_at_unix_ms" => System.system_time(:millisecond),
            "key" => key,
+           "kind" => kind,
            "scope" => caller_scope(caller),
-           "value" => %{"text" => text},
-           "created_at_unix_ms" => System.system_time(:millisecond)
+           "value" => %{"text" => text}
          }) do
       {:ok, _event} -> :ok
       {:error, _message} -> :ok
@@ -82,11 +83,11 @@ defmodule Wardwright.Policy.History do
 
       cache_key ->
         case Wardwright.PolicyCache.add(%{
-               @kind_key => @tool_call_kind,
+               @created_at_key => System.system_time(:millisecond),
                @key_key => cache_key,
+               @kind_key => @tool_call_kind,
                @scope_key => caller_scope(caller),
-               @value_key => tool_cache_value(tool_context),
-               @created_at_key => System.system_time(:millisecond)
+               @value_key => tool_cache_value(tool_context)
              }) do
           {:ok, _event} -> :ok
           {:error, _message} -> :ok

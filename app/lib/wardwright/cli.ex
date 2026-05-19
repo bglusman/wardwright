@@ -1,7 +1,9 @@
 defmodule Wardwright.CLI do
   @moduledoc false
 
-  def run(argv, write_fun \\ &IO.puts/1, admin_fun \\ &Wardwright.CLI.Admin.open/2) do
+  alias Wardwright.CLI.Admin
+
+  def run(argv, write_fun \\ &IO.puts/1, admin_fun \\ &Admin.open/2) do
     case argv do
       ["--version" | _] ->
         write_fun.(version())

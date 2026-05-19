@@ -3,20 +3,20 @@ defmodule Wardwright.StorageAndAdminTest do
 
   test "receipt store exposes storage health metadata" do
     assert Wardwright.ReceiptStore.health() == %{
-             "kind" => "memory",
+             "capabilities" => %{
+               "concurrent_writers" => false,
+               "durable" => false,
+               "event_replay" => true,
+               "json_queries" => true,
+               "retention_jobs" => false,
+               "time_range_indexes" => false,
+               "transactional" => true
+             },
              "contract_version" => "storage-contract-v0",
+             "kind" => "memory",
              "migration_version" => 1,
              "read_health" => "ok",
-             "write_health" => "ok",
-             "capabilities" => %{
-               "durable" => false,
-               "transactional" => true,
-               "concurrent_writers" => false,
-               "json_queries" => true,
-               "event_replay" => true,
-               "time_range_indexes" => false,
-               "retention_jobs" => false
-             }
+             "write_health" => "ok"
            }
   end
 
@@ -27,16 +27,16 @@ defmodule Wardwright.StorageAndAdminTest do
     {:ok, _config} =
       Wardwright.put_config(%{
         "model_id" => "coding-balanced",
-        "version" => "2026-05-13.mock",
         "targets" => [
           %{
-            "model" => "openai/gpt-test",
             "context_window" => 128_000,
-            "provider_kind" => "openai-compatible",
+            "credential_env" => "WARDWRIGHT_TEST_PROVIDER_KEY",
+            "model" => "openai/gpt-test",
             "provider_base_url" => "https://example.com/v1",
-            "credential_env" => "WARDWRIGHT_TEST_PROVIDER_KEY"
+            "provider_kind" => "openai-compatible"
           }
-        ]
+        ],
+        "version" => "2026-05-13.mock"
       })
 
     assert [provider] = Wardwright.providers()
@@ -52,17 +52,17 @@ defmodule Wardwright.StorageAndAdminTest do
     {:ok, _config} =
       Wardwright.put_config(%{
         "model_id" => "coding-balanced",
-        "version" => "2026-05-13.mock",
         "targets" => [
-          %{"model" => "ollama/llama-test", "context_window" => 128_000},
+          %{"context_window" => 128_000, "model" => "ollama/llama-test"},
           %{
-            "model" => "openai/gpt-test",
             "context_window" => 128_000,
-            "provider_kind" => "openai-compatible",
-            "provider_base_url" => "https://example.com/v1"
+            "model" => "openai/gpt-test",
+            "provider_base_url" => "https://example.com/v1",
+            "provider_kind" => "openai-compatible"
           },
-          %{"model" => "local/mock-test", "context_window" => 32_768}
-        ]
+          %{"context_window" => 32_768, "model" => "local/mock-test"}
+        ],
+        "version" => "2026-05-13.mock"
       })
 
     providers = Map.new(Wardwright.providers(), &{&1["id"], &1})
@@ -177,12 +177,12 @@ defmodule Wardwright.StorageAndAdminTest do
     end)
 
     record = %{
+      "created_at" => "2026-05-18T00:00:00Z",
       "id" => "key_test",
-      "model_id" => "coding-balanced",
-      "label" => "integration",
-      "prefix" => "wwk_test",
       "key_hash" => "hashed-value",
-      "created_at" => "2026-05-18T00:00:00Z"
+      "label" => "integration",
+      "model_id" => "coding-balanced",
+      "prefix" => "wwk_test"
     }
 
     assert {:ok, :ok} = Wardwright.SQLiteStore.insert_api_key(record)
@@ -227,22 +227,22 @@ defmodule Wardwright.StorageAndAdminTest do
 
     assert {:ok, _scenario} =
              Wardwright.PolicyScenarioStore.create("tts-retry", %{
-               "scenario_id" => "durable-reviewed-trigger",
-               "title" => "Durable reviewed trigger",
-               "source" => "assistant",
-               "pinned" => true,
-               "input_summary" => "A persisted scenario survives store reload.",
                "expected_behavior" => "The retry guard remains linked to the guarding state.",
-               "verdict" => "passed",
+               "input_summary" => "A persisted scenario survives store reload.",
+               "pinned" => true,
+               "scenario_id" => "durable-reviewed-trigger",
+               "source" => "assistant",
+               "title" => "Durable reviewed trigger",
                "trace" => [
                  %{
                    "id" => "durable-1",
-                   "node_id" => "tts.no-old-client",
                    "label" => "persisted match",
+                   "node_id" => "tts.no-old-client",
                    "severity" => "pass",
                    "state_id" => "guarding"
                  }
-               ]
+               ],
+               "verdict" => "passed"
              })
 
     assert File.exists?(path)
@@ -278,32 +278,31 @@ defmodule Wardwright.StorageAndAdminTest do
         ] do
       assert {:ok, _scenario} =
                Wardwright.PolicyScenarioStore.create("tts-retry", %{
-                 "scenario_id" => id,
-                 "title" => "Retention #{id}",
-                 "source" => "assistant",
-                 "pinned" => pinned,
                  "created_at" => created_at,
+                 "expected_behavior" => "Pinned evidence remains while old unpinned records prune.",
                  "input_summary" => "A retained scenario survives pruning.",
-                 "expected_behavior" =>
-                   "Pinned evidence remains while old unpinned records prune.",
-                 "verdict" => "passed",
+                 "pinned" => pinned,
+                 "scenario_id" => id,
+                 "source" => "assistant",
+                 "title" => "Retention #{id}",
                  "trace" => [
                    %{
                      "id" => "#{id}-trace",
-                     "node_id" => "tts.no-old-client",
                      "label" => "retention fixture",
+                     "node_id" => "tts.no-old-client",
                      "severity" => "pass",
                      "state_id" => "guarding"
                    }
-                 ]
+                 ],
+                 "verdict" => "passed"
                })
     end
 
     assert {:ok,
             %{
               "pruned_count" => 1,
-              "remaining_unpinned_count" => 1,
-              "pruned_scenario_ids" => ["retention-old-unpinned"]
+              "pruned_scenario_ids" => ["retention-old-unpinned"],
+              "remaining_unpinned_count" => 1
             }} = Wardwright.PolicyScenarioStore.enforce_retention("tts-retry", 1)
 
     assert {:ok, _state} = Wardwright.PolicyScenarioStore.configure_storage(nil)
@@ -312,12 +311,10 @@ defmodule Wardwright.StorageAndAdminTest do
     assert {:ok, _state} = Wardwright.PolicyScenarioStore.configure_storage(path)
 
     assert Wardwright.PolicyScenarioStore.list("tts-retry")
-           |> Enum.map(& &1.id)
-           |> MapSet.new() ==
+           |> MapSet.new(& &1.id) ==
              MapSet.new(["retention-new-unpinned", "retention-pinned"])
 
-    assert {:ok,
-            %{"scenario_count" => 1, "scenarios" => [%{"scenario_id" => "retention-pinned"}]}} =
+    assert {:ok, %{"scenario_count" => 1, "scenarios" => [%{"scenario_id" => "retention-pinned"}]}} =
              Wardwright.PolicyScenarioStore.regression_export("tts-retry")
   end
 
@@ -330,8 +327,8 @@ defmodule Wardwright.StorageAndAdminTest do
           {:post, "/v1/wardwright/simulate",
            %{
              "request" => %{
-               "model" => "coding-balanced",
-               "messages" => [%{"role" => "user", "content" => "hello"}]
+               "messages" => [%{"content" => "hello", "role" => "user"}],
+               "model" => "coding-balanced"
              }
            }},
           {:post, "/v1/policy-cache/events", %{"kind" => "request_text"}}
@@ -407,8 +404,8 @@ defmodule Wardwright.StorageAndAdminTest do
   test "protected admin API creates lists and revokes model API keys without exposing hashes" do
     created =
       call(:post, "/admin/model-api-keys", %{
-        "model" => "coding-balanced",
-        "label" => "gateway-prod"
+        "label" => "gateway-prod",
+        "model" => "coding-balanced"
       })
 
     assert created.status == 201
@@ -461,8 +458,8 @@ defmodule Wardwright.StorageAndAdminTest do
     :sys.replace_state(Wardwright.ModelApiKeyStore, fn state ->
       put_in(state.keys["malformed"], %{
         "id" => "malformed",
-        "model_id" => "coding-balanced",
-        "key_hash" => nil
+        "key_hash" => nil,
+        "model_id" => "coding-balanced"
       })
     end)
 
@@ -486,30 +483,30 @@ defmodule Wardwright.StorageAndAdminTest do
 
     assert Wardwright.ReceiptStore.list(%{}, 1) == [
              %{
-               "receipt_id" => "rcpt_z",
-               "created_at" => 1_800_000_001,
-               "receipt_schema" => "v1",
-               "model_id" => "coding-balanced",
-               "model_version" => "2026-05-13.mock",
-               "caller" => %{
-                 "tenant_id" => %{"value" => "tenant-a", "source" => "header"},
-                 "application_id" => %{"value" => "app-a", "source" => "header"},
-                 "consuming_agent_id" => %{"value" => "agent-z", "source" => "header"},
-                 "consuming_user_id" => %{"value" => "user-a", "source" => "header"},
-                 "session_id" => %{"value" => "session-a", "source" => "header"},
-                 "run_id" => %{"value" => "run-a", "source" => "header"}
-               },
-               "tenant_id" => "tenant-a",
                "application_id" => "app-a",
+               "caller" => %{
+                 "application_id" => %{"source" => "header", "value" => "app-a"},
+                 "consuming_agent_id" => %{"source" => "header", "value" => "agent-z"},
+                 "consuming_user_id" => %{"source" => "header", "value" => "user-a"},
+                 "run_id" => %{"source" => "header", "value" => "run-a"},
+                 "session_id" => %{"source" => "header", "value" => "session-a"},
+                 "tenant_id" => %{"source" => "header", "value" => "tenant-a"}
+               },
                "consuming_agent_id" => "agent-z",
                "consuming_user_id" => "user-a",
-               "session_id" => "session-a",
+               "created_at" => 1_800_000_001,
+               "model_id" => "coding-balanced",
+               "model_version" => "2026-05-13.mock",
+               "receipt_id" => "rcpt_z",
+               "receipt_schema" => "v1",
                "run_id" => "run-a",
-               "selected_provider" => "managed",
                "selected_model" => "managed/kimi-k2.6",
-               "status" => "completed",
+               "selected_provider" => "managed",
+               "session_id" => "session-a",
                "simulation" => false,
-               "stream_policy_action" => nil
+               "status" => "completed",
+               "stream_policy_action" => nil,
+               "tenant_id" => "tenant-a"
              }
            ]
   end
@@ -522,17 +519,17 @@ defmodule Wardwright.StorageAndAdminTest do
     Wardwright.ReceiptStore.insert(simulated)
 
     filters = %{
-      "tenant_id" => "tenant-a",
       "application_id" => "app-a",
       "consuming_agent_id" => "agent-b",
+      "created_at_max" => "1800000001",
+      "created_at_min" => "1800000001",
       "model_id" => "coding-balanced",
       "model_version" => "2026-05-13.mock",
-      "selected_provider" => "managed",
       "selected_model" => "managed/kimi-k2.6",
-      "status" => "simulated",
+      "selected_provider" => "managed",
       "simulation" => "true",
-      "created_at_min" => "1800000001",
-      "created_at_max" => "1800000001"
+      "status" => "simulated",
+      "tenant_id" => "tenant-a"
     }
 
     assert Enum.map(Wardwright.ReceiptStore.list(filters, 10), & &1["receipt_id"]) == [
@@ -545,29 +542,29 @@ defmodule Wardwright.StorageAndAdminTest do
       "rcpt_github_tool"
       |> receipt_fixture(1_800_000_000, "agent-a")
       |> put_in(["decision", "tool_context"], %{
-        "schema" => "wardwright.tool_context.v1",
         "phase" => "planning",
-        "tool_call_id" => "call_1",
         "primary_tool" => %{
-          "namespace" => "mcp.github",
           "name" => "create_pull_request",
+          "namespace" => "mcp.github",
           "risk_class" => "write",
           "source" => "caller_metadata"
-        }
+        },
+        "schema" => "wardwright.tool_context.v1",
+        "tool_call_id" => "call_1"
       })
 
     browser_receipt =
       "rcpt_browser_tool"
       |> receipt_fixture(1_800_000_001, "agent-b")
       |> put_in(["decision", "tool_context"], %{
-        "schema" => "wardwright.tool_context.v1",
         "phase" => "planning",
         "primary_tool" => %{
-          "namespace" => "browser",
           "name" => "read_page",
+          "namespace" => "browser",
           "risk_class" => "read_only",
           "source" => "caller_metadata"
-        }
+        },
+        "schema" => "wardwright.tool_context.v1"
       })
 
     Wardwright.ReceiptStore.insert(github_receipt)
@@ -576,22 +573,22 @@ defmodule Wardwright.StorageAndAdminTest do
     assert [
              %{
                "receipt_id" => "rcpt_github_tool",
-               "tool_namespace" => "mcp.github",
+               "tool_call_id" => "call_1",
                "tool_name" => "create_pull_request",
+               "tool_namespace" => "mcp.github",
                "tool_phase" => "planning",
                "tool_risk_class" => "write",
-               "tool_source" => "caller_metadata",
-               "tool_call_id" => "call_1"
+               "tool_source" => "caller_metadata"
              }
            ] =
              Wardwright.ReceiptStore.list(
                %{
-                 "tool_namespace" => "mcp.github",
+                 "tool_call_id" => "call_1",
                  "tool_name" => "create_pull_request",
+                 "tool_namespace" => "mcp.github",
                  "tool_phase" => "planning",
                  "tool_risk_class" => "write",
-                 "tool_source" => "caller_metadata",
-                 "tool_call_id" => "call_1"
+                 "tool_source" => "caller_metadata"
                },
                10
              )
@@ -626,8 +623,7 @@ defmodule Wardwright.StorageAndAdminTest do
     File.rm("#{path}-shm")
   end
 
-  defp restore_app_env(:sqlite_store_path, nil),
-    do: Application.put_env(:wardwright, :sqlite_store_path, nil)
+  defp restore_app_env(:sqlite_store_path, nil), do: Application.put_env(:wardwright, :sqlite_store_path, nil)
 
   defp restore_app_env(key, nil), do: Application.delete_env(:wardwright, key)
   defp restore_app_env(key, value), do: Application.put_env(:wardwright, key, value)

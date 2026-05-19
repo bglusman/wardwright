@@ -23,27 +23,27 @@ defmodule Wardwright.PolicyRecipeCatalog do
   defmodule Source do
     @moduledoc false
     @enforce_keys [:id, :label, :kind, :trusted, :summary]
-    defstruct [:id, :label, :kind, :trusted, :summary, endpoint: nil]
+    defstruct [:id, :kind, :label, :summary, :trusted, endpoint: nil]
   end
 
   defmodule Recipe do
     @moduledoc false
     @enforce_keys [:id, :title, :category, :promise, :pattern_id, :recipe_kind, :source_id]
     defstruct [
-      :id,
-      :title,
       :category,
-      :promise,
-      :pattern_id,
-      :recipe_kind,
-      :source_id,
       :collection_id,
       :collection_title,
-      :management_area,
-      :failure_story,
-      :old_behavior,
-      :wardwright_behavior,
       :composition,
+      :failure_story,
+      :id,
+      :management_area,
+      :old_behavior,
+      :pattern_id,
+      :promise,
+      :recipe_kind,
+      :source_id,
+      :title,
+      :wardwright_behavior,
       primitives: []
     ]
   end
@@ -51,7 +51,7 @@ defmodule Wardwright.PolicyRecipeCatalog do
   defmodule Catalog do
     @moduledoc false
     @enforce_keys [:source, :recipes]
-    defstruct [:source, recipes: [], warnings: [], error: nil]
+    defstruct [:source, error: nil, recipes: [], warnings: []]
   end
 
   @spec sources(keyword()) :: [source()]
@@ -59,26 +59,26 @@ defmodule Wardwright.PolicyRecipeCatalog do
     [
       %Source{
         id: "built_in",
-        label: "Built-in examples",
         kind: "built_in",
-        trusted: true,
-        summary: "Projection examples compiled into this Wardwright build."
+        label: "Built-in examples",
+        summary: "Projection examples compiled into this Wardwright build.",
+        trusted: true
       },
       %Source{
+        endpoint: workspace_dir(opts),
         id: "workspace",
-        label: "Project examples",
         kind: "filesystem",
-        trusted: true,
+        label: "Project examples",
         summary: "Locally reviewed recipe JSON files seeded from this Wardwright build.",
-        endpoint: workspace_dir(opts)
+        trusted: true
       },
       %Source{
+        endpoint: community_url(opts),
         id: "community",
-        label: "Community examples",
         kind: "https_json",
-        trusted: false,
+        label: "Community examples",
         summary: "Shared policy recipes from wardwright.dev.",
-        endpoint: community_url(opts)
+        trusted: false
       }
     ]
   end
@@ -106,16 +106,35 @@ defmodule Wardwright.PolicyRecipeCatalog do
   def to_map(%Source{} = source) do
     [
       # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
+      # boundary-map-ok
       {"id", source.id},
-      # boundary-map-ok
       {"label", source.label},
-      # boundary-map-ok
       {"kind", source.kind},
-      # boundary-map-ok
       {"trusted", source.trusted},
-      # boundary-map-ok
       {"summary", source.summary},
-      # boundary-map-ok
       {"endpoint", source.endpoint}
     ]
     |> reject_nil()
@@ -123,35 +142,20 @@ defmodule Wardwright.PolicyRecipeCatalog do
 
   def to_map(%Recipe{} = recipe) do
     [
-      # boundary-map-ok
       {"id", recipe.id},
-      # boundary-map-ok
       {"title", recipe.title},
-      # boundary-map-ok
       {"category", recipe.category},
-      # boundary-map-ok
       {"promise", recipe.promise},
-      # boundary-map-ok
       {"pattern_id", recipe.pattern_id},
-      # boundary-map-ok
       {"recipe_kind", recipe.recipe_kind},
-      # boundary-map-ok
       {"source_id", recipe.source_id},
-      # boundary-map-ok
       {"collection_id", recipe.collection_id},
-      # boundary-map-ok
       {"collection_title", recipe.collection_title},
-      # boundary-map-ok
       {"management_area", recipe.management_area},
-      # boundary-map-ok
       {"failure_story", recipe.failure_story},
-      # boundary-map-ok
       {"old_behavior", recipe.old_behavior},
-      # boundary-map-ok
       {"wardwright_behavior", recipe.wardwright_behavior},
-      # boundary-map-ok
       {"composition", recipe.composition},
-      # boundary-map-ok
       {"primitives", recipe.primitives}
     ]
     |> reject_empty()
@@ -159,13 +163,9 @@ defmodule Wardwright.PolicyRecipeCatalog do
 
   def to_map(%Catalog{} = catalog) do
     [
-      # boundary-map-ok
       {"source", to_map(catalog.source)},
-      # boundary-map-ok
       {"recipes", Enum.map(catalog.recipes, &to_map/1)},
-      # boundary-map-ok
       {"warnings", catalog.warnings},
-      # boundary-map-ok
       {"error", catalog.error}
     ]
     |> reject_nil()
@@ -178,19 +178,19 @@ defmodule Wardwright.PolicyRecipeCatalog do
         pattern_id = Map.fetch!(pattern, "id")
 
         %Recipe{
-          id: pattern_id,
-          title: Map.fetch!(pattern, "title"),
           category: Map.fetch!(pattern, "category"),
-          promise: Map.fetch!(pattern, "promise"),
-          source_id: source.id,
-          pattern_id: pattern_id,
-          recipe_kind: "projection_demo",
           collection_id: "built-in",
-          collection_title: "Built-in projection demos"
+          collection_title: "Built-in projection demos",
+          id: pattern_id,
+          pattern_id: pattern_id,
+          promise: Map.fetch!(pattern, "promise"),
+          recipe_kind: "projection_demo",
+          source_id: source.id,
+          title: Map.fetch!(pattern, "title")
         }
       end)
 
-    {:ok, %Catalog{source: source, recipes: recipes, warnings: []}}
+    {:ok, %Catalog{recipes: recipes, source: source, warnings: []}}
   end
 
   defp workspace(source) do
@@ -205,25 +205,25 @@ defmodule Wardwright.PolicyRecipeCatalog do
 
         {:ok,
          %Catalog{
-           source: source,
            recipes: recipes,
+           source: source,
            warnings: workspace_warnings(source, recipes, seed_warning)
          }}
 
       {:error, :enoent} ->
         {:ok,
          %Catalog{
-           source: source,
            recipes: [],
+           source: source,
            warnings: ["No project example directory exists at #{source.endpoint}."]
          }}
 
       {:error, reason} ->
         {:error,
          %Catalog{
-           source: source,
+           error: "Could not read project examples: #{format_file_error(reason)}",
            recipes: [],
-           error: "Could not read project examples: #{format_file_error(reason)}"
+           source: source
          }}
     end
   end
@@ -234,13 +234,13 @@ defmodule Wardwright.PolicyRecipeCatalog do
          {:ok, recipes} <- decode_recipes(body, source.id, default_collection(source.id)) do
       {:ok,
        %Catalog{
-         source: source,
          recipes: recipes,
+         source: source,
          warnings: [@community_warning]
        }}
     else
       {:error, error} when is_binary(error) ->
-        {:error, %Catalog{source: source, recipes: [], error: error}}
+        {:error, %Catalog{error: error, recipes: [], source: source}}
     end
   end
 
@@ -294,21 +294,21 @@ defmodule Wardwright.PolicyRecipeCatalog do
 
     if id && title do
       %Recipe{
-        id: id,
-        title: title,
         category: string_field(recipe, "category") || "uncategorized",
-        promise: string_field(recipe, "promise") || "No summary provided.",
-        pattern_id: string_field(recipe, "pattern_id") || string_field(recipe, "id"),
-        recipe_kind: string_field(recipe, "recipe_kind") || "policy_recipe",
-        source_id: source_id,
         collection_id: string_field(recipe, "collection_id") || collection.id,
         collection_title: string_field(recipe, "collection_title") || collection.title,
-        management_area: string_field(recipe, "management_area"),
-        failure_story: string_field(recipe, "failure_story"),
-        old_behavior: string_field(recipe, "old_behavior"),
-        wardwright_behavior: string_field(recipe, "wardwright_behavior"),
         composition: string_field(recipe, "composition"),
-        primitives: string_list_field(recipe, "primitives")
+        failure_story: string_field(recipe, "failure_story"),
+        id: id,
+        management_area: string_field(recipe, "management_area"),
+        old_behavior: string_field(recipe, "old_behavior"),
+        pattern_id: string_field(recipe, "pattern_id") || string_field(recipe, "id"),
+        primitives: string_list_field(recipe, "primitives"),
+        promise: string_field(recipe, "promise") || "No summary provided.",
+        recipe_kind: string_field(recipe, "recipe_kind") || "policy_recipe",
+        source_id: source_id,
+        title: title,
+        wardwright_behavior: string_field(recipe, "wardwright_behavior")
       }
     end
   end
@@ -342,8 +342,7 @@ defmodule Wardwright.PolicyRecipeCatalog do
     end
   end
 
-  defp workspace_warnings(source, [], nil),
-    do: ["No valid project examples were found in #{source.endpoint}."]
+  defp workspace_warnings(source, [], nil), do: ["No valid project examples were found in #{source.endpoint}."]
 
   defp workspace_warnings(_source, recipes, nil) when recipes != [], do: []
 
@@ -394,7 +393,7 @@ defmodule Wardwright.PolicyRecipeCatalog do
 
   defp tls_options(url) do
     case URI.parse(url) do
-      %URI{scheme: "https", host: host} when is_binary(host) ->
+      %URI{host: host, scheme: "https"} when is_binary(host) ->
         [
           ssl: [
             verify: :verify_peer,

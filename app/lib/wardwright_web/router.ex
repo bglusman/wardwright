@@ -2,8 +2,11 @@ defmodule WardwrightWeb.Router do
   @moduledoc false
 
   use Phoenix.Router, helpers: false
-  import Phoenix.LiveView.Router
+
   import Phoenix.LiveDashboard.Router
+  import Phoenix.LiveView.Router
+
+  alias Hermes.Server.Transport.StreamableHTTP.Plug
 
   pipeline :browser do
     plug(:accepts, ["html"])
@@ -52,7 +55,7 @@ defmodule WardwrightWeb.Router do
 
     forward(
       "/mcp",
-      Hermes.Server.Transport.StreamableHTTP.Plug,
+      Plug,
       server: WardwrightWeb.MCPServer
     )
   end

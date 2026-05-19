@@ -1,16 +1,19 @@
 defmodule Wardwright.AlertDeliveryPolicyTest do
   use Wardwright.RouterCase
 
+  alias Wardwright.Policy.AlertDelivery
+  alias Wardwright.Runtime.Events
+
   test "alert delivery backpressure can fail closed before provider invocation" do
     config =
       unit_policy_config()
       |> Map.put("alert_delivery", %{"capacity" => 0, "on_full" => "fail_closed"})
       |> Map.put("governance", [
         %{
-          "id" => "always-alert",
-          "kind" => "request_guard",
           "action" => "alert_async",
           "contains" => "alert me",
+          "id" => "always-alert",
+          "kind" => "request_guard",
           "message" => "alert queue full"
         }
       ])
@@ -19,8 +22,8 @@ defmodule Wardwright.AlertDeliveryPolicyTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        messages: [%{role: "user", content: "alert me"}]
+        messages: [%{content: "alert me", role: "user"}],
+        model: "unit-model"
       })
 
     assert conn.status == 429
@@ -35,10 +38,10 @@ defmodule Wardwright.AlertDeliveryPolicyTest do
       |> Map.put("alert_delivery", %{"capacity" => 4, "on_full" => "fail_closed"})
       |> Map.put("governance", [
         %{
-          "id" => "always-alert",
-          "kind" => "request_guard",
           "action" => "alert_async",
           "contains" => "alert me",
+          "id" => "always-alert",
+          "kind" => "request_guard",
           "message" => "operator review requested",
           "severity" => "warning"
         }
@@ -48,8 +51,8 @@ defmodule Wardwright.AlertDeliveryPolicyTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        messages: [%{role: "user", content: "alert me"}]
+        messages: [%{content: "alert me", role: "user"}],
+        model: "unit-model"
       })
 
     assert conn.status == 200
@@ -57,9 +60,9 @@ defmodule Wardwright.AlertDeliveryPolicyTest do
 
     assert [
              %{
+               "idempotency_key" => ":always-alert:operator review requested:warning",
                "outcome" => "queued",
-               "rule_id" => "always-alert",
-               "idempotency_key" => ":always-alert:operator review requested:warning"
+               "rule_id" => "always-alert"
              }
            ] = get_in(body, ["wardwright", "alert_delivery"])
 
@@ -67,62 +70,62 @@ defmodule Wardwright.AlertDeliveryPolicyTest do
 
     assert [
              %{
-               "type" => "policy.alert",
-               "rule_id" => "always-alert",
                "message" => "operator review requested",
-               "severity" => "warning"
+               "rule_id" => "always-alert",
+               "severity" => "warning",
+               "type" => "policy.alert"
              }
            ] = get_in(receipt, ["final", "events"])
   end
 
   test "alert delivery exposes queue health and publishes delivery events" do
-    Wardwright.Policy.AlertDelivery.configure(%{"capacity" => 1, "on_full" => "dead_letter"})
-    assert :ok = Wardwright.Runtime.Events.subscribe(Wardwright.Runtime.Events.topic(:policies))
+    AlertDelivery.configure(%{"capacity" => 1, "on_full" => "dead_letter"})
+    assert :ok = Events.subscribe(Events.topic(:policies))
 
     results =
-      Wardwright.Policy.AlertDelivery.deliver([
+      AlertDelivery.deliver([
         %{
-          "type" => "policy.alert",
-          "rule_id" => "first-alert",
           "message" => "first",
-          "severity" => "warning"
+          "rule_id" => "first-alert",
+          "severity" => "warning",
+          "type" => "policy.alert"
         },
         %{
-          "type" => "policy.alert",
-          "rule_id" => "second-alert",
           "message" => "second",
-          "severity" => "warning"
+          "rule_id" => "second-alert",
+          "severity" => "warning",
+          "type" => "policy.alert"
         }
       ])
 
     assert [%{"outcome" => "queued"}, %{"outcome" => "dead_lettered"}] = results
 
     assert %{
-             "kind" => "in_memory_alert_sink",
              "capacity" => 1,
+             "dead_letter_count" => 1,
+             "kind" => "in_memory_alert_sink",
+             "last_result" => %{"outcome" => "dead_lettered", "rule_id" => "second-alert"},
              "on_full" => "dead_letter",
              "queue_depth" => 1,
-             "queued_count" => 1,
-             "dead_letter_count" => 1,
-             "last_result" => %{"rule_id" => "second-alert", "outcome" => "dead_lettered"}
-           } = Wardwright.Policy.AlertDelivery.status()
+             "queued_count" => 1
+           } = AlertDelivery.status()
 
     assert_receive {:wardwright_runtime_event, "runtime:policies",
                     %{
-                      "type" => "policy_alert.delivery",
-                      "rule_id" => "first-alert",
+                      "capacity" => 1,
                       "outcome" => "queued",
                       "queue_depth" => 1,
-                      "capacity" => 1
+                      "rule_id" => "first-alert",
+                      "type" => "policy_alert.delivery"
                     }}
 
     assert_receive {:wardwright_runtime_event, "runtime:policies",
                     %{
-                      "type" => "policy_alert.delivery",
-                      "rule_id" => "second-alert",
+                      "capacity" => 1,
                       "outcome" => "dead_lettered",
                       "queue_depth" => 1,
-                      "capacity" => 1
+                      "rule_id" => "second-alert",
+                      "type" => "policy_alert.delivery"
                     }}
   end
 
@@ -150,10 +153,10 @@ defmodule Wardwright.AlertDeliveryPolicyTest do
       |> Map.put("alert_delivery", %{"capacity" => 0, "on_full" => "fail_closed"})
       |> Map.put("governance", [
         %{
-          "id" => "stream-alert",
-          "kind" => "request_guard",
           "action" => "alert_async",
-          "contains" => "alert me"
+          "contains" => "alert me",
+          "id" => "stream-alert",
+          "kind" => "request_guard"
         }
       ])
 
@@ -161,9 +164,9 @@ defmodule Wardwright.AlertDeliveryPolicyTest do
 
     stream =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "alert me", role: "user"}],
         model: "unit-model",
-        stream: true,
-        messages: [%{role: "user", content: "alert me"}]
+        stream: true
       })
 
     assert stream.status == 429
@@ -177,8 +180,8 @@ defmodule Wardwright.AlertDeliveryPolicyTest do
     simulated =
       call(:post, "/v1/wardwright/simulate", %{
         request: %{
-          model: "unit-model",
-          messages: [%{role: "user", content: "alert me"}]
+          messages: [%{content: "alert me", role: "user"}],
+          model: "unit-model"
         }
       })
 

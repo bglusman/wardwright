@@ -45,14 +45,11 @@ defmodule Wardwright.Policy.HistoryCore do
     |> triggered?()
   end
 
-  def triggered?({:triggered, _scope, _count, _threshold, _recent_limit, _working_set_size}),
-    do: true
+  def triggered?({:triggered, _scope, _count, _threshold, _recent_limit, _working_set_size}), do: true
 
-  def triggered?({:not_triggered, _scope, _count, _threshold, _recent_limit, _working_set_size}),
-    do: false
+  def triggered?({:not_triggered, _scope, _count, _threshold, _recent_limit, _working_set_size}), do: false
 
-  def decision_count({_status, _scope, count, _threshold, _recent_limit, _working_set_size}),
-    do: count
+  def decision_count({_status, _scope, count, _threshold, _recent_limit, _working_set_size}), do: count
 
   defp integer_value(value) when is_integer(value), do: value
   defp integer_value(_value), do: 0

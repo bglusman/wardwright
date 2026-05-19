@@ -9,22 +9,15 @@ defmodule WardwrightWeb.MCP.Tools.EvaluateDuneSnippet do
   alias WardwrightWeb.MCP.Tools
 
   schema do
-    field(:snippet_id, :string,
-      description: "Built-in snippet id. Omit when supplying ad hoc source."
-    )
+    field(:snippet_id, :string, description: "Built-in snippet id. Omit when supplying ad hoc source.")
 
     field(:source, :string,
-      description:
-        "Optional ad hoc Dune/Elixir source. The variable input contains the supplied JSON-like input map."
+      description: "Optional ad hoc Dune/Elixir source. The variable input contains the supplied JSON-like input map."
     )
 
-    field(:input, :map,
-      description: "JSON-like input map to bind as input before running the snippet."
-    )
+    field(:input, :map, description: "JSON-like input map to bind as input before running the snippet.")
 
-    field(:limits, :map,
-      description: "Optional timeout_ms, max_reductions, and max_heap_size evaluation limits."
-    )
+    field(:limits, :map, description: "Optional timeout_ms, max_reductions, and max_heap_size evaluation limits.")
 
     field(:session, :map,
       description:

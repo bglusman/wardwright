@@ -3,6 +3,12 @@ defmodule Wardwright.Router do
 
   use Plug.Router
 
+  alias Wardwright.Policy.AlertDelivery
+  alias Wardwright.Policy.History
+  alias Wardwright.Policy.Plan
+  alias Wardwright.Policy.StructuredOutput
+  alias Wardwright.PolicySandbox.DuneSnippetRegistry
+
   @max_unpinned_key "max_unpinned"
   @regression_format_key "format"
   @json_format "json"
@@ -36,7 +42,7 @@ defmodule Wardwright.Router do
         ]
       end)
 
-    json(conn, 200, %{"object" => "list", "data" => data})
+    json(conn, 200, %{"data" => data, "object" => "list"})
   end
 
   get "/v1/wardwright/models" do
@@ -56,22 +62,22 @@ defmodule Wardwright.Router do
       request = apply_prompt_transforms(request, config)
       caller = WardwrightWeb.RequestContext.caller(conn, Map.get(request, "metadata", %{}))
       tool_context_opts = WardwrightWeb.RequestContext.tool_context_opts(conn)
-      Wardwright.Policy.History.record_request(caller, request, tool_context_opts)
+      History.record_request(caller, request, tool_context_opts)
       {request, policy} = apply_request_policies(request, caller, tool_context_opts, config)
       {policy, fail_closed?} = deliver_policy_alerts(policy)
       decision = route_decision(request, policy, config)
 
       record_runtime_event(model, config, caller, "route.selected", %{
+        "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
         "selected_model" => decision.selected_model,
-        "selected_provider" => decision.selected_provider,
-        "estimated_prompt_tokens" => decision.estimated_prompt_tokens
+        "selected_provider" => decision.selected_provider
       })
 
       if Map.get(request, "stream") == true and not fail_closed? and not decision.route_blocked do
         WardwrightWeb.StreamRuntime.run(conn, model, caller, request, decision, policy, config)
       else
         provider = provider_outcome(request, decision, fail_closed?, config)
-        Wardwright.Policy.History.record_response(caller, provider.content)
+        History.record_response(caller, provider.content)
 
         receipt =
           provider.status
@@ -89,10 +95,10 @@ defmodule Wardwright.Router do
         Wardwright.ReceiptStore.insert(receipt)
 
         record_runtime_event(model, config, caller, "receipt.finalized", %{
+          "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0,
           "receipt_id" => receipt["receipt_id"],
-          "status" => get_in(receipt, ["final", "status"]),
           "simulation" => false,
-          "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0
+          "status" => get_in(receipt, ["final", "status"])
         })
 
         emit_receipt_sink_event(receipt, false)
@@ -128,15 +134,15 @@ defmodule Wardwright.Router do
       request = apply_prompt_transforms(request, config)
       caller = WardwrightWeb.RequestContext.caller(conn, Map.get(request, "metadata", %{}))
       tool_context_opts = WardwrightWeb.RequestContext.tool_context_opts(conn)
-      Wardwright.Policy.History.record_request(caller, request, tool_context_opts)
+      History.record_request(caller, request, tool_context_opts)
       {request, policy} = apply_request_policies(request, caller, tool_context_opts, config)
       {policy, fail_closed?} = deliver_policy_alerts(policy)
       decision = route_decision(request, policy, config)
 
       record_runtime_event(model, config, caller, "simulation.route_selected", %{
+        "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
         "selected_model" => decision.selected_model,
-        "selected_provider" => decision.selected_provider,
-        "estimated_prompt_tokens" => decision.estimated_prompt_tokens
+        "selected_provider" => decision.selected_provider
       })
 
       status =
@@ -157,10 +163,10 @@ defmodule Wardwright.Router do
       Wardwright.ReceiptStore.insert(receipt)
 
       record_runtime_event(model, config, caller, "receipt.finalized", %{
+        "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0,
         "receipt_id" => receipt["receipt_id"],
-        "status" => get_in(receipt, ["final", "status"]),
         "simulation" => true,
-        "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0
+        "status" => get_in(receipt, ["final", "status"])
       })
 
       emit_receipt_sink_event(receipt, true)
@@ -176,80 +182,85 @@ defmodule Wardwright.Router do
   end
 
   get "/v1/receipts" do
-    with :ok <- require_protected_access(conn) do
-      filters =
-        conn.query_params
-        |> Map.take([
-          "model",
-          "consuming_agent_id",
-          "consuming_user_id",
-          "session_id",
-          "run_id",
-          "status",
-          "tenant_id",
-          "application_id",
-          "model_id",
-          "model_version",
-          "selected_provider",
-          "selected_model",
-          "simulation",
-          "stream_policy_action",
-          "tool_namespace",
-          "tool_name",
-          "tool_phase",
-          "tool_policy_status",
-          "tool_risk_class",
-          "tool_source",
-          "tool_call_id",
-          "created_at_min",
-          "created_at_max"
-        ])
-        |> Enum.reject(fn {_key, value} -> value in [nil, ""] end)
-        |> Map.new()
+    case require_protected_access(conn) do
+      :ok ->
+        filters =
+          conn.query_params
+          |> Map.take([
+            "model",
+            "consuming_agent_id",
+            "consuming_user_id",
+            "session_id",
+            "run_id",
+            "status",
+            "tenant_id",
+            "application_id",
+            "model_id",
+            "model_version",
+            "selected_provider",
+            "selected_model",
+            "simulation",
+            "stream_policy_action",
+            "tool_namespace",
+            "tool_name",
+            "tool_phase",
+            "tool_policy_status",
+            "tool_risk_class",
+            "tool_source",
+            "tool_call_id",
+            "created_at_min",
+            "created_at_max"
+          ])
+          |> Enum.reject(fn {_key, value} -> value in [nil, ""] end)
+          |> Map.new()
 
-      limit = parse_limit(Map.get(conn.query_params, "limit"))
-      receipts = Wardwright.ReceiptStore.list(filters, limit)
-      json(conn, 200, %{"data" => receipts})
-    else
+        limit = parse_limit(Map.get(conn.query_params, "limit"))
+        receipts = Wardwright.ReceiptStore.list(filters, limit)
+        json(conn, 200, %{"data" => receipts})
+
       {:error, :protected, message} ->
         error(conn, 403, message, "forbidden", "protected_endpoint")
     end
   end
 
   get "/v1/receipts/:receipt_id" do
-    with :ok <- require_protected_access(conn) do
-      case Wardwright.ReceiptStore.get(receipt_id) do
-        nil -> error(conn, 404, "receipt not found", "not_found", "receipt_not_found")
-        receipt -> json(conn, 200, receipt)
-      end
-    else
+    case require_protected_access(conn) do
+      :ok ->
+        case Wardwright.ReceiptStore.get(receipt_id) do
+          nil -> error(conn, 404, "receipt not found", "not_found", "receipt_not_found")
+          receipt -> json(conn, 200, receipt)
+        end
+
       {:error, :protected, message} ->
         error(conn, 403, message, "forbidden", "protected_endpoint")
     end
   end
 
   get "/admin/storage" do
-    with :ok <- require_protected_access(conn) do
-      json(conn, 200, Wardwright.ReceiptStore.health())
-    else
+    case require_protected_access(conn) do
+      :ok ->
+        json(conn, 200, Wardwright.ReceiptStore.health())
+
       {:error, :protected, message} ->
         error(conn, 403, message, "forbidden", "protected_endpoint")
     end
   end
 
   get "/admin/runtime" do
-    with :ok <- require_protected_access(conn) do
-      json(conn, 200, Wardwright.Runtime.status())
-    else
+    case require_protected_access(conn) do
+      :ok ->
+        json(conn, 200, Wardwright.Runtime.status())
+
       {:error, :protected, message} ->
         error(conn, 403, message, "forbidden", "protected_endpoint")
     end
   end
 
   get "/admin/model-access" do
-    with :ok <- require_protected_access(conn) do
-      json(conn, 200, Wardwright.model_access(request_origin(conn)))
-    else
+    case require_protected_access(conn) do
+      :ok ->
+        json(conn, 200, Wardwright.model_access(request_origin(conn)))
+
       {:error, :protected, message} ->
         error(conn, 403, message, "forbidden", "protected_endpoint")
     end
@@ -297,18 +308,20 @@ defmodule Wardwright.Router do
   end
 
   get "/admin/policy-alerts" do
-    with :ok <- require_protected_access(conn) do
-      json(conn, 200, Wardwright.Policy.AlertDelivery.status())
-    else
+    case require_protected_access(conn) do
+      :ok ->
+        json(conn, 200, AlertDelivery.status())
+
       {:error, :protected, message} ->
         error(conn, 403, message, "forbidden", "protected_endpoint")
     end
   end
 
   get "/admin/sinks" do
-    with :ok <- require_protected_access(conn) do
-      json(conn, 200, Wardwright.Sinks.status())
-    else
+    case require_protected_access(conn) do
+      :ok ->
+        json(conn, 200, Wardwright.Sinks.status())
+
       {:error, :protected, message} ->
         error(conn, 403, message, "forbidden", "protected_endpoint")
     end
@@ -328,25 +341,27 @@ defmodule Wardwright.Router do
   end
 
   get "/v1/policy-cache/recent" do
-    with :ok <- require_protected_access(conn) do
-      filter = %{
-        "kind" => WardwrightWeb.RequestContext.blank_to_nil(Map.get(conn.query_params, "kind")),
-        "key" => WardwrightWeb.RequestContext.blank_to_nil(Map.get(conn.query_params, "key")),
-        "scope" => WardwrightWeb.RequestContext.cache_scope_from_query(conn.query_params)
-      }
+    case require_protected_access(conn) do
+      :ok ->
+        filter = %{
+          "key" => WardwrightWeb.RequestContext.blank_to_nil(Map.get(conn.query_params, "key")),
+          "kind" => WardwrightWeb.RequestContext.blank_to_nil(Map.get(conn.query_params, "kind")),
+          "scope" => WardwrightWeb.RequestContext.cache_scope_from_query(conn.query_params)
+        }
 
-      limit = parse_limit(Map.get(conn.query_params, "limit"))
-      json(conn, 200, %{"data" => Wardwright.PolicyCache.recent(filter, limit)})
-    else
+        limit = parse_limit(Map.get(conn.query_params, "limit"))
+        json(conn, 200, %{"data" => Wardwright.PolicyCache.recent(filter, limit)})
+
       {:error, :protected, message} ->
         error(conn, 403, message, "forbidden", "protected_endpoint")
     end
   end
 
   get "/v1/policy-authoring/tools" do
-    with :ok <- require_protected_access(conn) do
-      json(conn, 200, Map.new([{"data", WardwrightWeb.PolicyAuthoringTools.list()}]))
-    else
+    case require_protected_access(conn) do
+      :ok ->
+        json(conn, 200, Map.new([{"data", WardwrightWeb.PolicyAuthoringTools.list()}]))
+
       {:error, :protected, message} ->
         error(conn, 403, message, "forbidden", "protected_endpoint")
     end
@@ -383,9 +398,10 @@ defmodule Wardwright.Router do
   end
 
   get "/v1/policy-authoring/dune-snippets" do
-    with :ok <- require_protected_access(conn) do
-      json(conn, 200, Wardwright.PolicySandbox.DuneSnippetRegistry.list())
-    else
+    case require_protected_access(conn) do
+      :ok ->
+        json(conn, 200, DuneSnippetRegistry.list())
+
       {:error, :protected, message} ->
         error(conn, 403, message, "forbidden", "protected_endpoint")
     end
@@ -394,7 +410,7 @@ defmodule Wardwright.Router do
   post "/v1/policy-authoring/dune-snippets" do
     with :ok <- require_protected_access(conn),
          {:ok, body} <- require_json_object(conn.body_params),
-         {:ok, result} <- Wardwright.PolicySandbox.DuneSnippetRegistry.save(body) do
+         {:ok, result} <- DuneSnippetRegistry.save(body) do
       json(conn, 201, result)
     else
       {:error, :protected, message} ->
@@ -407,7 +423,7 @@ defmodule Wardwright.Router do
 
   delete "/v1/policy-authoring/dune-snippets/:snippet_id" do
     with :ok <- require_protected_access(conn),
-         {:ok, result} <- Wardwright.PolicySandbox.DuneSnippetRegistry.delete(snippet_id) do
+         {:ok, result} <- DuneSnippetRegistry.delete(snippet_id) do
       json(conn, 200, result)
     else
       {:error, :protected, message} ->
@@ -421,7 +437,7 @@ defmodule Wardwright.Router do
   post "/v1/policy-authoring/dune-snippets/evaluate" do
     with :ok <- require_protected_access(conn),
          {:ok, body} <- require_json_object(conn.body_params),
-         {:ok, result} <- Wardwright.PolicySandbox.DuneSnippetRegistry.evaluate(body) do
+         {:ok, result} <- DuneSnippetRegistry.evaluate(body) do
       json(conn, 200, result)
     else
       {:error, :protected, message} ->
@@ -637,18 +653,20 @@ defmodule Wardwright.Router do
   end
 
   get "/admin/providers" do
-    with :ok <- require_protected_access(conn) do
-      json(conn, 200, %{"data" => Wardwright.providers()})
-    else
+    case require_protected_access(conn) do
+      :ok ->
+        json(conn, 200, %{"data" => Wardwright.providers()})
+
       {:error, :protected, message} ->
         error(conn, 403, message, "forbidden", "protected_endpoint")
     end
   end
 
   get "/admin/wardwright-models" do
-    with :ok <- require_protected_access(conn) do
-      json(conn, 200, %{"data" => Wardwright.model_records()})
-    else
+    case require_protected_access(conn) do
+      :ok ->
+        json(conn, 200, %{"data" => Wardwright.model_records()})
+
       {:error, :protected, message} ->
         error(conn, 403, message, "forbidden", "protected_endpoint")
     end
@@ -662,8 +680,8 @@ defmodule Wardwright.Router do
         Wardwright.PolicyScenarioStore.clear()
 
         json(conn, 200, %{
-          "status" => "ok",
           "model_id" => config["model_id"],
+          "status" => "ok",
           "targets" => config["targets"]
         })
       else
@@ -686,6 +704,7 @@ defmodule Wardwright.Router do
   defp optional_model(model), do: Wardwright.normalize_model(model)
 
   defp scenario_payload(body) do
+    # boundary-map-ok
     # boundary-map-ok
     case Map.fetch(body, "scenario") do
       {:ok, scenario} when is_map(scenario) -> {:ok, scenario}
@@ -715,11 +734,9 @@ defmodule Wardwright.Router do
     end
   end
 
-  defp validation_artifact(body) when body == %{},
-    do: {:ok, Wardwright.current_config(), "current_config"}
+  defp validation_artifact(body) when body == %{}, do: {:ok, Wardwright.current_config(), "current_config"}
 
   defp validation_artifact(body) when is_map(body) do
-    # boundary-map-ok
     case Map.fetch(body, "artifact") do
       {:ok, artifact} when is_map(artifact) -> {:ok, artifact, "submitted"}
       {:ok, _artifact} -> {:error, "artifact must be a JSON object"}
@@ -745,36 +762,37 @@ defmodule Wardwright.Router do
     messages = Map.get(request, "messages", [])
 
     messages =
-      case transforms["preamble"]
-           |> WardwrightWeb.RequestContext.metadata_string()
-           |> WardwrightWeb.RequestContext.blank_to_nil() do
+      transforms["preamble"]
+      |> WardwrightWeb.RequestContext.metadata_string()
+      |> WardwrightWeb.RequestContext.blank_to_nil()
+      |> case do
         nil ->
           messages
 
         text ->
-          [%{"role" => "system", "name" => "wardwright_preamble", "content" => text} | messages]
+          [%{"content" => text, "name" => "wardwright_preamble", "role" => "system"} | messages]
       end
 
     messages =
-      case transforms["postscript"]
-           |> WardwrightWeb.RequestContext.metadata_string()
-           |> WardwrightWeb.RequestContext.blank_to_nil() do
+      transforms["postscript"]
+      |> WardwrightWeb.RequestContext.metadata_string()
+      |> WardwrightWeb.RequestContext.blank_to_nil()
+      |> case do
         nil ->
           messages
 
         text ->
           messages ++
-            [%{"role" => "system", "name" => "wardwright_postscript", "content" => text}]
+            [%{"content" => text, "name" => "wardwright_postscript", "role" => "system"}]
       end
 
     Map.put(request, "messages", messages)
   end
 
-  defp apply_request_policies(request, caller, opts, config),
-    do: Wardwright.Policy.Plan.evaluate_request(request, caller, config, opts)
+  defp apply_request_policies(request, caller, opts, config), do: Plan.evaluate_request(request, caller, config, opts)
 
   defp deliver_policy_alerts(%{"events" => events} = policy) do
-    alert_delivery = Wardwright.Policy.AlertDelivery.deliver(events)
+    alert_delivery = AlertDelivery.deliver(events)
 
     policy =
       policy
@@ -782,7 +800,7 @@ defmodule Wardwright.Router do
       |> Map.put(
         "failed_closed",
         Map.get(policy, "blocked", false) or
-          Wardwright.Policy.AlertDelivery.fail_closed?(alert_delivery)
+          AlertDelivery.fail_closed?(alert_delivery)
       )
 
     {policy, policy["failed_closed"]}
@@ -790,30 +808,29 @@ defmodule Wardwright.Router do
 
   defp provider_outcome(_request, _decision, true) do
     %{
-      content: nil,
-      status: "policy_failed_closed",
-      latency_ms: 0,
-      error: "policy failed closed",
       called_provider: false,
+      content: nil,
+      error: "policy failed closed",
+      latency_ms: 0,
       mock: true,
+      status: "policy_failed_closed",
       structured_output: nil
     }
   end
 
   defp provider_outcome(_request, %{route_blocked: true}, false) do
     %{
-      content: nil,
-      status: "policy_failed_closed",
-      latency_ms: 0,
-      error: "route policy removed all provider targets",
       called_provider: false,
+      content: nil,
+      error: "route policy removed all provider targets",
+      latency_ms: 0,
       mock: true,
+      status: "policy_failed_closed",
       structured_output: nil
     }
   end
 
-  defp provider_outcome(request, decision, true, _config),
-    do: provider_outcome(request, decision, true)
+  defp provider_outcome(request, decision, true, _config), do: provider_outcome(request, decision, true)
 
   defp provider_outcome(request, %{route_blocked: true} = decision, false, _config),
     do: provider_outcome(request, decision, false)
@@ -821,7 +838,7 @@ defmodule Wardwright.Router do
   defp provider_outcome(request, decision, false, config) when is_map(request) do
     structured_config = config["structured_output"]
 
-    Wardwright.Policy.StructuredOutput.run(structured_config, fn attempt_index ->
+    StructuredOutput.run(structured_config, fn attempt_index ->
       request
       |> Map.put("wardwright_attempt_index", attempt_index)
       |> then(&Wardwright.complete_selected_model(decision.selected_model, &1, config))
@@ -829,8 +846,7 @@ defmodule Wardwright.Router do
     end)
   end
 
-  defp require_messages(%{"messages" => messages}) when is_list(messages) and messages != [],
-    do: :ok
+  defp require_messages(%{"messages" => messages}) when is_list(messages) and messages != [], do: :ok
 
   defp require_messages(_), do: {:error, "messages must not be empty"}
 
@@ -844,8 +860,7 @@ defmodule Wardwright.Router do
         end
 
       Wardwright.unkeyed_model_access(config) == "internal" ->
-        {:error, :model_auth, 403, "model is only available for internal composition",
-         "model_internal"}
+        {:error, :model_auth, 403, "model is only available for internal composition", "model_internal"}
 
       true ->
         :ok
@@ -914,13 +929,13 @@ defmodule Wardwright.Router do
   defp emit_receipt_sink_event(receipt, simulation) do
     Wardwright.Sinks.emit([
       %{
-        "type" => "receipt.finalized",
-        "receipt_id" => receipt["receipt_id"],
-        "status" => get_in(receipt, ["final", "status"]),
-        "simulation" => simulation,
         "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0,
+        "receipt_id" => receipt["receipt_id"],
         "selected_model" => get_in(receipt, ["decision", "selected_model"]),
-        "selected_provider" => get_in(receipt, ["decision", "selected_provider"])
+        "selected_provider" => get_in(receipt, ["decision", "selected_provider"]),
+        "simulation" => simulation,
+        "status" => get_in(receipt, ["final", "status"]),
+        "type" => "receipt.finalized"
       }
       |> Map.merge(WardwrightWeb.ReceiptBuilder.sink_usage(receipt))
     ])
@@ -971,9 +986,9 @@ defmodule Wardwright.Router do
   defp error(conn, status, message, type, code) do
     json(conn, status, %{
       "error" => %{
+        "code" => code,
         "message" => message,
-        "type" => type,
-        "code" => code
+        "type" => type
       }
     })
   end
@@ -995,6 +1010,5 @@ defmodule Wardwright.Router do
     end
   end
 
-  defp known_policy_pattern?(pattern_id),
-    do: pattern_id in Wardwright.PolicyProjection.pattern_ids()
+  defp known_policy_pattern?(pattern_id), do: pattern_id in Wardwright.PolicyProjection.pattern_ids()
 end

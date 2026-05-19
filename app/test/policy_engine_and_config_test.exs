@@ -1,12 +1,14 @@
 defmodule Wardwright.PolicyEngineAndConfigTest do
   use Wardwright.RouterCase
 
-  test "policy engine adapters fail closed for unsupported WASM and Dune failures" do
-    assert %{"engine" => "wasm", "action" => "block", "status" => "error"} =
-             Wardwright.Policy.Engine.evaluate(%{"engine" => "wasm"}, %{})
+  alias Wardwright.Policy.Engine
 
-    assert %{"engine" => "dune", "action" => "block", "status" => "error"} =
-             Wardwright.Policy.Engine.evaluate(
+  test "policy engine adapters fail closed for unsupported WASM and Dune failures" do
+    assert %{"action" => "block", "engine" => "wasm", "status" => "error"} =
+             Engine.evaluate(%{"engine" => "wasm"}, %{})
+
+    assert %{"action" => "block", "engine" => "dune", "status" => "error"} =
+             Engine.evaluate(
                %{"engine" => "dune", "source" => "raise \"nope\""},
                %{}
              )
@@ -14,18 +16,18 @@ defmodule Wardwright.PolicyEngineAndConfigTest do
 
   test "Dune policy engine receives request context through input binding" do
     assert %{
-             "engine" => "dune",
              "action" => "block",
-             "status" => "ok",
              "actions" => [
                %{
                  "action" => "block",
                  "policy_status" => "ok",
-                 "source" => %{"type" => "engine", "engine" => "dune", "status" => "ok"}
+                 "source" => %{"engine" => "dune", "status" => "ok", "type" => "engine"}
                }
-             ]
+             ],
+             "engine" => "dune",
+             "status" => "ok"
            } =
-             Wardwright.Policy.Engine.evaluate(
+             Engine.evaluate(
                %{
                  "engine" => "dune",
                  "source" => ~S"""
@@ -38,17 +40,11 @@ defmodule Wardwright.PolicyEngineAndConfigTest do
 
   test "Dune policy engine still supports legacy context placeholder snippets" do
     assert %{
-             "engine" => "dune",
              "action" => "block",
-             "actions" => [
-               %{
-                 "action" => "block",
-                 "message" => "deny",
-                 "policy_status" => "ok"
-               }
-             ]
+             "actions" => [%{"action" => "block", "message" => "deny", "policy_status" => "ok"}],
+             "engine" => "dune"
            } =
-             Wardwright.Policy.Engine.evaluate(
+             Engine.evaluate(
                %{
                  "engine" => "dune",
                  "source" => ~S"""
@@ -70,8 +66,8 @@ defmodule Wardwright.PolicyEngineAndConfigTest do
     duplicate =
       unit_policy_config()
       |> Map.put("targets", [
-        %{"model" => "tiny/model", "context_window" => 8},
-        %{"model" => "tiny/model", "context_window" => 16}
+        %{"context_window" => 8, "model" => "tiny/model"},
+        %{"context_window" => 16, "model" => "tiny/model"}
       ])
 
     conn = call(:post, "/__test/config", duplicate)
@@ -96,12 +92,9 @@ defmodule Wardwright.PolicyEngineAndConfigTest do
       |> Map.put("route_root", "bad-alloy")
       |> Map.put("alloys", [
         %{
+          "constituents" => [%{"model" => "tiny/model", "weight" => 0}, %{"model" => "medium/model", "weight" => 10}],
           "id" => "bad-alloy",
-          "strategy" => "weighted",
-          "constituents" => [
-            %{"model" => "tiny/model", "weight" => 0},
-            %{"model" => "medium/model", "weight" => 10}
-          ]
+          "strategy" => "weighted"
         }
       ])
 

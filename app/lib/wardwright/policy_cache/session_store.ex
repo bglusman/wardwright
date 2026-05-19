@@ -14,9 +14,9 @@ defmodule Wardwright.PolicyCache.SessionStore do
 
     %{
       id: {__MODULE__, scope_key},
-      start: {__MODULE__, :start_link, [opts]},
       restart: :temporary,
       shutdown: 5_000,
+      start: {__MODULE__, :start_link, [opts]},
       type: :worker
     }
   end
@@ -43,23 +43,24 @@ defmodule Wardwright.PolicyCache.SessionStore do
 
     {:ok,
      %{
-       table: table,
-       scope_key: Keyword.fetch!(opts, :scope_key),
-       scope: Keyword.get(opts, :scope, %{}),
        config: Keyword.fetch!(opts, :config),
-       next: 0
+       next: 0,
+       scope: Keyword.get(opts, :scope, %{}),
+       scope_key: Keyword.fetch!(opts, :scope_key),
+       table: table
      }}
   end
 
   @impl true
   def handle_call({:add, input}, _from, state) do
-    with {:ok, event} <- build_event(input, state) do
-      :ets.insert(state.table, {event["sequence"], event})
-      evict(state.table, state.config)
-      state = %{state | next: state.next + 1}
-      publish_added(event, state)
-      {:reply, {:ok, event}, state}
-    else
+    case build_event(input, state) do
+      {:ok, event} ->
+        :ets.insert(state.table, {event["sequence"], event})
+        evict(state.table, state.config)
+        state = %{state | next: state.next + 1}
+        publish_added(event, state)
+        {:reply, {:ok, event}, state}
+
       {:error, message} ->
         {:reply, {:error, message}, state}
     end
@@ -73,12 +74,12 @@ defmodule Wardwright.PolicyCache.SessionStore do
   def handle_call(:info, _from, state) do
     {:reply,
      %{
-       pid: self(),
-       table: state.table,
-       scope_key: state.scope_key,
-       scope: state.scope,
        entry_count: table_size(state.table),
-       next_sequence: state.next + 1
+       next_sequence: state.next + 1,
+       pid: self(),
+       scope: state.scope,
+       scope_key: state.scope_key,
+       table: state.table
      }, state}
   end
 
@@ -102,17 +103,15 @@ defmodule Wardwright.PolicyCache.SessionStore do
 
         {:ok,
          %{
+           "created_at_unix_ms" => created_at,
            "id" =>
              "pc_" <>
-               short_scope_id(state.scope_key) <>
-               "_" <>
-               String.pad_leading(Integer.to_string(sequence, 16), 16, "0"),
-           "sequence" => sequence,
-           "kind" => kind,
+               short_scope_id(state.scope_key) <> "_" <> String.pad_leading(Integer.to_string(sequence, 16), 16, "0"),
            "key" => key,
+           "kind" => kind,
            "scope" => clean_scope(Map.get(input, "scope", %{})),
-           "value" => Map.get(input, "value", %{}),
-           "created_at_unix_ms" => created_at
+           "sequence" => sequence,
+           "value" => Map.get(input, "value", %{})
          }}
     end
   end
@@ -132,15 +131,15 @@ defmodule Wardwright.PolicyCache.SessionStore do
   defp publish_added(event, state) do
     if Process.whereis(Wardwright.PubSub) do
       Events.publish(Events.topic(:policies), %{
-        "type" => "policy_cache.event_recorded",
-        "sequence" => event["sequence"],
-        "kind" => event["kind"],
-        "key" => event["key"],
-        "scope" => event["scope"],
-        "scope_key" => state.scope_key,
         "created_at_unix_ms" => event["created_at_unix_ms"],
         "entry_count" => table_size(state.table),
-        "max_entries" => state.config["max_entries"]
+        "key" => event["key"],
+        "kind" => event["kind"],
+        "max_entries" => state.config["max_entries"],
+        "scope" => event["scope"],
+        "scope_key" => state.scope_key,
+        "sequence" => event["sequence"],
+        "type" => "policy_cache.event_recorded"
       })
     end
   end

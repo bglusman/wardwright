@@ -7,8 +7,8 @@ defmodule Wardwright.RequestPolicyTest do
 
     request = %{
       request: %{
-        model: "wardwright/unit-model",
-        messages: [%{role: "user", content: "Looks done; return JSON for the caller"}]
+        messages: [%{content: "Looks done; return JSON for the caller", role: "user"}],
+        model: "wardwright/unit-model"
       }
     }
 
@@ -18,13 +18,13 @@ defmodule Wardwright.RequestPolicyTest do
 
     assert get_in(body, ["receipt", "final", "alert_count"]) == 1
 
-    assert [%{"type" => "policy.alert", "rule_id" => "ambiguous-success"}] =
+    assert [%{"rule_id" => "ambiguous-success", "type" => "policy.alert"}] =
              get_in(body, ["receipt", "final", "events"])
 
     assert [
              %{
-               "rule_id" => "ambiguous-success",
                "matched" => true,
+               "rule_id" => "ambiguous-success",
                "source" => %{"engine" => "dune", "status" => "ok"}
              }
            ] = get_in(body, ["receipt", "decision", "policy_actions"])
@@ -35,10 +35,10 @@ defmodule Wardwright.RequestPolicyTest do
       unit_policy_config()
       |> Map.put("governance", [
         %{
-          "id" => "json-reminder",
-          "kind" => "request_transform",
           "action" => "inject_reminder_and_retry",
           "contains" => "return json",
+          "id" => "json-reminder",
+          "kind" => "request_transform",
           "reminder" => "Return only valid JSON."
         }
       ])
@@ -48,8 +48,8 @@ defmodule Wardwright.RequestPolicyTest do
     conn =
       call(:post, "/v1/wardwright/simulate", %{
         request: %{
-          model: "unit-model",
-          messages: [%{role: "user", content: "Please return JSON."}]
+          messages: [%{content: "Please return JSON.", role: "user"}],
+          model: "unit-model"
         }
       })
 
@@ -60,9 +60,9 @@ defmodule Wardwright.RequestPolicyTest do
 
     assert [
              %{
-               "rule_id" => "json-reminder",
                "matched" => true,
                "reminder_injected" => true,
+               "rule_id" => "json-reminder",
                "source" => %{"engine" => "dune", "status" => "ok"}
              }
            ] = get_in(body, ["receipt", "decision", "policy_actions"])

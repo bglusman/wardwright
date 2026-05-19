@@ -8,68 +8,67 @@ defmodule WardwrightWeb.ReceiptBuilder do
     created_at = System.system_time(:second)
 
     %{
-      "receipt_schema" => "v1",
-      "receipt_id" => receipt_id,
+      "attempts" => [
+        %{
+          "called_provider" => called_provider,
+          "mock" => true,
+          "model" => decision.selected_model,
+          "provider_id" => decision.selected_model |> String.split("/") |> List.first(),
+          "status" => status
+        }
+      ],
+      "caller" => caller,
       "created_at" => created_at,
-      "run_id" => get_in(caller, ["run_id", "value"]),
+      "decision" => %{
+        "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
+        "fallback_models" => decision.fallback_models,
+        "fallback_used" => decision.fallback_used,
+        "governance" => config["governance"],
+        "policy_actions" => policy["actions"],
+        "policy_conflicts" => policy["conflicts"],
+        "policy_route_constraints" => decision.policy_route_constraints,
+        "reason" => decision.reason,
+        "route_blocked" => decision.route_blocked,
+        "route_id" => decision.route_id,
+        "route_lineage" => Map.get(decision, :route_lineage, []),
+        "route_type" => decision.route_type,
+        "rule" => decision.rule,
+        "selected_context_window" => decision.selected_context_window,
+        "selected_model" => decision.selected_model,
+        "selected_models" => decision.selected_models,
+        "selected_provider" => decision.selected_provider,
+        "skipped" => decision.skipped,
+        "strategy" => decision.combine_strategy,
+        "tool_policy_selectors" => policy["tool_policy_selectors"],
+        @tool_context_key => policy["tool_context"] || Wardwright.ToolContext.normalize(request)
+      },
+      "events" => receipt_events(receipt_id, created_at, status, decision, called_provider),
+      "final" => %{
+        "alert_count" => policy["alert_count"],
+        "alert_delivery" => Map.get(policy, "alert_delivery", []),
+        "events" => policy["events"],
+        "receipt_recorded_at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(),
+        "selected_model" => decision.selected_model,
+        "status" => status,
+        "stream_trigger_count" => 0,
+        "tool_policy" => policy["tool_policy"]
+      },
       "model_id" => model,
       "model_version" => config["version"],
-      "simulation" => status == "simulated",
-      "caller" => caller,
+      "receipt_id" => receipt_id,
+      "receipt_schema" => "v1",
       "request" => %{
+        "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
+        "message_count" => length(Map.get(request, "messages", [])),
         "model" => Map.get(request, "model"),
         "normalized_model" => model,
-        "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
-        "stream" => Map.get(request, "stream", false),
-        "message_count" => length(Map.get(request, "messages", [])),
         "prompt_transforms" => config["prompt_transforms"],
+        "stream" => Map.get(request, "stream", false),
         "structured_output" => config["structured_output"],
         @tool_context_key => policy["tool_context"]
       },
-      "decision" => %{
-        "strategy" => decision.combine_strategy,
-        "route_type" => decision.route_type,
-        "route_id" => decision.route_id,
-        "selected_provider" => decision.selected_provider,
-        "selected_model" => decision.selected_model,
-        "selected_context_window" => decision.selected_context_window,
-        "selected_models" => decision.selected_models,
-        "fallback_models" => decision.fallback_models,
-        "fallback_used" => decision.fallback_used,
-        "route_blocked" => decision.route_blocked,
-        "policy_route_constraints" => decision.policy_route_constraints,
-        "route_lineage" => Map.get(decision, :route_lineage, []),
-        "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
-        "skipped" => decision.skipped,
-        "reason" => decision.reason,
-        "rule" => decision.rule,
-        "governance" => config["governance"],
-        @tool_context_key => policy["tool_context"] || Wardwright.ToolContext.normalize(request),
-        "tool_policy_selectors" => policy["tool_policy_selectors"],
-        "policy_actions" => policy["actions"],
-        "policy_conflicts" => policy["conflicts"]
-      },
-      "attempts" => [
-        %{
-          "provider_id" => decision.selected_model |> String.split("/") |> List.first(),
-          "model" => decision.selected_model,
-          "status" => status,
-          "mock" => true,
-          "called_provider" => called_provider
-        }
-      ],
-      "final" => %{
-        "status" => status,
-        "selected_model" => decision.selected_model,
-        "stream_trigger_count" => 0,
-        "alert_count" => policy["alert_count"],
-        "alert_delivery" => Map.get(policy, "alert_delivery", []),
-        "tool_policy" => policy["tool_policy"],
-        "events" => policy["events"],
-        "receipt_recorded_at" =>
-          DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
-      },
-      "events" => receipt_events(receipt_id, created_at, status, decision, called_provider)
+      "run_id" => get_in(caller, ["run_id", "value"]),
+      "simulation" => status == "simulated"
     }
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
@@ -108,33 +107,26 @@ defmodule WardwrightWeb.ReceiptBuilder do
         "Mock Wardwright response routed to #{decision.selected_model}. Estimated prompt tokens: #{decision.estimated_prompt_tokens}."
 
     %{
-      "id" => "chatcmpl_" <> receipt["receipt_id"],
-      "object" => "chat.completion",
-      "created" => System.system_time(:second),
-      "model" => Map.get(request, "model"),
       "choices" => [
-        %{
-          "index" => 0,
-          "message" => %{
-            "role" => "assistant",
-            "content" => content
-          },
-          "finish_reason" => "stop"
-        }
+        %{"finish_reason" => "stop", "index" => 0, "message" => %{"content" => content, "role" => "assistant"}}
       ],
+      "created" => System.system_time(:second),
+      "id" => "chatcmpl_" <> receipt["receipt_id"],
+      "model" => Map.get(request, "model"),
+      "object" => "chat.completion",
       "usage" => %{
-        "prompt_tokens" => decision.estimated_prompt_tokens,
         "completion_tokens" => completion_tokens,
+        "prompt_tokens" => decision.estimated_prompt_tokens,
         "total_tokens" => decision.estimated_prompt_tokens + completion_tokens
       },
       "wardwright" => %{
+        "alert_delivery" => get_in(receipt, ["final", "alert_delivery"]),
+        "provider_error" => get_in(receipt, ["final", "provider_error"]),
         "receipt_id" => receipt["receipt_id"],
         "selected_model" => decision.selected_model,
         "status" => get_in(receipt, ["final", "status"]),
-        "provider_error" => get_in(receipt, ["final", "provider_error"]),
-        "structured_output" => get_in(receipt, ["final", "structured_output"]),
         "stream_policy" => get_in(receipt, ["final", "stream_policy"]),
-        "alert_delivery" => get_in(receipt, ["final", "alert_delivery"])
+        "structured_output" => get_in(receipt, ["final", "structured_output"])
       }
     }
   end
@@ -197,15 +189,15 @@ defmodule WardwrightWeb.ReceiptBuilder do
       |> Enum.filter(&(Map.get(&1, "type") == "attempt.retry_rerouted"))
       |> Enum.map(fn event ->
         %{
+          "estimated_prompt_tokens" => Map.get(event, "estimated_prompt_tokens"),
+          "fallback_used" => Map.get(event, "fallback_used"),
+          "from_context_window" => Map.get(event, "from_context_window"),
+          "from_model" => Map.get(event, "from_selected_model"),
           "phase" => "stream_retry",
           "reason" => Map.get(event, "reason"),
-          "from_model" => Map.get(event, "from_selected_model"),
-          "to_model" => Map.get(event, "selected_model"),
-          "from_context_window" => Map.get(event, "from_context_window"),
-          "to_context_window" => Map.get(event, "context_window"),
-          "estimated_prompt_tokens" => Map.get(event, "estimated_prompt_tokens"),
           "route_type" => Map.get(event, "route_type"),
-          "fallback_used" => Map.get(event, "fallback_used")
+          "to_context_window" => Map.get(event, "context_window"),
+          "to_model" => Map.get(event, "selected_model")
         }
         |> reject_blank()
       end)
@@ -220,63 +212,60 @@ defmodule WardwrightWeb.ReceiptBuilder do
 
   defp stream_policy_receipt(stream_policy) do
     %{
-      "status" => stream_policy.status,
-      "trigger_count" => stream_policy.trigger_count,
       "action" => stream_policy.action,
-      "events" => stream_policy.events,
-      "released_to_consumer" => stream_policy.released_to_consumer,
-      "retry_count" => Map.get(stream_policy, :retry_count, 0),
-      "max_retries" => Map.get(stream_policy, :max_retries, 0),
       "attempts" => Map.get(stream_policy, :attempts, []),
+      "blocked_bytes" => Map.get(stream_policy, :blocked_bytes, 0),
+      "events" => stream_policy.events,
       "generated_bytes" => Map.get(stream_policy, :generated_bytes, 0),
-      "released_bytes" => Map.get(stream_policy, :released_bytes, 0),
       "held_bytes" => Map.get(stream_policy, :held_bytes, 0),
       "max_held_bytes" => Map.get(stream_policy, :max_held_bytes, 0),
       "max_hold_ms" => Map.get(stream_policy, :max_hold_ms),
       "max_observed_hold_ms" => Map.get(stream_policy, :max_observed_hold_ms, 0),
+      "max_retries" => Map.get(stream_policy, :max_retries, 0),
+      "released_bytes" => Map.get(stream_policy, :released_bytes, 0),
+      "released_to_consumer" => stream_policy.released_to_consumer,
+      "retry_count" => Map.get(stream_policy, :retry_count, 0),
       "rewritten_bytes" => Map.get(stream_policy, :rewritten_bytes, 0),
-      "blocked_bytes" => Map.get(stream_policy, :blocked_bytes, 0)
+      "status" => stream_policy.status,
+      "trigger_count" => stream_policy.trigger_count
     }
   end
 
   def sink_usage(receipt) do
     %{
+      "completion_tokens" => get_in(receipt, ["final", "provider_metadata", "usage", "completion_tokens"]) || 0,
       "estimated_prompt_tokens" => get_in(receipt, ["decision", "estimated_prompt_tokens"]) || 0,
-      "prompt_tokens" =>
-        get_in(receipt, ["final", "provider_metadata", "usage", "prompt_tokens"]) || 0,
-      "completion_tokens" =>
-        get_in(receipt, ["final", "provider_metadata", "usage", "completion_tokens"]) || 0,
-      "total_tokens" =>
-        get_in(receipt, ["final", "provider_metadata", "usage", "total_tokens"]) || 0
+      "prompt_tokens" => get_in(receipt, ["final", "provider_metadata", "usage", "prompt_tokens"]) || 0,
+      "total_tokens" => get_in(receipt, ["final", "provider_metadata", "usage", "total_tokens"]) || 0
     }
   end
 
   defp receipt_events(receipt_id, created_at, status, decision, called_provider) do
     [
       %{
+        "created_at" => created_at,
         "event_id" => receipt_id <> ":1",
         "receipt_id" => receipt_id,
-        "sequence" => 1,
-        "type" => "route.selected",
-        "created_at" => created_at,
+        "selected_model" => decision.selected_model,
         "selected_provider" => decision.selected_provider,
-        "selected_model" => decision.selected_model
+        "sequence" => 1,
+        "type" => "route.selected"
       },
       %{
+        "called_provider" => called_provider,
+        "created_at" => created_at,
         "event_id" => receipt_id <> ":2",
         "receipt_id" => receipt_id,
         "sequence" => 2,
-        "type" => "provider.attempted",
-        "created_at" => created_at,
-        "called_provider" => called_provider
+        "type" => "provider.attempted"
       },
       %{
+        "created_at" => created_at,
         "event_id" => receipt_id <> ":3",
         "receipt_id" => receipt_id,
         "sequence" => 3,
-        "type" => "receipt.finalized",
-        "created_at" => created_at,
-        "status" => status
+        "status" => status,
+        "type" => "receipt.finalized"
       }
     ]
   end

@@ -19,8 +19,8 @@ defmodule Wardwright.PolicySandbox.DuneTest do
 
     assert %{
              "status" => "ok",
-             "value" => %{"action" => "restrict_routes", "allowed_targets" => ["local"]},
-             "stdio" => ""
+             "stdio" => "",
+             "value" => %{"action" => "restrict_routes", "allowed_targets" => ["local"]}
            } = result
   end
 
@@ -39,7 +39,7 @@ defmodule Wardwright.PolicySandbox.DuneTest do
           "spawn(fn -> :ok end)",
           "send(self(), :leak)"
         ] do
-      assert %{"status" => "error", "reason" => reason, "message" => message} =
+      assert %{"message" => message, "reason" => reason, "status" => "error"} =
                DuneSandbox.eval_string(source)
 
       assert reason in ["restricted", "module_restricted"]
@@ -60,7 +60,7 @@ defmodule Wardwright.PolicySandbox.DuneTest do
         timeout: 1_000
       )
 
-    assert %{"status" => "error", "reason" => "reductions"} = result
+    assert %{"reason" => "reductions", "status" => "error"} = result
   end
 
   test "memory limit stops large allocations" do
@@ -71,7 +71,7 @@ defmodule Wardwright.PolicySandbox.DuneTest do
         timeout: 1_000
       )
 
-    assert %{"status" => "error", "reason" => "memory"} = result
+    assert %{"reason" => "memory", "status" => "error"} = result
   end
 
   test "wall clock timeout stops allowed slow code" do
@@ -86,7 +86,7 @@ defmodule Wardwright.PolicySandbox.DuneTest do
         timeout: 1
       )
 
-    assert %{"status" => "error", "reason" => reason} = result
+    assert %{"reason" => reason, "status" => "error"} = result
     assert reason in ["timeout", "reductions"]
   end
 
@@ -97,9 +97,9 @@ defmodule Wardwright.PolicySandbox.DuneTest do
     assert Enum.count(registry["data"]) >= 4
 
     assert %{
+             "example_input" => example_input,
              "id" => "history.related-secret-ladder",
-             "source" => source,
-             "example_input" => example_input
+             "source" => source
            } =
              Enum.find(registry["data"], &(&1["id"] == "history.related-secret-ladder"))
 
@@ -107,8 +107,8 @@ defmodule Wardwright.PolicySandbox.DuneTest do
 
     assert {:ok, evaluation} =
              DuneSnippetRegistry.evaluate(%{
-               "snippet_id" => "history.related-secret-ladder",
-               "input" => example_input
+               "input" => example_input,
+               "snippet_id" => "history.related-secret-ladder"
              })
 
     assert evaluation["schema"] == "wardwright.dune_snippet_evaluation.v1"
@@ -123,15 +123,15 @@ defmodule Wardwright.PolicySandbox.DuneTest do
   test "legacy primitive contains behavior is backed by the registry snippet" do
     assert {:ok, evaluation} =
              DuneSnippetRegistry.evaluate(%{
-               "snippet_id" => "primitive.request-contains-actions",
                "input" => %{
                  "request_text" => "please deny me but keep notes",
                  "rules" => [
-                   %{"id" => "legacy-deny", "contains" => "deny me", "action" => "block"},
-                   %{"id" => "legacy-miss", "contains" => "not present", "action" => "annotate"},
-                   %{"id" => "legacy-malformed", "contains" => 123, "action" => "block"}
+                   %{"action" => "block", "contains" => "deny me", "id" => "legacy-deny"},
+                   %{"action" => "annotate", "contains" => "not present", "id" => "legacy-miss"},
+                   %{"action" => "block", "contains" => 123, "id" => "legacy-malformed"}
                  ]
-               }
+               },
+               "snippet_id" => "primitive.request-contains-actions"
              })
 
     assert get_in(evaluation, ["result", "policy_status"]) == "ok"
@@ -139,9 +139,9 @@ defmodule Wardwright.PolicySandbox.DuneTest do
 
     assert [
              %{
-               "rule_id" => "legacy-deny",
                "action" => "block",
-               "matched" => true
+               "matched" => true,
+               "rule_id" => "legacy-deny"
              }
            ] = get_in(evaluation, ["result", "policy_result", "actions"])
   end
@@ -149,19 +149,19 @@ defmodule Wardwright.PolicySandbox.DuneTest do
   test "request rule snippet preserves action metadata for host-side effects" do
     assert {:ok, evaluation} =
              DuneSnippetRegistry.evaluate(%{
-               "snippet_id" => "primitive.request-rule-action",
                "input" => %{
                  "request_text" => "Please return JSON for downstream automation.",
                  "rule" => %{
+                   "action" => "inject_reminder_and_retry",
                    "id" => "json-reminder",
                    "kind" => "request_transform",
-                   "regex" => "return\\s+json",
-                   "action" => "inject_reminder_and_retry",
                    "message" => "request needs JSON guidance",
+                   "regex" => "return\\s+json",
                    "reminder" => "Return only valid JSON.",
                    "severity" => "warning"
                  }
-               }
+               },
+               "snippet_id" => "primitive.request-rule-action"
              })
 
     assert get_in(evaluation, ["result", "policy_status"]) == "ok"
@@ -171,13 +171,13 @@ defmodule Wardwright.PolicySandbox.DuneTest do
 
     assert [
              %{
-               "rule_id" => "json-reminder",
-               "kind" => "request_transform",
                "action" => "inject_reminder_and_retry",
+               "kind" => "request_transform",
+               "match" => %{"contains" => false, "regex" => true},
                "matched" => true,
                "reminder" => "Return only valid JSON.",
-               "severity" => "warning",
-               "match" => %{"contains" => false, "regex" => true}
+               "rule_id" => "json-reminder",
+               "severity" => "warning"
              }
            ] = get_in(evaluation, ["result", "policy_result", "actions"])
   end
@@ -185,16 +185,11 @@ defmodule Wardwright.PolicySandbox.DuneTest do
   test "request rule snippet treats invalid regexes as non-matches" do
     assert {:ok, evaluation} =
              DuneSnippetRegistry.evaluate(%{
-               "snippet_id" => "primitive.request-rule-action",
                "input" => %{
                  "request_text" => "please block",
-                 "rule" => %{
-                   "id" => "bad-regex",
-                   "kind" => "request_guard",
-                   "regex" => "[",
-                   "action" => "block"
-                 }
-               }
+                 "rule" => %{"action" => "block", "id" => "bad-regex", "kind" => "request_guard", "regex" => "["}
+               },
+               "snippet_id" => "primitive.request-rule-action"
              })
 
     assert get_in(evaluation, ["result", "policy_status"]) == "ok"
@@ -205,44 +200,44 @@ defmodule Wardwright.PolicySandbox.DuneTest do
   test "request rule snippet preserves metadata-compatible contains matching" do
     assert {:ok, evaluation} =
              DuneSnippetRegistry.evaluate(%{
-               "snippet_id" => "primitive.request-rule-action",
                "input" => %{
                  "request_text" => "Find account 4938 before routing.",
                  "rule" => %{
-                   "id" => "numeric-account",
-                   "kind" => "request_guard",
+                   "action" => "block",
                    "contains" => 4938,
-                   "action" => "block"
+                   "id" => "numeric-account",
+                   "kind" => "request_guard"
                  }
-               }
+               },
+               "snippet_id" => "primitive.request-rule-action"
              })
 
     assert get_in(evaluation, ["result", "policy_status"]) == "ok"
     assert get_in(evaluation, ["result", "policy_result", "action"]) == "block"
 
-    assert [%{"rule_id" => "numeric-account", "match" => %{"contains" => true}}] =
+    assert [%{"match" => %{"contains" => true}, "rule_id" => "numeric-account"}] =
              get_in(evaluation, ["result", "policy_result", "actions"])
   end
 
   test "ad hoc snippets can be tested and malformed results fail closed" do
     assert {:ok, evaluation} =
              DuneSnippetRegistry.evaluate(%{
+               "input" => %{"approved" => false},
                "source" => """
                if input["approved"] do
                  %{"action" => "allow", "reason" => "approved"}
                else
                  %{"action" => "require_review", "reason" => "missing approval"}
                end
-               """,
-               "input" => %{"approved" => false}
+               """
              })
 
     assert get_in(evaluation, ["result", "policy_result", "action"]) == "require_review"
 
     assert {:ok, malformed} =
              DuneSnippetRegistry.evaluate(%{
-               "source" => "\"not a policy result\"",
-               "input" => %{}
+               "input" => %{},
+               "source" => "\"not a policy result\""
              })
 
     assert get_in(malformed, ["result", "policy_status"]) == "error"
@@ -257,6 +252,13 @@ defmodule Wardwright.PolicySandbox.DuneTest do
 
     assert {:ok, first} =
              DuneSnippetRegistry.evaluate(%{
+               "input" => %{"event" => "first"},
+               "session" => %{
+                 "model_id" => model_id,
+                 "session_id" => session_id,
+                 "ttl_ms" => 60_000,
+                 "version" => version
+               },
                "source" => """
                events = [input["event"]]
 
@@ -265,30 +267,30 @@ defmodule Wardwright.PolicySandbox.DuneTest do
                  "count" => Enum.count(events),
                  "events" => events
                }
-               """,
-               "input" => %{"event" => "first"},
-               "session" => %{
-                 "model_id" => model_id,
-                 "version" => version,
-                 "session_id" => session_id,
-                 "ttl_ms" => 60_000
-               }
+               """
              })
 
     assert first["session"] == %{
-             "model_id" => model_id,
-             "version" => version,
-             "session_id" => session_id,
              "key" => "default",
-             "status" => "new",
+             "model_id" => model_id,
              "reused" => false,
-             "ttl_ms" => 60_000
+             "session_id" => session_id,
+             "status" => "new",
+             "ttl_ms" => 60_000,
+             "version" => version
            }
 
     assert get_in(first, ["result", "policy_result", "count"]) == 1
 
     assert {:ok, second} =
              DuneSnippetRegistry.evaluate(%{
+               "input" => %{"event" => "second"},
+               "session" => %{
+                 "model_id" => model_id,
+                 "session_id" => session_id,
+                 "ttl_ms" => 60_000,
+                 "version" => version
+               },
                "source" => """
                events = [input["event"] | events]
 
@@ -297,14 +299,7 @@ defmodule Wardwright.PolicySandbox.DuneTest do
                  "count" => Enum.count(events),
                  "events" => Enum.reverse(events)
                }
-               """,
-               "input" => %{"event" => "second"},
-               "session" => %{
-                 "model_id" => model_id,
-                 "version" => version,
-                 "session_id" => session_id,
-                 "ttl_ms" => 60_000
-               }
+               """
              })
 
     assert second["session"]["status"] == "reused"
@@ -313,17 +308,12 @@ defmodule Wardwright.PolicySandbox.DuneTest do
 
     assert {:ok, reset} =
              DuneSnippetRegistry.evaluate(%{
+               "input" => %{"event" => "reset"},
+               "session" => %{"model_id" => model_id, "reset" => true, "session_id" => session_id, "version" => version},
                "source" => """
                events = [input["event"]]
                %{"action" => "allow", "count" => Enum.count(events), "events" => events}
-               """,
-               "input" => %{"event" => "reset"},
-               "session" => %{
-                 "model_id" => model_id,
-                 "version" => version,
-                 "session_id" => session_id,
-                 "reset" => true
-               }
+               """
              })
 
     assert reset["session"]["status"] == "reset"
@@ -332,17 +322,17 @@ defmodule Wardwright.PolicySandbox.DuneTest do
 
     assert {:ok, keyed_first} =
              DuneSnippetRegistry.evaluate(%{
+               "input" => %{"event" => "tool-a-first"},
+               "session" => %{
+                 "key" => "tool-a",
+                 "model_id" => model_id,
+                 "session_id" => session_id,
+                 "version" => version
+               },
                "source" => """
                events = [input["event"]]
                %{"action" => "allow", "count" => Enum.count(events), "events" => events}
-               """,
-               "input" => %{"event" => "tool-a-first"},
-               "session" => %{
-                 "model_id" => model_id,
-                 "version" => version,
-                 "session_id" => session_id,
-                 "key" => "tool-a"
-               }
+               """
              })
 
     assert keyed_first["session"]["status"] == "new"
@@ -350,17 +340,17 @@ defmodule Wardwright.PolicySandbox.DuneTest do
 
     assert {:ok, keyed_second} =
              DuneSnippetRegistry.evaluate(%{
+               "input" => %{"event" => "tool-a-second"},
+               "session" => %{
+                 "key" => "tool-a",
+                 "model_id" => model_id,
+                 "session_id" => session_id,
+                 "version" => version
+               },
                "source" => """
                events = [input["event"] | events]
                %{"action" => "allow", "count" => Enum.count(events), "events" => Enum.reverse(events)}
-               """,
-               "input" => %{"event" => "tool-a-second"},
-               "session" => %{
-                 "model_id" => model_id,
-                 "version" => version,
-                 "session_id" => session_id,
-                 "key" => "tool-a"
-               }
+               """
              })
 
     assert keyed_second["session"]["status"] == "reused"
@@ -372,16 +362,12 @@ defmodule Wardwright.PolicySandbox.DuneTest do
 
     assert {:ok, default_after_keyed} =
              DuneSnippetRegistry.evaluate(%{
+               "input" => %{"event" => "default-after-keyed"},
+               "session" => %{"model_id" => model_id, "session_id" => session_id, "version" => version},
                "source" => """
                events = [input["event"] | events]
                %{"action" => "allow", "count" => Enum.count(events), "events" => Enum.reverse(events)}
-               """,
-               "input" => %{"event" => "default-after-keyed"},
-               "session" => %{
-                 "model_id" => model_id,
-                 "version" => version,
-                 "session_id" => session_id
-               }
+               """
              })
 
     assert default_after_keyed["session"]["key"] == "default"
@@ -396,26 +382,26 @@ defmodule Wardwright.PolicySandbox.DuneTest do
   test "stateful Dune snippet sessions reject malformed ttl configuration" do
     base_session = %{
       "model_id" => "test-model",
-      "version" => "test-version",
-      "session_id" => "test-session-#{System.unique_integer([:positive])}"
+      "session_id" => "test-session-#{System.unique_integer([:positive])}",
+      "version" => "test-version"
     }
 
     assert {:error, "session.ttl_ms must be a positive integer when provided."} =
              DuneSnippetRegistry.evaluate(%{
-               "source" => "%{\"action\" => \"allow\"}",
-               "session" => Map.put(base_session, "ttl_ms", "five minutes")
+               "session" => Map.put(base_session, "ttl_ms", "five minutes"),
+               "source" => ~s(%{"action" => "allow"})
              })
 
     assert {:error, "session.ttl_ms must be a positive integer when provided."} =
              DuneSnippetRegistry.evaluate(%{
-               "source" => "%{\"action\" => \"allow\"}",
-               "session" => Map.put(base_session, "ttl_ms", 0)
+               "session" => Map.put(base_session, "ttl_ms", 0),
+               "source" => ~s(%{"action" => "allow"})
              })
 
     assert {:error, "session.ttl_ms must be less than or equal to 3600000."} =
              DuneSnippetRegistry.evaluate(%{
-               "source" => "%{\"action\" => \"allow\"}",
-               "session" => Map.put(base_session, "ttl_ms", 3_600_001)
+               "session" => Map.put(base_session, "ttl_ms", 3_600_001),
+               "source" => ~s(%{"action" => "allow"})
              })
   end
 end

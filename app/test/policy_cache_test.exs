@@ -2,6 +2,8 @@ defmodule Wardwright.PolicyCacheTest do
   use Wardwright.RouterCase
   use ExUnitProperties
 
+  alias Wardwright.Runtime.Events
+
   property "policy cache eviction keeps deterministic youngest entries" do
     check all(
             capacity <- integer(1..20),
@@ -13,10 +15,10 @@ defmodule Wardwright.PolicyCacheTest do
         Enum.map(timestamps, fn timestamp ->
           {:ok, event} =
             Wardwright.PolicyCache.add(%{
-              "kind" => "tool_call",
+              "created_at_unix_ms" => timestamp,
               "key" => "shell:ls",
-              "scope" => %{"session_id" => "session-a"},
-              "created_at_unix_ms" => timestamp
+              "kind" => "tool_call",
+              "scope" => %{"session_id" => "session-a"}
             })
 
           {event["sequence"], timestamp}
@@ -26,14 +28,13 @@ defmodule Wardwright.PolicyCacheTest do
         inserted
         |> Enum.sort_by(fn {sequence, timestamp} -> {timestamp, sequence} end)
         |> Enum.take(-capacity)
-        |> Enum.map(fn {sequence, _timestamp} -> sequence end)
-        |> MapSet.new()
+        |> MapSet.new(fn {sequence, _timestamp} -> sequence end)
 
       recent =
         Wardwright.PolicyCache.recent(
           %{
-            "kind" => "tool_call",
             "key" => "shell:ls",
+            "kind" => "tool_call",
             "scope" => %{"session_id" => "session-a"}
           },
           capacity
@@ -54,56 +55,52 @@ defmodule Wardwright.PolicyCacheTest do
         ] do
       assert {:ok, _event} =
                Wardwright.PolicyCache.add(%{
-                 "kind" => kind,
                  "key" => key,
+                 "kind" => kind,
                  "scope" => %{"session_id" => "session-a"}
                })
     end
 
-    assert [%{"kind" => "tool_call", "key" => "shell:ls"}] =
+    assert [%{"key" => "shell:ls", "kind" => "tool_call"}] =
              Wardwright.PolicyCache.recent(%{
-               "kind" => "tool_call",
                "key" => "shell:ls",
+               "kind" => "tool_call",
                "scope" => %{"session_id" => "session-a"}
              })
   end
 
   test "policy cache is bounded ETS-backed runtime state and publishes writes" do
     Wardwright.PolicyCache.configure(%{"max_entries" => 2, "recent_limit" => 2})
-    assert :ok = Wardwright.Runtime.Events.subscribe(Wardwright.Runtime.Events.topic(:policies))
+    assert :ok = Events.subscribe(Events.topic(:policies))
 
     for index <- 1..3 do
       assert {:ok, %{"sequence" => ^index}} =
                Wardwright.PolicyCache.add(%{
-                 "kind" => "tool_call",
+                 "created_at_unix_ms" => index,
                  "key" => "shell:#{index}",
-                 "scope" => %{"session_id" => "session-a"},
-                 "created_at_unix_ms" => index
+                 "kind" => "tool_call",
+                 "scope" => %{"session_id" => "session-a"}
                })
     end
 
     assert_receive {:wardwright_runtime_event, "runtime:policies",
                     %{
-                      "type" => "policy_cache.event_recorded",
-                      "sequence" => 1,
                       "entry_count" => 1,
-                      "max_entries" => 2
+                      "max_entries" => 2,
+                      "sequence" => 1,
+                      "type" => "policy_cache.event_recorded"
                     }}
 
     assert %{
-             "kind" => "ets_session_catalog_bounded_history",
-             "topology" => "catalog_per_session_tables",
              "bounded" => true,
              "entry_count" => 2,
+             "kind" => "ets_session_catalog_bounded_history",
              "max_entries" => 2,
              "session_count" => 1,
              "stores" => [
-               %{
-                 "entry_count" => 2,
-                 "scope" => %{"session_id" => "session-a"},
-                 "scope_key" => "session:session-a"
-               }
-             ]
+               %{"entry_count" => 2, "scope" => %{"session_id" => "session-a"}, "scope_key" => "session:session-a"}
+             ],
+             "topology" => "catalog_per_session_tables"
            } = Wardwright.PolicyCache.status()
 
     assert [%{"sequence" => 3}, %{"sequence" => 2}] = Wardwright.PolicyCache.recent(%{}, 10)
@@ -116,10 +113,10 @@ defmodule Wardwright.PolicyCacheTest do
       for index <- 1..count do
         assert {:ok, _event} =
                  Wardwright.PolicyCache.add(%{
-                   "kind" => "tool_call",
+                   "created_at_unix_ms" => index,
                    "key" => "shell:ls",
-                   "scope" => %{"session_id" => session_id},
-                   "created_at_unix_ms" => index
+                   "kind" => "tool_call",
+                   "scope" => %{"session_id" => session_id}
                  })
       end
     end

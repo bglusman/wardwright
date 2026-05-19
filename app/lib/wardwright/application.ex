@@ -4,6 +4,11 @@ defmodule Wardwright.Application do
   @moduledoc false
 
   use Application
+
+  alias Wardwright.PolicyCache.SessionSupervisor
+  alias Wardwright.ProviderRuntime.TaskSupervisor
+  alias Wardwright.Runtime.ModelSupervisor
+
   require Logger
 
   @impl true
@@ -17,15 +22,14 @@ defmodule Wardwright.Application do
         Wardwright.ReceiptStore,
         Wardwright.ModelApiKeyStore,
         Wardwright.PolicyScenarioStore,
-        {DynamicSupervisor,
-         strategy: :one_for_one, name: Wardwright.PolicyCache.SessionSupervisor},
+        {DynamicSupervisor, strategy: :one_for_one, name: SessionSupervisor},
         Wardwright.PolicyCache,
         Wardwright.Sinks,
         Wardwright.ProviderRuntime,
-        {Task.Supervisor, name: Wardwright.ProviderRuntime.TaskSupervisor},
+        {Task.Supervisor, name: TaskSupervisor},
         {Phoenix.PubSub, name: Wardwright.PubSub},
         {Registry, keys: :unique, name: Wardwright.Runtime.Registry},
-        {DynamicSupervisor, strategy: :one_for_one, name: Wardwright.Runtime.ModelSupervisor},
+        {DynamicSupervisor, strategy: :one_for_one, name: ModelSupervisor},
         {DynamicSupervisor, strategy: :one_for_one, name: Wardwright.Runtime.SessionSupervisor},
         Hermes.Server.Registry,
         {WardwrightWeb.MCPServer, transport: {:streamable_http, start: true}},
@@ -81,7 +85,9 @@ defmodule Wardwright.Application do
   defp serve_http?, do: Application.get_env(:wardwright, :serve_http, true)
 
   defp endpoint_host(host) do
-    case :inet.ntoa(host) |> to_string() do
+    :inet.ntoa(host)
+    |> to_string()
+    |> case do
       "0.0.0.0" -> "localhost"
       "::" -> "localhost"
       host -> host

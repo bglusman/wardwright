@@ -130,7 +130,7 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
     targets = target_models(artifact)
     selectors = selectors(artifact)
     route_root = artifact |> Map.get("route_root", "dispatcher.prompt_length") |> to_string()
-    selector_ids = selectors |> Enum.map(&Map.get(&1, "id")) |> MapSet.new()
+    selector_ids = selectors |> MapSet.new(&Map.get(&1, "id"))
 
     checks =
       if MapSet.member?(selector_ids, route_root) do
@@ -466,19 +466,19 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
     coverage_gaps = entries(checks, :coverage_gap)
 
     %{
-      "schema" => "wardwright.policy_validation.v1",
-      "source" => source,
-      "verdict" => verdict(errors, opaque_regions, provider_gaps, coverage_gaps),
-      "errors" => errors,
-      "warnings" => warnings,
-      "opaque_regions" => opaque_regions,
-      "provider_capability_gaps" => provider_gaps,
       "coverage_gaps" => coverage_gaps,
+      "errors" => errors,
       "limits" => [
         "validation is structural and capability-oriented; it does not execute live providers",
         "sandboxed engines require scenario evidence before they can be treated as reviewed",
         "fixture-backed simulations are acceptable only when their source is explicit"
-      ]
+      ],
+      "opaque_regions" => opaque_regions,
+      "provider_capability_gaps" => provider_gaps,
+      "schema" => "wardwright.policy_validation.v1",
+      "source" => source,
+      "verdict" => verdict(errors, opaque_regions, provider_gaps, coverage_gaps),
+      "warnings" => warnings
     }
   end
 
@@ -490,13 +490,12 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
   defp warning(checks, path, message), do: [{:warning, path, message} | checks]
 
   defp opaque(checks, path, rule_id, message) do
-    [{:opaque_region, path, %{"rule_id" => rule_id, "message" => message}} | checks]
+    [{:opaque_region, path, %{"message" => message, "rule_id" => rule_id}} | checks]
   end
 
   defp capability_gap(checks, model, capability, message) do
     [
-      {:provider_capability_gap, "targets",
-       %{"model" => model, "capability" => capability, "message" => message}}
+      {:provider_capability_gap, "targets", %{"capability" => capability, "message" => message, "model" => model}}
       | checks
     ]
   end
@@ -512,7 +511,7 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
         message
 
       {_type, path, message} ->
-        %{"path" => path, "message" => message}
+        %{"message" => message, "path" => path}
     end)
   end
 
@@ -666,7 +665,7 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
 
   defp blank_to_nil(value) when is_binary(value) do
     value = String.trim(value)
-    if value == "", do: nil, else: value
+    if value != "", do: value
   end
 
   defp blank_to_nil(_value), do: nil

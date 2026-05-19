@@ -4,52 +4,45 @@ defmodule Wardwright.RoutePlannerTest do
   test "dispatcher selects the smallest fitting model and preserves larger fallbacks" do
     {:ok, _config} =
       Wardwright.put_config(%{
+        "dispatchers" => [%{"id" => "fit-dispatcher", "models" => ["small/model", "medium/model", "large/model"]}],
         "model_id" => "unit-model",
-        "version" => "unit-version",
-        "targets" => [
-          %{"model" => "small/model", "context_window" => 16},
-          %{"model" => "medium/model", "context_window" => 64},
-          %{"model" => "large/model", "context_window" => 256}
-        ],
         "route_root" => "fit-dispatcher",
-        "dispatchers" => [
-          %{"id" => "fit-dispatcher", "models" => ["small/model", "medium/model", "large/model"]}
-        ]
+        "targets" => [
+          %{"context_window" => 16, "model" => "small/model"},
+          %{"context_window" => 64, "model" => "medium/model"},
+          %{"context_window" => 256, "model" => "large/model"}
+        ],
+        "version" => "unit-version"
       })
 
     assert %{
+             fallback_models: ["large/model"],
              route_type: "dispatcher",
              selected_model: "medium/model",
              selected_models: ["medium/model", "large/model"],
-             fallback_models: ["large/model"],
-             skipped: [%{"target" => "small/model", "reason" => "context_window_too_small"}]
+             skipped: [%{"reason" => "context_window_too_small", "target" => "small/model"}]
            } = Wardwright.select_route(32)
   end
 
   test "cascade keeps declaration order while skipping oversized targets" do
     {:ok, _config} =
       Wardwright.put_config(%{
+        "cascades" => [%{"id" => "local-then-reserve", "models" => ["fast/model", "steady/model", "reserve/model"]}],
         "model_id" => "unit-model",
-        "version" => "unit-version",
-        "targets" => [
-          %{"model" => "fast/model", "context_window" => 16},
-          %{"model" => "steady/model", "context_window" => 128},
-          %{"model" => "reserve/model", "context_window" => 256}
-        ],
         "route_root" => "local-then-reserve",
-        "cascades" => [
-          %{
-            "id" => "local-then-reserve",
-            "models" => ["fast/model", "steady/model", "reserve/model"]
-          }
-        ]
+        "targets" => [
+          %{"context_window" => 16, "model" => "fast/model"},
+          %{"context_window" => 128, "model" => "steady/model"},
+          %{"context_window" => 256, "model" => "reserve/model"}
+        ],
+        "version" => "unit-version"
       })
 
     assert %{
+             fallback_models: ["reserve/model"],
              route_type: "cascade",
              selected_model: "steady/model",
              selected_models: ["steady/model", "reserve/model"],
-             fallback_models: ["reserve/model"],
              skipped: [%{"target" => "fast/model"}]
            } = Wardwright.select_route(96)
   end
@@ -57,68 +50,68 @@ defmodule Wardwright.RoutePlannerTest do
   test "partial alloys use overlapping constituents until smaller contexts stop fitting" do
     {:ok, _config} =
       Wardwright.put_config(%{
-        "model_id" => "unit-model",
-        "version" => "unit-version",
-        "targets" => [
-          %{"model" => "local/qwen", "context_window" => 32},
-          %{"model" => "managed/kimi", "context_window" => 256}
-        ],
-        "route_root" => "local-kimi-partial",
         "alloys" => [
           %{
+            "constituents" => ["local/qwen", "managed/kimi"],
             "id" => "local-kimi-partial",
-            "strategy" => "deterministic_all",
             "partial_context" => true,
-            "constituents" => ["local/qwen", "managed/kimi"]
+            "strategy" => "deterministic_all"
           }
-        ]
+        ],
+        "model_id" => "unit-model",
+        "route_root" => "local-kimi-partial",
+        "targets" => [
+          %{"context_window" => 32, "model" => "local/qwen"},
+          %{"context_window" => 256, "model" => "managed/kimi"}
+        ],
+        "version" => "unit-version"
       })
 
     assert %{
-             route_type: "alloy",
              combine_strategy: "deterministic_all",
+             route_type: "alloy",
              selected_model: "local/qwen",
              selected_models: ["local/qwen", "managed/kimi"],
              skipped: []
            } = Wardwright.select_route(16)
 
     assert %{
-             route_type: "alloy",
              combine_strategy: "deterministic_all",
+             route_type: "alloy",
              selected_model: "managed/kimi",
              selected_models: ["managed/kimi"],
-             skipped: [%{"target" => "local/qwen", "reason" => "context_window_too_small"}]
+             skipped: [%{"reason" => "context_window_too_small", "target" => "local/qwen"}]
            } = Wardwright.select_route(96)
   end
 
   test "weighted alloys respect weights and expose the selected plan in receipts" do
     {:ok, _config} =
       Wardwright.put_config(%{
-        "model_id" => "unit-model",
-        "version" => "unit-version",
-        "targets" => [
-          %{"model" => "cheap/model", "context_window" => 128},
-          %{"model" => "strong/model", "context_window" => 128}
-        ],
-        "route_root" => "weighted-blend",
         "alloys" => [
           %{
-            "id" => "weighted-blend",
-            "strategy" => "weighted",
-            "min_context_window" => 128,
             "constituents" => [
               %{"model" => "cheap/model", "weight" => 1},
               %{"model" => "strong/model", "weight" => 100}
-            ]
+            ],
+            "id" => "weighted-blend",
+            "min_context_window" => 128,
+            "strategy" => "weighted"
           }
-        ]
+        ],
+        "model_id" => "unit-model",
+        "route_root" => "weighted-blend",
+        "targets" => [
+          %{"context_window" => 128, "model" => "cheap/model"},
+          %{"context_window" => 128, "model" => "strong/model"}
+        ],
+        "version" => "unit-version"
       })
 
     conn =
       call(:post, "/v1/wardwright/simulate", %{
         request: %{
-          model: "unit-model",
-          messages: [%{role: "user", content: "small prompt"}]
+          messages: [%{content: "small prompt", role: "user"}],
+          model: "unit-model"
         }
       })
 
@@ -136,20 +129,20 @@ defmodule Wardwright.RoutePlannerTest do
       Wardwright.put_config(model_graph_config())
 
     assert %{
-             route_type: "model_graph",
              combine_strategy: "route_dag_delegate",
-             selected_model: "canned/final",
-             selected_provider: "canned",
              route_lineage: [
-               %{"model" => "outer-model", "delegated_to" => "policy-safe-writer"},
+               %{"delegated_to" => "policy-safe-writer", "model" => "outer-model"},
                %{"model" => "policy-safe-writer", "selected_model" => "canned/final"}
-             ]
+             ],
+             route_type: "model_graph",
+             selected_model: "canned/final",
+             selected_provider: "canned"
            } = Wardwright.select_route(32)
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "outer-model",
-        messages: [%{role: "user", content: "hello"}]
+        messages: [%{content: "hello", role: "user"}],
+        model: "outer-model"
       })
 
     assert conn.status == 200
@@ -165,78 +158,68 @@ defmodule Wardwright.RoutePlannerTest do
     {:ok, _config} = Wardwright.put_config(model_graph_config())
 
     assert %{
+             route_blocked: false,
              route_type: "policy_override",
              selected_model: "canned/final",
-             selected_provider: "canned",
-             route_blocked: false
+             selected_provider: "canned"
            } =
              Wardwright.select_route(32, %{
-               "forced_model" => "canned/final",
-               "allowed_targets" => ["canned"]
+               "allowed_targets" => ["canned"],
+               "forced_model" => "canned/final"
              })
   end
 
   test "model graph validation rejects cycles before activation" do
     assert {:error, "model graph cycle detected at loop-model"} =
              Wardwright.put_config(%{
+               "dispatchers" => [%{"id" => "outer-route", "models" => ["loop-model"]}],
                "model_id" => "loop-model",
-               "version" => "unit-version",
+               "route_root" => "outer-route",
                "targets" => [
                  %{
-                   "model" => "loop-model",
-                   "target_kind" => "wardwright_model",
-                   "context_window" => 4_096,
                    "artifact" => %{
+                     "dispatchers" => [%{"id" => "inner-route", "models" => ["local/final"]}],
                      "model_id" => "loop-model",
-                     "version" => "inner-version",
-                     "targets" => [
-                       %{"model" => "local/final", "context_window" => 4_096}
-                     ],
                      "route_root" => "inner-route",
-                     "dispatchers" => [
-                       %{"id" => "inner-route", "models" => ["local/final"]}
-                     ]
-                   }
+                     "targets" => [%{"context_window" => 4_096, "model" => "local/final"}],
+                     "version" => "inner-version"
+                   },
+                   "context_window" => 4_096,
+                   "model" => "loop-model",
+                   "target_kind" => "wardwright_model"
                  }
                ],
-               "route_root" => "outer-route",
-               "dispatchers" => [
-                 %{"id" => "outer-route", "models" => ["loop-model"]}
-               ]
+               "version" => "unit-version"
              })
   end
 
   defp model_graph_config do
     %{
+      "dispatchers" => [%{"id" => "outer-delegates", "models" => ["policy-safe-writer"]}],
       "model_id" => "outer-model",
-      "version" => "outer-version",
+      "route_root" => "outer-delegates",
       "targets" => [
         %{
-          "model" => "policy-safe-writer",
-          "target_kind" => "wardwright_model",
-          "context_window" => 4_096,
           "artifact" => %{
+            "dispatchers" => [%{"id" => "inner-context-fit", "models" => ["canned/final"]}],
             "model_id" => "policy-safe-writer",
-            "version" => "inner-version",
+            "route_root" => "inner-context-fit",
             "targets" => [
               %{
-                "model" => "canned/final",
-                "provider_kind" => "canned_sequence",
+                "canned_outputs" => ["nested provider response"],
                 "context_window" => 8_192,
-                "canned_outputs" => ["nested provider response"]
+                "model" => "canned/final",
+                "provider_kind" => "canned_sequence"
               }
             ],
-            "route_root" => "inner-context-fit",
-            "dispatchers" => [
-              %{"id" => "inner-context-fit", "models" => ["canned/final"]}
-            ]
-          }
+            "version" => "inner-version"
+          },
+          "context_window" => 4_096,
+          "model" => "policy-safe-writer",
+          "target_kind" => "wardwright_model"
         }
       ],
-      "route_root" => "outer-delegates",
-      "dispatchers" => [
-        %{"id" => "outer-delegates", "models" => ["policy-safe-writer"]}
-      ]
+      "version" => "outer-version"
     }
   end
 end

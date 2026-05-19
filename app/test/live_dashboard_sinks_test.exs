@@ -1,5 +1,6 @@
 defmodule Wardwright.LiveDashboardSinksTest do
   use ExUnit.Case, async: false
+
   import Plug.Test
 
   setup_all do

@@ -3,7 +3,9 @@ defmodule WardwrightWeb.Endpoint do
 
   use Phoenix.Endpoint, otp_app: :wardwright
 
-  socket("/live", Phoenix.LiveView.Socket)
+  alias Phoenix.LiveView.Socket
+
+  socket("/live", Socket)
 
   plug(Plug.Static,
     at: "/",

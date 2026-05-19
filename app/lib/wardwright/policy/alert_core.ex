@@ -43,10 +43,10 @@ defmodule Wardwright.Policy.AlertCore do
   defp decision_map({:enqueue_decision, key, status, queue_depth, queue_capacity}) do
     %{
       key: key,
-      status: status,
       outcome: outcome(status),
+      queue_capacity: queue_capacity,
       queue_depth: queue_depth,
-      queue_capacity: queue_capacity
+      status: status
     }
   end
 

@@ -137,9 +137,8 @@ defmodule Wardwright.CLI.Admin do
       "/usr/local/etc/wardwright/bind"
     ]
     |> Enum.find_value(fn path ->
-      with {:ok, value} <- File.read(path) do
-        blank_to_nil(value)
-      else
+      case File.read(path) do
+        {:ok, value} -> blank_to_nil(value)
         _ -> nil
       end
     end)
@@ -214,7 +213,7 @@ defmodule Wardwright.CLI.Admin do
 
   defp blank_to_nil(value) when is_binary(value) do
     value = String.trim(value)
-    if value == "", do: nil, else: value
+    if value != "", do: value
   end
 
   defp blank_to_nil(_value), do: nil

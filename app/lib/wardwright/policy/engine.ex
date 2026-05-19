@@ -1,6 +1,11 @@
 defmodule Wardwright.Policy.Engine do
   @moduledoc false
 
+  alias Wardwright.Policy.Action
+  alias Wardwright.PolicySandbox.Dune
+  alias Wardwright.PolicySandbox.DuneSnippetRegistry
+  alias Wardwright.PolicySandbox.Wasm
+
   @action_key "action"
   @dune_engine "dune"
   @engine_key "engine"
@@ -11,22 +16,21 @@ defmodule Wardwright.Policy.Engine do
 
   def evaluate(%{"engine" => "primitive", "rules" => rules}, context) when is_list(rules) do
     "primitive.request-contains-actions"
-    |> Wardwright.PolicySandbox.DuneSnippetRegistry.source!()
-    |> Wardwright.PolicySandbox.Dune.eval_snippet(%{
+    |> DuneSnippetRegistry.source!()
+    |> Dune.eval_snippet(%{
       "request_text" => Map.get(context, "request_text", ""),
       "rules" => rules
     })
     |> normalize_dune_result()
-    |> Wardwright.Policy.Action.normalize_result(rule: %{"engine" => "dune"})
+    |> Action.normalize_result(rule: %{"engine" => "dune"})
   end
 
-  def evaluate(%{"engine" => "dune", "source" => source} = policy, context)
-      when is_binary(source) do
+  def evaluate(%{"engine" => "dune", "source" => source} = policy, context) when is_binary(source) do
     source
     |> expand_legacy_context_placeholder(context)
-    |> Wardwright.PolicySandbox.Dune.eval_snippet(context)
+    |> Dune.eval_snippet(context)
     |> normalize_dune_result()
-    |> Wardwright.Policy.Action.normalize_result(rule: policy)
+    |> Action.normalize_result(rule: policy)
   end
 
   def evaluate(%{@engine_key => @dune_engine, @snippet_id_key => snippet_id} = policy, context)
@@ -35,8 +39,8 @@ defmodule Wardwright.Policy.Engine do
   end
 
   def evaluate(%{"engine" => "wasm"} = policy, _context) do
-    Wardwright.PolicySandbox.Wasm.evaluate(policy)
-    |> Wardwright.Policy.Action.normalize_result(rule: policy)
+    Wasm.evaluate(policy)
+    |> Action.normalize_result(rule: policy)
   end
 
   def evaluate(%{"engine" => "hybrid", "engines" => engines}, context) when is_list(engines) do
@@ -51,13 +55,13 @@ defmodule Wardwright.Policy.Engine do
       end)
 
     %{
-      "engine" => "hybrid",
-      "status" => if(engine_failed?, do: "error", else: "ok"),
       "action" => if(engine_failed? or blocking?, do: "block", else: "allow"),
       "actions" => Enum.flat_map(results, &result_actions/1),
-      "results" => results
+      "engine" => "hybrid",
+      "results" => results,
+      "status" => if(engine_failed?, do: "error", else: "ok")
     }
-    |> Wardwright.Policy.Action.normalize_result()
+    |> Action.normalize_result()
   end
 
   def evaluate(_policy, _context) do
@@ -65,37 +69,37 @@ defmodule Wardwright.Policy.Engine do
   end
 
   defp evaluate_dune_snippet_id(policy, context, snippet_id) do
-    case Wardwright.PolicySandbox.DuneSnippetRegistry.get(snippet_id) do
+    case DuneSnippetRegistry.get(snippet_id) do
       {:ok, snippet} ->
         snippet
         |> Map.fetch!("source")
         |> expand_legacy_context_placeholder(context)
-        |> Wardwright.PolicySandbox.Dune.eval_snippet(context)
+        |> Dune.eval_snippet(context)
         |> normalize_dune_result()
-        |> Wardwright.Policy.Action.normalize_result(rule: policy)
+        |> Action.normalize_result(rule: policy)
 
       {:error, message} ->
         dune_error_result(message)
-        |> Wardwright.Policy.Action.normalize_result(rule: policy)
+        |> Action.normalize_result(rule: policy)
     end
   end
 
   defp unsupported_result do
     %{
-      "engine" => "unknown",
-      "status" => "error",
       "action" => "block",
-      "reason" => "unsupported policy engine"
+      "engine" => "unknown",
+      "reason" => "unsupported policy engine",
+      "status" => "error"
     }
-    |> Wardwright.Policy.Action.normalize_result()
+    |> Action.normalize_result()
   end
 
   defp dune_error_result(message) do
     %{
-      @engine_key => @dune_engine,
-      @status_key => @error_status,
       @action_key => "block",
-      @reason_key => message
+      @engine_key => @dune_engine,
+      @reason_key => message,
+      @status_key => @error_status
     }
   end
 
@@ -106,11 +110,10 @@ defmodule Wardwright.Policy.Engine do
   defp result_actions(%{"action" => action} = result) when is_binary(action) do
     [
       %{
-        "rule_id" => Map.get(result, "rule_id"),
         "action" => action,
         "matched" => true,
-        "message" =>
-          Map.get(result, "reason", Map.get(result, "message", "policy engine matched"))
+        "message" => Map.get(result, "reason", Map.get(result, "message", "policy engine matched")),
+        "rule_id" => Map.get(result, "rule_id")
       }
       |> Enum.reject(fn {_key, value} -> value in [nil, ""] end)
       |> Map.new()
@@ -136,8 +139,7 @@ defmodule Wardwright.Policy.Engine do
     |> Map.put("idempotency_key", Map.get(value, "idempotency_key", value[:idempotency_key]))
   end
 
-  defp normalize_dune_result(%{"status" => "ok"} = result),
-    do: Map.merge(result, %{"action" => "allow"})
+  defp normalize_dune_result(%{"status" => "ok"} = result), do: Map.put(result, "action", "allow")
 
   defp normalize_dune_result(%{"status" => "error"} = result) do
     result

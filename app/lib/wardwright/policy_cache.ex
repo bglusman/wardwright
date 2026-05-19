@@ -4,6 +4,7 @@ defmodule Wardwright.PolicyCache do
   use GenServer
 
   alias Wardwright.PolicyCache.SessionStore
+  alias Wardwright.PolicyCache.SessionSupervisor
 
   @catalog :wardwright_policy_cache_catalog
   @anonymous_session "anonymous"
@@ -57,24 +58,24 @@ defmodule Wardwright.PolicyCache do
     next_sequence = stores |> Enum.map(& &1.next_sequence) |> Enum.max(fn -> 1 end)
 
     %{
-      "kind" => "ets_session_catalog_bounded_history",
-      "topology" => "catalog_per_session_tables",
-      "max_entries" => config["max_entries"],
-      "recent_limit" => config["recent_limit"],
-      "entry_count" => entry_count,
-      "session_count" => length(stores),
-      "next_sequence" => next_sequence,
       "bounded" => true,
+      "entry_count" => entry_count,
+      "kind" => "ets_session_catalog_bounded_history",
+      "max_entries" => config["max_entries"],
+      "next_sequence" => next_sequence,
+      "recent_limit" => config["recent_limit"],
+      "session_count" => length(stores),
       "stores" =>
         Enum.map(stores, fn store ->
           %{
-            "scope_key" => store.scope_key,
-            "scope" => store.scope,
             "entry_count" => store.entry_count,
             "next_sequence" => store.next_sequence,
-            "owner" => inspect(store.pid)
+            "owner" => inspect(store.pid),
+            "scope" => store.scope,
+            "scope_key" => store.scope_key
           }
-        end)
+        end),
+      "topology" => "catalog_per_session_tables"
     }
   end
 
@@ -90,7 +91,7 @@ defmodule Wardwright.PolicyCache do
         read_concurrency: true
       ])
 
-    {:ok, %{config: normalize_config(config), catalog: table}}
+    {:ok, %{catalog: table, config: normalize_config(config)}}
   end
 
   @impl true
@@ -99,7 +100,7 @@ defmodule Wardwright.PolicyCache do
     |> catalog_entries()
     |> Enum.each(fn %{pid: pid} ->
       if Process.alive?(pid) do
-        DynamicSupervisor.terminate_child(Wardwright.PolicyCache.SessionSupervisor, pid)
+        DynamicSupervisor.terminate_child(SessionSupervisor, pid)
       end
     end)
 
@@ -125,8 +126,7 @@ defmodule Wardwright.PolicyCache do
             {:reply, {:ok, store.pid}, state}
 
           {:error, reason} ->
-            {:reply, {:error, "failed to start policy cache session store: #{inspect(reason)}"},
-             state}
+            {:reply, {:error, "failed to start policy cache session store: #{inspect(reason)}"}, state}
         end
     end
   end
@@ -152,7 +152,7 @@ defmodule Wardwright.PolicyCache do
   defp start_store(scope_key, scope, config) do
     spec = {SessionStore, scope_key: scope_key, scope: scope, config: config}
 
-    case DynamicSupervisor.start_child(Wardwright.PolicyCache.SessionSupervisor, spec) do
+    case DynamicSupervisor.start_child(SessionSupervisor, spec) do
       {:ok, pid} ->
         {:ok, session_store_info(pid)}
 
@@ -213,12 +213,12 @@ defmodule Wardwright.PolicyCache do
     info = SessionStore.info(pid)
 
     %{
-      pid: info.pid,
-      table: info.table,
-      scope_key: info.scope_key,
-      scope: info.scope,
       entry_count: info.entry_count,
-      next_sequence: info.next_sequence
+      next_sequence: info.next_sequence,
+      pid: info.pid,
+      scope: info.scope,
+      scope_key: info.scope_key,
+      table: info.table
     }
   end
 

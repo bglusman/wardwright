@@ -23,17 +23,17 @@ defmodule Wardwright.Policy.Action do
 
     action
     |> Map.merge(%{
-      "action_schema" => @schema,
-      "rule_id" => first_present([Map.get(action, "rule_id"), Map.get(rule, "id"), "policy"]),
-      "kind" => kind,
       "action" => name,
+      "action_schema" => @schema,
+      "conflict_key" => conflict_key(name),
+      "conflict_policy" => conflict_policy(name),
+      "effect_type" => effect_type(name),
+      "kind" => kind,
       "matched" => Map.get(action, "matched", true),
       "phase" => phase(kind, name),
-      "effect_type" => effect_type(name),
-      "source" => source(source, action),
       "priority" => priority(action, rule, name),
-      "conflict_key" => conflict_key(name),
-      "conflict_policy" => conflict_policy(name)
+      "rule_id" => first_present([Map.get(action, "rule_id"), Map.get(rule, "id"), "policy"]),
+      "source" => source(source, action)
     })
     |> put_default_message(action)
     |> put_default_severity(action)
@@ -58,7 +58,7 @@ defmodule Wardwright.Policy.Action do
     rule = Keyword.get(opts, :rule, %{})
     engine = first_present([Map.get(result, "engine"), Map.get(rule, "engine"), "unknown"])
     status = first_present([Map.get(result, "status"), "ok"])
-    source = %{"type" => "engine", "engine" => engine, "status" => status}
+    source = %{"engine" => engine, "status" => status, "type" => "engine"}
 
     actions =
       result
@@ -66,12 +66,12 @@ defmodule Wardwright.Policy.Action do
       |> Enum.map(&normalize(&1, rule: rule, source: source))
 
     %{
-      "result_schema" => @result_schema,
-      "engine" => engine,
-      "status" => status,
       "action" => result_action(result, actions),
       "actions" => actions,
-      "conflicts" => conflicts(actions)
+      "conflicts" => conflicts(actions),
+      "engine" => engine,
+      "result_schema" => @result_schema,
+      "status" => status
     }
     |> put_if_present("reason", Map.get(result, "reason", Map.get(result, "message")))
     |> put_if_present("results", Map.get(result, "results"))
@@ -80,10 +80,10 @@ defmodule Wardwright.Policy.Action do
   def normalize_result(_result, opts) do
     normalize_result(
       %{
-        "engine" => "unknown",
-        "status" => "error",
         "action" => "block",
-        "reason" => "policy engine returned an invalid result"
+        "engine" => "unknown",
+        "reason" => "policy engine returned an invalid result",
+        "status" => "error"
       },
       opts
     )
@@ -97,13 +97,13 @@ defmodule Wardwright.Policy.Action do
       policy = grouped |> List.first() |> Map.get("conflict_policy", "ordered")
 
       %{
+        "action_count" => length(grouped),
+        "class" => policy,
         "conflict_schema" => "wardwright.policy_conflict.v1",
         "key" => key,
-        "class" => policy,
-        "action_count" => length(grouped),
+        "required_resolution" => conflict_resolution(policy),
         "rule_ids" => Enum.map(grouped, &Map.get(&1, "rule_id")),
-        "summary" => conflict_summary(key, policy),
-        "required_resolution" => conflict_resolution(policy)
+        "summary" => conflict_summary(key, policy)
       }
       |> reject_blank()
     end)
@@ -152,8 +152,7 @@ defmodule Wardwright.Policy.Action do
     :wardwright@action_core.default_priority(action)
   end
 
-  defp source(_source, %{"source" => action_source}) when is_map(action_source),
-    do: reject_blank(action_source)
+  defp source(_source, %{"source" => action_source}) when is_map(action_source), do: reject_blank(action_source)
 
   defp source(source, action) when is_map(source) and map_size(source) > 0 do
     source
@@ -177,14 +176,11 @@ defmodule Wardwright.Policy.Action do
     Map.put_new(action, "severity", first_present([Map.get(original, "severity"), "info"]))
   end
 
-  defp conflict_summary("route_constraints", "ordered"),
-    do: conflict_summary_core("route_constraints", "ordered")
+  defp conflict_summary("route_constraints", "ordered"), do: conflict_summary_core("route_constraints", "ordered")
 
-  defp conflict_summary("terminal_decision", "ordered"),
-    do: conflict_summary_core("terminal_decision", "ordered")
+  defp conflict_summary("terminal_decision", "ordered"), do: conflict_summary_core("terminal_decision", "ordered")
 
-  defp conflict_summary(key, policy),
-    do: conflict_summary_core(key, policy)
+  defp conflict_summary(key, policy), do: conflict_summary_core(key, policy)
 
   defp conflict_resolution(policy) do
     :wardwright@action_core.conflict_resolution(policy) |> blank_to_nil()

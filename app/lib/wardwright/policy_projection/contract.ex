@@ -10,45 +10,45 @@ defmodule Wardwright.PolicyProjection.Contract do
     @moduledoc false
     @enforce_keys [:id, :label, :node_class, :phase, :summary, :confidence]
     defstruct [
+      :confidence,
       :id,
       :label,
       :node_class,
       :phase,
       :summary,
-      :confidence,
-      reads: [],
-      writes: [],
       actions: [],
       annotations: %{},
-      source_span: nil
+      reads: [],
+      source_span: nil,
+      writes: []
     ]
   end
 
   defmodule Annotation do
     @moduledoc false
     @enforce_keys [:why, :change_when, :review_hint]
-    defstruct [:why, :change_when, :review_hint]
+    defstruct [:change_when, :review_hint, :why]
   end
 
   defmodule Effect do
     @moduledoc false
     @enforce_keys [:id, :node_id, :phase, :effect, :target, :confidence]
-    defstruct [:id, :node_id, :phase, :effect, :target, :confidence]
+    defstruct [:confidence, :effect, :id, :node_id, :phase, :target]
   end
 
   defmodule TraceEvent do
     @moduledoc false
     @enforce_keys [:id, :phase, :node_id, :kind, :label, :detail, :severity]
     defstruct [
+      :detail,
       :id,
-      :phase,
-      :node_id,
       :kind,
       :label,
-      :detail,
+      :node_id,
+      :phase,
       :severity,
-      state_id: nil,
-      source_span: nil
+      source_span: nil,
+      state_id: nil
     ]
   end
 
@@ -57,11 +57,11 @@ defmodule Wardwright.PolicyProjection.Contract do
     @enforce_keys [:initial_state, :states]
     defstruct [
       :initial_state,
-      states: [],
-      transitions: [],
-      simulation_steps: [],
       default_projection: true,
-      summary: nil
+      simulation_steps: [],
+      states: [],
+      summary: nil,
+      transitions: []
     ]
   end
 
@@ -72,23 +72,23 @@ defmodule Wardwright.PolicyProjection.Contract do
       :id,
       :label,
       :summary,
-      node_ids: [],
-      terminal: false,
       model_id: nil,
-      model_reason: nil
+      model_reason: nil,
+      node_ids: [],
+      terminal: false
     ]
   end
 
   defmodule Transition do
     @moduledoc false
     @enforce_keys [:id, :from, :to, :trigger, :action]
-    defstruct [:id, :from, :to, :trigger, :action, :node_id, confidence: "exact"]
+    defstruct [:action, :from, :id, :node_id, :to, :trigger, confidence: "exact"]
   end
 
   defmodule StateStep do
     @moduledoc false
     @enforce_keys [:step, :state, :event_id, :summary]
-    defstruct [:step, :state, :event_id, :summary, :node_id, severity: "info"]
+    defstruct [:event_id, :node_id, :state, :step, :summary, severity: "info"]
   end
 
   def to_map(%Node{} = node) do

@@ -19,13 +19,7 @@ defmodule Wardwright.Policy.StructuredCore do
     )
   end
 
-  def loop_outcome_status(
-        rule_id,
-        rule_failures,
-        max_failures_per_rule,
-        attempt_count,
-        max_attempts
-      ) do
+  def loop_outcome_status(rule_id, rule_failures, max_failures_per_rule, attempt_count, max_attempts) do
     rule_id = to_string(rule_id)
     rule_failures = integer_value(rule_failures)
     max_failures_per_rule = integer_value(max_failures_per_rule)

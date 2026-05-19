@@ -7,28 +7,28 @@ defmodule Wardwright.HistoryPolicyTest do
       |> Map.put("policy_cache", %{"max_entries" => 8, "recent_limit" => 8})
       |> Map.put("governance", [
         %{
+          "action" => "escalate",
+          "cache_key" => "shell:ls",
+          "cache_kind" => "tool_call",
+          "cache_scope" => "session_id",
           "id" => "repeat-tool",
           "kind" => "history_threshold",
-          "action" => "escalate",
-          "cache_kind" => "tool_call",
-          "cache_key" => "shell:ls",
-          "cache_scope" => "session_id",
-          "threshold" => 2,
-          "severity" => "warning"
+          "severity" => "warning",
+          "threshold" => 2
         }
       ])
 
     assert call(:post, "/__test/config", config).status == 200
 
     assert call(:post, "/v1/policy-cache/events", %{
-             kind: "tool_call",
              key: "shell:ls",
+             kind: "tool_call",
              scope: %{session_id: "session-a"}
            }).status == 201
 
     assert call(:post, "/v1/policy-cache/events", %{
-             kind: "tool_call",
              key: "shell:ls",
+             kind: "tool_call",
              scope: %{session_id: "session-b"}
            }).status == 201
 
@@ -36,7 +36,7 @@ defmodule Wardwright.HistoryPolicyTest do
       call(
         :post,
         "/v1/wardwright/simulate",
-        %{request: %{model: "unit-model", messages: [%{role: "user", content: "hello"}]}},
+        %{request: %{messages: [%{content: "hello", role: "user"}], model: "unit-model"}},
         [{"x-wardwright-session-id", "session-a"}]
       )
 
@@ -44,8 +44,8 @@ defmodule Wardwright.HistoryPolicyTest do
     assert get_in(Jason.decode!(miss.resp_body), ["receipt", "final", "alert_count"]) == 0
 
     assert call(:post, "/v1/policy-cache/events", %{
-             kind: "tool_call",
              key: "shell:ls",
+             kind: "tool_call",
              scope: %{session_id: "session-a"}
            }).status == 201
 
@@ -53,7 +53,7 @@ defmodule Wardwright.HistoryPolicyTest do
       call(
         :post,
         "/v1/wardwright/simulate",
-        %{request: %{model: "unit-model", messages: [%{role: "user", content: "hello"}]}},
+        %{request: %{messages: [%{content: "hello", role: "user"}], model: "unit-model"}},
         [{"x-wardwright-session-id", "session-a"}]
       )
 
@@ -72,14 +72,14 @@ defmodule Wardwright.HistoryPolicyTest do
       |> Map.put("policy_cache", %{"max_entries" => 8, "recent_limit" => 8})
       |> Map.put("governance", [
         %{
+          "action" => "escalate",
+          "cache_key" => cache_key,
+          "cache_kind" => "tool_call",
+          "cache_scope" => "session_id",
           "id" => "repeat-pr-tool",
           "kind" => "history_threshold",
-          "action" => "escalate",
-          "cache_kind" => "tool_call",
-          "cache_key" => cache_key,
-          "cache_scope" => "session_id",
-          "threshold" => 1,
-          "severity" => "warning"
+          "severity" => "warning",
+          "threshold" => 1
         }
       ])
 
@@ -91,19 +91,15 @@ defmodule Wardwright.HistoryPolicyTest do
         "/v1/wardwright/simulate",
         %{
           request: %{
-            model: "unit-model",
-            messages: [%{role: "user", content: "open a pull request"}],
+            messages: [%{content: "open a pull request", role: "user"}],
             metadata: %{
               tool_context: %{
                 phase: "planning",
-                primary_tool: %{
-                  namespace: "mcp.github",
-                  name: "create_pull_request",
-                  risk_class: "write"
-                },
+                primary_tool: %{name: "create_pull_request", namespace: "mcp.github", risk_class: "write"},
                 tool_call_id: "call_1"
               }
-            }
+            },
+            model: "unit-model"
           }
         },
         [{"x-wardwright-session-id", "session-tools"}]
@@ -116,7 +112,7 @@ defmodule Wardwright.HistoryPolicyTest do
     assert get_in(body, ["receipt", "decision", "policy_actions", Access.at(0), "history_count"]) ==
              1
 
-    assert [%{"kind" => "tool_call", "key" => ^cache_key, "value" => value}] =
+    assert [%{"key" => ^cache_key, "kind" => "tool_call", "value" => value}] =
              Wardwright.PolicyCache.recent(
                %{"kind" => "tool_call", "scope" => %{"session_id" => "session-tools"}},
                10
@@ -132,23 +128,23 @@ defmodule Wardwright.HistoryPolicyTest do
       |> Map.put("policy_cache", %{"max_entries" => 8, "recent_limit" => 8})
       |> Map.put("governance", [
         %{
+          "action" => "annotate",
+          "cache_key" => "shell:ls",
+          "cache_kind" => "tool_call",
+          "cache_scope" => "session_id",
           "id" => "repeat-tool",
           "kind" => "history_threshold",
-          "action" => "annotate",
-          "cache_kind" => "tool_call",
-          "cache_key" => "shell:ls",
-          "cache_scope" => "session_id",
-          "threshold" => 0,
           "message" => "",
-          "severity" => ""
+          "severity" => "",
+          "threshold" => 0
         }
       ])
 
     assert call(:post, "/__test/config", config).status == 200
 
     assert call(:post, "/v1/policy-cache/events", %{
-             kind: "tool_call",
              key: "shell:ls",
+             kind: "tool_call",
              scope: %{session_id: "session-a"}
            }).status == 201
 
@@ -156,7 +152,7 @@ defmodule Wardwright.HistoryPolicyTest do
       call(
         :post,
         "/v1/wardwright/simulate",
-        %{request: %{model: "unit-model", messages: [%{role: "user", content: "hello"}]}},
+        %{request: %{messages: [%{content: "hello", role: "user"}], model: "unit-model"}},
         [{"x-wardwright-session-id", "session-a"}]
       )
 
@@ -180,15 +176,15 @@ defmodule Wardwright.HistoryPolicyTest do
       |> Map.put("policy_cache", %{"max_entries" => 8, "recent_limit" => 8})
       |> Map.put("governance", [
         %{
+          "action" => "alert_async",
+          "cache_key" => "chat_completion",
+          "cache_kind" => "request_text",
+          "cache_scope" => "session_id",
           "id" => "dangerous-shell-history",
           "kind" => "history_regex_threshold",
-          "action" => "alert_async",
-          "cache_kind" => "request_text",
-          "cache_key" => "chat_completion",
-          "cache_scope" => "session_id",
           "pattern" => "rm\\s+-rf",
-          "threshold" => 1,
-          "severity" => "critical"
+          "severity" => "critical",
+          "threshold" => 1
         }
       ])
 
@@ -198,7 +194,7 @@ defmodule Wardwright.HistoryPolicyTest do
       call(
         :post,
         "/v1/wardwright/simulate",
-        %{request: %{model: "unit-model", messages: [%{role: "user", content: "hello"}]}},
+        %{request: %{messages: [%{content: "hello", role: "user"}], model: "unit-model"}},
         [{"x-wardwright-session-id", "session-a"}]
       )
 
@@ -210,8 +206,8 @@ defmodule Wardwright.HistoryPolicyTest do
         "/v1/wardwright/simulate",
         %{
           request: %{
-            model: "unit-model",
-            messages: [%{role: "user", content: "please run rm -rf /tmp/demo"}]
+            messages: [%{content: "please run rm -rf /tmp/demo", role: "user"}],
+            model: "unit-model"
           }
         },
         [{"x-wardwright-session-id", "session-a"}]
@@ -225,7 +221,7 @@ defmodule Wardwright.HistoryPolicyTest do
       call(
         :post,
         "/v1/wardwright/simulate",
-        %{request: %{model: "unit-model", messages: [%{role: "user", content: "hello"}]}},
+        %{request: %{messages: [%{content: "hello", role: "user"}], model: "unit-model"}},
         [{"x-wardwright-session-id", "session-b"}]
       )
 

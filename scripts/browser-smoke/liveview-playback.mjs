@@ -6,8 +6,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const appPort = Number(process.env.WARDWRIGHT_BROWSER_TEST_PORT || 8797);
-const chromePort = Number(process.env.WARDWRIGHT_CHROME_DEBUG_PORT || 9237);
+const appPort = Number(process.env.WARDWRIGHT_BROWSER_TEST_PORT || randomPort(18_000, 27_999));
+const chromePort = Number(process.env.WARDWRIGHT_CHROME_DEBUG_PORT || randomPort(28_000, 37_999));
 const appUrl = `http://127.0.0.1:${appPort}`;
 const chromePath = process.env.CHROME_PATH || findChromePath();
 
@@ -47,6 +47,7 @@ if (!chromePath) {
 const serverCommand = mixCommand();
 const server = spawn(serverCommand.command, [...serverCommand.args, "phx.server"], {
   cwd: "app",
+  detached: true,
   env: {
     ...process.env,
     MIX_ENV: process.env.MIX_ENV || "dev",
@@ -73,7 +74,7 @@ const chrome = spawn(
     `--user-data-dir=${userDataDir}`,
     "about:blank"
   ],
-  { stdio: ["ignore", "ignore", "pipe"] }
+  { detached: true, stdio: ["ignore", "ignore", "pipe"] }
 );
 
 try {
@@ -93,8 +94,8 @@ try {
     }
   }
 } finally {
-  chrome.kill("SIGTERM");
-  server.kill("SIGTERM");
+  await stopProcessGroup(chrome);
+  await stopProcessGroup(server);
   await rm(userDataDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }).catch(
     () => {}
   );
@@ -500,4 +501,61 @@ function mixCommand() {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function randomPort(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+async function stopProcessGroup(child) {
+  if (!child.pid || child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+
+  try {
+    process.kill(-child.pid, "SIGTERM");
+  } catch {
+    try {
+      child.kill("SIGTERM");
+    } catch {
+      return;
+    }
+  }
+
+  if (await waitForExit(child, 2_000)) {
+    return;
+  }
+
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // Process already exited.
+    }
+  }
+
+  await waitForExit(child, 1_000);
+}
+
+function waitForExit(child, timeoutMs) {
+  return new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolve(true);
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      child.off("exit", onExit);
+      resolve(false);
+    }, timeoutMs);
+
+    function onExit() {
+      clearTimeout(timeout);
+      resolve(true);
+    }
+
+    child.once("exit", onExit);
+  });
 }

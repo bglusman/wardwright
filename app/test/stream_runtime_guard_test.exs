@@ -6,19 +6,19 @@ defmodule Wardwright.StreamRuntimeGuardTest do
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "canned/model",
+          "canned_stream_chunks" => ["safe prefix that can release ", "Old", "Client(arg) now"],
           "context_window" => 256,
-          "provider_kind" => "canned_sequence",
-          "canned_stream_chunks" => ["safe prefix that can release ", "Old", "Client(arg) now"]
+          "model" => "canned/model",
+          "provider_kind" => "canned_sequence"
         }
       ])
       |> Map.put("governance", [])
       |> Map.put("stream_rules", [
         %{
-          "id" => "bounded-runtime-block",
-          "contains" => "OldClient(",
           "action" => "block",
-          "horizon_bytes" => byte_size("OldClient(")
+          "contains" => "OldClient(",
+          "horizon_bytes" => byte_size("OldClient("),
+          "id" => "bounded-runtime-block"
         }
       ])
 
@@ -26,9 +26,9 @@ defmodule Wardwright.StreamRuntimeGuardTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "stream code", role: "user"}],
         model: "unit-model",
-        stream: true,
-        messages: [%{role: "user", content: "stream code"}]
+        stream: true
       })
 
     assert conn.status == 200
@@ -50,10 +50,10 @@ defmodule Wardwright.StreamRuntimeGuardTest do
 
     assert [
              %{
-               "status" => "stream_policy_blocked",
-               "released_bytes" => released_bytes,
                "called_provider" => true,
-               "mock" => false
+               "mock" => false,
+               "released_bytes" => released_bytes,
+               "status" => "stream_policy_blocked"
              }
            ] = stream_policy["attempts"]
 
@@ -65,21 +65,21 @@ defmodule Wardwright.StreamRuntimeGuardTest do
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "canned/model",
+          "canned_stream_chunks" => ["safe prefix that can release ", "Old", "Client(arg) now"],
           "context_window" => 256,
-          "provider_kind" => "canned_sequence",
-          "canned_stream_chunks" => ["safe prefix that can release ", "Old", "Client(arg) now"]
+          "model" => "canned/model",
+          "provider_kind" => "canned_sequence"
         }
       ])
       |> Map.put("governance", [])
       |> Map.put("stream_rules", [
         %{
-          "id" => "bounded-runtime-retry",
-          "contains" => "OldClient(",
           "action" => "retry_with_reminder",
-          "reminder" => "Use NewClient instead.",
+          "contains" => "OldClient(",
+          "horizon_bytes" => byte_size("OldClient("),
+          "id" => "bounded-runtime-retry",
           "max_retries" => 1,
-          "horizon_bytes" => byte_size("OldClient(")
+          "reminder" => "Use NewClient instead."
         }
       ])
 
@@ -87,9 +87,9 @@ defmodule Wardwright.StreamRuntimeGuardTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "stream code", role: "user"}],
         model: "unit-model",
-        stream: true,
-        messages: [%{role: "user", content: "stream code"}]
+        stream: true
       })
 
     assert conn.status == 200
@@ -113,9 +113,9 @@ defmodule Wardwright.StreamRuntimeGuardTest do
 
     assert [
              %{
-               "status" => "stream_policy_retry_required",
                "provider_status" => "cancelled",
-               "released_bytes" => released_bytes
+               "released_bytes" => released_bytes,
+               "status" => "stream_policy_retry_required"
              }
            ] = stream_policy["attempts"]
 
@@ -134,20 +134,20 @@ defmodule Wardwright.StreamRuntimeGuardTest do
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "canned/model",
-          "context_window" => 256,
-          "provider_kind" => "canned_sequence",
           "canned_stream_chunks" => ["safe prefix before provider error "],
-          "canned_stream_error" => "wardwright stream failure"
+          "canned_stream_error" => "wardwright stream failure",
+          "context_window" => 256,
+          "model" => "canned/model",
+          "provider_kind" => "canned_sequence"
         }
       ])
       |> Map.put("governance", [])
       |> Map.put("stream_rules", [
         %{
-          "id" => "bounded-runtime-pass-through",
-          "contains" => "OldClient(",
           "action" => "block",
-          "horizon_bytes" => 1
+          "contains" => "OldClient(",
+          "horizon_bytes" => 1,
+          "id" => "bounded-runtime-pass-through"
         }
       ])
 
@@ -155,9 +155,9 @@ defmodule Wardwright.StreamRuntimeGuardTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "stream code", role: "user"}],
         model: "unit-model",
-        stream: true,
-        messages: [%{role: "user", content: "stream code"}]
+        stream: true
       })
 
     assert conn.status == 200
@@ -227,18 +227,18 @@ defmodule Wardwright.StreamRuntimeGuardTest do
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "canned/model",
+          "canned_stream_chunks" => ["call Old", "Client(arg) now"],
           "context_window" => 256,
-          "provider_kind" => "canned_sequence",
-          "canned_stream_chunks" => ["call Old", "Client(arg) now"]
+          "model" => "canned/model",
+          "provider_kind" => "canned_sequence"
         }
       ])
       |> Map.put("governance", [])
       |> Map.put("stream_rules", [
         %{
-          "id" => "deprecated-client-provider-rewrite",
-          "contains" => "OldClient(",
           "action" => "rewrite_chunk",
+          "contains" => "OldClient(",
+          "id" => "deprecated-client-provider-rewrite",
           "replacement" => "NewClient("
         }
       ])
@@ -247,9 +247,9 @@ defmodule Wardwright.StreamRuntimeGuardTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "stream code", role: "user"}],
         model: "unit-model",
-        stream: true,
-        messages: [%{role: "user", content: "stream code"}]
+        stream: true
       })
 
     assert conn.status == 200
@@ -265,17 +265,17 @@ defmodule Wardwright.StreamRuntimeGuardTest do
 
     assert [
              %{
-               "attempt_index" => 0,
-               "status" => "completed",
                "action" => "rewrite_chunk",
-               "trigger_count" => 1,
-               "released_to_consumer" => true,
+               "attempt_index" => 0,
                "called_provider" => true,
+               "generated_bytes" => generated_bytes,
                "mock" => false,
                "provider_status" => "completed",
-               "generated_bytes" => generated_bytes,
                "released_bytes" => released_bytes,
-               "rewritten_bytes" => rewritten_bytes
+               "released_to_consumer" => true,
+               "rewritten_bytes" => rewritten_bytes,
+               "status" => "completed",
+               "trigger_count" => 1
              }
            ] = stream_policy["attempts"]
 
@@ -285,10 +285,10 @@ defmodule Wardwright.StreamRuntimeGuardTest do
 
     assert [
              %{
-               "rule_id" => "deprecated-client-provider-rewrite",
                "action" => "rewrite_chunk",
                "chunk_index" => 1,
-               "match_scope" => "stream_window"
+               "match_scope" => "stream_window",
+               "rule_id" => "deprecated-client-provider-rewrite"
              }
            ] = stream_policy["events"]
   end
@@ -298,11 +298,11 @@ defmodule Wardwright.StreamRuntimeGuardTest do
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "slow-stream/model",
-          "context_window" => 256,
-          "provider_kind" => "canned_sequence",
-          "canned_stream_chunks" => ["late stream"],
           "canned_delay_ms" => 25,
+          "canned_stream_chunks" => ["late stream"],
+          "context_window" => 256,
+          "model" => "slow-stream/model",
+          "provider_kind" => "canned_sequence",
           "provider_timeout_ms" => 1
         }
       ])
@@ -313,9 +313,9 @@ defmodule Wardwright.StreamRuntimeGuardTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "stream code", role: "user"}],
         model: "unit-model",
-        stream: true,
-        messages: [%{role: "user", content: "stream code"}]
+        stream: true
       })
 
     assert conn.status == 502
@@ -333,11 +333,11 @@ defmodule Wardwright.StreamRuntimeGuardTest do
 
     assert [
              %{
-               "status" => "provider_error",
                "called_provider" => true,
                "mock" => false,
+               "provider_error" => provider_error,
                "provider_status" => "provider_error",
-               "provider_error" => provider_error
+               "status" => "provider_error"
              }
            ] = stream_policy["attempts"]
 
@@ -349,21 +349,21 @@ defmodule Wardwright.StreamRuntimeGuardTest do
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "slow-hold/model",
-          "context_window" => 256,
-          "provider_kind" => "canned_sequence",
-          "canned_stream_chunks" => ["held", " later"],
           "canned_delay_ms" => 15,
+          "canned_stream_chunks" => ["held", " later"],
+          "context_window" => 256,
+          "model" => "slow-hold/model",
+          "provider_kind" => "canned_sequence",
           "provider_timeout_ms" => 1_000
         }
       ])
       |> Map.put("governance", [])
       |> Map.put("stream_rules", [
         %{
-          "id" => "slow-held-window",
-          "contains" => "OldClient(",
           "action" => "block",
+          "contains" => "OldClient(",
           "horizon_bytes" => byte_size("OldClient("),
+          "id" => "slow-held-window",
           "max_hold_ms" => 1
         }
       ])
@@ -372,9 +372,9 @@ defmodule Wardwright.StreamRuntimeGuardTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "stream code", role: "user"}],
         model: "unit-model",
-        stream: true,
-        messages: [%{role: "user", content: "stream code"}]
+        stream: true
       })
 
     assert conn.status == 422
@@ -395,10 +395,10 @@ defmodule Wardwright.StreamRuntimeGuardTest do
 
     assert [
              %{
-               "status" => "stream_policy_latency_exceeded",
+               "max_hold_ms" => 1,
                "provider_status" => "cancelled",
                "released_to_consumer" => false,
-               "max_hold_ms" => 1
+               "status" => "stream_policy_latency_exceeded"
              }
            ] = stream_policy["attempts"]
 

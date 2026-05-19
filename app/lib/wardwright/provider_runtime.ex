@@ -3,6 +3,7 @@ defmodule Wardwright.ProviderRuntime do
 
   use GenServer
 
+  alias Wardwright.ProviderRuntime.TaskSupervisor
   alias Wardwright.Runtime.Events
 
   @default_timeout_ms 180_000
@@ -60,8 +61,8 @@ defmodule Wardwright.ProviderRuntime do
     state = state_snapshot()
 
     %{
-      @providers_key => providers_status_from_state(state),
-      @provider_attempts_key => active_attempts_status_from_state(state)
+      @provider_attempts_key => active_attempts_status_from_state(state),
+      @providers_key => providers_status_from_state(state)
     }
   end
 
@@ -107,13 +108,11 @@ defmodule Wardwright.ProviderRuntime do
     |> Enum.sort_by(&{Map.get(&1, @started_at_key), Map.get(&1, @attempt_id_key)})
   end
 
-  def complete(target, request, provider_fun)
-      when is_map(target) and is_function(provider_fun, 0) do
+  def complete(target, request, provider_fun) when is_map(target) and is_function(provider_fun, 0) do
     run(target, request, provider_fun, false)
   end
 
-  def stream(target, request, provider_fun)
-      when is_map(target) and is_function(provider_fun, 0) do
+  def stream(target, request, provider_fun) when is_map(target) and is_function(provider_fun, 0) do
     run(target, request, provider_fun, true)
   end
 
@@ -129,14 +128,14 @@ defmodule Wardwright.ProviderRuntime do
 
     publish("provider.attempt.started", %{
       @attempt_id_key => attempt_id,
-      @provider_id_key => provider_id,
       @model_key => model,
-      @timeout_ms_key => timeout_ms,
-      @stream_key => true
+      @provider_id_key => provider_id,
+      @stream_key => true,
+      @timeout_ms_key => timeout_ms
     })
 
     task =
-      Task.Supervisor.async_nolink(Wardwright.ProviderRuntime.TaskSupervisor, fn ->
+      Task.Supervisor.async_nolink(TaskSupervisor, fn ->
         producer_fun.(fn chunk ->
           send(parent, {stream_ref, :chunk, chunk})
           :ok
@@ -148,10 +147,10 @@ defmodule Wardwright.ProviderRuntime do
 
     publish("provider.attempt.finished", %{
       @attempt_id_key => attempt_id,
-      @provider_id_key => provider_id,
+      @latency_ms_key => max(0, System.monotonic_time(:millisecond) - started),
       @model_key => model,
-      @status_key => result_status(result),
-      @latency_ms_key => max(0, System.monotonic_time(:millisecond) - started)
+      @provider_id_key => provider_id,
+      @status_key => result_status(result)
     })
 
     {result, acc}
@@ -166,22 +165,22 @@ defmodule Wardwright.ProviderRuntime do
 
     publish("provider.attempt.started", %{
       @attempt_id_key => attempt_id,
-      @provider_id_key => provider_id,
       @model_key => model,
-      @timeout_ms_key => timeout_ms,
-      @stream_key => stream? or Map.get(request, @stream_key, false) == true
+      @provider_id_key => provider_id,
+      @stream_key => stream? or Map.get(request, @stream_key, false) == true,
+      @timeout_ms_key => timeout_ms
     })
 
     result =
-      Task.Supervisor.async_nolink(Wardwright.ProviderRuntime.TaskSupervisor, provider_fun)
+      Task.Supervisor.async_nolink(TaskSupervisor, provider_fun)
       |> await_provider(timeout_ms)
 
     publish("provider.attempt.finished", %{
       @attempt_id_key => attempt_id,
-      @provider_id_key => provider_id,
+      @latency_ms_key => max(0, System.monotonic_time(:millisecond) - started),
       @model_key => model,
-      @status_key => result_status(result),
-      @latency_ms_key => max(0, System.monotonic_time(:millisecond) - started)
+      @provider_id_key => provider_id,
+      @status_key => result_status(result)
     })
 
     result
@@ -262,8 +261,7 @@ defmodule Wardwright.ProviderRuntime do
         result = Task.shutdown(task, :brutal_kill)
         drain_stream_messages(stream_ref, task.ref)
 
-        {normalize_task_result(result) || {:error, "provider timed out after #{timeout_ms}ms"},
-         acc}
+        {normalize_task_result(result) || {:error, "provider timed out after #{timeout_ms}ms"}, acc}
     end
   end
 
@@ -284,8 +282,7 @@ defmodule Wardwright.ProviderRuntime do
 
   defp normalize_task_result({:ok, result}), do: result
 
-  defp normalize_task_result({:exit, reason}),
-    do: {:error, "provider task exited: #{inspect(reason)}"}
+  defp normalize_task_result({:exit, reason}), do: {:error, "provider task exited: #{inspect(reason)}"}
 
   defp normalize_task_result(nil), do: nil
 
@@ -315,8 +312,8 @@ defmodule Wardwright.ProviderRuntime do
   defp publish(type, event) do
     event =
       Map.merge(event, %{
-        @type_key => type,
-        @created_at_key => System.system_time(:second)
+        @created_at_key => System.system_time(:second),
+        @type_key => type
       })
 
     if type == "provider.attempt.started", do: record_provider_started(event)
@@ -389,15 +386,15 @@ defmodule Wardwright.ProviderRuntime do
         state,
         [:active_attempts, attempt_id],
         %{
+          :attempt_id => attempt_id,
+          :model => Map.get(event, @model_key, ""),
+          :provider_id => Map.get(event, @provider_id_key, ""),
+          :stream => Map.get(event, @stream_key, false) == true,
+          :timeout_ms => Map.get(event, @timeout_ms_key),
           @attempt_status => "started",
           @chunk_count => 0,
           @last_event_at => Map.get(event, @created_at_key, System.system_time(:second)),
-          @started_at => Map.get(event, @created_at_key, System.system_time(:second)),
-          attempt_id: attempt_id,
-          provider_id: Map.get(event, @provider_id_key, ""),
-          model: Map.get(event, @model_key, ""),
-          stream: Map.get(event, @stream_key, false) == true,
-          timeout_ms: Map.get(event, @timeout_ms_key)
+          @started_at => Map.get(event, @created_at_key, System.system_time(:second))
         }
       )
     end
@@ -441,32 +438,32 @@ defmodule Wardwright.ProviderRuntime do
 
   defp status_record(stats, configured?) do
     %{
-      @provider_id_key => stats.provider_id,
-      @model_key => stats.model,
-      @configured => configured?,
-      @health_key => health(stats),
       "attempt_count" => stats.attempt_count,
-      "completed_count" => stats.completed_count,
       "cancelled_count" => stats.cancelled_count,
-      @error_count_key => stats.error_count,
+      "completed_count" => stats.completed_count,
+      @configured => configured?,
       @consecutive_failures_key => stats.consecutive_failures,
-      @last_status_key => stats.last_status,
+      @error_count_key => stats.error_count,
+      @health_key => health(stats),
+      @last_attempt_at_key => stats.last_attempt_at,
       @last_latency_ms_key => stats.last_latency_ms,
-      @last_attempt_at_key => stats.last_attempt_at
+      @last_status_key => stats.last_status,
+      @model_key => stats.model,
+      @provider_id_key => stats.provider_id
     }
   end
 
   defp active_attempt_record(attempt) do
     %{
       @attempt_id_key => attempt.attempt_id,
-      @provider_id_key => attempt.provider_id,
+      @chunk_count_key => attempt.chunk_count,
+      @last_event_at_key => attempt.last_event_at,
       @model_key => attempt.model,
+      @provider_id_key => attempt.provider_id,
+      @started_at_key => attempt.started_at,
       @status_key => attempt.status,
       @stream_key => attempt.stream,
-      @timeout_ms_key => attempt.timeout_ms,
-      @started_at_key => attempt.started_at,
-      @last_event_at_key => attempt.last_event_at,
-      @chunk_count_key => attempt.chunk_count
+      @timeout_ms_key => attempt.timeout_ms
     }
   end
 
@@ -476,21 +473,21 @@ defmodule Wardwright.ProviderRuntime do
 
   defp empty_stats(provider_id, model) do
     %{
-      provider_id: provider_id,
-      model: model,
       attempt_count: 0,
-      completed_count: 0,
       cancelled_count: 0,
-      error_count: 0,
+      completed_count: 0,
       consecutive_failures: 0,
-      last_status: nil,
+      error_count: 0,
+      last_attempt_at: nil,
       last_latency_ms: nil,
-      last_attempt_at: nil
+      last_status: nil,
+      model: model,
+      provider_id: provider_id
     }
   end
 
   defp empty_state do
-    %{stats: %{}, active_attempts: %{}}
+    %{active_attempts: %{}, stats: %{}}
   end
 
   defp state_snapshot do

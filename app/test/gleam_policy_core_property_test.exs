@@ -2,8 +2,6 @@ defmodule Wardwright.GleamPolicyCorePropertyTest do
   use ExUnit.Case, async: true
   use ExUnitProperties
 
-  Code.require_file("../src/wardwright/elixir_reference/policy_core_reference.exs", __DIR__)
-
   alias Wardwright.ElixirReference.ActionCore, as: ActionCoreReference
   alias Wardwright.ElixirReference.AlertCore, as: AlertCoreReference
   alias Wardwright.ElixirReference.HistoryCore, as: HistoryCoreReference
@@ -14,6 +12,8 @@ defmodule Wardwright.GleamPolicyCorePropertyTest do
   alias Wardwright.ElixirReference.StructuredCore, as: StructuredCoreReference
   alias Wardwright.ElixirReference.StructuredValidationCore, as: StructuredValidationCoreReference
   alias Wardwright.ElixirReference.ToolContextCore, as: ToolContextCoreReference
+
+  Code.require_file("../src/wardwright/elixir_reference/policy_core_reference.exs", __DIR__)
 
   property "action core matches the Elixir reference for valid action and result inputs" do
     check all(
@@ -570,32 +570,32 @@ defmodule Wardwright.GleamPolicyCorePropertyTest do
 
   defp route_target do
     fixed_map(%{
-      model: member_of(["tiny/model", "small/model", "medium/model", "large/model"]),
       context_window: integer(1..128),
+      model: member_of(["tiny/model", "small/model", "medium/model", "large/model"]),
       weight: integer(1..8)
     })
   end
 
-  defp gleam_target(%{model: model, context_window: context_window, weight: weight}) do
+  defp gleam_target(%{context_window: context_window, model: model, weight: weight}) do
     {:target, model, context_window, weight}
   end
 
   defp normalize_alert_decision({:enqueue_decision, key, status, queue_depth, queue_capacity}) do
-    %{key: key, status: status, queue_depth: queue_depth, queue_capacity: queue_capacity}
+    %{key: key, queue_capacity: queue_capacity, queue_depth: queue_depth, status: status}
   end
 
   defp normalize_route_selection(
-         {:route_selection, selected_model, selected_context_window, selected_models,
-          fallback_models, skipped, route_blocked, reason}
+         {:route_selection, selected_model, selected_context_window, selected_models, fallback_models, skipped,
+          route_blocked, reason}
        ) do
     %{
-      selected_model: selected_model,
-      selected_context_window: selected_context_window,
-      selected_models: selected_models,
       fallback_models: fallback_models,
-      skipped: skipped,
+      reason: reason,
       route_blocked: route_blocked,
-      reason: reason
+      selected_context_window: selected_context_window,
+      selected_model: selected_model,
+      selected_models: selected_models,
+      skipped: skipped
     }
   end
 end

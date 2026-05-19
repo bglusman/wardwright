@@ -5,15 +5,15 @@ defmodule Wardwright.StreamRetryBudgetTest do
     config =
       unit_policy_config()
       |> Map.put("targets", [
-        %{"model" => "large/model", "context_window" => 256}
+        %{"context_window" => 256, "model" => "large/model"}
       ])
       |> Map.put("stream_rules", [
         %{
-          "id" => "deprecated-client-budget",
-          "contains" => "OldClient(",
           "action" => "retry_with_reminder",
-          "reminder" => "Use NewClient instead.",
-          "max_retries" => 1
+          "contains" => "OldClient(",
+          "id" => "deprecated-client-budget",
+          "max_retries" => 1,
+          "reminder" => "Use NewClient instead."
         }
       ])
 
@@ -21,15 +21,10 @@ defmodule Wardwright.StreamRetryBudgetTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "stream code", role: "user"}],
+        metadata: %{"mock_stream_attempt_chunks" => [["use OldClient(", "arg) now"], ["still OldClient(", "arg) now"]]},
         model: "unit-model",
-        stream: true,
-        metadata: %{
-          "mock_stream_attempt_chunks" => [
-            ["use OldClient(", "arg) now"],
-            ["still OldClient(", "arg) now"]
-          ]
-        },
-        messages: [%{role: "user", content: "stream code"}]
+        stream: true
       })
 
     assert conn.status == 409
@@ -53,14 +48,14 @@ defmodule Wardwright.StreamRetryBudgetTest do
 
     assert [
              %{
-               "status" => "stream_policy_retry_required",
+               "generated_bytes" => first_attempt_bytes,
                "released_to_consumer" => false,
-               "generated_bytes" => first_attempt_bytes
+               "status" => "stream_policy_retry_required"
              },
              %{
-               "status" => "stream_policy_retry_required",
+               "generated_bytes" => second_attempt_bytes,
                "released_to_consumer" => false,
-               "generated_bytes" => second_attempt_bytes
+               "status" => "stream_policy_retry_required"
              }
            ] = stream_policy["attempts"]
 
@@ -73,18 +68,18 @@ defmodule Wardwright.StreamRetryBudgetTest do
       unit_policy_config()
       |> Map.put("stream_rules", [
         %{
-          "id" => "deprecated-client-no-retry",
-          "contains" => "OldClient(",
           "action" => "retry_with_reminder",
-          "reminder" => "Use NewClient instead.",
-          "max_retries" => 0
+          "contains" => "OldClient(",
+          "id" => "deprecated-client-no-retry",
+          "max_retries" => 0,
+          "reminder" => "Use NewClient instead."
         },
         %{
-          "id" => "unrelated-generous-retry",
-          "contains" => "OtherClient(",
           "action" => "retry_with_reminder",
-          "reminder" => "Use ThirdClient instead.",
-          "max_retries" => 3
+          "contains" => "OtherClient(",
+          "id" => "unrelated-generous-retry",
+          "max_retries" => 3,
+          "reminder" => "Use ThirdClient instead."
         }
       ])
 
@@ -92,15 +87,10 @@ defmodule Wardwright.StreamRetryBudgetTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "stream code", role: "user"}],
+        metadata: %{"mock_stream_attempt_chunks" => [["use OldClient(", "arg) now"], ["use NewClient(", "arg) now"]]},
         model: "unit-model",
-        stream: true,
-        metadata: %{
-          "mock_stream_attempt_chunks" => [
-            ["use OldClient(", "arg) now"],
-            ["use NewClient(", "arg) now"]
-          ]
-        },
-        messages: [%{role: "user", content: "stream code"}]
+        stream: true
       })
 
     assert conn.status == 409
@@ -115,9 +105,9 @@ defmodule Wardwright.StreamRetryBudgetTest do
 
     assert [
              %{
-               "status" => "stream_policy_retry_required",
                "action" => "retry_with_reminder",
-               "released_to_consumer" => false
+               "released_to_consumer" => false,
+               "status" => "stream_policy_retry_required"
              }
            ] = get_in(receipt, ["final", "stream_policy", "attempts"])
   end
@@ -127,23 +117,20 @@ defmodule Wardwright.StreamRetryBudgetTest do
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "tiny-stream/model",
+          "canned_stream_attempt_chunks" => [["use OldClient(", "arg) now"], ["use NewClient(", "arg) now"]],
           "context_window" => 8,
-          "provider_kind" => "canned_sequence",
-          "canned_stream_attempt_chunks" => [
-            ["use OldClient(", "arg) now"],
-            ["use NewClient(", "arg) now"]
-          ]
+          "model" => "tiny-stream/model",
+          "provider_kind" => "canned_sequence"
         }
       ])
       |> Map.put("governance", [])
       |> Map.put("stream_rules", [
         %{
-          "id" => "oversized-reminder-retry",
-          "contains" => "OldClient(",
           "action" => "retry_with_reminder",
-          "reminder" => String.duplicate("Use NewClient instead. ", 20),
-          "max_retries" => 1
+          "contains" => "OldClient(",
+          "id" => "oversized-reminder-retry",
+          "max_retries" => 1,
+          "reminder" => String.duplicate("Use NewClient instead. ", 20)
         }
       ])
 
@@ -151,9 +138,9 @@ defmodule Wardwright.StreamRetryBudgetTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "small", role: "user"}],
         model: "unit-model",
-        stream: true,
-        messages: [%{role: "user", content: "small"}]
+        stream: true
       })
 
     assert conn.status == 422
@@ -174,9 +161,9 @@ defmodule Wardwright.StreamRetryBudgetTest do
 
     assert [
              %{
-               "status" => "stream_policy_retry_required",
                "provider_status" => "cancelled",
-               "released_to_consumer" => false
+               "released_to_consumer" => false,
+               "status" => "stream_policy_retry_required"
              }
            ] = stream_policy["attempts"]
 
@@ -193,31 +180,26 @@ defmodule Wardwright.StreamRetryBudgetTest do
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "tiny-stream/model",
+          "canned_stream_attempt_chunks" => [["use OldClient(", "arg) now"]],
           "context_window" => 8,
-          "provider_kind" => "canned_sequence",
-          "canned_stream_attempt_chunks" => [
-            ["use OldClient(", "arg) now"]
-          ]
+          "model" => "tiny-stream/model",
+          "provider_kind" => "canned_sequence"
         },
         %{
-          "model" => "large-stream/model",
+          "canned_stream_attempt_chunks" => [[], ["use NewClient(", "arg) now"]],
           "context_window" => 256,
-          "provider_kind" => "canned_sequence",
-          "canned_stream_attempt_chunks" => [
-            [],
-            ["use NewClient(", "arg) now"]
-          ]
+          "model" => "large-stream/model",
+          "provider_kind" => "canned_sequence"
         }
       ])
       |> Map.put("governance", [])
       |> Map.put("stream_rules", [
         %{
-          "id" => "reroute-reminder-retry",
-          "contains" => "OldClient(",
           "action" => "retry_with_reminder",
-          "reminder" => String.duplicate("Use NewClient instead. ", 4),
-          "max_retries" => 1
+          "contains" => "OldClient(",
+          "id" => "reroute-reminder-retry",
+          "max_retries" => 1,
+          "reminder" => String.duplicate("Use NewClient instead. ", 4)
         }
       ])
 
@@ -225,9 +207,9 @@ defmodule Wardwright.StreamRetryBudgetTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "small", role: "user"}],
         model: "unit-model",
-        stream: true,
-        messages: [%{role: "user", content: "small"}]
+        stream: true
       })
 
     assert conn.status == 200
@@ -243,13 +225,13 @@ defmodule Wardwright.StreamRetryBudgetTest do
 
     assert [
              %{
+               "estimated_prompt_tokens" => estimated_prompt_tokens,
+               "from_context_window" => 8,
+               "from_model" => "tiny-stream/model",
                "phase" => "stream_retry",
                "reason" => "retry_prompt_exceeded_selected_context",
-               "from_model" => "tiny-stream/model",
-               "to_model" => "large-stream/model",
-               "from_context_window" => 8,
                "to_context_window" => 256,
-               "estimated_prompt_tokens" => estimated_prompt_tokens
+               "to_model" => "large-stream/model"
              }
            ] = get_in(receipt, ["final", "route_transitions"])
 
@@ -262,14 +244,14 @@ defmodule Wardwright.StreamRetryBudgetTest do
 
     assert [
              %{
-               "status" => "stream_policy_retry_required",
+               "released_to_consumer" => false,
                "selected_model" => "tiny-stream/model",
-               "released_to_consumer" => false
+               "status" => "stream_policy_retry_required"
              },
              %{
-               "status" => "completed",
+               "released_to_consumer" => true,
                "selected_model" => "large-stream/model",
-               "released_to_consumer" => true
+               "status" => "completed"
              }
            ] = stream_policy["attempts"]
 

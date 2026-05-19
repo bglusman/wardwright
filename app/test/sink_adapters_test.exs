@@ -18,6 +18,9 @@ end
 defmodule Wardwright.SinkAdaptersTest do
   use Wardwright.RouterCase
 
+  alias Wardwright.Policy.AlertDelivery
+  alias Wardwright.Test.SinkWebhook
+
   test "configured sinks independently receive selected metadata events" do
     jsonl_path =
       Path.join(
@@ -32,32 +35,32 @@ defmodule Wardwright.SinkAdaptersTest do
       unit_policy_config()
       |> Map.put("sinks", [
         %{
+          "delivery" => %{"capacity" => 8, "on_full" => "fail_closed"},
           "id" => "alerts",
           "kind" => "memory_alert",
-          "select" => %{"types" => ["policy.alert"]},
-          "delivery" => %{"capacity" => 8, "on_full" => "fail_closed"}
+          "select" => %{"types" => ["policy.alert"]}
         },
         %{
+          "delivery" => %{"path" => jsonl_path},
           "id" => "jsonl-audit",
           "kind" => "jsonl_file",
-          "select" => %{"types" => ["policy.*", "receipt.finalized"]},
           "redaction" => "metadata",
-          "delivery" => %{"path" => jsonl_path}
+          "select" => %{"types" => ["policy.*", "receipt.finalized"]}
         },
         %{
+          "delivery" => %{"timeout_ms" => 1_000, "url" => webhook_url},
           "id" => "ops-webhook",
           "kind" => "webhook",
-          "select" => %{"types" => ["policy.alert"]},
           "redaction" => "metadata",
-          "delivery" => %{"url" => webhook_url, "timeout_ms" => 1_000}
+          "select" => %{"types" => ["policy.alert"]}
         }
       ])
       |> Map.put("governance", [
         %{
-          "id" => "always-alert",
-          "kind" => "request_guard",
           "action" => "alert_async",
           "contains" => "alert me",
+          "id" => "always-alert",
+          "kind" => "request_guard",
           "message" => "operator review requested",
           "severity" => "warning"
         }
@@ -67,21 +70,21 @@ defmodule Wardwright.SinkAdaptersTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        messages: [%{role: "user", content: "alert me raw-private-prompt"}]
+        messages: [%{content: "alert me raw-private-prompt", role: "user"}],
+        model: "unit-model"
       })
 
     assert conn.status == 200
-    assert_receive {:sink_webhook, %{"type" => "policy.alert", "redaction" => "metadata"}}
+    assert_receive {:sink_webhook, %{"redaction" => "metadata", "type" => "policy.alert"}}
 
     second =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        messages: [%{role: "user", content: "alert me raw-private-prompt"}]
+        messages: [%{content: "alert me raw-private-prompt", role: "user"}],
+        model: "unit-model"
       })
 
     assert second.status == 200
-    assert_receive {:sink_webhook, %{"type" => "policy.alert", "redaction" => "metadata"}}
+    assert_receive {:sink_webhook, %{"redaction" => "metadata", "type" => "policy.alert"}}
 
     jsonl_events =
       jsonl_path
@@ -98,7 +101,7 @@ defmodule Wardwright.SinkAdaptersTest do
     assert Enum.find(sinks, &(&1["id"] == "jsonl-audit"))["delivered_count"] == 4
     assert Enum.find(sinks, &(&1["id"] == "ops-webhook"))["delivered_count"] == 2
   after
-    :persistent_term.erase({Wardwright.Test.SinkWebhook, :pid})
+    :persistent_term.erase({SinkWebhook, :pid})
     Wardwright.Sinks.reset()
   end
 
@@ -109,18 +112,18 @@ defmodule Wardwright.SinkAdaptersTest do
 
     Wardwright.Sinks.configure([
       %{
+        "delivery" => %{"path" => Path.join(not_a_dir, "events.jsonl")},
         "id" => "jsonl-audit",
         "kind" => "jsonl_file",
-        "select" => %{"types" => ["policy.alert"]},
-        "delivery" => %{"path" => Path.join(not_a_dir, "events.jsonl")}
+        "select" => %{"types" => ["policy.alert"]}
       }
     ])
 
     event = %{
-      "type" => "policy.alert",
-      "rule_id" => "always-alert",
       "message" => "operator review requested",
-      "severity" => "warning"
+      "rule_id" => "always-alert",
+      "severity" => "warning",
+      "type" => "policy.alert"
     }
 
     assert [%{"outcome" => "dead_lettered"}] = Wardwright.Sinks.emit([event])
@@ -153,25 +156,25 @@ defmodule Wardwright.SinkAdaptersTest do
   test "fail-closed policy alert sinks are visible to legacy alert delivery callers" do
     Wardwright.Sinks.configure([
       %{
+        "delivery" => %{"on_error" => "fail_closed", "url" => "http://127.0.0.1:1/"},
         "id" => "webhook-alerts",
         "kind" => "webhook",
-        "select" => %{"types" => ["policy.alert"]},
-        "delivery" => %{"url" => "http://127.0.0.1:1/", "on_error" => "fail_closed"}
+        "select" => %{"types" => ["policy.alert"]}
       }
     ])
 
     results =
-      Wardwright.Policy.AlertDelivery.deliver([
+      AlertDelivery.deliver([
         %{
-          "type" => "policy.alert",
-          "rule_id" => "always-alert",
           "message" => "operator review requested",
-          "severity" => "warning"
+          "rule_id" => "always-alert",
+          "severity" => "warning",
+          "type" => "policy.alert"
         }
       ])
 
     assert [%{"kind" => "webhook", "outcome" => "failed_closed"}] = results
-    assert Wardwright.Policy.AlertDelivery.fail_closed?(results)
+    assert AlertDelivery.fail_closed?(results)
   after
     Wardwright.Sinks.reset()
   end
@@ -211,39 +214,38 @@ defmodule Wardwright.SinkAdaptersTest do
 
     Wardwright.Sinks.configure([
       %{
+        "delivery" => %{"capacity" => 2, "on_full" => "dead_letter"},
         "id" => "alerts",
         "kind" => "memory_alert",
-        "select" => %{"types" => ["policy.alert"]},
-        "delivery" => %{"capacity" => 2, "on_full" => "dead_letter"}
+        "select" => %{"types" => ["policy.alert"]}
       }
     ])
 
     assert [
              %{
-               "sink_id" => "alerts",
                "kind" => "memory_alert",
-               "outcome" => "queued"
+               "outcome" => "queued",
+               "sink_id" => "alerts"
              }
            ] =
              Wardwright.Sinks.emit([
                %{
-                 "type" => "policy.alert",
-                 "rule_id" => "always-alert",
                  "message" => "operator review requested",
-                 "severity" => "warning"
+                 "rule_id" => "always-alert",
+                 "severity" => "warning",
+                 "type" => "policy.alert"
                }
              ])
 
     assert_receive {:sink_telemetry, [:wardwright, :sinks, :delivery], measurements,
-                    %{sink_id: "alerts", kind: "memory_alert", outcome: "queued"}}
+                    %{kind: "memory_alert", outcome: "queued", sink_id: "alerts"}}
 
     assert measurements.count == 1
     assert is_integer(measurements.duration)
     assert measurements.duration >= 0
 
-    assert_receive {:sink_telemetry, [:wardwright, :sinks, :queue_depth],
-                    %{depth: 1, capacity: 2, utilization: 0.5},
-                    %{sink_id: "alerts", kind: "memory_alert"}}
+    assert_receive {:sink_telemetry, [:wardwright, :sinks, :queue_depth], %{capacity: 2, depth: 1, utilization: 0.5},
+                    %{kind: "memory_alert", sink_id: "alerts"}}
   end
 
   test "receipt sink events emit simple model usage telemetry" do
@@ -266,60 +268,57 @@ defmodule Wardwright.SinkAdaptersTest do
 
     Wardwright.Sinks.configure([
       %{
+        "delivery" => %{"path" => Path.join(System.tmp_dir!(), "wardwright-usage-#{System.unique_integer()}.jsonl")},
         "id" => "jsonl-audit",
         "kind" => "jsonl_file",
-        "select" => %{"types" => ["receipt.finalized"]},
-        "delivery" => %{
-          "path" =>
-            Path.join(System.tmp_dir!(), "wardwright-usage-#{System.unique_integer()}.jsonl")
-        }
+        "select" => %{"types" => ["receipt.finalized"]}
       }
     ])
 
     assert [
              %{
-               "sink_id" => "jsonl-audit",
-               "kind" => "jsonl_file",
                "event_type" => "receipt.finalized",
-               "outcome" => "delivered"
+               "kind" => "jsonl_file",
+               "outcome" => "delivered",
+               "sink_id" => "jsonl-audit"
              }
            ] =
              Wardwright.Sinks.emit([
                %{
-                 "type" => "receipt.finalized",
-                 "receipt_id" => "rcpt_usage_1",
-                 "status" => "completed",
-                 "simulation" => false,
-                 "selected_provider" => "managed",
-                 "selected_model" => "managed/kimi",
+                 "completion_tokens" => 7,
                  "estimated_prompt_tokens" => 11,
                  "prompt_tokens" => 12,
-                 "completion_tokens" => 7,
-                 "total_tokens" => 19
+                 "receipt_id" => "rcpt_usage_1",
+                 "selected_model" => "managed/kimi",
+                 "selected_provider" => "managed",
+                 "simulation" => false,
+                 "status" => "completed",
+                 "total_tokens" => 19,
+                 "type" => "receipt.finalized"
                }
              ])
 
     assert_receive {:model_usage_telemetry, [:wardwright, :model, :usage], measurements,
                     %{
-                      selected_provider: "managed",
                       selected_model: "managed/kimi",
-                      status: "completed",
-                      simulation: false
+                      selected_provider: "managed",
+                      simulation: false,
+                      status: "completed"
                     }}
 
     assert measurements == %{
+             completion_tokens: 7,
              count: 1,
              estimated_prompt_tokens: 11,
              prompt_tokens: 12,
-             completion_tokens: 7,
              total_tokens: 19
            }
   end
 
   defp webhook_url do
-    ref = :"wardwright_sink_webhook_#{System.unique_integer([:positive])}"
-    :persistent_term.put({Wardwright.Test.SinkWebhook, :pid}, self())
-    {:ok, _pid} = Plug.Cowboy.http(Wardwright.Test.SinkWebhook, [], ref: ref, port: 0)
+    ref = {:wardwright_sink_webhook, System.unique_integer([:positive])}
+    :persistent_term.put({SinkWebhook, :pid}, self())
+    {:ok, _pid} = Plug.Cowboy.http(SinkWebhook, [], ref: ref, port: 0)
     port = :ranch.get_port(ref)
     on_exit(fn -> Plug.Cowboy.shutdown(ref) end)
     "http://127.0.0.1:#{port}/"

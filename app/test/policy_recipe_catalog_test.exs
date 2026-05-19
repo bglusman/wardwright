@@ -88,11 +88,11 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
       Jason.encode!(%{
         "recipes" => [
           %{
-            "id" => "user-local-dispatcher",
-            "title" => "User local dispatcher",
             "category" => "route.selecting",
+            "id" => "user-local-dispatcher",
+            "pattern_id" => "route-privacy",
             "promise" => "Prefer local models for private work.",
-            "pattern_id" => "route-privacy"
+            "title" => "User local dispatcher"
           }
         ]
       })
@@ -116,11 +116,11 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
     valid = %{
       "recipes" => [
         %{
-          "id" => "local-tool-review",
-          "title" => "Local tool review",
           "category" => "tool.using",
+          "id" => "local-tool-review",
+          "pattern_id" => "tool-governance",
           "promise" => "Review shell write tools before execution.",
-          "pattern_id" => "tool-governance"
+          "title" => "Local tool review"
         }
       ]
     }
@@ -142,11 +142,11 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
 
     assert [
              %{
+               "collection_title" => "Project examples",
                "id" => "local-tool-review",
-               "title" => "Local tool review",
                "pattern_id" => "tool-governance",
                "source_id" => "workspace",
-               "collection_title" => "Project examples"
+               "title" => "Local tool review"
              }
            ] = catalog["recipes"]
   end
@@ -199,10 +199,10 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
       Jason.encode!(%{
         "recipes" => [
           %{
-            "id" => "shared-tool-limit",
-            "title" => "Shared tool limit",
             "category" => "tool.using",
-            "pattern_id" => "tool-governance"
+            "id" => "shared-tool-limit",
+            "pattern_id" => "tool-governance",
+            "title" => "Shared tool limit"
           }
         ]
       })

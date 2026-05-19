@@ -47,14 +47,10 @@ defmodule Wardwright.ToolContext do
   @hash_prefix "sha256:"
 
   @confidence_values MapSet.new(~w(exact declared inferred ambiguous))
-  @phase_values MapSet.new(
-                  ~w(planning argument_repair result_interpretation loop_governance unknown)
-                )
+  @phase_values MapSet.new(~w(planning argument_repair result_interpretation loop_governance unknown))
   @result_status_values MapSet.new(~w(success error timeout rejected unknown))
   @risk_values MapSet.new(~w(read_only write irreversible external_side_effect unknown))
-  @source_values MapSet.new(
-                   ~w(declared_tool tool_choice assistant_tool_call tool_result caller_metadata inferred)
-                 )
+  @source_values MapSet.new(~w(declared_tool tool_choice assistant_tool_call tool_result caller_metadata inferred))
 
   def normalize(request, opts \\ [])
 
@@ -96,10 +92,7 @@ defmodule Wardwright.ToolContext do
 
   def normalize_request(request, _opts), do: {request, nil}
 
-  def cache_key(%{
-        @primary_tool_key => %{@namespace_key => namespace, @name_key => name},
-        @phase_key => phase
-      }) do
+  def cache_key(%{@phase_key => phase, @primary_tool_key => %{@name_key => name, @namespace_key => namespace}}) do
     [namespace, name, phase || @phase_unknown]
     |> Enum.map(&text_value/1)
     |> case do
@@ -147,24 +140,21 @@ defmodule Wardwright.ToolContext do
   end
 
   defp normalize_metadata_context(context) do
+    available_tools =
+      context
+      |> Map.get(@available_tools_key, [])
+      |> normalize_tool_list("caller_metadata")
+
     %{
-      @schema_key => @schema,
-      @phase_key => enum_value(Map.get(context, @phase_key), @phase_values, @phase_unknown),
-      @primary_tool_key =>
-        context
-        |> Map.get(@primary_tool_key)
-        |> normalize_tool_identity(@source_caller_metadata),
-      @tool_call_id_key => text_value(Map.get(context, @tool_call_id_key)),
-      @available_tools_key =>
-        context
-        |> Map.get(@available_tools_key, [])
-        |> normalize_tool_list("caller_metadata"),
       @argument_hash_key => hash_value(Map.get(context, @argument_hash_key)),
+      @available_tools_key => available_tools,
+      @confidence_key => enum_value(Map.get(context, @confidence_key), @confidence_values, @confidence_declared),
+      @phase_key => enum_value(Map.get(context, @phase_key), @phase_values, @phase_unknown),
+      @primary_tool_key => context |> Map.get(@primary_tool_key) |> normalize_tool_identity(@source_caller_metadata),
       @result_hash_key => hash_value(Map.get(context, @result_hash_key)),
-      @result_status_key =>
-        enum_value(Map.get(context, @result_status_key), @result_status_values, nil),
-      @confidence_key =>
-        enum_value(Map.get(context, @confidence_key), @confidence_values, @confidence_declared)
+      @result_status_key => enum_value(Map.get(context, @result_status_key), @result_status_values, nil),
+      @schema_key => @schema,
+      @tool_call_id_key => text_value(Map.get(context, @tool_call_id_key))
     }
     |> compact()
   end
@@ -185,23 +175,21 @@ defmodule Wardwright.ToolContext do
 
     if phase do
       %{
-        @schema_key => @schema,
+        @argument_hash_key => assistant_tool_argument_hash(request),
+        @available_tools_key => available_tools,
+        @confidence_key => inferred_confidence(chosen_tool, assistant_tool, available_tools, tool_result?),
         @phase_key => phase,
         @primary_tool_key => primary_tool,
-        @tool_call_id_key => tool_result_call_id(request) || assistant_tool_call_id(request),
-        @available_tools_key => available_tools,
-        @argument_hash_key => assistant_tool_argument_hash(request),
         @result_hash_key => tool_result_hash(request),
         @result_status_key => result_status(tool_result?),
-        @confidence_key =>
-          inferred_confidence(chosen_tool, assistant_tool, available_tools, tool_result?)
+        @schema_key => @schema,
+        @tool_call_id_key => tool_result_call_id(request) || assistant_tool_call_id(request)
       }
       |> compact()
     end
   end
 
-  defp normalize_declared_tools(tools) when is_list(tools),
-    do: normalize_tool_list(tools, @source_declared_tool)
+  defp normalize_declared_tools(tools) when is_list(tools), do: normalize_tool_list(tools, @source_declared_tool)
 
   defp normalize_declared_tools(_tools), do: []
 
@@ -234,12 +222,11 @@ defmodule Wardwright.ToolContext do
 
     if name do
       %{
-        @namespace_key => namespace,
         @name_key => name,
-        @source_key => enum_value(Map.get(tool, @source_key), @source_values, source),
-        @risk_class_key =>
-          enum_value(Map.get(tool, @risk_class_key), @risk_values, @risk_unknown),
-        @schema_hash_key => text_value(Map.get(tool, @schema_hash_key)) || schema_hash(function)
+        @namespace_key => namespace,
+        @risk_class_key => enum_value(Map.get(tool, @risk_class_key), @risk_values, @risk_unknown),
+        @schema_hash_key => text_value(Map.get(tool, @schema_hash_key)) || schema_hash(function),
+        @source_key => enum_value(Map.get(tool, @source_key), @source_values, source)
       }
       |> compact()
     end
@@ -354,8 +341,7 @@ defmodule Wardwright.ToolContext do
     :wardwright@tool_context_core.default_namespace(false, type)
   end
 
-  defp messages(%{@messages_key => messages}) when is_list(messages),
-    do: Enum.filter(messages, &is_map/1)
+  defp messages(%{@messages_key => messages}) when is_list(messages), do: Enum.filter(messages, &is_map/1)
 
   defp messages(_request), do: []
 

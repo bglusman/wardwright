@@ -10,8 +10,7 @@ defmodule WardwrightWeb.MCP.Tools.SaveDuneSnippet do
 
   schema do
     field(:id, :string,
-      description:
-        "Workspace snippet id. Use letters, numbers, dots, underscores, colons, or hyphens."
+      description: "Workspace snippet id. Use letters, numbers, dots, underscores, colons, or hyphens."
     )
 
     field(:title, :string, description: "Human-friendly title.")
@@ -19,16 +18,13 @@ defmodule WardwrightWeb.MCP.Tools.SaveDuneSnippet do
     field(:description, :string, description: "Human-friendly behavior summary.")
 
     field(:source, :string,
-      description:
-        "Dune/Elixir source. The variable input contains the supplied JSON-like input map."
+      description: "Dune/Elixir source. The variable input contains the supplied JSON-like input map."
     )
 
     field(:input_shape, :map, description: "Optional documented input shape.")
     field(:example_input, :map, description: "Optional reviewed example input.")
 
-    field(:replaces_primitives, :list,
-      description: "Optional primitive or behavior names this snippet replaces."
-    )
+    field(:replaces_primitives, :list, description: "Optional primitive or behavior names this snippet replaces.")
   end
 
   @impl true

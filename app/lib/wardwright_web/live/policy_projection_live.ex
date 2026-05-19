@@ -2,7 +2,11 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   @moduledoc false
 
   use Phoenix.LiveView
+
   alias Phoenix.LiveView.JS
+  alias Wardwright.ProviderRuntime.TaskSupervisor
+  alias Wardwright.Runtime.Events
+
   require Logger
 
   @modes ["diagram", "phase_map", "state_machine", "effect_matrix", "trace_overlay"]
@@ -10,9 +14,9 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   @impl true
   def mount(params, _session, socket) do
     if connected?(socket) do
-      Wardwright.Runtime.Events.subscribe(Wardwright.Runtime.Events.topic(:models))
-      Wardwright.Runtime.Events.subscribe(Wardwright.Runtime.Events.topic(:receipts))
-      Wardwright.Runtime.Events.subscribe(Wardwright.Runtime.Events.topic(:policies))
+      Events.subscribe(Events.topic(:models))
+      Events.subscribe(Events.topic(:receipts))
+      Events.subscribe(Events.topic(:policies))
     end
 
     {:ok, assign_projection(socket, params, nil)}
@@ -195,13 +199,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   end
 
   @impl true
-  def handle_info({ref, {:authoring_agent_response, request_id, response}}, socket)
-      when is_reference(ref) do
+  def handle_info({ref, {:authoring_agent_response, request_id, response}}, socket) when is_reference(ref) do
     Process.demonitor(ref, [:flush])
 
-    Logger.info(
-      "authoring agent response received request_id=#{request_id} status=#{response.status}"
-    )
+    Logger.info("authoring agent response received request_id=#{request_id} status=#{response.status}")
 
     drafts = extract_authoring_agent_drafts(response)
 
@@ -209,9 +210,9 @@ defmodule WardwrightWeb.PolicyProjectionLive do
      socket
      |> remove_authoring_agent_task(ref)
      |> replace_authoring_agent_message(request_id, %{
+       "content" => response.content,
        "id" => request_id,
        "role" => "assistant",
-       "content" => response.content,
        "status" => response.status
      })
      |> append_authoring_agent_drafts(drafts)}
@@ -223,19 +224,17 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       {:ok, task_info} ->
         request_id = authoring_agent_task_request_id(task_info)
 
-        Logger.warning(
-          "authoring agent task stopped request_id=#{request_id} reason=#{inspect(reason)}"
-        )
+        Logger.warning("authoring agent task stopped request_id=#{request_id} reason=#{inspect(reason)}")
 
         {:noreply,
          socket
          |> remove_authoring_agent_task(ref)
          |> replace_authoring_agent_message(request_id, %{
+           "content" => "The authoring agent stopped before returning an answer.",
+           "error" => inspect(reason),
            "id" => request_id,
            "role" => "assistant",
-           "content" => "The authoring agent stopped before returning an answer.",
-           "status" => "error",
-           "error" => inspect(reason)
+           "status" => "error"
          })}
 
       :error ->
@@ -258,18 +257,16 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
         Process.demonitor(ref, [:flush])
 
-        Logger.warning(
-          "authoring agent task timed out request_id=#{request_id} timeout_ms=#{timeout_ms}"
-        )
+        Logger.warning("authoring agent task timed out request_id=#{request_id} timeout_ms=#{timeout_ms}")
 
         {:noreply,
          socket
          |> remove_authoring_agent_task(ref)
          |> replace_authoring_agent_message(request_id, %{
-           "id" => request_id,
-           "role" => "assistant",
            "content" =>
              "The authoring agent timed out after #{div(timeout_ms, 1000)} seconds before the provider returned an answer.",
+           "id" => request_id,
+           "role" => "assistant",
            "status" => "error"
          })}
 
@@ -368,10 +365,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   def handle_event(
         "edit-simulation-turn",
-        %{
-          "simulation" =>
-            %{"user_input" => user_input, "model_response" => model_response} = simulation
-        },
+        %{"simulation" => %{"model_response" => model_response, "user_input" => user_input} = simulation},
         socket
       ) do
     history_context = simulation_history_context(simulation)
@@ -406,10 +400,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       |> Map.put("model_id", socket.assigns.selected_model_id)
       |> Map.put("artifact_hash", socket.assigns.selected_simulation["artifact_hash"])
       |> Map.put("turn", %{
-        "user_input" => socket.assigns.simulation_user_input,
+        "history_context" => socket.assigns.simulation_history_context,
         "model_response" => socket.assigns.simulation_model_response,
         "response_attempts" => saved_response_attempts(socket.assigns),
-        "history_context" => socket.assigns.simulation_history_context
+        "user_input" => socket.assigns.simulation_user_input
       })
 
     case Wardwright.PolicyScenarioStore.create(socket.assigns.selected_pattern_id, attrs) do
@@ -474,17 +468,12 @@ defmodule WardwrightWeb.PolicyProjectionLive do
              )}
 
           {:error, message} ->
-            {:noreply,
-             assign(socket, :scenario_save_status, "Could not delete scenario: #{message}")}
+            {:noreply, assign(socket, :scenario_save_status, "Could not delete scenario: #{message}")}
         end
     end
   end
 
-  def handle_event(
-        "authoring-agent-submit",
-        %{"authoring_agent" => %{"message" => message}},
-        socket
-      ) do
+  def handle_event("authoring-agent-submit", %{"authoring_agent" => %{"message" => message}}, socket) do
     message = String.trim(message || "")
 
     if message == "" do
@@ -509,17 +498,17 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       messages =
         socket.assigns.authoring_agent_messages ++
           [
-            %{"id" => "#{request_id}:user", "role" => "user", "content" => message},
+            %{"content" => message, "id" => "#{request_id}:user", "role" => "user"},
             %{
+              "content" => "Working...",
               "id" => request_id,
               "role" => "assistant",
-              "content" => "Working...",
               "status" => "pending"
             }
           ]
 
       task =
-        Task.Supervisor.async_nolink(Wardwright.ProviderRuntime.TaskSupervisor, fn ->
+        Task.Supervisor.async_nolink(TaskSupervisor, fn ->
           {:ok, response} = WardwrightWeb.AuthoringAgent.respond(message, context)
           {:authoring_agent_response, request_id, response}
         end)
@@ -539,10 +528,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
        |> assign(
          :authoring_agent_tasks,
          Map.put(socket.assigns.authoring_agent_tasks, task.ref, %{
-           request_id: request_id,
            pid: task.pid,
-           timeout_ref: timeout_ref,
-           timeout_ms: agent_status.timeout_ms
+           request_id: request_id,
+           timeout_ms: agent_status.timeout_ms,
+           timeout_ref: timeout_ref
          })
        )
        |> assign(:authoring_agent_pending, true)}
@@ -656,16 +645,15 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       end
 
     %{
-      "scenario_id" => "#{scenario_id}-#{System.unique_integer([:positive, :monotonic])}",
-      "title" => title,
-      "source" => "user",
-      "pinned" => pinned,
+      "expected_behavior" => Map.get(simulation, "expected_behavior", "Preserve this simulated behavior."),
       "input_summary" => Map.get(simulation, "input_summary", title),
-      "expected_behavior" =>
-        Map.get(simulation, "expected_behavior", "Preserve this simulated behavior."),
-      "verdict" => Map.get(simulation, "verdict", "inconclusive"),
+      "pinned" => pinned,
+      "receipt_preview" => Map.get(simulation, "receipt_preview", %{}),
+      "scenario_id" => "#{scenario_id}-#{System.unique_integer([:positive, :monotonic])}",
+      "source" => "user",
+      "title" => title,
       "trace" => Map.get(simulation, "trace", []),
-      "receipt_preview" => Map.get(simulation, "receipt_preview", %{})
+      "verdict" => Map.get(simulation, "verdict", "inconclusive")
     }
   end
 
@@ -675,10 +663,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   defp authoring_agent_context(projection, pattern_id, recipe_id, origin, drafts \\ []) do
     %{
       model_id: Wardwright.ModelGraph.model_id(projection["artifact"], ""),
-      pattern_id: pattern_id,
-      recipe_id: recipe_id,
       origin: origin,
-      pending_drafts: Enum.map(drafts, &authoring_draft_prompt_summary/1)
+      pattern_id: pattern_id,
+      pending_drafts: Enum.map(drafts, &authoring_draft_prompt_summary/1),
+      recipe_id: recipe_id
     }
   end
 
@@ -686,9 +674,9 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     %{
       "draft_id" => draft["id"],
       "model_id" => get_in(draft, ["artifact", "model_id"]),
-      "version" => get_in(draft, ["artifact", "version"]),
       "validation_errors" => validation_count(draft, "errors"),
-      "validation_warnings" => validation_count(draft, "warnings")
+      "validation_warnings" => validation_count(draft, "warnings"),
+      "version" => get_in(draft, ["artifact", "version"])
     }
   end
 
@@ -701,11 +689,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   defp draft_tool_result?(%{
          "name" => "draft_wardwright_model",
-         "status" => "executed",
-         "result" => %{"artifact" => artifact}
+         "result" => %{"artifact" => artifact},
+         "status" => "executed"
        })
-       when is_map(artifact),
-       do: true
+       when is_map(artifact), do: true
 
   defp draft_tool_result?(_tool_result), do: false
 
@@ -713,11 +700,11 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     artifact = Map.get(result, "artifact", %{})
 
     %{
-      "id" => "draft_#{System.unique_integer([:positive, :monotonic])}",
-      "artifact" => artifact,
-      "validation" => Map.get(result, "validation", %{"errors" => [], "warnings" => []}),
       "access" => Map.get(result, "access", %{}),
-      "next_steps" => Map.get(result, "next_steps", [])
+      "artifact" => artifact,
+      "id" => "draft_#{System.unique_integer([:positive, :monotonic])}",
+      "next_steps" => Map.get(result, "next_steps", []),
+      "validation" => Map.get(result, "validation", %{"errors" => [], "warnings" => []})
     }
   end
 
@@ -779,9 +766,9 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   defp append_authoring_agent_notice(socket, content, status) do
     message = %{
+      "content" => content,
       "id" => authoring_agent_request_id(),
       "role" => "assistant",
-      "content" => content,
       "status" => status
     }
 
@@ -2473,16 +2460,15 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     nodes = projection["phases"] |> Enum.flat_map(& &1["nodes"])
 
     %{
-      node_count: length(nodes),
       exact_count: Enum.count(nodes, &(&1["confidence"] == "exact")),
+      node_count: length(nodes),
       opaque_count: Enum.count(nodes, &(&1["confidence"] == "opaque")),
-      state_count: length(projection["state_machine"]["states"]),
-      transition_count: length(projection["state_machine"]["transitions"]),
-      simulation_count: length(simulations),
-      trace_event_count: simulations |> Enum.flat_map(& &1["trace"]) |> length(),
       review_count:
-        length(projection["conflicts"]) + length(projection["opaque_regions"]) +
-          length(projection["warnings"])
+        length(projection["conflicts"]) + length(projection["opaque_regions"]) + length(projection["warnings"]),
+      simulation_count: length(simulations),
+      state_count: length(projection["state_machine"]["states"]),
+      trace_event_count: simulations |> Enum.flat_map(& &1["trace"]) |> length(),
+      transition_count: length(projection["state_machine"]["transitions"])
     }
   end
 
@@ -2490,7 +2476,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   defp access_origin(uri) when is_binary(uri) do
     case URI.parse(uri) do
-      %URI{scheme: scheme, host: host, port: port} when is_binary(scheme) and is_binary(host) ->
+      %URI{host: host, port: port, scheme: scheme} when is_binary(scheme) and is_binary(host) ->
         if default_port?(scheme, port) do
           "#{scheme}://#{host}"
         else
@@ -2510,10 +2496,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   defp minimal_chat_request(model_id) do
     %{
-      "model" => model_id,
-      "messages" => [
-        %{"role" => "user", "content" => "Say hello from Wardwright."}
-      ]
+      "messages" => [%{"content" => "Say hello from Wardwright.", "role" => "user"}],
+      "model" => model_id
     }
     |> Jason.encode!(pretty: true)
   end
@@ -2526,7 +2510,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   defp redact_config_for_display(config) when is_map(config) do
     config
-    |> Enum.map(fn
+    |> Map.new(fn
       {"provider_headers", headers} when is_map(headers) ->
         {"provider_headers", Map.new(headers, fn {key, _value} -> {key, "[redacted]"} end)}
 
@@ -2540,11 +2524,9 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       {key, value} ->
         {key, redact_config_for_display(value)}
     end)
-    |> Map.new()
   end
 
-  defp redact_config_for_display(values) when is_list(values),
-    do: Enum.map(values, &redact_config_for_display/1)
+  defp redact_config_for_display(values) when is_list(values), do: Enum.map(values, &redact_config_for_display/1)
 
   defp redact_config_for_display(value), do: value
 
@@ -2583,7 +2565,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         group_id = recipe["collection_id"] || recipe["management_area"] || "examples"
         group_title = recipe["collection_title"] || recipe["management_area"] || "Examples"
         known_group? = Map.has_key?(groups, group_id)
-        group = Map.get(groups, group_id, %{id: group_id, title: group_title, recipes: []})
+        group = Map.get(groups, group_id, %{id: group_id, recipes: [], title: group_title})
         groups = Map.put(groups, group_id, %{group | recipes: group.recipes ++ [recipe]})
 
         order = if known_group?, do: order, else: order ++ [group_id]
@@ -2608,16 +2590,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   defp rich_recipe?(_recipe), do: false
 
-  defp selected_simulation(
-         _pattern_id,
-         _recipe_id,
-         simulations,
-         "",
-         "",
-         history_context,
-         response_attempts,
-         _config
-       )
+  defp selected_simulation(_pattern_id, _recipe_id, simulations, "", "", history_context, response_attempts, _config)
        when history_context == %{} and response_attempts == [] do
     List.first(simulations)
   end
@@ -2643,13 +2616,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     )
   end
 
-  defp assign_interactive_simulation(
-         socket,
-         user_input,
-         model_response,
-         history_context,
-         response_attempts
-       ) do
+  defp assign_interactive_simulation(socket, user_input, model_response, history_context, response_attempts) do
     simulation =
       Wardwright.PolicyProjection.simulate_recipe_turn_with_attempts(
         socket.assigns.selected_pattern_id,
@@ -2675,21 +2642,20 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     user_received_output = user_received_output(stream, model_response)
 
     %{
-      model_received_input: model_received_input,
-      user_received_output: user_received_output,
       attempts: stream_attempts(stream),
-      output_withheld: Map.get(stream, "released_to_consumer") == false,
       input_changed: model_received_input != (user_input || ""),
-      output_changed: user_received_output != (model_response || "")
+      model_received_input: model_received_input,
+      output_changed: user_received_output != (model_response || ""),
+      output_withheld: Map.get(stream, "released_to_consumer") == false,
+      user_received_output: user_received_output
     }
   end
 
   defp boundary_pair_class(true), do: "boundary_pair changed"
   defp boundary_pair_class(false), do: "boundary_pair"
 
-  defp model_received_input(%{"input" => %{"model_received_input" => value}}, _user_input)
-       when is_binary(value),
-       do: value
+  defp model_received_input(%{"input" => %{"model_received_input" => value}}, _user_input) when is_binary(value),
+    do: value
 
   defp model_received_input(_receipt, user_input), do: user_input || ""
 
@@ -2697,9 +2663,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     ""
   end
 
-  defp user_received_output(%{"final_output" => final_output}, _model_response)
-       when is_binary(final_output),
-       do: final_output
+  defp user_received_output(%{"final_output" => final_output}, _model_response) when is_binary(final_output),
+    do: final_output
 
   defp user_received_output(%{"rewrites" => rewrites}, model_response) when is_list(rewrites) do
     Enum.reduce(rewrites, model_response || "", fn rewrite, output ->
@@ -2708,7 +2673,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         when is_binary(match) and is_binary(replacement) ->
           String.replace(output, match, replacement)
 
-        %{"rule_id" => "account-redactor", "replacement" => replacement}
+        %{"replacement" => replacement, "rule_id" => "account-redactor"}
         when is_binary(replacement) ->
           Regex.replace(~r/\bacct_[A-Za-z0-9_]+\b/, output, replacement)
 
@@ -2728,12 +2693,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   defp simulation_response_attempts(input, simulation \\ nil)
 
-  defp simulation_response_attempts(%{"response_attempts" => attempts}, _simulation)
-       when is_list(attempts),
-       do: normalize_response_attempts(attempts)
+  defp simulation_response_attempts(%{"response_attempts" => attempts}, _simulation) when is_list(attempts),
+    do: normalize_response_attempts(attempts)
 
-  defp simulation_response_attempts(%{"response_attempts" => attempts}, _simulation)
-       when is_map(attempts) do
+  defp simulation_response_attempts(%{"response_attempts" => attempts}, _simulation) when is_map(attempts) do
     attempts
     |> Enum.flat_map(fn {index, output} ->
       case Integer.parse(to_string(index)) do
@@ -2801,17 +2764,14 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   defp simulation_history_context(%{"history_context" => context}) when is_map(context) do
     context
     |> Enum.reject(fn {key, _value} -> String.starts_with?(to_string(key), "_unused_") end)
-    |> Enum.map(fn {key, value} -> {to_string(key), to_string(value)} end)
-    |> Map.new()
+    |> Map.new(fn {key, value} -> {to_string(key), to_string(value)} end)
   end
 
   defp simulation_history_context(_input), do: %{}
 
-  defp history_context_label("recent_related_secret_matches"),
-    do: "Prior related secret matches"
+  defp history_context_label("recent_related_secret_matches"), do: "Prior related secret matches"
 
-  defp history_context_label("recent_secret_window_requests"),
-    do: "History window size"
+  defp history_context_label("recent_secret_window_requests"), do: "History window size"
 
   defp history_context_label("policy_state"), do: "Cached policy state"
   defp history_context_label(key), do: key |> String.replace("_", " ") |> String.capitalize()
@@ -2875,15 +2835,12 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     scope =
       event
       |> Map.get("scope", %{})
-      |> Enum.map(fn {key, value} -> "#{key}=#{value}" end)
-      |> Enum.join(", ")
+      |> Enum.map_join(", ", fn {key, value} -> "#{key}=#{value}" end)
 
-    cond do
-      scope != "" ->
-        scope
-
-      true ->
-        "global scope"
+    if scope == "" do
+      "global scope"
+    else
+      scope
     end
   end
 
@@ -3090,8 +3047,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     "#{length(recipes)} examples. #{warning}"
   end
 
-  defp recipe_catalog_status(%{"recipes" => recipes}),
-    do: "#{length(recipes)} examples available."
+  defp recipe_catalog_status(%{"recipes" => recipes}), do: "#{length(recipes)} examples available."
 
   defp node_annotation(%{"annotations" => annotations}, key) when is_map(annotations) do
     Map.get(annotations, key, "No annotation provided.")
@@ -3118,8 +3074,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
 
   defp path(pattern_id, mode), do: "/policies/#{pattern_id}/#{mode}"
 
-  defp path(pattern_id, mode, source_id, recipe_id),
-    do: path(pattern_id, mode, source_id, recipe_id, nil)
+  defp path(pattern_id, mode, source_id, recipe_id), do: path(pattern_id, mode, source_id, recipe_id, nil)
 
   defp path(pattern_id, mode, source_id, recipe_id, model_id) when recipe_id in [nil, ""] do
     query =
@@ -3153,7 +3108,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   defp model_query_value(model_id) when model_id in [nil, ""], do: nil
 
   defp model_query_value(model_id) do
-    if model_id == Wardwright.model_id(), do: nil, else: model_id
+    if model_id != Wardwright.model_id(), do: model_id
   end
 
   defp inspector_path(pattern_id, mode, source_id, _recipe_id, model_id, true) do
@@ -3216,8 +3171,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   defp phase_label("tool.planning"), do: "Tool planning"
   defp phase_label("tool.using"), do: "Tool call"
 
-  defp phase_label(phase) when is_binary(phase),
-    do: phase |> String.replace(".", " ") |> String.capitalize()
+  defp phase_label(phase) when is_binary(phase), do: phase |> String.replace(".", " ") |> String.capitalize()
 
   defp phase_label(_phase), do: "Policy step"
 
@@ -3228,14 +3182,14 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       |> Enum.with_index()
       |> Enum.map(fn {state, index} ->
         %{
+          height: if(state["model_id"], do: 82, else: 64),
           id: state["id"],
           label: state["label"],
-          x: 34 + index * 190,
-          y: 72,
-          width: 146,
-          height: if(state["model_id"], do: 82, else: 64),
           model_id: state["model_id"],
-          role: state_role(state_machine, state)
+          role: state_role(state_machine, state),
+          width: 146,
+          x: 34 + index * 190,
+          y: 72
         }
       end)
 
@@ -3249,11 +3203,11 @@ defmodule WardwrightWeb.PolicyProjectionLive do
              to when not is_nil(to) <- Map.get(state_index, transition["to"]) do
           [
             %{
+              trigger: state_edge_label(transition),
               x1: from.x + from.width,
-              y1: from.y + div(from.height, 2),
               x2: to.x,
-              y2: to.y + div(to.height, 2),
-              trigger: state_edge_label(transition)
+              y1: from.y + div(from.height, 2),
+              y2: to.y + div(to.height, 2)
             }
           ]
         else
@@ -3262,10 +3216,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       end)
 
     %{
-      width: max(length(states) * 190 + 34, 760),
+      edges: edges,
       height: 210,
       states: states,
-      edges: edges
+      width: max(length(states) * 190 + 34, 760)
     }
   end
 
@@ -3300,11 +3254,6 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     effects = diagram_effects(projection["effects"], node_index)
 
     %{
-      width: diagram_width(phases),
-      height: diagram_height(nodes, effects),
-      phases: phases,
-      nodes: nodes,
-      effects: effects,
       edges:
         diagram_sequence_edges(nodes) ++
           diagram_effect_edges(effects, node_index) ++
@@ -3314,7 +3263,12 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             node_index
           ) ++
           diagram_conflict_edges(projection["conflicts"], node_index) ++
-          diagram_trace_edges(simulation["trace"], node_index, playback_step)
+          diagram_trace_edges(simulation["trace"], node_index, playback_step),
+      effects: effects,
+      height: diagram_height(nodes, effects),
+      nodes: nodes,
+      phases: phases,
+      width: diagram_width(phases)
     }
   end
 
@@ -3325,8 +3279,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       %{
         id: phase["id"],
         title: phase["title"],
-        x: 32 + index * 366,
-        width: 330
+        width: 330,
+        x: 32 + index * 366
       }
     end)
   end
@@ -3348,19 +3302,19 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       |> Enum.with_index()
       |> Enum.map(fn {node, index} ->
         %{
-          id: node["id"],
-          label: node["label"],
-          kind: node["kind"],
-          shape: node_shape(node["kind"]),
-          phase: phase["id"],
+          active: node["id"] == active_node_id,
           confidence: node["confidence"],
           executed: MapSet.member?(executed, node["id"]),
-          active: node["id"] == active_node_id,
-          x: Map.fetch!(phase_x, phase["id"]) + 18,
-          y: 112 + index * 112,
-          width: 196,
           height: 74,
-          tooltip: node_tooltip(node)
+          id: node["id"],
+          kind: node["kind"],
+          label: node["label"],
+          phase: phase["id"],
+          shape: node_shape(node["kind"]),
+          tooltip: node_tooltip(node),
+          width: 196,
+          x: Map.fetch!(phase_x, phase["id"]) + 18,
+          y: 112 + index * 112
         }
       end)
     end)
@@ -3432,15 +3386,15 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         if node do
           [
             %{
+              confidence: effect["confidence"],
+              effect: effect["effect"],
+              height: 52,
               id: effect["id"],
               node_id: node_id,
-              effect: effect["effect"],
               target: effect["target"],
-              confidence: effect["confidence"],
-              x: node.x + node.width + 20,
-              y: node.y + index * 62,
               width: 96,
-              height: 52
+              x: node.x + node.width + 20,
+              y: node.y + index * 62
             }
           ]
         else
@@ -3558,7 +3512,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
   defp edge(from, to, kind, marker, active \\ false)
 
   defp edge({x1, y1}, {x2, y2}, kind, marker, active) do
-    %{x1: x1, y1: y1, x2: x2, y2: y2, kind: kind, marker: marker, active: active}
+    %{active: active, kind: kind, marker: marker, x1: x1, x2: x2, y1: y1, y2: y2}
   end
 
   defp left_center(box), do: {box.x, box.y + div(box.height, 2)}

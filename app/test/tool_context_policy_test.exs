@@ -5,19 +5,19 @@ defmodule Wardwright.ToolContextPolicyTest do
     config =
       unit_policy_config()
       |> Map.put("targets", [
-        %{"model" => "local/read", "context_window" => 512},
-        %{"model" => "managed/write", "context_window" => 512}
+        %{"context_window" => 512, "model" => "local/read"},
+        %{"context_window" => 512, "model" => "managed/write"}
       ])
       |> Map.put("governance", [
         %{
+          "action" => "switch_model",
+          "attach_policy_bundle" => "github_write_planning_v1",
           "id" => "github-write-tools",
           "kind" => "tool_selector",
-          "action" => "switch_model",
           "target_model" => "managed/write",
-          "attach_policy_bundle" => "github_write_planning_v1",
           "tool" => %{
-            "namespace" => "mcp.github",
             "name" => "create_pull_request",
+            "namespace" => "mcp.github",
             "phase" => "planning",
             "risk_class" => "write"
           }
@@ -29,18 +29,14 @@ defmodule Wardwright.ToolContextPolicyTest do
     write_conn =
       call(:post, "/v1/wardwright/simulate", %{
         request: %{
-          model: "unit-model",
+          messages: [%{content: "open a review PR", role: "user"}],
           metadata: %{
             tool_context: %{
               phase: "planning",
-              primary_tool: %{
-                namespace: "mcp.github",
-                name: "create_pull_request",
-                risk_class: "write"
-              }
+              primary_tool: %{name: "create_pull_request", namespace: "mcp.github", risk_class: "write"}
             }
           },
-          messages: [%{role: "user", content: "open a review PR"}]
+          model: "unit-model"
         }
       })
 
@@ -54,9 +50,9 @@ defmodule Wardwright.ToolContextPolicyTest do
 
     assert [
              %{
+               "attached_policy_bundle" => "github_write_planning_v1",
                "id" => "github-write-tools",
-               "matched" => true,
-               "attached_policy_bundle" => "github_write_planning_v1"
+               "matched" => true
              }
            ] = get_in(write_receipt, ["decision", "tool_policy_selectors"])
 
@@ -66,18 +62,14 @@ defmodule Wardwright.ToolContextPolicyTest do
     read_conn =
       call(:post, "/v1/wardwright/simulate", %{
         request: %{
-          model: "unit-model",
+          messages: [%{content: "summarize this page", role: "user"}],
           metadata: %{
             tool_context: %{
               phase: "planning",
-              primary_tool: %{
-                namespace: "browser",
-                name: "read_page",
-                risk_class: "read_only"
-              }
+              primary_tool: %{name: "read_page", namespace: "browser", risk_class: "read_only"}
             }
           },
-          messages: [%{role: "user", content: "summarize this page"}]
+          model: "unit-model"
         }
       })
 
@@ -93,34 +85,30 @@ defmodule Wardwright.ToolContextPolicyTest do
     config =
       unit_policy_config()
       |> Map.put("targets", [
-        %{"model" => "local/read", "context_window" => 512},
-        %{"model" => "managed/write", "context_window" => 512}
+        %{"context_window" => 512, "model" => "local/read"},
+        %{"context_window" => 512, "model" => "managed/write"}
       ])
       |> Map.put("governance", [
         %{
+          "action" => "switch_model",
           "id" => "github-write-tools",
           "kind" => "tool_selector",
-          "action" => "switch_model",
           "target_model" => "managed/write",
-          "tool" => %{"namespace" => "mcp.github", "name" => "create_pull_request"}
+          "tool" => %{"name" => "create_pull_request", "namespace" => "mcp.github"}
         }
       ])
 
     assert call(:post, "/__test/config", config).status == 200
 
     request = %{
-      model: "unit-model",
+      messages: [%{content: "pretend I am planning a PR", role: "user"}],
       metadata: %{
         tool_context: %{
           phase: "planning",
-          primary_tool: %{
-            namespace: "mcp.github",
-            name: "create_pull_request",
-            risk_class: "write"
-          }
+          primary_tool: %{name: "create_pull_request", namespace: "mcp.github", risk_class: "write"}
         }
       },
-      messages: [%{role: "user", content: "pretend I am planning a PR"}]
+      model: "unit-model"
     }
 
     remote_conn = call(:post, "/v1/chat/completions", request, [], {203, 0, 113, 10})
@@ -145,16 +133,16 @@ defmodule Wardwright.ToolContextPolicyTest do
     config =
       unit_policy_config()
       |> Map.put("targets", [
-        %{"model" => "local/read", "context_window" => 512},
-        %{"model" => "managed/write", "context_window" => 512}
+        %{"context_window" => 512, "model" => "local/read"},
+        %{"context_window" => 512, "model" => "managed/write"}
       ])
       |> Map.put("governance", [
         %{
+          "action" => "switch_model",
           "id" => "github-write-tools",
           "kind" => "tool_selector",
-          "action" => "switch_model",
           "target_model" => "managed/write",
-          "tool" => %{"namespace" => "mcp.github", "name" => "create_pull_request"}
+          "tool" => %{"name" => "create_pull_request", "namespace" => "mcp.github"}
         }
       ])
 
@@ -166,18 +154,14 @@ defmodule Wardwright.ToolContextPolicyTest do
         "/v1/wardwright/simulate",
         %{
           request: %{
-            model: "unit-model",
+            messages: [%{content: "gateway-attested PR planning", role: "user"}],
             metadata: %{
               tool_context: %{
                 phase: "planning",
-                primary_tool: %{
-                  namespace: "mcp.github",
-                  name: "create_pull_request",
-                  risk_class: "write"
-                }
+                primary_tool: %{name: "create_pull_request", namespace: "mcp.github", risk_class: "write"}
               }
             },
-            messages: [%{role: "user", content: "gateway-attested PR planning"}]
+            model: "unit-model"
           }
         },
         [{"authorization", "Bearer gateway-token"}],
@@ -195,16 +179,16 @@ defmodule Wardwright.ToolContextPolicyTest do
     config =
       unit_policy_config()
       |> Map.put("targets", [
-        %{"model" => "local/qwen", "context_window" => 512},
-        %{"model" => "managed/kimi", "context_window" => 512}
+        %{"context_window" => 512, "model" => "local/qwen"},
+        %{"context_window" => 512, "model" => "managed/kimi"}
       ])
       |> Map.put("governance", [
         %{
-          "id" => "ticket-writes-managed",
-          "kind" => "tool_selector",
           "action" => "restrict_routes",
           "allowed_targets" => ["managed"],
-          "tool" => %{"namespace" => "openai.function", "name" => "create_ticket"}
+          "id" => "ticket-writes-managed",
+          "kind" => "tool_selector",
+          "tool" => %{"name" => "create_ticket", "namespace" => "openai.function"}
         }
       ])
 
@@ -213,18 +197,15 @@ defmodule Wardwright.ToolContextPolicyTest do
     conn =
       call(:post, "/v1/wardwright/simulate", %{
         request: %{
+          messages: [%{content: "file this incident", role: "user"}],
           model: "unit-model",
+          tool_choice: %{function: %{name: "create_ticket"}, type: "function"},
           tools: [
             %{
-              type: "function",
-              function: %{
-                name: "create_ticket",
-                parameters: %{type: "object", properties: %{title: %{type: "string"}}}
-              }
+              function: %{name: "create_ticket", parameters: %{properties: %{title: %{type: "string"}}, type: "object"}},
+              type: "function"
             }
-          ],
-          tool_choice: %{type: "function", function: %{name: "create_ticket"}},
-          messages: [%{role: "user", content: "file this incident"}]
+          ]
         }
       })
 
@@ -261,37 +242,33 @@ defmodule Wardwright.ToolContextPolicyTest do
       unit_policy_config()
       |> Map.put("policy_cache", %{"max_entries" => 8, "recent_limit" => 8})
       |> Map.put("targets", [
-        %{"model" => "local/read", "context_window" => 512},
-        %{"model" => "managed/write", "context_window" => 512}
+        %{"context_window" => 512, "model" => "local/read"},
+        %{"context_window" => 512, "model" => "managed/write"}
       ])
       |> Map.put("governance", [
         %{
+          "action" => "switch_model",
+          "cache_scope" => "session_id",
           "id" => "repeat-github-write",
           "kind" => "tool_loop_threshold",
-          "action" => "switch_model",
           "target_model" => "managed/write",
           "threshold" => 2,
-          "cache_scope" => "session_id",
-          "tool" => %{"namespace" => "mcp.github", "name" => "create_pull_request"}
+          "tool" => %{"name" => "create_pull_request", "namespace" => "mcp.github"}
         }
       ])
 
     assert call(:post, "/__test/config", config).status == 200
 
     request = %{
-      model: "unit-model",
+      messages: [%{content: "open the same PR", role: "user"}],
       metadata: %{
         session_id: "session-tool-loop",
         tool_context: %{
           phase: "planning",
-          primary_tool: %{
-            namespace: "mcp.github",
-            name: "create_pull_request",
-            risk_class: "write"
-          }
+          primary_tool: %{name: "create_pull_request", namespace: "mcp.github", risk_class: "write"}
         }
       },
-      messages: [%{role: "user", content: "open the same PR"}]
+      model: "unit-model"
     }
 
     first = call(:post, "/v1/wardwright/simulate", %{request: request})
@@ -305,24 +282,19 @@ defmodule Wardwright.ToolContextPolicyTest do
     assert get_in(second_receipt, ["decision", "selected_model"]) == "managed/write"
 
     assert %{
-             "status" => "rerouted",
+             "counter_key_hash" => "sha256:" <> _,
+             "observed_count" => 2,
              "rule_id" => "repeat-github-write",
              "state_scope" => "session",
-             "counter_key_hash" => "sha256:" <> _,
-             "threshold" => 2,
-             "observed_count" => 2
+             "status" => "rerouted",
+             "threshold" => 2
            } = get_in(second_receipt, ["final", "tool_policy"])
 
     assert [
              %{
-               "kind" => "tool_call",
                "key" => "mcp.github:create_pull_request:planning",
-               "value" => %{
-                 "primary_tool" => %{
-                   "namespace" => "mcp.github",
-                   "name" => "create_pull_request"
-                 }
-               }
+               "kind" => "tool_call",
+               "value" => %{"primary_tool" => %{"name" => "create_pull_request", "namespace" => "mcp.github"}}
              }
              | _
            ] = Wardwright.PolicyCache.recent(%{"kind" => "tool_call"}, 2)
@@ -337,38 +309,29 @@ defmodule Wardwright.ToolContextPolicyTest do
     config =
       unit_policy_config()
       |> Map.put("policy_cache", %{"max_entries" => 12, "recent_limit" => 12})
-      |> Map.put("targets", [%{"model" => "local/read", "context_window" => 512}])
+      |> Map.put("targets", [%{"context_window" => 512, "model" => "local/read"}])
       |> Map.put("governance", [
         %{
+          "after" => %{"tool" => %{"namespace" => "browser", "phase" => "result_interpretation"}},
+          "cache_scope" => "session_id",
           "id" => "enter-untrusted-review",
           "kind" => "tool_sequence",
-          "cache_scope" => "session_id",
-          "transition_to" => "reviewing_untrusted_tool_result",
-          "after" => %{
-            "tool" => %{"namespace" => "browser", "phase" => "result_interpretation"}
-          }
+          "transition_to" => "reviewing_untrusted_tool_result"
         },
         %{
+          "after" => %{"tool" => %{"name" => "approve_tool_result", "namespace" => "review"}},
+          "cache_scope" => "session_id",
           "id" => "leave-untrusted-review",
           "kind" => "tool_sequence",
-          "cache_scope" => "session_id",
-          "transition_to" => "active",
-          "after" => %{
-            "tool" => %{"namespace" => "review", "name" => "approve_tool_result"}
-          }
+          "transition_to" => "active"
         },
         %{
+          "action" => "block",
+          "cache_scope" => "session_id",
           "id" => "block-shell-while-reviewing",
           "kind" => "tool_selector",
           "state_scope" => "reviewing_untrusted_tool_result",
-          "cache_scope" => "session_id",
-          "action" => "block",
-          "tool" => %{
-            "namespace" => "shell",
-            "name" => "exec",
-            "phase" => "planning",
-            "risk_class" => "irreversible"
-          }
+          "tool" => %{"name" => "exec", "namespace" => "shell", "phase" => "planning", "risk_class" => "irreversible"}
         }
       ])
 
@@ -385,9 +348,9 @@ defmodule Wardwright.ToolContextPolicyTest do
 
     assert [
              %{
+               "action" => "state_transition",
                "kind" => "tool_sequence",
                "rule_id" => "enter-untrusted-review",
-               "action" => "state_transition",
                "state_transition" => "reviewing_untrusted_tool_result"
              }
            ] = get_in(browser_receipt, ["decision", "policy_actions"])
@@ -405,25 +368,23 @@ defmodule Wardwright.ToolContextPolicyTest do
 
     assert [
              %{
+               "action" => "block",
                "kind" => "tool_selector",
-               "rule_id" => "block-shell-while-reviewing",
-               "action" => "block"
+               "rule_id" => "block-shell-while-reviewing"
              }
            ] = get_in(shell_receipt, ["decision", "policy_actions"])
 
     approve_request =
-      tool_request("sequence-state-session", "review", "approve_tool_result", "planning",
-        content: "review passed"
-      )
+      tool_request("sequence-state-session", "review", "approve_tool_result", "planning", content: "review passed")
 
     approve_conn = call(:post, "/v1/wardwright/simulate", %{request: approve_request})
     approve_receipt = approve_conn.resp_body |> Jason.decode!() |> get_in(["receipt"])
 
     assert [
              %{
+               "action" => "state_transition",
                "kind" => "tool_sequence",
                "rule_id" => "leave-untrusted-review",
-               "action" => "state_transition",
                "state_transition" => "active"
              }
            ] = get_in(approve_receipt, ["decision", "policy_actions"])
@@ -439,40 +400,29 @@ defmodule Wardwright.ToolContextPolicyTest do
     config =
       unit_policy_config()
       |> Map.put("policy_cache", %{"max_entries" => 12, "recent_limit" => 12})
-      |> Map.put("targets", [%{"model" => "local/read", "context_window" => 512}])
+      |> Map.put("targets", [%{"context_window" => 512, "model" => "local/read"}])
       |> Map.put("governance", [
         %{
+          "after" => %{"tool" => %{"namespace" => "browser", "phase" => "result_interpretation"}},
+          "cache_scope" => "session_id",
           "id" => "browser-before-shell",
           "kind" => "tool_sequence",
-          "cache_scope" => "session_id",
-          "after" => %{
-            "tool" => %{"namespace" => "browser", "phase" => "result_interpretation"}
-          },
-          "within" => %{"turns" => 1},
-          "until" => %{"tool" => %{"namespace" => "review", "name" => "approve_tool_result"}},
           "then" => %{
             "action" => "block",
-            "tool" => %{
-              "namespace" => "shell",
-              "name" => "exec",
-              "phase" => "planning",
-              "risk_class" => "irreversible"
-            }
-          }
+            "tool" => %{"name" => "exec", "namespace" => "shell", "phase" => "planning", "risk_class" => "irreversible"}
+          },
+          "until" => %{"tool" => %{"name" => "approve_tool_result", "namespace" => "review"}},
+          "within" => %{"turns" => 1}
         }
       ])
 
     assert call(:post, "/__test/config", config).status == 200
 
     browser_result =
-      tool_request("sequence-direct-session", "browser", "read_page", "result_interpretation",
-        risk_class: "read_only"
-      )
+      tool_request("sequence-direct-session", "browser", "read_page", "result_interpretation", risk_class: "read_only")
 
     shell_request =
-      tool_request("sequence-direct-session", "shell", "exec", "planning",
-        risk_class: "irreversible"
-      )
+      tool_request("sequence-direct-session", "shell", "exec", "planning", risk_class: "irreversible")
 
     call(:post, "/v1/wardwright/simulate", %{request: browser_result})
     blocked_shell = call(:post, "/v1/wardwright/simulate", %{request: shell_request})
@@ -482,9 +432,9 @@ defmodule Wardwright.ToolContextPolicyTest do
 
     assert [
              %{
+               "action" => "block",
                "kind" => "tool_sequence",
                "rule_id" => "browser-before-shell",
-               "action" => "block",
                "sequence_after_key" => "browser:read_page:result_interpretation"
              }
            ] = get_in(blocked_receipt, ["decision", "policy_actions"])
@@ -493,14 +443,10 @@ defmodule Wardwright.ToolContextPolicyTest do
       tool_request("sequence-reset-session", "review", "approve_tool_result", "planning")
 
     reset_browser =
-      tool_request("sequence-reset-session", "browser", "read_page", "result_interpretation",
-        risk_class: "read_only"
-      )
+      tool_request("sequence-reset-session", "browser", "read_page", "result_interpretation", risk_class: "read_only")
 
     reset_shell =
-      tool_request("sequence-reset-session", "shell", "exec", "planning",
-        risk_class: "irreversible"
-      )
+      tool_request("sequence-reset-session", "shell", "exec", "planning", risk_class: "irreversible")
 
     call(:post, "/v1/wardwright/simulate", %{request: reset_browser})
     call(:post, "/v1/wardwright/simulate", %{request: review_reset})
@@ -511,19 +457,13 @@ defmodule Wardwright.ToolContextPolicyTest do
     assert get_in(reset_receipt, ["decision", "policy_actions"]) == []
 
     expired_browser =
-      tool_request("sequence-expired-session", "browser", "read_page", "result_interpretation",
-        risk_class: "read_only"
-      )
+      tool_request("sequence-expired-session", "browser", "read_page", "result_interpretation", risk_class: "read_only")
 
     unrelated_tool =
-      tool_request("sequence-expired-session", "browser", "search", "planning",
-        risk_class: "read_only"
-      )
+      tool_request("sequence-expired-session", "browser", "search", "planning", risk_class: "read_only")
 
     expired_shell =
-      tool_request("sequence-expired-session", "shell", "exec", "planning",
-        risk_class: "irreversible"
-      )
+      tool_request("sequence-expired-session", "shell", "exec", "planning", risk_class: "irreversible")
 
     call(:post, "/v1/wardwright/simulate", %{request: expired_browser})
     call(:post, "/v1/wardwright/simulate", %{request: unrelated_tool})
@@ -538,33 +478,26 @@ defmodule Wardwright.ToolContextPolicyTest do
     config =
       unit_policy_config()
       |> Map.put("policy_cache", %{"max_entries" => 16, "recent_limit" => 16})
-      |> Map.put("targets", [%{"model" => "local/read", "context_window" => 512}])
+      |> Map.put("targets", [%{"context_window" => 512, "model" => "local/read"}])
       |> Map.put("governance", [
         %{
+          "after" => %{"tool" => %{"namespace" => "browser", "phase" => "result_interpretation"}},
+          "cache_scope" => "session_id",
           "id" => "recent-browser-before-shell-ms",
           "kind" => "tool_sequence",
-          "cache_scope" => "session_id",
-          "after" => %{
-            "tool" => %{"namespace" => "browser", "phase" => "result_interpretation"}
-          },
-          "within" => %{"ms" => 2_000},
-          "then" => %{
-            "action" => "block",
-            "tool" => %{"namespace" => "shell", "name" => "exec", "phase" => "planning"}
-          }
+          "then" => %{"action" => "block", "tool" => %{"name" => "exec", "namespace" => "shell", "phase" => "planning"}},
+          "within" => %{"ms" => 2_000}
         },
         %{
+          "after" => %{"tool" => %{"namespace" => "browser", "phase" => "result_interpretation"}},
+          "cache_scope" => "session_id",
           "id" => "stale-browser-before-shell-milliseconds",
           "kind" => "tool_sequence",
-          "cache_scope" => "session_id",
-          "after" => %{
-            "tool" => %{"namespace" => "browser", "phase" => "result_interpretation"}
-          },
-          "within" => %{"milliseconds" => 1},
           "then" => %{
             "action" => "block",
-            "tool" => %{"namespace" => "filesystem", "name" => "write", "phase" => "planning"}
-          }
+            "tool" => %{"name" => "write", "namespace" => "filesystem", "phase" => "planning"}
+          },
+          "within" => %{"milliseconds" => 1}
         }
       ])
 
@@ -576,9 +509,7 @@ defmodule Wardwright.ToolContextPolicyTest do
       )
 
     recent_shell =
-      tool_request("sequence-recent-ms-session", "shell", "exec", "planning",
-        risk_class: "irreversible"
-      )
+      tool_request("sequence-recent-ms-session", "shell", "exec", "planning", risk_class: "irreversible")
 
     call(:post, "/v1/wardwright/simulate", %{request: recent_browser})
     recent_conn = call(:post, "/v1/wardwright/simulate", %{request: recent_shell})
@@ -588,9 +519,9 @@ defmodule Wardwright.ToolContextPolicyTest do
 
     assert [
              %{
+               "action" => "block",
                "kind" => "tool_sequence",
-               "rule_id" => "recent-browser-before-shell-ms",
-               "action" => "block"
+               "rule_id" => "recent-browser-before-shell-ms"
              }
            ] = get_in(recent_receipt, ["decision", "policy_actions"])
 
@@ -600,9 +531,7 @@ defmodule Wardwright.ToolContextPolicyTest do
       )
 
     stale_write =
-      tool_request("sequence-stale-ms-session", "filesystem", "write", "planning",
-        risk_class: "irreversible"
-      )
+      tool_request("sequence-stale-ms-session", "filesystem", "write", "planning", risk_class: "irreversible")
 
     call(:post, "/v1/wardwright/simulate", %{request: stale_browser})
     Process.sleep(10)
@@ -617,27 +546,22 @@ defmodule Wardwright.ToolContextPolicyTest do
     config =
       unit_policy_config()
       |> Map.put("policy_cache", %{"max_entries" => 16, "recent_limit" => 16})
-      |> Map.put("targets", [%{"model" => "local/read", "context_window" => 512}])
+      |> Map.put("targets", [%{"context_window" => 512, "model" => "local/read"}])
       |> Map.put("governance", [
         %{
+          "after" => %{"tool" => %{"name" => "approve_tool_result", "namespace" => "review"}},
+          "cache_scope" => "session_id",
           "id" => "mark-tool-result-reviewed",
           "kind" => "tool_sequence",
-          "cache_scope" => "session_id",
-          "after" => %{"tool" => %{"namespace" => "review", "name" => "approve_tool_result"}},
           "transition_to" => "reviewed_untrusted_tool_result"
         },
         %{
+          "after" => %{"tool" => %{"namespace" => "browser", "phase" => "result_interpretation"}},
+          "cache_scope" => "session_id",
           "id" => "browser-before-shell-until-reviewed-state",
           "kind" => "tool_sequence",
-          "cache_scope" => "session_id",
-          "after" => %{
-            "tool" => %{"namespace" => "browser", "phase" => "result_interpretation"}
-          },
-          "until" => %{"state" => "reviewed_untrusted_tool_result"},
-          "then" => %{
-            "action" => "block",
-            "tool" => %{"namespace" => "shell", "name" => "exec", "phase" => "planning"}
-          }
+          "then" => %{"action" => "block", "tool" => %{"name" => "exec", "namespace" => "shell", "phase" => "planning"}},
+          "until" => %{"state" => "reviewed_untrusted_tool_result"}
         }
       ])
 
@@ -653,9 +577,7 @@ defmodule Wardwright.ToolContextPolicyTest do
       )
 
     shell_request =
-      tool_request("sequence-until-state-session", "shell", "exec", "planning",
-        risk_class: "irreversible"
-      )
+      tool_request("sequence-until-state-session", "shell", "exec", "planning", risk_class: "irreversible")
 
     review_approval =
       tool_request("sequence-until-state-session", "review", "approve_tool_result", "planning",
@@ -670,9 +592,9 @@ defmodule Wardwright.ToolContextPolicyTest do
 
     assert [
              %{
+               "action" => "block",
                "kind" => "tool_sequence",
-               "rule_id" => "browser-before-shell-until-reviewed-state",
-               "action" => "block"
+               "rule_id" => "browser-before-shell-until-reviewed-state"
              }
            ] = get_in(blocked_receipt, ["decision", "policy_actions"])
 
@@ -681,9 +603,9 @@ defmodule Wardwright.ToolContextPolicyTest do
 
     assert [
              %{
+               "action" => "state_transition",
                "kind" => "tool_sequence",
                "rule_id" => "mark-tool-result-reviewed",
-               "action" => "state_transition",
                "state_transition" => "reviewed_untrusted_tool_result"
              }
            ] = get_in(review_receipt, ["decision", "policy_actions"])
@@ -699,23 +621,16 @@ defmodule Wardwright.ToolContextPolicyTest do
     config =
       unit_policy_config()
       |> Map.put("policy_cache", %{"max_entries" => 12, "recent_limit" => 12})
-      |> Map.put("targets", [%{"model" => "local/read", "context_window" => 512}])
+      |> Map.put("targets", [%{"context_window" => 512, "model" => "local/read"}])
       |> Map.put("governance", [
         %{
+          "after" => %{"tool" => %{"namespace" => "browser", "phase" => "result_interpretation"}},
+          "before" => %{
+            "tool" => %{"name" => "exec", "namespace" => "shell", "phase" => "planning", "risk_class" => "irreversible"}
+          },
+          "cache_scope" => "session_id",
           "id" => "browser-before-shell-alias",
           "kind" => "tool_sequence",
-          "cache_scope" => "session_id",
-          "after" => %{
-            "tool" => %{"namespace" => "browser", "phase" => "result_interpretation"}
-          },
-          "before" => %{
-            "tool" => %{
-              "namespace" => "shell",
-              "name" => "exec",
-              "phase" => "planning",
-              "risk_class" => "irreversible"
-            }
-          },
           "then" => %{"action" => "block"}
         }
       ])
@@ -732,9 +647,7 @@ defmodule Wardwright.ToolContextPolicyTest do
       )
 
     shell_request =
-      tool_request("sequence-before-alias-session", "shell", "exec", "planning",
-        risk_class: "irreversible"
-      )
+      tool_request("sequence-before-alias-session", "shell", "exec", "planning", risk_class: "irreversible")
 
     call(:post, "/v1/wardwright/simulate", %{request: browser_result})
     conn = call(:post, "/v1/wardwright/simulate", %{request: shell_request})
@@ -744,9 +657,9 @@ defmodule Wardwright.ToolContextPolicyTest do
 
     assert [
              %{
+               "action" => "block",
                "kind" => "tool_sequence",
                "rule_id" => "browser-before-shell-alias",
-               "action" => "block",
                "sequence_after_key" => "browser:read_page:result_interpretation"
              }
            ] = get_in(receipt, ["decision", "policy_actions"])
@@ -756,16 +669,16 @@ defmodule Wardwright.ToolContextPolicyTest do
     config =
       unit_policy_config()
       |> Map.put("targets", [
-        %{"model" => "local/read", "context_window" => 512},
-        %{"model" => "managed/write", "context_window" => 512}
+        %{"context_window" => 512, "model" => "local/read"},
+        %{"context_window" => 512, "model" => "managed/write"}
       ])
       |> Map.put("governance", [
         %{
+          "action" => "switch_model",
           "id" => "shell-write",
           "kind" => "tool_selector",
-          "action" => "switch_model",
           "target_model" => "managed/write",
-          "tool" => %{"namespace" => "openai.function", "name" => "run_shell"}
+          "tool" => %{"name" => "run_shell", "namespace" => "openai.function"}
         }
       ])
 
@@ -774,24 +687,21 @@ defmodule Wardwright.ToolContextPolicyTest do
     conn =
       call(:post, "/v1/wardwright/simulate", %{
         request: %{
-          model: "unit-model",
           messages: [
-            %{role: "user", content: "prepare the command"},
+            %{content: "prepare the command", role: "user"},
             %{
-              role: "assistant",
               content: nil,
+              role: "assistant",
               tool_calls: [
                 %{
+                  function: %{arguments: ~s({"command":"echo secret-token-123"}), name: "run_shell"},
                   id: "call_secret",
-                  type: "function",
-                  function: %{
-                    name: "run_shell",
-                    arguments: ~s({"command":"echo secret-token-123"})
-                  }
+                  type: "function"
                 }
               ]
             }
-          ]
+          ],
+          model: "unit-model"
         }
       })
 
@@ -808,19 +718,15 @@ defmodule Wardwright.ToolContextPolicyTest do
 
   defp tool_request(session_id, namespace, name, phase, opts \\ []) do
     %{
-      model: "unit-model",
+      messages: [%{content: Keyword.get(opts, :content, "#{namespace}.#{name}"), role: "user"}],
       metadata: %{
         session_id: session_id,
         tool_context: %{
           phase: phase,
-          primary_tool: %{
-            namespace: namespace,
-            name: name,
-            risk_class: Keyword.get(opts, :risk_class, "unknown")
-          }
+          primary_tool: %{name: name, namespace: namespace, risk_class: Keyword.get(opts, :risk_class, "unknown")}
         }
       },
-      messages: [%{role: "user", content: Keyword.get(opts, :content, "#{namespace}.#{name}")}]
+      model: "unit-model"
     }
   end
 end

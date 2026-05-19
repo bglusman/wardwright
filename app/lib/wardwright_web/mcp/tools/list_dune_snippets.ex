@@ -5,6 +5,7 @@ defmodule WardwrightWeb.MCP.Tools.ListDuneSnippets do
 
   use Hermes.Server.Component, type: :tool, annotations: %{read_only: true}
 
+  alias Wardwright.PolicySandbox.DuneSnippetRegistry
   alias WardwrightWeb.MCP.Tools
 
   schema do
@@ -12,7 +13,7 @@ defmodule WardwrightWeb.MCP.Tools.ListDuneSnippets do
 
   @impl true
   def execute(_params, frame) do
-    Wardwright.PolicySandbox.DuneSnippetRegistry.list()
+    DuneSnippetRegistry.list()
     |> Tools.reply_json(frame)
   end
 end

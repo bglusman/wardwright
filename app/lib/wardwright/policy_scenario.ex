@@ -2,21 +2,21 @@ defmodule Wardwright.PolicyScenario do
   @moduledoc false
 
   defstruct [
-    :id,
-    :pattern_id,
-    :title,
-    :source,
-    :input_summary,
-    :expected_behavior,
-    :model_id,
     :artifact_hash,
-    :turn,
-    :verdict,
-    :trace,
-    :receipt_preview,
-    :pinned,
     :created_at,
-    :updated_at
+    :expected_behavior,
+    :id,
+    :input_summary,
+    :model_id,
+    :pattern_id,
+    :pinned,
+    :receipt_preview,
+    :source,
+    :title,
+    :trace,
+    :turn,
+    :updated_at,
+    :verdict
   ]
 
   def from_receipt(receipt, pattern_id, attrs \\ %{})
@@ -36,21 +36,21 @@ defmodule Wardwright.PolicyScenario do
     now = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
     scenario = %__MODULE__{
-      id: string_field(map, "scenario_id") || string_field(map, "id"),
-      pattern_id: pattern_id,
-      title: string_field(map, "title"),
-      source: string_field(map, "source") || "user",
-      input_summary: string_field(map, "input_summary"),
-      expected_behavior: string_field(map, "expected_behavior"),
-      model_id: string_field(map, "model_id"),
       artifact_hash: string_field(map, "artifact_hash"),
-      turn: turn_field(map),
-      verdict: verdict(map),
-      trace: list_field(map, "trace"),
-      receipt_preview: map_field(map, "receipt_preview"),
-      pinned: boolean_field(map, "pinned", false),
       created_at: string_field(map, "created_at") || now,
-      updated_at: now
+      expected_behavior: string_field(map, "expected_behavior"),
+      id: string_field(map, "scenario_id") || string_field(map, "id"),
+      input_summary: string_field(map, "input_summary"),
+      model_id: string_field(map, "model_id"),
+      pattern_id: pattern_id,
+      pinned: boolean_field(map, "pinned", false),
+      receipt_preview: map_field(map, "receipt_preview"),
+      source: string_field(map, "source") || "user",
+      title: string_field(map, "title"),
+      trace: list_field(map, "trace"),
+      turn: turn_field(map),
+      updated_at: now,
+      verdict: verdict(map)
     }
 
     validate(scenario)
@@ -89,22 +89,19 @@ defmodule Wardwright.PolicyScenario do
     |> Enum.reject(&is_nil/1)
   end
 
-  defp validate(%__MODULE__{id: id}) when id in [nil, ""],
-    do: {:error, "scenario_id is required"}
+  defp validate(%__MODULE__{id: id}) when id in [nil, ""], do: {:error, "scenario_id is required"}
 
   defp validate(%__MODULE__{source: source})
        when source not in ["user", "assistant", "fixture", "live_replay", "imported"],
        do: {:error, "source must be one of user, assistant, fixture, live_replay, imported"}
 
-  defp validate(%__MODULE__{title: title}) when title in [nil, ""],
-    do: {:error, "title is required"}
+  defp validate(%__MODULE__{title: title}) when title in [nil, ""], do: {:error, "title is required"}
 
   defp validate(%__MODULE__{input_summary: input_summary}) when input_summary in [nil, ""],
     do: {:error, "input_summary is required"}
 
-  defp validate(%__MODULE__{expected_behavior: expected_behavior})
-       when expected_behavior in [nil, ""],
-       do: {:error, "expected_behavior is required"}
+  defp validate(%__MODULE__{expected_behavior: expected_behavior}) when expected_behavior in [nil, ""],
+    do: {:error, "expected_behavior is required"}
 
   defp validate(%__MODULE__{trace: []}), do: {:error, "trace must include at least one event"}
 
@@ -174,8 +171,7 @@ defmodule Wardwright.PolicyScenario do
       {"source", "live_replay"},
       {"pinned", boolean_field(attrs, "pinned", true)},
       {"input_summary", string_field(attrs, "input_summary") || receipt_summary(receipt, status)},
-      {"expected_behavior",
-       string_field(attrs, "expected_behavior") || "Preserve recorded final status #{status}."},
+      {"expected_behavior", string_field(attrs, "expected_behavior") || "Preserve recorded final status #{status}."},
       {"model_id", string_field(attrs, "model_id") || string_field(receipt, "model")},
       {"artifact_hash", string_field(attrs, "artifact_hash")},
       {"turn", map_field(attrs, "turn")},

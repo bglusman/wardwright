@@ -17,22 +17,19 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
 
   @snippets [
     %{
-      "id" => "primitive.request-contains-actions",
-      "title" => "Request contains actions",
-      "phase" => "request.review",
       "description" =>
         "Compatibility implementation for legacy engine: primitive rules that match request text and emit policy actions.",
-      "replaces_primitives" => ["engine.primitive", "contains_match"],
+      "example_input" => %{
+        "request_text" => "please deny me",
+        "rules" => [%{"action" => "block", "contains" => "deny me", "id" => "legacy-deny"}]
+      },
+      "id" => "primitive.request-contains-actions",
       "input_shape" => %{
         "request_text" => "string",
         "rules" => "list[{id?: string, contains: string, action?: string}]"
       },
-      "example_input" => %{
-        "request_text" => "please deny me",
-        "rules" => [
-          %{"id" => "legacy-deny", "contains" => "deny me", "action" => "block"}
-        ]
-      },
+      "phase" => "request.review",
+      "replaces_primitives" => ["engine.primitive", "contains_match"],
       "source" => """
       text = String.downcase(input["request_text"] || "")
       rules = input["rules"] || []
@@ -65,14 +62,28 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
           %{"rule" => "legacy_primitive_contains", "matched_count" => Enum.count(actions)}
         ]
       }
-      """
+      """,
+      "title" => "Request contains actions"
     },
     %{
-      "id" => "primitive.request-rule-action",
-      "title" => "Request rule action",
-      "phase" => "request.review",
       "description" =>
         "Evaluate one request/route governance rule with contains or regex matching and emit a normalized action intent.",
+      "example_input" => %{
+        "request_text" => "please return json for the caller",
+        "rule" => %{
+          "action" => "inject_reminder_and_retry",
+          "contains" => "return json",
+          "id" => "json-reminder",
+          "kind" => "request_transform",
+          "reminder" => "Return only valid JSON."
+        }
+      },
+      "id" => "primitive.request-rule-action",
+      "input_shape" => %{
+        "request_text" => "string",
+        "rule" => "{id?: string, kind: string, contains?: string, regex?: string, action?: string}"
+      },
+      "phase" => "request.review",
       "replaces_primitives" => [
         "request_guard",
         "request_transform",
@@ -81,21 +92,6 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
         "contains_match",
         "regex_match"
       ],
-      "input_shape" => %{
-        "request_text" => "string",
-        "rule" =>
-          "{id?: string, kind: string, contains?: string, regex?: string, action?: string}"
-      },
-      "example_input" => %{
-        "request_text" => "please return json for the caller",
-        "rule" => %{
-          "id" => "json-reminder",
-          "kind" => "request_transform",
-          "contains" => "return json",
-          "action" => "inject_reminder_and_retry",
-          "reminder" => "Return only valid JSON."
-        }
-      },
       "source" => """
       text = String.downcase(input["request_text"] || "")
       rule = input["rule"] || %{}
@@ -165,25 +161,25 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
           ]
         }
       end
-      """
+      """,
+      "title" => "Request rule action"
     },
     %{
-      "id" => "route.private-context-local-only",
-      "title" => "Private context route gate",
-      "phase" => "route",
       "description" =>
         "Restrict routing to local targets when the request carries private context and cloud routing was not explicitly approved.",
-      "replaces_primitives" => ["route_guard", "private_context_gate"],
-      "input_shape" => %{
-        "private_context" => "boolean",
-        "cloud_approved" => "boolean",
-        "available_targets" => "list[string]"
-      },
       "example_input" => %{
-        "private_context" => true,
+        "available_targets" => ["local/qwen", "managed/kimi"],
         "cloud_approved" => false,
-        "available_targets" => ["local/qwen", "managed/kimi"]
+        "private_context" => true
       },
+      "id" => "route.private-context-local-only",
+      "input_shape" => %{
+        "available_targets" => "list[string]",
+        "cloud_approved" => "boolean",
+        "private_context" => "boolean"
+      },
+      "phase" => "route",
+      "replaces_primitives" => ["route_guard", "private_context_gate"],
       "source" => """
       private_context = input["private_context"] == true
       cloud_approved = input["cloud_approved"] == true
@@ -212,25 +208,17 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
           ]
         }
       end
-      """
+      """,
+      "title" => "Private context route gate"
     },
     %{
-      "id" => "history.related-secret-ladder",
-      "title" => "Related secret history ladder",
-      "phase" => "response.streaming",
       "description" =>
         "Escalate from redaction to review when related secret-like matches exceed a session-local threshold.",
+      "example_input" => %{"current_match" => true, "related_secret_matches" => 2, "threshold" => 3},
+      "id" => "history.related-secret-ladder",
+      "input_shape" => %{"current_match" => "boolean", "related_secret_matches" => "integer", "threshold" => "integer"},
+      "phase" => "response.streaming",
       "replaces_primitives" => ["regex_match", "history_threshold", "state_transition"],
-      "input_shape" => %{
-        "current_match" => "boolean",
-        "related_secret_matches" => "integer",
-        "threshold" => "integer"
-      },
-      "example_input" => %{
-        "current_match" => true,
-        "related_secret_matches" => 2,
-        "threshold" => 3
-      },
       "source" => """
       current_match = input["current_match"] == true
       related = input["related_secret_matches"] || 0
@@ -261,23 +249,17 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
             "trace" => [%{"rule" => "current_secret_match", "result" => false}]
           }
       end
-      """
+      """,
+      "title" => "Related secret history ladder"
     },
     %{
-      "id" => "tool.browser-before-shell",
-      "title" => "Browser before shell",
-      "phase" => "tool",
       "description" =>
         "Allow shell writes only after a recent browser or docs lookup in the same session, otherwise require review.",
+      "example_input" => %{"recent_tools" => ["browser.open", "browser.screenshot"], "tool_name" => "shell.exec"},
+      "id" => "tool.browser-before-shell",
+      "input_shape" => %{"recent_tools" => "list[string]", "tool_name" => "string"},
+      "phase" => "tool",
       "replaces_primitives" => ["tool_sequence", "history_window", "review_gate"],
-      "input_shape" => %{
-        "tool_name" => "string",
-        "recent_tools" => "list[string]"
-      },
-      "example_input" => %{
-        "tool_name" => "shell.exec",
-        "recent_tools" => ["browser.open", "browser.screenshot"]
-      },
       "source" => """
       tool_name = input["tool_name"] || ""
       recent_tools = input["recent_tools"] || []
@@ -306,14 +288,15 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
             "trace" => [%{"rule" => "shell_write", "result" => false}]
           }
       end
-      """
+      """,
+      "title" => "Browser before shell"
     }
   ]
 
   def list do
     %{
-      "schema" => @schema,
-      "data" => Enum.map(all_snippets(), &public_snippet/1)
+      "data" => Enum.map(all_snippets(), &public_snippet/1),
+      "schema" => @schema
     }
   end
 
@@ -334,8 +317,8 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
          "schema" => "wardwright.dune_snippet_write.v1",
          "snippet" => public_snippet(snippet),
          "storage" => %{
-           "kind" => "workspace",
-           "endpoint" => workspace_dir()
+           "endpoint" => workspace_dir(),
+           "kind" => "workspace"
          }
        }}
     end
@@ -354,9 +337,9 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
         :ok ->
           {:ok,
            %{
-             "schema" => "wardwright.dune_snippet_delete.v1",
+             "deleted" => true,
              "id" => id,
-             "deleted" => true
+             "schema" => "wardwright.dune_snippet_delete.v1"
            }}
 
         {:error, :enoent} ->
@@ -385,11 +368,11 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
       with {:ok, {result, session_metadata}} <- evaluate_snippet(snippet, input, params, opts) do
         {:ok,
          %{
-           "schema" => "wardwright.dune_snippet_evaluation.v1",
-           "snippet" => public_snippet(snippet),
            "input" => input,
            "result" => result,
-           "review_notes" => review_notes(snippet, result)
+           "review_notes" => review_notes(snippet, result),
+           "schema" => "wardwright.dune_snippet_evaluation.v1",
+           "snippet" => public_snippet(snippet)
          }
          |> put_session_metadata(session_metadata)}
       end
@@ -436,15 +419,15 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
          :ok <- require_source(source) do
       {:ok,
        %{
-         "id" => id,
-         "title" => optional_string(params, "title", id),
-         "phase" => optional_string(params, "phase", "unknown"),
          "description" => optional_string(params, "description", "User supplied snippet."),
-         "replaces_primitives" => list_value(Map.get(params, "replaces_primitives")),
-         "input_shape" => map_value(Map.get(params, "input_shape")),
          "example_input" => map_value(Map.get(params, "example_input", Map.get(params, "input"))),
+         "id" => id,
+         "input_shape" => map_value(Map.get(params, "input_shape")),
+         "origin" => "workspace",
+         "phase" => optional_string(params, "phase", "unknown"),
+         "replaces_primitives" => list_value(Map.get(params, "replaces_primitives")),
          "source" => source,
-         "origin" => "workspace"
+         "title" => optional_string(params, "title", id)
        }}
     end
   end
@@ -561,12 +544,12 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
         true ->
           {:ok,
            %{
-             model_id: model_id,
-             version: version,
-             session_id: session_id,
              key: key,
+             model_id: model_id,
+             reset?: truthy?(Map.get(session, "reset", Map.get(session, :reset, false))),
+             session_id: session_id,
              ttl_ms: ttl_ms,
-             reset?: truthy?(Map.get(session, "reset", Map.get(session, :reset, false)))
+             version: version
            }}
       end
     end
@@ -576,13 +559,13 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
 
   defp put_session_metadata(result, metadata) do
     Map.put(result, "session", %{
-      "model_id" => metadata.model_id,
-      "version" => metadata.version,
-      "session_id" => metadata.session_id,
       "key" => metadata.key,
-      "status" => metadata.status,
+      "model_id" => metadata.model_id,
       "reused" => metadata.reused?,
-      "ttl_ms" => metadata.ttl_ms
+      "session_id" => metadata.session_id,
+      "status" => metadata.status,
+      "ttl_ms" => metadata.ttl_ms,
+      "version" => metadata.version
     })
   end
 
@@ -591,14 +574,14 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
 
     {:ok,
      %{
-       "id" => id,
-       "title" => Map.get(params, "title", "Ad hoc Dune snippet"),
-       "phase" => Map.get(params, "phase", "unknown"),
        "description" => Map.get(params, "description", "User supplied snippet."),
-       "replaces_primitives" => Map.get(params, "replaces_primitives", []),
-       "input_shape" => Map.get(params, "input_shape", %{}),
        "example_input" => Map.get(params, "input", %{}),
-       "source" => source
+       "id" => id,
+       "input_shape" => Map.get(params, "input_shape", %{}),
+       "phase" => Map.get(params, "phase", "unknown"),
+       "replaces_primitives" => Map.get(params, "replaces_primitives", []),
+       "source" => source,
+       "title" => Map.get(params, "title", "Ad hoc Dune snippet")
      }}
   end
 
@@ -620,8 +603,7 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
 
   defp evaluation_opts(_limits), do: []
 
-  defp put_positive_integer(opts, key, value) when is_integer(value) and value > 0,
-    do: Keyword.put(opts, key, value)
+  defp put_positive_integer(opts, key, value) when is_integer(value) and value > 0, do: Keyword.put(opts, key, value)
 
   defp put_positive_integer(opts, _key, _value), do: opts
 
@@ -666,13 +648,11 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
     end
   end
 
-  defp parse_ttl_ms(_value),
-    do: {:error, "session.ttl_ms must be a positive integer when provided."}
+  defp parse_ttl_ms(_value), do: {:error, "session.ttl_ms must be a positive integer when provided."}
 
   defp bounded_ttl_ms(value) when value <= @max_dune_ttl_ms, do: {:ok, value}
 
-  defp bounded_ttl_ms(_value),
-    do: {:error, "session.ttl_ms must be less than or equal to #{@max_dune_ttl_ms}."}
+  defp bounded_ttl_ms(_value), do: {:error, "session.ttl_ms must be less than or equal to #{@max_dune_ttl_ms}."}
 
   defp truthy?(true), do: true
   defp truthy?("true"), do: true

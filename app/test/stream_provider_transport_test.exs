@@ -8,19 +8,19 @@ defmodule Wardwright.StreamProviderTransportTest do
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "ollama/live-test",
           "context_window" => 256,
+          "model" => "ollama/live-test",
           "provider_base_url" => base_url
         }
       ])
       |> Map.put("governance", [])
       |> Map.put("stream_rules", [
         %{
-          "id" => "ollama-stream-split-retry",
-          "contains" => "OldClient(",
           "action" => "retry_with_reminder",
-          "reminder" => "Use NewClient instead.",
-          "max_retries" => 0
+          "contains" => "OldClient(",
+          "id" => "ollama-stream-split-retry",
+          "max_retries" => 0,
+          "reminder" => "Use NewClient instead."
         }
       ])
 
@@ -28,9 +28,9 @@ defmodule Wardwright.StreamProviderTransportTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "stream code", role: "user"}],
         model: "unit-model",
-        stream: true,
-        messages: [%{role: "user", content: "stream code"}]
+        stream: true
       })
 
     assert conn.status == 409
@@ -44,17 +44,17 @@ defmodule Wardwright.StreamProviderTransportTest do
 
     assert [
              %{
-               "status" => "stream_policy_retry_required",
                "called_provider" => true,
                "mock" => false,
-               "provider_status" => "cancelled"
+               "provider_status" => "cancelled",
+               "status" => "stream_policy_retry_required"
              }
            ] = stream_policy["attempts"]
 
     assert [
              %{
-               "rule_id" => "ollama-stream-split-retry",
-               "match_scope" => "stream_window"
+               "match_scope" => "stream_window",
+               "rule_id" => "ollama-stream-split-retry"
              }
            ] = stream_policy["events"]
   end
@@ -66,19 +66,19 @@ defmodule Wardwright.StreamProviderTransportTest do
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "ollama/live-test",
           "context_window" => 256,
+          "model" => "ollama/live-test",
           "provider_base_url" => base_url
         }
       ])
       |> Map.put("governance", [])
       |> Map.put("stream_rules", [
         %{
-          "id" => "ollama-stream-reminder-retry",
-          "contains" => "OldClient(",
           "action" => "retry_with_reminder",
-          "reminder" => "Use NewClient instead.",
-          "max_retries" => 1
+          "contains" => "OldClient(",
+          "id" => "ollama-stream-reminder-retry",
+          "max_retries" => 1,
+          "reminder" => "Use NewClient instead."
         }
       ])
 
@@ -86,9 +86,9 @@ defmodule Wardwright.StreamProviderTransportTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "stream code", role: "user"}],
         model: "unit-model",
-        stream: true,
-        messages: [%{role: "user", content: "stream code"}]
+        stream: true
       })
 
     assert conn.status == 200
@@ -112,8 +112,8 @@ defmodule Wardwright.StreamProviderTransportTest do
              "stop"
 
     assert [
-             %{"status" => "stream_policy_retry_required", "released_to_consumer" => false},
-             %{"status" => "completed", "released_to_consumer" => true}
+             %{"released_to_consumer" => false, "status" => "stream_policy_retry_required"},
+             %{"released_to_consumer" => true, "status" => "completed"}
            ] = stream_policy["attempts"]
 
     assert Enum.any?(stream_policy["events"], fn event ->
@@ -131,18 +131,18 @@ defmodule Wardwright.StreamProviderTransportTest do
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "ollama/live-test",
           "context_window" => 256,
+          "model" => "ollama/live-test",
           "provider_base_url" => base_url
         }
       ])
       |> Map.put("governance", [])
       |> Map.put("stream_rules", [
         %{
-          "id" => "ollama-bounded-stream-block",
-          "contains" => "OldClient(",
           "action" => "block",
-          "horizon_bytes" => byte_size("OldClient(")
+          "contains" => "OldClient(",
+          "horizon_bytes" => byte_size("OldClient("),
+          "id" => "ollama-bounded-stream-block"
         }
       ])
 
@@ -150,9 +150,9 @@ defmodule Wardwright.StreamProviderTransportTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "stream safe prefix code", role: "user"}],
         model: "unit-model",
-        stream: true,
-        messages: [%{role: "user", content: "stream safe prefix code"}]
+        stream: true
       })
 
     assert conn.status == 200
@@ -194,11 +194,11 @@ defmodule Wardwright.StreamProviderTransportTest do
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "openai-compatible/live-test",
           "context_window" => 256,
-          "provider_kind" => "openai-compatible",
+          "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY",
+          "model" => "openai-compatible/live-test",
           "provider_base_url" => base_url,
-          "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY"
+          "provider_kind" => "openai-compatible"
         }
       ])
       |> Map.put("governance", [])
@@ -208,9 +208,9 @@ defmodule Wardwright.StreamProviderTransportTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "stream code", role: "user"}],
         model: "unit-model",
-        stream: true,
-        messages: [%{role: "user", content: "stream code"}]
+        stream: true
       })
 
     assert conn.status == 200
@@ -254,11 +254,11 @@ defmodule Wardwright.StreamProviderTransportTest do
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "openai-compatible/live-test",
           "context_window" => 256,
-          "provider_kind" => "openai-compatible",
+          "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY",
+          "model" => "openai-compatible/live-test",
           "provider_base_url" => "http://127.0.0.1:9",
-          "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY"
+          "provider_kind" => "openai-compatible"
         }
       ])
       |> Map.put("governance", [])
@@ -267,29 +267,18 @@ defmodule Wardwright.StreamProviderTransportTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        tools: [
-          %{
-            type: "function",
-            function: %{name: "create_pull_request", parameters: %{type: "object"}}
-          }
-        ],
-        tool_choice: "auto",
         messages: [
-          %{role: "user", content: "prepare a pull request"},
+          %{content: "prepare a pull request", role: "user"},
           %{
-            role: "assistant",
             content: nil,
-            tool_calls: [
-              %{
-                id: "call_1",
-                type: "function",
-                function: %{name: "create_pull_request", arguments: "{}"}
-              }
-            ]
+            role: "assistant",
+            tool_calls: [%{function: %{arguments: "{}", name: "create_pull_request"}, id: "call_1", type: "function"}]
           },
-          %{role: "tool", tool_call_id: "call_1", content: "created"}
-        ]
+          %{content: "created", role: "tool", tool_call_id: "call_1"}
+        ],
+        model: "unit-model",
+        tool_choice: "auto",
+        tools: [%{function: %{name: "create_pull_request", parameters: %{type: "object"}}, type: "function"}]
       })
 
     assert conn.status == 502

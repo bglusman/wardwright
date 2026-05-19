@@ -18,15 +18,14 @@ defmodule Wardwright.Runtime.ModelRuntime do
 
     %{
       id: {__MODULE__, model_id, version},
-      start: {__MODULE__, :start_link, [opts]},
       restart: :permanent,
       shutdown: 5_000,
+      start: {__MODULE__, :start_link, [opts]},
       type: :worker
     }
   end
 
-  def via(model_id, version),
-    do: {:via, Registry, {Wardwright.Runtime.Registry, {:model, model_id, version}}}
+  def via(model_id, version), do: {:via, Registry, {Wardwright.Runtime.Registry, {:model, model_id, version}}}
 
   def status(pid), do: GenServer.call(pid, :status)
 
@@ -34,15 +33,15 @@ defmodule Wardwright.Runtime.ModelRuntime do
   def init({model_id, version}) do
     state = %{
       model_id: model_id,
-      version: version,
-      started_at: System.system_time(:second)
+      started_at: System.system_time(:second),
+      version: version
     }
 
     event = %{
-      "type" => "model.started",
       "model_id" => model_id,
-      "version" => version,
-      "started_at" => state.started_at
+      "started_at" => state.started_at,
+      "type" => "model.started",
+      "version" => version
     }
 
     Events.publish_many([Events.topic(:models), Events.topic(:model, model_id, version)], event)
@@ -55,9 +54,9 @@ defmodule Wardwright.Runtime.ModelRuntime do
     {:reply,
      %{
        "model_id" => state.model_id,
-       "version" => state.version,
        "pid" => inspect(self()),
-       "started_at" => state.started_at
+       "started_at" => state.started_at,
+       "version" => state.version
      }, state}
   end
 end

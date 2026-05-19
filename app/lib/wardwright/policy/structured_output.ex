@@ -1,6 +1,8 @@
 defmodule Wardwright.Policy.StructuredOutput do
   @moduledoc false
 
+  alias Wardwright.Policy.StructuredCore
+
   @array_type "array"
   @items_key "items"
   @object_type "object"
@@ -9,8 +11,7 @@ defmodule Wardwright.Policy.StructuredOutput do
 
   def run(nil, provider_fun) when is_function(provider_fun, 1), do: provider_fun.(0)
 
-  def run(%{} = config, provider_fun) when is_function(provider_fun, 1),
-    do: guard_loop(config, provider_fun)
+  def run(%{} = config, provider_fun) when is_function(provider_fun, 1), do: guard_loop(config, provider_fun)
 
   def run(_config, provider_fun) when is_function(provider_fun, 1), do: provider_fun.(0)
 
@@ -37,20 +38,18 @@ defmodule Wardwright.Policy.StructuredOutput do
     |> Enum.reduce_while(%{"guard_events" => [], "rule_failures" => %{}}, fn attempt_index, acc ->
       provider = provider_fun.(attempt_index)
 
-      if provider.status != "completed" do
-        {:halt, Map.put(provider, :structured_output, exhausted(acc, provider.status))}
-      else
+      if provider.status == "completed" do
         case validate_output(provider.content || "", config) do
           {:ok, schema_id, parsed} ->
             final_status =
-              Wardwright.Policy.StructuredCore.success_status(length(acc["guard_events"]))
+              StructuredCore.success_status(length(acc["guard_events"]))
 
             structured = %{
+              "attempt_count" => attempt_index + 1,
               "final_status" => final_status,
-              "selected_schema" => schema_id,
-              "parsed_output" => parsed,
               "guard_events" => acc["guard_events"],
-              "attempt_count" => attempt_index + 1
+              "parsed_output" => parsed,
+              "selected_schema" => schema_id
             }
 
             {:halt, %{provider | status: final_status, structured_output: structured}}
@@ -58,17 +57,19 @@ defmodule Wardwright.Policy.StructuredOutput do
           {:error, guard_type, rule_id} ->
             failures = Map.update(acc["rule_failures"], rule_id, 1, &(&1 + 1))
 
+            guard_action =
+              Map.get(
+                guard_config,
+                "on_violation",
+                StructuredCore.guard_action()
+              )
+
             event = %{
-              "type" => "structured_output.guard",
+              "action" => guard_action,
               "attempt_index" => attempt_index,
-              "rule_id" => rule_id,
               "guard_type" => guard_type,
-              "action" =>
-                Map.get(
-                  guard_config,
-                  "on_violation",
-                  Wardwright.Policy.StructuredCore.guard_action()
-                )
+              "rule_id" => rule_id,
+              "type" => "structured_output.guard"
             }
 
             acc = %{
@@ -78,7 +79,7 @@ defmodule Wardwright.Policy.StructuredOutput do
             }
 
             outcome_status =
-              Wardwright.Policy.StructuredCore.loop_outcome_status(
+              StructuredCore.loop_outcome_status(
                 rule_id,
                 failures[rule_id],
                 max_failures_per_rule,
@@ -109,17 +110,21 @@ defmodule Wardwright.Policy.StructuredOutput do
                 {:cont, acc}
             end
         end
+      else
+        {:halt, Map.put(provider, :structured_output, exhausted(acc, provider.status))}
       end
     end)
   end
 
   defp exhausted(acc, status, exhausted_rule_id \\ nil) do
+    attempt_count = length(acc["guard_events"])
+
     %{
+      "attempt_count" => attempt_count,
       "final_status" => status,
-      "selected_schema" => nil,
-      "parsed_output" => nil,
       "guard_events" => acc["guard_events"],
-      "attempt_count" => length(acc["guard_events"])
+      "parsed_output" => nil,
+      "selected_schema" => nil
     }
     |> put_if_present("exhausted_rule_id", exhausted_rule_id)
   end
@@ -182,20 +187,14 @@ defmodule Wardwright.Policy.StructuredOutput do
     )
   end
 
-  defp property_valid?(value, %{
-         @type_key => @array_type,
-         @items_key => %{@type_key => @string_type}
-       }) do
+  defp property_valid?(value, %{@items_key => %{@type_key => @string_type}, @type_key => @array_type}) do
     :wardwright@structured_validation_core.string_array_property_valid(
       is_list(value),
       is_list(value) and Enum.all?(value, &is_binary/1)
     )
   end
 
-  defp property_valid?(value, %{
-         @items_key => %{@type_key => @object_type} = item_schema,
-         @type_key => @array_type
-       }) do
+  defp property_valid?(value, %{@items_key => %{@type_key => @object_type} = item_schema, @type_key => @array_type}) do
     is_list(value) and Enum.all?(value, &schema_valid?(&1, item_schema))
   end
 
@@ -255,10 +254,7 @@ defmodule Wardwright.Policy.StructuredOutput do
     )
   end
 
-  defp semantic_rule_valid?(
-         parsed,
-         %{"kind" => "json_path_string_not_contains", "path" => path} = rule
-       ) do
+  defp semantic_rule_valid?(parsed, %{"kind" => "json_path_string_not_contains", "path" => path} = rule) do
     case json_pointer(parsed, path) do
       value when is_binary(value) ->
         contains_pattern? =
@@ -296,7 +292,7 @@ defmodule Wardwright.Policy.StructuredOutput do
     path
     |> String.split("/")
     |> Enum.reduce(parsed, fn segment, acc ->
-      if is_map(acc), do: Map.get(acc, segment), else: nil
+      if is_map(acc), do: Map.get(acc, segment)
     end)
   end
 

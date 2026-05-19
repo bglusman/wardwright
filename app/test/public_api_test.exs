@@ -25,8 +25,8 @@ defmodule Wardwright.PublicApiTest do
 
     rejected =
       call(:post, "/v1/chat/completions", %{
-        "model" => "unit-model",
-        "messages" => [%{"role" => "user", "content" => "hello"}]
+        "messages" => [%{"content" => "hello", "role" => "user"}],
+        "model" => "unit-model"
       })
 
     assert rejected.status == 403
@@ -40,8 +40,8 @@ defmodule Wardwright.PublicApiTest do
 
     missing =
       call(:post, "/v1/chat/completions", %{
-        "model" => "unit-model",
-        "messages" => [%{"role" => "user", "content" => "hello"}]
+        "messages" => [%{"content" => "hello", "role" => "user"}],
+        "model" => "unit-model"
       })
 
     assert missing.status == 401
@@ -55,8 +55,8 @@ defmodule Wardwright.PublicApiTest do
         :post,
         "/v1/chat/completions",
         %{
-          "model" => "unit-model",
-          "messages" => [%{"role" => "user", "content" => "hello"}]
+          "messages" => [%{"content" => "hello", "role" => "user"}],
+          "model" => "unit-model"
         },
         [{"authorization", "Bearer #{created["key"]}"}]
       )
@@ -70,8 +70,8 @@ defmodule Wardwright.PublicApiTest do
         :post,
         "/v1/chat/completions",
         %{
-          "model" => "unit-model",
-          "messages" => [%{"role" => "user", "content" => "hello"}]
+          "messages" => [%{"content" => "hello", "role" => "user"}],
+          "model" => "unit-model"
         },
         [{"authorization", "Bearer #{created["key"]}"}]
       )
@@ -101,8 +101,8 @@ defmodule Wardwright.PublicApiTest do
         :post,
         "/v1/chat/completions",
         %{
-          "model" => "unit-model",
-          "messages" => [%{"role" => "user", "content" => "hello"}]
+          "messages" => [%{"content" => "hello", "role" => "user"}],
+          "model" => "unit-model"
         },
         [],
         {203, 0, 113, 10}
@@ -116,7 +116,7 @@ defmodule Wardwright.PublicApiTest do
       unit_policy_config()
       |> Map.put("prompt_transforms", %{"preamble" => "private operator prompt"})
       |> Map.put("governance", [
-        %{"id" => "internal-policy", "kind" => "request_guard", "contains" => "secret marker"}
+        %{"contains" => "secret marker", "id" => "internal-policy", "kind" => "request_guard"}
       ])
 
     assert call(:post, "/__test/config", config).status == 200
@@ -180,13 +180,13 @@ defmodule Wardwright.PublicApiTest do
       |> Map.put("version", Wardwright.model_version())
       |> Map.put("targets", [
         %{
-          "model" => Wardwright.local_model(),
           "context_window" => Wardwright.local_context_window(),
+          "model" => Wardwright.local_model(),
           "provider_base_url" => "https://user:secret@example.test/v1?api_key=do-not-leak"
         },
         %{
-          "model" => Wardwright.managed_model(),
-          "context_window" => Wardwright.managed_context_window()
+          "context_window" => Wardwright.managed_context_window(),
+          "model" => Wardwright.managed_model()
         }
       ])
 
@@ -292,11 +292,8 @@ defmodule Wardwright.PublicApiTest do
 
     registry_eval =
       call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{
-        "snippet_id" => "tool.browser-before-shell",
-        "input" => %{
-          "tool_name" => "shell.exec",
-          "recent_tools" => ["browser.open"]
-        }
+        "input" => %{"recent_tools" => ["browser.open"], "tool_name" => "shell.exec"},
+        "snippet_id" => "tool.browser-before-shell"
       })
 
     assert registry_eval.status == 200
@@ -306,10 +303,10 @@ defmodule Wardwright.PublicApiTest do
 
     ad_hoc_eval =
       call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{
+        "input" => %{"reason" => "operator test"},
         "source" => """
         %{"action" => "block", "reason" => input["reason"]}
-        """,
-        "input" => %{"reason" => "operator test"}
+        """
       })
 
     assert ad_hoc_eval.status == 200
@@ -321,18 +318,18 @@ defmodule Wardwright.PublicApiTest do
 
     session = %{
       "model_id" => "api-model",
-      "version" => "api-version",
-      "session_id" => session_id
+      "session_id" => session_id,
+      "version" => "api-version"
     }
 
     first_session_eval =
       call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{
+        "input" => %{"event" => "first"},
+        "session" => session,
         "source" => """
         events = [input["event"]]
         %{"action" => "allow", "count" => Enum.count(events)}
-        """,
-        "input" => %{"event" => "first"},
-        "session" => session
+        """
       })
 
     assert first_session_eval.status == 200
@@ -342,12 +339,12 @@ defmodule Wardwright.PublicApiTest do
 
     second_session_eval =
       call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{
+        "input" => %{"event" => "second"},
+        "session" => session,
         "source" => """
         events = [input["event"] | events]
         %{"action" => "allow", "count" => Enum.count(events)}
-        """,
-        "input" => %{"event" => "second"},
-        "session" => session
+        """
       })
 
     assert second_session_eval.status == 200
@@ -357,10 +354,10 @@ defmodule Wardwright.PublicApiTest do
 
     saved =
       call(:post, "/v1/policy-authoring/dune-snippets", %{
-        "id" => "workspace.block-risk",
-        "title" => "Workspace risk blocker",
-        "phase" => "request.review",
         "description" => "Block requests marked as high risk.",
+        "example_input" => %{"risk" => "high"},
+        "id" => "workspace.block-risk",
+        "phase" => "request.review",
         "source" => """
         if input["risk"] == "high" do
           %{"action" => "block", "reason" => "high risk"}
@@ -368,7 +365,7 @@ defmodule Wardwright.PublicApiTest do
           %{"action" => "allow", "reason" => "low risk"}
         end
         """,
-        "example_input" => %{"risk" => "high"}
+        "title" => "Workspace risk blocker"
       })
 
     assert saved.status == 201
@@ -382,8 +379,8 @@ defmodule Wardwright.PublicApiTest do
 
     saved_eval =
       call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{
-        "snippet_id" => "workspace.block-risk",
-        "input" => %{"risk" => "high"}
+        "input" => %{"risk" => "high"},
+        "snippet_id" => "workspace.block-risk"
       })
 
     assert saved_eval.status == 200
@@ -402,24 +399,24 @@ defmodule Wardwright.PublicApiTest do
   test "protected policy authoring API drafts and activates Wardwright models" do
     draft_body = %{
       "model_id" => "support-router",
-      "version" => "draft-test",
-      "targets" => [
-        %{"model" => "local/small", "context_window" => 1024},
-        %{"model" => "managed/large", "context_window" => 128_000}
-      ],
       "route" => %{
-        "type" => "dispatcher",
         "id" => "dispatcher.context-fit",
-        "models" => ["local/small", "managed/large"]
+        "models" => ["local/small", "managed/large"],
+        "type" => "dispatcher"
       },
       "stream_rules" => [
         %{
+          "action" => "rewrite_chunk",
           "id" => "redact-ticket",
           "pattern" => "ticket_[0-9]+",
-          "action" => "rewrite_chunk",
           "replacement" => "ticket_[redacted]"
         }
-      ]
+      ],
+      "targets" => [
+        %{"context_window" => 1024, "model" => "local/small"},
+        %{"context_window" => 128_000, "model" => "managed/large"}
+      ],
+      "version" => "draft-test"
     }
 
     rejected =
@@ -470,8 +467,8 @@ defmodule Wardwright.PublicApiTest do
       |> Map.put("model_id", "alpha-router")
       |> Map.put("version", "alpha-v1")
       |> Map.put("targets", [
-        %{"model" => "alpha/small", "context_window" => 64},
-        %{"model" => "alpha/large", "context_window" => 256}
+        %{"context_window" => 64, "model" => "alpha/small"},
+        %{"context_window" => 256, "model" => "alpha/large"}
       ])
 
     beta =
@@ -479,7 +476,7 @@ defmodule Wardwright.PublicApiTest do
       |> Map.put("model_id", "beta-router")
       |> Map.put("version", "beta-v1")
       |> Map.put("targets", [
-        %{"model" => "beta/only", "context_window" => 512}
+        %{"context_window" => 512, "model" => "beta/only"}
       ])
 
     assert {:ok, _alpha} = Wardwright.put_model_config(alpha)
@@ -500,7 +497,7 @@ defmodule Wardwright.PublicApiTest do
       call(
         :post,
         "/v1/chat/completions",
-        %{"model" => "alpha-router", "messages" => [%{"role" => "user", "content" => "hi"}]},
+        %{"messages" => [%{"content" => "hi", "role" => "user"}], "model" => "alpha-router"},
         [{"x-wardwright-session-id", "alpha-session"}]
       )
 
@@ -508,7 +505,7 @@ defmodule Wardwright.PublicApiTest do
       call(
         :post,
         "/v1/chat/completions",
-        %{"model" => "beta-router", "messages" => [%{"role" => "user", "content" => "hi"}]},
+        %{"messages" => [%{"content" => "hi", "role" => "user"}], "model" => "beta-router"},
         [{"x-wardwright-session-id", "beta-session"}]
       )
 
@@ -551,22 +548,22 @@ defmodule Wardwright.PublicApiTest do
       |> Map.put("dispatchers", [])
       |> Map.put("alloys", [
         %{
+          "constituents" => ["tiny/model", "medium/model"],
           "id" => "alloy.primary",
-          "strategy" => "deterministic_all",
-          "constituents" => ["tiny/model", "medium/model"]
+          "strategy" => "deterministic_all"
         }
       ])
 
     assert call(:post, "/__test/config", alloy_config).status == 200
 
     body = %{
-      "operation" => "append_rule",
       "collection" => "governance",
+      "operation" => "append_rule",
       "rule" => %{
-        "id" => "block-unreviewed-prod",
-        "kind" => "request_guard",
         "action" => "block",
-        "contains" => "deploy prod"
+        "contains" => "deploy prod",
+        "id" => "block-unreviewed-prod",
+        "kind" => "request_guard"
       }
     }
 
@@ -593,17 +590,17 @@ defmodule Wardwright.PublicApiTest do
       unit_policy_config()
       |> Map.put("governance", [
         %{
-          "id" => "ambiguous-success",
-          "kind" => "request_guard",
           "action" => "escalate",
           "contains" => "looks done",
+          "id" => "ambiguous-success",
+          "kind" => "request_guard",
           "message" => "completion claim needs artifact"
         },
         %{
-          "id" => "prod-guard",
-          "kind" => "request_guard",
           "action" => "block",
-          "contains" => "deploy prod"
+          "contains" => "deploy prod",
+          "id" => "prod-guard",
+          "kind" => "request_guard"
         }
       ])
 
@@ -611,16 +608,16 @@ defmodule Wardwright.PublicApiTest do
 
     replace =
       call(:post, "/v1/policy-authoring/propose-rule-change", %{
-        "operation" => "replace_rule",
         "collection" => "governance",
-        "rule_id" => "prod-guard",
+        "operation" => "replace_rule",
         "rule" => %{
-          "id" => "prod-guard",
-          "kind" => "request_guard",
           "action" => "escalate",
           "contains" => "deploy prod",
+          "id" => "prod-guard",
+          "kind" => "request_guard",
           "message" => "Production deploys require operator review"
-        }
+        },
+        "rule_id" => "prod-guard"
       })
 
     assert replace.status == 200
@@ -638,8 +635,8 @@ defmodule Wardwright.PublicApiTest do
 
     remove =
       call(:post, "/v1/policy-authoring/propose-rule-change", %{
-        "operation" => "remove_rule",
         "collection" => "governance",
+        "operation" => "remove_rule",
         "rule_id" => "ambiguous-success"
       })
 
@@ -662,37 +659,37 @@ defmodule Wardwright.PublicApiTest do
     assert rejected.status == 403
 
     scenario = %{
-      "scenario_id" => "api-reviewed-trigger",
-      "title" => "API reviewed trigger",
-      "source" => "user",
-      "pinned" => true,
-      "input_summary" => "A reviewed stream scenario stores the split trigger.",
-      "expected_behavior" => "The stream retry rule fires before release.",
-      "model_id" => "coding-balanced",
       "artifact_hash" => "sha256:api-reviewed-artifact",
+      "expected_behavior" => "The stream retry rule fires before release.",
+      "input_summary" => "A reviewed stream scenario stores the split trigger.",
+      "model_id" => "coding-balanced",
+      "pinned" => true,
+      "receipt_preview" => %{"final_status" => "simulated"},
+      "scenario_id" => "api-reviewed-trigger",
+      "source" => "user",
+      "title" => "API reviewed trigger",
+      "trace" => [
+        %{
+          "detail" => "scenario came from the authoring API",
+          "id" => "api-1",
+          "kind" => "match",
+          "label" => "persisted trace",
+          "node_id" => "tts.no-old-client",
+          "phase" => "response.streaming",
+          "severity" => "pass",
+          "state_id" => "guarding"
+        }
+      ],
       "turn" => %{
-        "user_input" => "Show the migration note.",
+        "history_context" => %{"policy_state" => "observing"},
         "model_response" => "avoid Old\nClient( in released output",
         "response_attempts" => [
           %{"index" => 1, "model_output" => "avoid Old\nClient( in released output"},
           %{"index" => 2, "model_output" => "Use the current client adapter."}
         ],
-        "history_context" => %{"policy_state" => "observing"}
+        "user_input" => "Show the migration note."
       },
-      "verdict" => "passed",
-      "trace" => [
-        %{
-          "id" => "api-1",
-          "phase" => "response.streaming",
-          "node_id" => "tts.no-old-client",
-          "kind" => "match",
-          "label" => "persisted trace",
-          "detail" => "scenario came from the authoring API",
-          "severity" => "pass",
-          "state_id" => "guarding"
-        }
-      ],
-      "receipt_preview" => %{"final_status" => "simulated"}
+      "verdict" => "passed"
     }
 
     created = call(:post, "/v1/policy-authoring/scenarios/tts-retry", %{"scenario" => scenario})
@@ -738,9 +735,9 @@ defmodule Wardwright.PublicApiTest do
 
     assert [
              %{
+               "artifact_hash" => "sha256:" <> _hash,
                "scenario_id" => "api-reviewed-trigger",
-               "scenario_source" => "persisted",
-               "artifact_hash" => "sha256:" <> _hash
+               "scenario_source" => "persisted"
              }
            ] = Jason.decode!(simulations.resp_body)["data"]
 
@@ -784,30 +781,22 @@ defmodule Wardwright.PublicApiTest do
 
   test "protected policy authoring API imports receipts as live replay scenarios" do
     receipt = %{
-      "receipt_id" => "receipt_import_1",
       "created_at" => 1_800_000_123,
-      "model_id" => "unit-model",
-      "model_version" => "2026-05-13.mock",
       "final" => %{
         "status" => "completed",
         "stream_policy" => %{
-          "status" => "completed",
-          "retry_count" => 1,
-          "released_to_consumer" => true,
           "events" => [
-            %{
-              "type" => "stream_policy.triggered",
-              "rule_id" => "tts.no-old-client",
-              "action" => "retry_with_reminder"
-            },
-            %{
-              "type" => "attempt.retry_requested",
-              "rule_id" => "tts.retry-arbiter",
-              "retry_count" => 1
-            }
-          ]
+            %{"action" => "retry_with_reminder", "rule_id" => "tts.no-old-client", "type" => "stream_policy.triggered"},
+            %{"retry_count" => 1, "rule_id" => "tts.retry-arbiter", "type" => "attempt.retry_requested"}
+          ],
+          "released_to_consumer" => true,
+          "retry_count" => 1,
+          "status" => "completed"
         }
-      }
+      },
+      "model_id" => "unit-model",
+      "model_version" => "2026-05-13.mock",
+      "receipt_id" => "receipt_import_1"
     }
 
     Wardwright.ReceiptStore.insert(receipt)
@@ -879,7 +868,7 @@ defmodule Wardwright.PublicApiTest do
     export_body = Jason.decode!(export.resp_body)
     assert export_body["schema"] == "wardwright.policy_regression_pack.v1"
     assert export_body["scenario_count"] == 1
-    assert [%{"scenario_id" => "pinned-regression", "pinned" => true}] = export_body["scenarios"]
+    assert [%{"pinned" => true, "scenario_id" => "pinned-regression"}] = export_body["scenarios"]
 
     exunit_export =
       call(:get, "/v1/policy-authoring/scenarios/tts-retry/regression-export?format=exunit")
@@ -950,8 +939,8 @@ defmodule Wardwright.PublicApiTest do
     invalid_artifact =
       unit_policy_config()
       |> Map.put("targets", [
-        %{"model" => "tiny/model", "context_window" => 8},
-        %{"model" => "tiny/model", "context_window" => 32}
+        %{"context_window" => 8, "model" => "tiny/model"},
+        %{"context_window" => 32, "model" => "tiny/model"}
       ])
       |> Map.put("dispatchers", [%{"id" => "dispatcher.good", "models" => ["tiny/model"]}])
       |> Map.put("route_root", "missing.selector")
@@ -980,18 +969,16 @@ defmodule Wardwright.PublicApiTest do
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "broken-child",
-          "target_kind" => "wardwright_model",
-          "context_window" => 4_096,
           "artifact" => %{
+            "dispatchers" => [%{"id" => "other-route", "models" => ["local/final"]}],
             "model_id" => "broken-child",
-            "version" => "unit-version",
-            "targets" => [
-              %{"model" => "local/final", "context_window" => 4_096}
-            ],
             "route_root" => "missing-route",
-            "dispatchers" => [%{"id" => "other-route", "models" => ["local/final"]}]
-          }
+            "targets" => [%{"context_window" => 4_096, "model" => "local/final"}],
+            "version" => "unit-version"
+          },
+          "context_window" => 4_096,
+          "model" => "broken-child",
+          "target_kind" => "wardwright_model"
         }
       ])
       |> Map.put("route_root", "outer-route")
@@ -1015,18 +1002,16 @@ defmodule Wardwright.PublicApiTest do
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "child-router",
-          "target_kind" => "wardwright_model",
-          "context_window" => 4_096,
           "artifact" => %{
+            "dispatchers" => [%{"id" => "child-route", "models" => ["local/final"]}],
             "model_id" => "child-router",
-            "version" => "unit-version",
-            "targets" => [
-              %{"model" => "local/final", "context_window" => 4_096}
-            ],
             "route_root" => "child-route",
-            "dispatchers" => [%{"id" => "child-route", "models" => ["local/final"]}]
-          }
+            "targets" => [%{"context_window" => 4_096, "model" => "local/final"}],
+            "version" => "unit-version"
+          },
+          "context_window" => 4_096,
+          "model" => "child-router",
+          "target_kind" => "wardwright_model"
         }
       ])
       |> Map.put("route_root", "outer-route")
@@ -1035,16 +1020,16 @@ defmodule Wardwright.PublicApiTest do
       ])
       |> Map.put("governance", [
         %{
+          "action" => "switch_model",
           "id" => "force-child-provider",
           "kind" => "route_gate",
-          "action" => "switch_model",
           "target_model" => "local/final"
         },
         %{
-          "id" => "allow-child-provider-prefix",
-          "kind" => "route_gate",
           "action" => "restrict_routes",
-          "allowed_targets" => ["local"]
+          "allowed_targets" => ["local"],
+          "id" => "allow-child-provider-prefix",
+          "kind" => "route_gate"
         }
       ])
 
@@ -1062,9 +1047,9 @@ defmodule Wardwright.PublicApiTest do
 
   test "chat completion records caller headers and selected model" do
     request = %{
-      model: "wardwright/coding-balanced",
-      messages: [%{role: "user", content: "hello"}],
-      metadata: %{consuming_agent_id: "body-agent"}
+      messages: [%{content: "hello", role: "user"}],
+      metadata: %{consuming_agent_id: "body-agent"},
+      model: "wardwright/coding-balanced"
     }
 
     conn =
@@ -1078,16 +1063,16 @@ defmodule Wardwright.PublicApiTest do
     receipt = Wardwright.ReceiptStore.get(receipt_id)
 
     assert get_in(receipt, ["caller", "consuming_agent_id"]) == %{
-             "value" => "header-agent",
-             "source" => "header"
+             "source" => "header",
+             "value" => "header-agent"
            }
   end
 
   test "simulation can select the managed model for large prompts" do
     request = %{
       request: %{
-        model: "coding-balanced",
-        messages: [%{role: "user", content: String.duplicate("x", 140_000)}]
+        messages: [%{content: String.duplicate("x", 140_000), role: "user"}],
+        model: "coding-balanced"
       }
     }
 
@@ -1110,12 +1095,12 @@ defmodule Wardwright.PublicApiTest do
       {"trace",
        [
          %{
+           "detail" => "scenario fixture",
            "id" => "#{id}-trace",
-           "phase" => "response.streaming",
-           "node_id" => "tts.no-old-client",
            "kind" => "match",
            "label" => "persisted trace",
-           "detail" => "scenario fixture",
+           "node_id" => "tts.no-old-client",
+           "phase" => "response.streaming",
            "severity" => "pass",
            "state_id" => "guarding"
          }
