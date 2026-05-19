@@ -159,7 +159,7 @@ The experimental in-page authoring assistant is intentionally disabled unless
 configured. Service installs should put its settings in
 `/opt/homebrew/etc/wardwright/authoring_agent.env` on Apple Silicon Homebrew,
 `/usr/local/etc/wardwright/authoring_agent.env` on Intel Homebrew, or
-`~/.wardwright/authoring_agent.env` for user-local runs. Use
+`~/.config/wardwright/authoring_agent.env` for user-local runs. Use
 `WARDWRIGHT_AUTHORING_AGENT_CONFIG_FILE` to point at a different file. This
 keeps `brew services` and `wardwright admin` launches from silently losing the
 local model/provider selection that was only present in one shell session.
@@ -171,8 +171,8 @@ operator surfaces such as `/policies`, `/mcp`, `/admin/*`, receipts, and
 policy-authoring and simulation APIs. OpenAI-compatible model endpoints remain
 governed by model access configuration. Generated model API keys and the active
 model definition are stored in the SQLite database at
-`~/.wardwright/wardwright.sqlite3` unless `WARDWRIGHT_SQLITE_STORE` points
-somewhere else. Keep
+`~/.local/share/wardwright/wardwright.sqlite3` unless `XDG_DATA_HOME` or
+`WARDWRIGHT_SQLITE_STORE` points somewhere else. Keep
 `WARDWRIGHT_SECRET_KEY_BASE` stable, or set
 `WARDWRIGHT_MODEL_API_KEY_HASH_SECRET` explicitly, so stored keys remain
 verifiable across restarts. To encrypt the store, set `WARDWRIGHT_SQLITE_KEY` or

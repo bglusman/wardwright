@@ -356,7 +356,7 @@ defmodule Wardwright.SQLiteStore do
   end
 
   defp default_store_path do
-    Path.join(System.user_home!(), ".wardwright/wardwright.sqlite3")
+    Wardwright.Paths.data_path("wardwright.sqlite3")
   end
 
   defp secure_store_files(path) when is_binary(path) do

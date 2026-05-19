@@ -488,7 +488,7 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
   end
 
   defp default_workspace_dir do
-    Path.join(System.user_home!(), ".wardwright/dune-snippets")
+    Wardwright.Paths.config_path("dune-snippets")
   end
 
   defp evaluate_snippet(snippet, input, params, opts) do

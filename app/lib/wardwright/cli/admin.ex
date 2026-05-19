@@ -192,7 +192,7 @@ defmodule Wardwright.CLI.Admin do
   end
 
   defp local_secret_key_base do
-    path = Path.join([System.user_home!(), ".wardwright", "secret_key_base"])
+    path = Wardwright.Paths.config_path("secret_key_base")
 
     case read_secret(path) do
       nil ->

@@ -111,7 +111,7 @@ WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000
 
 For packaged or service installs, put the same settings in a local env file
 instead of relying on the shell that happened to launch the server. Wardwright
-checks `~/.wardwright/authoring_agent.env`,
+checks `~/.config/wardwright/authoring_agent.env`,
 `/opt/homebrew/etc/wardwright/authoring_agent.env`, and
 `/usr/local/etc/wardwright/authoring_agent.env`; set
 `WARDWRIGHT_AUTHORING_AGENT_CONFIG_FILE` to override that path.
