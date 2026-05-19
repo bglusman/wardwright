@@ -165,7 +165,7 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
 
     assert :wardwright@lustre_workbench_test_support.advancing_playback_highlights_state(
              "tts-retry",
-             "guarding"
+             "recording"
            )
   end
 
@@ -202,12 +202,66 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
     assert elem(simulation, 2) =~ "system/wardwright_policy_reminder: Include a small ASCII cow"
     assert elem(simulation, 4) == true
 
-    assert Enum.any?(elem(simulation, 7), fn {_phase, label, detail, _severity} ->
+    assert Enum.any?(elem(simulation, 7), fn {_phase, label, detail, _severity, _state_id} ->
              label == "request transform applied" and
                detail =~ "Include a small ASCII cow"
            end)
 
-    assert elem(simulation, 8) == "cow-transform-workbench"
+    assert elem(simulation, 9) == "cow-transform-workbench"
+  end
+
+  test "selected retry-capable model exposes retry responses in Lustre" do
+    put_retry_model_config()
+
+    assert WardwrightWeb.LustreWorkbenchData.retry_response_slots("retry-workbench") == 2
+
+    simulation =
+      WardwrightWeb.LustreWorkbenchData.run_simulation(
+        "tts-retry",
+        "retry-workbench",
+        "Migrate the old client.",
+        "Use OldClient(arg) in the migration.",
+        [{2, "Still use OldClient(arg)."}, {3, "Use NewClient(arg) in the migration."}]
+      )
+
+    assert elem(simulation, 3) == "Use NewClient(arg) in the migration."
+
+    assert :wardwright@lustre_workbench_test_support.selecting_model_exposes_retry_outputs(
+             "retry-workbench",
+             "Retry output 3"
+           )
+
+    assert :wardwright@lustre_workbench_test_support.editing_retry_output_updates_simulation(
+             "retry-workbench",
+             "Use OldClient(arg) in the migration.",
+             "Use NewClient(arg) in the migration.",
+             "Use NewClient(arg) in the migration."
+           )
+  end
+
+  test "Lustre state graph keeps possible paths while replay follows edited model output" do
+    put_retry_model_config()
+
+    assert :wardwright@lustre_workbench_test_support.editing_response_advances_path_to(
+             "tts-retry",
+             "retry-workbench",
+             "Use NewClient(arg) in the migration.",
+             "recording"
+           )
+
+    assert :wardwright@lustre_workbench_test_support.editing_response_advances_path_to(
+             "tts-retry",
+             "retry-workbench",
+             "Use OldClient(arg) in the migration.",
+             "guarding"
+           )
+
+    assert :wardwright@lustre_workbench_test_support.editing_response_keeps_possible_transition(
+             "tts-retry",
+             "retry-workbench",
+             "Use NewClient(arg) in the migration.",
+             "stream.match / abort_attempt / tts.no-old-client"
+           )
   end
 
   test "Gleam component starts as a real Lustre server component" do
@@ -237,6 +291,27 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
       |> Map.put("targets", [%{"context_window" => 8192, "model" => "ollama/gemma4:e4b"}])
       |> Map.put("dispatchers", [%{"id" => "dispatcher.cow", "models" => ["ollama/gemma4:e4b"]}])
       |> Map.put("route_root", "dispatcher.cow")
+
+    {:ok, _config} = Wardwright.put_model_config(config)
+  end
+
+  defp put_retry_model_config do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "retry-workbench")
+      |> Map.put("version", "retry-workbench-test")
+      |> Map.put("stream_rules", [
+        %{
+          "action" => "retry_with_reminder",
+          "id" => "retry-old-client",
+          "max_retries" => 2,
+          "regex" => "OldClient\\(",
+          "reminder" => "Use NewClient instead of OldClient."
+        }
+      ])
+      |> Map.put("targets", [%{"context_window" => 8192, "model" => "ollama/gemma4:e4b"}])
+      |> Map.put("dispatchers", [%{"id" => "dispatcher.retry", "models" => ["ollama/gemma4:e4b"]}])
+      |> Map.put("route_root", "dispatcher.retry")
 
     {:ok, _config} = Wardwright.put_model_config(config)
   end

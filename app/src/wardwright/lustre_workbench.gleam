@@ -27,7 +27,10 @@ pub type PolicyAction =
   #(String, String, String)
 
 pub type TraceEvent =
-  #(String, String, String, String)
+  #(String, String, String, String, String)
+
+pub type RetryResponse =
+  #(Int, String)
 
 pub type StateReplayStep =
   #(String, String, String, String, String, Bool)
@@ -68,6 +71,7 @@ pub type Model {
     model_id: String,
     user_input: String,
     model_response: String,
+    retry_responses: List(RetryResponse),
     step: Int,
     simulation: Simulation,
   )
@@ -78,6 +82,7 @@ pub type Msg {
   ModelChanged(String)
   UserInputChanged(String)
   ModelResponseChanged(String)
+  RetryResponseChanged(Int, String)
   RunSimulation
   SubmitSimulation(List(#(String, String)))
   StepBack
@@ -103,12 +108,16 @@ fn external_default_user_input(model_id: String) -> String
 @external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "default_model_response")
 fn external_default_model_response(model_id: String) -> String
 
+@external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "retry_response_slots")
+fn external_retry_response_slots(model_id: String) -> Int
+
 @external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "run_simulation")
 fn external_run_simulation(
   pattern_id: String,
   model_id: String,
   user_input: String,
   model_response: String,
+  retry_responses: List(RetryResponse),
 ) -> #(
   String,
   String,
@@ -118,6 +127,7 @@ fn external_run_simulation(
   Bool,
   List(PolicyAction),
   List(TraceEvent),
+  List(String),
   String,
   String,
 )
@@ -131,14 +141,22 @@ pub fn init(_flags: Nil) -> Model {
   let model_id = external_default_model_id()
   let user_input = external_default_user_input(model_id)
   let model_response = external_default_model_response(model_id)
+  let retry_responses = empty_retry_responses(model_id)
 
   Model(
     pattern_id:,
     model_id:,
     user_input:,
     model_response:,
+    retry_responses:,
     step: 0,
-    simulation: run_simulation(pattern_id, model_id, user_input, model_response),
+    simulation: run_simulation(
+      pattern_id,
+      model_id,
+      user_input,
+      model_response,
+      retry_responses,
+    ),
   )
 }
 
@@ -150,6 +168,7 @@ pub fn update(model: Model, msg: Msg) -> Model {
     ModelChanged(model_id) -> {
       let user_input = external_default_user_input(model_id)
       let model_response = external_default_model_response(model_id)
+      let retry_responses = empty_retry_responses(model_id)
 
       run_model(
         Model(
@@ -157,14 +176,30 @@ pub fn update(model: Model, msg: Msg) -> Model {
           model_id: model_id,
           user_input: user_input,
           model_response: model_response,
+          retry_responses: retry_responses,
           step: 0,
         ),
       )
     }
 
-    UserInputChanged(user_input) -> Model(..model, user_input: user_input)
+    UserInputChanged(user_input) ->
+      Model(..model, user_input: user_input)
+      |> reset_and_run_model
+
     ModelResponseChanged(model_response) ->
       Model(..model, model_response: model_response)
+      |> reset_and_run_model
+
+    RetryResponseChanged(index, model_response) ->
+      Model(
+        ..model,
+        retry_responses: update_retry_response(
+          model.retry_responses,
+          index,
+          model_response,
+        ),
+      )
+      |> reset_and_run_model
 
     RunSimulation | SubmitSimulation(_) -> run_model(Model(..model, step: 0))
 
@@ -176,12 +211,14 @@ pub fn update(model: Model, msg: Msg) -> Model {
     ResetTurn -> {
       let user_input = external_default_user_input(model.model_id)
       let model_response = external_default_model_response(model.model_id)
+      let retry_responses = empty_retry_responses(model.model_id)
 
       run_model(
         Model(
           ..model,
           user_input: user_input,
           model_response: model_response,
+          retry_responses: retry_responses,
           step: 0,
         ),
       )
@@ -197,8 +234,13 @@ fn run_model(model: Model) -> Model {
       model.model_id,
       model.user_input,
       model.model_response,
+      model.retry_responses,
     ),
   )
+}
+
+fn reset_and_run_model(model: Model) -> Model {
+  run_model(Model(..model, step: 0))
 }
 
 fn run_simulation(
@@ -206,6 +248,7 @@ fn run_simulation(
   model_id: String,
   user_input: String,
   model_response: String,
+  retry_responses: List(RetryResponse),
 ) -> Simulation {
   let #(
     selected_model,
@@ -216,9 +259,17 @@ fn run_simulation(
     output_changed,
     policy_actions,
     trace_events,
+    state_events,
     config_model_id,
     config_version,
-  ) = external_run_simulation(pattern_id, model_id, user_input, model_response)
+  ) =
+    external_run_simulation(
+      pattern_id,
+      model_id,
+      user_input,
+      model_response,
+      retry_responses,
+    )
   let #(pattern_title, pattern_promise) = selected_pattern(pattern_id)
   let #(
     engine_id,
@@ -246,6 +297,7 @@ fn run_simulation(
       state_initial,
       state_default_projection,
       state_transitions,
+      state_events,
     ),
   )
 }
@@ -254,6 +306,7 @@ fn replay_state_machine(
   initial_state: String,
   default_projection: Bool,
   transitions: List(projection_core.StateTransition),
+  events: List(String),
 ) -> StateReplay {
   case default_projection, transitions {
     True, [] ->
@@ -267,12 +320,6 @@ fn replay_state_machine(
         steps: [],
       )
     _, _ -> {
-      let events =
-        transitions
-        |> list.map(fn(transition) {
-          let #(_, event, _, _, _) = transition
-          event
-        })
       let #(status, final_state, steps) =
         state_machine_core.simulate(initial_state, transitions, events)
 
@@ -474,7 +521,29 @@ fn simulator_form(model: Model) -> Element(Msg) {
         ModelResponseChanged,
       ),
     ]),
+    retry_response_fields(model),
   ])
+}
+
+fn retry_response_fields(model: Model) -> Element(Msg) {
+  case model.retry_responses {
+    [] -> html.div([], [])
+    responses ->
+      html.div([class("retry-grid")], list.map(responses, retry_response_field))
+  }
+}
+
+fn retry_response_field(response: RetryResponse) -> Element(Msg) {
+  let #(index, content) = response
+  let attempt = int.to_string(index)
+
+  text_area(
+    "Retry output " <> attempt,
+    "retry_response_" <> attempt,
+    content,
+    "Optional provider response for attempt " <> attempt,
+    fn(value) { RetryResponseChanged(index, value) },
+  )
 }
 
 fn text_area(
@@ -488,6 +557,7 @@ fn text_area(
     html.span([], [text(label)]),
     html.textarea(
       [
+        id(field_name),
         name(field_name),
         rows(6),
         placeholder(hint),
@@ -496,6 +566,33 @@ fn text_area(
       content,
     ),
   ])
+}
+
+fn empty_retry_responses(model_id: String) -> List(RetryResponse) {
+  retry_response_range(2, external_retry_response_slots(model_id) + 1)
+}
+
+fn retry_response_range(index: Int, final_index: Int) -> List(RetryResponse) {
+  case index > final_index {
+    True -> []
+    False -> [#(index, ""), ..retry_response_range(index + 1, final_index)]
+  }
+}
+
+fn update_retry_response(
+  responses: List(RetryResponse),
+  index: Int,
+  model_response: String,
+) -> List(RetryResponse) {
+  responses
+  |> list.map(fn(response) {
+    let #(response_index, existing_response) = response
+
+    case response_index == index {
+      True -> #(response_index, model_response)
+      False -> #(response_index, existing_response)
+    }
+  })
 }
 
 fn results_grid(model: Model) -> Element(Msg) {
@@ -539,10 +636,7 @@ fn results_grid(model: Model) -> Element(Msg) {
       ]),
     ]),
     policy_action_table(simulation.policy_actions),
-    state_machine_graph(
-      simulation.state_replay,
-      active_state_at(simulation.state_replay, model.step),
-    ),
+    state_machine_graph(model),
     state_machine_table(simulation.state_replay),
   ])
 }
@@ -582,25 +676,38 @@ fn action_rows(actions: List(PolicyAction)) -> List(Element(Msg)) {
   }
 }
 
-fn state_machine_graph(
-  replay: StateReplay,
-  active_state: String,
-) -> Element(Msg) {
+fn state_machine_graph(model: Model) -> Element(Msg) {
+  let simulation = model.simulation
+  let replay = simulation.state_replay
+  let active_state = active_state_at(replay, model.step)
+
   html.article([class("panel state-graph")], [
     html.div([class("panel-heading")], [
-      html.span([], [text("State machine")]),
-      badge.badge([badge.variant(badge.Outline)], [
-        text(blank_default(replay.status, "unknown")),
+      html.div([class("status-stack")], [
+        html.span([], [text("State machine")]),
+        badge.badge([badge.variant(badge.Outline)], [
+          text(blank_default(replay.status, "unknown")),
+        ]),
+        badge.badge([badge.variant(badge.Secondary)], [
+          text(step_label(model)),
+        ]),
+        badge.badge([badge.variant(badge.Outline)], [
+          text(path_label(replay)),
+        ]),
       ]),
+      playback_actions(model),
     ]),
     element(
       "wardwright-state-graph",
       [
         class("state-cytoscape"),
-        attribute("data-states", state_graph_states_json(replay, active_state)),
+        attribute(
+          "data-states",
+          state_graph_states_json(replay, active_state, model.step),
+        ),
         attribute(
           "data-transitions",
-          state_graph_transitions_json(replay.transitions),
+          state_graph_transitions_json(replay, model.step),
         ),
         attribute("data-active-state", active_state),
         attribute("data-final-state", replay.final_state),
@@ -620,7 +727,10 @@ fn state_machine_graph(
 fn state_graph_states_json(
   replay: StateReplay,
   active_state: String,
+  step: Int,
 ) -> String {
+  let visited_states = visited_state_ids(replay, step)
+
   replay.state_ids
   |> json.array(fn(state) {
     json.object([
@@ -628,15 +738,17 @@ fn state_graph_states_json(
       #("label", json.string(state_label(state))),
       #("active", json.bool(state == active_state)),
       #("terminal", json.bool(state == replay.final_state)),
+      #("visited", json.bool(list.contains(visited_states, state))),
     ])
   })
   |> json.to_string
 }
 
-fn state_graph_transitions_json(
-  transitions: List(projection_core.StateTransition),
-) -> String {
-  transitions
+fn state_graph_transitions_json(replay: StateReplay, step: Int) -> String {
+  let path_steps = path_steps_at(replay.steps, step)
+  let current_step = current_path_step(replay, step)
+
+  replay.transitions
   |> list.index_map(fn(transition, index) {
     let #(from, event, to, action_name, node_id) = transition
 
@@ -648,6 +760,11 @@ fn state_graph_transitions_json(
       #("action", json.string(blank_default(action_name, "pass"))),
       #("node", json.string(blank_default(node_id, "node"))),
       #("short_label", json.string(short_edge_label(event, action_name))),
+      #("path", json.bool(transition_in_steps(transition, path_steps))),
+      #(
+        "current",
+        json.bool(transition_matches_current(transition, current_step)),
+      ),
       #(
         "detail",
         json.string(
@@ -662,6 +779,103 @@ fn state_graph_transitions_json(
   })
   |> json.array(fn(transition) { transition })
   |> json.to_string
+}
+
+fn path_label(replay: StateReplay) -> String {
+  case replay.steps {
+    [] -> "Path: none"
+    _ -> "Path: " <> replay.initial_state <> " -> " <> replay.final_state
+  }
+}
+
+fn visited_state_ids(replay: StateReplay, step: Int) -> List(String) {
+  path_steps_at(replay.steps, step)
+  |> collect_visited_state_ids([replay.initial_state])
+  |> list.reverse
+}
+
+fn collect_visited_state_ids(
+  steps: List(StateReplayStep),
+  states: List(String),
+) -> List(String) {
+  case steps {
+    [] -> states
+    [step, ..rest] -> {
+      let #(_, _, to, _, _, matched) = step
+
+      case matched {
+        True -> collect_visited_state_ids(rest, add_unique(states, to))
+        False -> collect_visited_state_ids(rest, states)
+      }
+    }
+  }
+}
+
+fn path_steps_at(
+  steps: List(StateReplayStep),
+  step_count: Int,
+) -> List(StateReplayStep) {
+  case step_count <= 0 {
+    True -> []
+    False ->
+      case steps {
+        [] -> []
+        [step, ..rest] -> [step, ..path_steps_at(rest, step_count - 1)]
+      }
+  }
+}
+
+fn current_path_step(
+  replay: StateReplay,
+  step: Int,
+) -> Result(StateReplayStep, Nil) {
+  case step <= 0 {
+    True -> Error(Nil)
+    False ->
+      case replay.steps |> list.drop(step - 1) |> list.first {
+        Ok(step_row) -> Ok(step_row)
+        Error(_) -> Error(Nil)
+      }
+  }
+}
+
+fn transition_in_steps(
+  transition: projection_core.StateTransition,
+  steps: List(StateReplayStep),
+) -> Bool {
+  case steps {
+    [] -> False
+    [step, ..rest] ->
+      case transition_matches_step(transition, step) {
+        True -> True
+        False -> transition_in_steps(transition, rest)
+      }
+  }
+}
+
+fn transition_matches_current(
+  transition: projection_core.StateTransition,
+  current_step: Result(StateReplayStep, Nil),
+) -> Bool {
+  case current_step {
+    Ok(step) -> transition_matches_step(transition, step)
+    Error(_) -> False
+  }
+}
+
+fn transition_matches_step(
+  transition: projection_core.StateTransition,
+  step: StateReplayStep,
+) -> Bool {
+  let #(from, event, to, action_name, node_id) = transition
+  let #(step_from, step_event, step_to, step_action, step_node, matched) = step
+
+  matched
+  && from == step_from
+  && event == step_event
+  && to == step_to
+  && action_name == step_action
+  && node_id == step_node
 }
 
 fn short_edge_label(event: String, action_name: String) -> String {
@@ -768,43 +982,16 @@ fn state_rows(transitions: List(StateReplayStep)) -> List(Element(Msg)) {
 
 fn trace_panel(model: Model) -> Element(Msg) {
   let simulation = model.simulation
-  let playback_count = max_step(simulation) + 1
-  let #(phase, label, detail, severity) =
+  let #(phase, label, detail, severity, _state_id) =
     active_trace_event(simulation, model.step)
 
   html.section([class("trace-panel")], [
     html.div([class("trace-header")], [
       html.div([], [
         html.strong([], [text("Trace playback")]),
-        html.span([], [
-          text(
-            "Step "
-            <> int.to_string(model.step + 1)
-            <> " of "
-            <> int.to_string(int.max(playback_count, 1)),
-          ),
-        ]),
+        html.span([], [text(step_label(model))]),
       ]),
-      html.div([class("actions")], [
-        button.button(
-          [
-            button.variant(button.Outline),
-            type_("button"),
-            disabled(model.step == 0),
-            event.on_click(StepBack),
-          ],
-          [text("Back")],
-        ),
-        button.button(
-          [
-            button.variant(button.Default),
-            type_("button"),
-            disabled(model.step >= max_step(simulation)),
-            event.on_click(StepForward),
-          ],
-          [text("Next step")],
-        ),
-      ]),
+      playback_actions(model),
     ]),
     html.article([class("active-event " <> severity_class(severity))], [
       badge.badge([badge.variant(badge.Outline)], [
@@ -821,10 +1008,42 @@ fn trace_panel(model: Model) -> Element(Msg) {
   ])
 }
 
+fn playback_actions(model: Model) -> Element(Msg) {
+  html.div([class("actions")], [
+    button.button(
+      [
+        button.variant(button.Outline),
+        type_("button"),
+        disabled(model.step == 0),
+        event.on_click(StepBack),
+      ],
+      [text("Back")],
+    ),
+    button.button(
+      [
+        button.variant(button.Default),
+        type_("button"),
+        disabled(model.step >= max_step(model.simulation)),
+        event.on_click(StepForward),
+      ],
+      [text("Next step")],
+    ),
+  ])
+}
+
+fn step_label(model: Model) -> String {
+  let playback_count = max_step(model.simulation) + 1
+
+  "Step "
+  <> int.to_string(model.step + 1)
+  <> " of "
+  <> int.to_string(int.max(playback_count, 1))
+}
+
 fn active_trace_event(simulation: Simulation, step: Int) -> TraceEvent {
   case simulation.trace_events |> list.drop(step) |> list.first {
     Ok(event) -> event
-    Error(_) -> #("", "No trace event", "", "pass")
+    Error(_) -> #("", "No trace event", "", "pass", "")
   }
 }
 

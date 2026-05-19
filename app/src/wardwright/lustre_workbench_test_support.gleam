@@ -58,6 +58,59 @@ pub fn editing_then_submitting_runs_simulation(
   |> view_contains(expected_text)
 }
 
+pub fn selecting_model_exposes_retry_outputs(
+  model_id: String,
+  expected_text: String,
+) -> Bool {
+  start()
+  |> change_select("model_id", model_id)
+  |> view_contains(expected_text)
+}
+
+pub fn editing_retry_output_updates_simulation(
+  model_id: String,
+  first_response: String,
+  retry_response: String,
+  expected_text: String,
+) -> Bool {
+  start()
+  |> change_select("model_id", model_id)
+  |> simulate.input(on: by_id("model_response"), value: first_response)
+  |> simulate.input(on: by_id("retry_response_2"), value: retry_response)
+  |> simulate.submit(on: query.element(matching: query.tag("form")), fields: [
+    #("model_response", first_response),
+    #("retry_response_2", retry_response),
+  ])
+  |> view_contains(expected_text)
+}
+
+pub fn editing_response_advances_path_to(
+  pattern_id: String,
+  model_id: String,
+  model_response: String,
+  expected_state: String,
+) -> Bool {
+  start()
+  |> change_select("pattern_id", pattern_id)
+  |> change_select("model_id", model_id)
+  |> simulate.input(on: by_id("model_response"), value: model_response)
+  |> simulate.click(on: query.element(matching: query.text("Next step")))
+  |> view_has_active_state(expected_state)
+}
+
+pub fn editing_response_keeps_possible_transition(
+  pattern_id: String,
+  model_id: String,
+  model_response: String,
+  expected_transition: String,
+) -> Bool {
+  start()
+  |> change_select("pattern_id", pattern_id)
+  |> change_select("model_id", model_id)
+  |> simulate.input(on: by_id("model_response"), value: model_response)
+  |> view_contains(expected_transition)
+}
+
 fn start() {
   simulate.simple(
     init: lustre_workbench.init,

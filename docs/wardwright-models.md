@@ -49,6 +49,7 @@ A minimal Wardwright model can point directly at one provider target.
 
 ```json
 {
+  "model_definition_version": 1,
   "model_id": "local-helper",
   "version": "2026-05-18",
   "targets": [
@@ -61,6 +62,12 @@ A minimal Wardwright model can point directly at one provider target.
 }
 ```
 
+`model_definition_version` is the schema version for the model definition
+itself, not the operator-facing model `version`. Version `1` is the current
+definition shape. Older unversioned definitions load as version 1, so additive
+fields stay backward compatible while future renames or removals can get an
+explicit migration path.
+
 The selector field names are still transitional. Conceptually, this is just a
 context-fit route node with one provider candidate.
 
@@ -70,6 +77,7 @@ A target can delegate to another Wardwright model artifact:
 
 ```json
 {
+  "model_definition_version": 1,
   "model_id": "coding-balanced",
   "version": "2026-05-18",
   "targets": [
@@ -78,6 +86,7 @@ A target can delegate to another Wardwright model artifact:
       "target_kind": "wardwright_model",
       "context_window": 32768,
       "artifact": {
+        "model_definition_version": 1,
         "model_id": "private-local-gate",
         "version": "2026-05-18",
         "targets": [

@@ -205,7 +205,10 @@ defmodule Wardwright.PolicyProjection do
     [
       %{
         "description" => "An account identifier is rewritten, then a related token forces review.",
-        "history_context" => %{"policy_state" => "observing", "recent_related_secret_matches" => "0"},
+        "history_context" => %{
+          "policy_state" => "observing",
+          "recent_related_secret_matches" => "0"
+        },
         "id" => "rewrite-then-secret",
         "model_response" => "account acct_4938 appears in the answer\ntoken_live_4938 follows in the held horizon",
         "title" => "Stream: rewrite then transition",
@@ -214,7 +217,10 @@ defmodule Wardwright.PolicyProjection do
       %{
         "description" =>
           "Private request context is withheld from the provider, then an account identifier is redacted before release.",
-        "history_context" => %{"policy_state" => "observing", "recent_related_secret_matches" => "0"},
+        "history_context" => %{
+          "policy_state" => "observing",
+          "recent_related_secret_matches" => "0"
+        },
         "id" => "input-and-output-rewrite",
         "model_response" => "The billing incident for account acct_4938 can be summarized without the private email.",
         "title" => "Stream: input and output rewrite",
@@ -222,7 +228,10 @@ defmodule Wardwright.PolicyProjection do
       },
       %{
         "description" => "The account identifier is redacted and the rewritten stream is released.",
-        "history_context" => %{"policy_state" => "observing", "recent_related_secret_matches" => "0"},
+        "history_context" => %{
+          "policy_state" => "observing",
+          "recent_related_secret_matches" => "0"
+        },
         "id" => "rewrite-only",
         "model_response" => "account acct_4938 appears in the answer\nno related secret follows",
         "title" => "Stream: rewrite only",
@@ -256,7 +265,10 @@ defmodule Wardwright.PolicyProjection do
       },
       %{
         "description" => "No configured regex matches the held chunks.",
-        "history_context" => %{"policy_state" => "observing", "recent_related_secret_matches" => "0"},
+        "history_context" => %{
+          "policy_state" => "observing",
+          "recent_related_secret_matches" => "0"
+        },
         "id" => "no-match",
         "model_response" => "ordinary response text\nwith no account ids or secret tokens",
         "title" => "Stream: no regex match",
@@ -442,7 +454,16 @@ defmodule Wardwright.PolicyProjection do
   end
 
   def simulate_model_turn(user_input, model_response, config \\ Wardwright.current_config()) do
-    turn = simulation_turn(user_input, model_response, %{}, [])
+    simulate_model_turn_with_attempts(user_input, model_response, [], config)
+  end
+
+  def simulate_model_turn_with_attempts(
+        user_input,
+        model_response,
+        response_attempts,
+        config \\ Wardwright.current_config()
+      ) do
+    turn = simulation_turn(user_input, model_response, %{}, response_attempts)
 
     request =
       turn_user_input(turn)
@@ -452,15 +473,17 @@ defmodule Wardwright.PolicyProjection do
     {policy_request, request_policy} = Plan.evaluate_request(request, %{}, config)
     model_policy_input = model_turn_request_text(policy_request)
     decision = model_turn_route_decision(policy_request, request_policy, config)
-    stream_policy = model_turn_stream_policy(turn_response(turn), config)
+    stream_run = model_turn_stream_run(turn, config)
+    stream_policy = stream_run.policy
 
     model_received_input = model_policy_input
     request_rewrites = model_turn_policy_rewrites(request_policy)
     request_events = model_turn_policy_events(request_policy)
 
-    {user_received_output, response_rewrites, response_events} =
-      model_turn_stream_output(turn_response(turn), stream_policy)
+    {user_received_output, response_rewrites, _final_response_events} =
+      model_turn_stream_output(stream_policy)
 
+    response_events = stream_run.events
     rewrites = request_rewrites ++ response_rewrites
 
     coverage_events = model_turn_coverage_gap_events(config)
@@ -505,7 +528,7 @@ defmodule Wardwright.PolicyProjection do
           },
           {
             @stream_key,
-            model_turn_stream_preview(user_received_output, response_rewrites, stream_policy)
+            model_turn_stream_preview(user_received_output, response_rewrites, stream_run)
           }
         ])
       },
@@ -580,7 +603,12 @@ defmodule Wardwright.PolicyProjection do
         "can_explain_trace" => true,
         "can_generate_scenarios" => true,
         "can_static_analyze" => language != "opaque",
-        "phases" => ["tool.planning", "tool.result_interpreting", "tool.loop_governing", "receipt.finalized"]
+        "phases" => [
+          "tool.planning",
+          "tool.result_interpreting",
+          "tool.loop_governing",
+          "receipt.finalized"
+        ]
       },
       "display_name" => "Tool context plan",
       "engine_id" => "tool-context-plan",
@@ -987,6 +1015,14 @@ defmodule Wardwright.PolicyProjection do
       summary: "Explicit retry loop projection for stream guard, abort, retry, and receipt recording.",
       transitions: [
         transition(
+          "stream.release",
+          "observing",
+          "recording",
+          "no prohibited span appears before release",
+          "release_stream",
+          "tts.receipt-events"
+        ),
+        transition(
           "stream.match",
           "observing",
           "guarding",
@@ -1001,6 +1037,22 @@ defmodule Wardwright.PolicyProjection do
           "retry budget remains",
           "retry_with_reminder",
           "tts.retry-arbiter"
+        ),
+        transition(
+          "stream.match",
+          "retrying",
+          "guarding",
+          "retry attempt still matches a prohibited span",
+          "abort_attempt",
+          "tts.no-old-client"
+        ),
+        transition(
+          "retry.release",
+          "retrying",
+          "retrying",
+          "retry attempt passes the stream guard",
+          "release_stream",
+          "tts.no-old-client"
         ),
         transition(
           "receipt.write",
@@ -1064,6 +1116,22 @@ defmodule Wardwright.PolicyProjection do
         "Explicit projection for related stream regex matches, rewrite, state transition, and receipt recording.",
       transitions: [
         transition(
+          "stream.release",
+          "observing",
+          "recording",
+          "no configured regex matches the current turn",
+          "release_stream",
+          "stream.rewrite-receipt"
+        ),
+        transition(
+          "history.related-secret",
+          "observing",
+          "review_required",
+          "session history crosses the related secret threshold",
+          "state_transition",
+          "stream.secret-transition"
+        ),
+        transition(
           "request.rewrite",
           "observing",
           "observing",
@@ -1078,6 +1146,14 @@ defmodule Wardwright.PolicyProjection do
           "account-like regex match is safe to rewrite",
           "rewrite_span",
           "stream.redact-account"
+        ),
+        transition(
+          "rewrite.release",
+          "rewriting",
+          "recording",
+          "rewritten stream closes without a related secret match",
+          "release_stream",
+          "stream.rewrite-receipt"
         ),
         transition(
           "regex.related-secret",
@@ -1999,7 +2075,12 @@ defmodule Wardwright.PolicyProjection do
             "expected_behavior" => "The parsed JSON satisfies one accepted branch of the Wardwright model contract.",
             "input_summary" => summarize_turn(turn),
             "receipt_preview" => %{
-              "events" => [%{"rule_id" => "structured-output-repair-gate", "type" => "structured_output.accepted"}],
+              "events" => [
+                %{
+                  "rule_id" => "structured-output-repair-gate",
+                  "type" => "structured_output.accepted"
+                }
+              ],
               "final_status" => "completed",
               "input" => turn
             },
@@ -2056,7 +2137,12 @@ defmodule Wardwright.PolicyProjection do
       "expected_behavior" => expected_behavior,
       "input_summary" => summarize_turn(turn),
       "receipt_preview" => %{
-        "events" => [%{"rule_id" => "structured-output-repair-gate", "type" => "structured_output.retry_requested"}],
+        "events" => [
+          %{
+            "rule_id" => "structured-output-repair-gate",
+            "type" => "structured_output.retry_requested"
+          }
+        ],
         "final_status" => "retry_requested",
         "input" => turn
       },
@@ -2248,7 +2334,13 @@ defmodule Wardwright.PolicyProjection do
             "stream" => %{
               "history" => stream_history_receipt(turn, related_secret_history_count),
               "released_to_consumer" => false,
-              "rewrites" => [%{"match" => account, "replacement" => "[account-id]", "rule_id" => "account-redactor"}],
+              "rewrites" => [
+                %{
+                  "match" => account,
+                  "replacement" => "[account-id]",
+                  "rule_id" => "account-redactor"
+                }
+              ],
               "state_transition" => "review_required"
             }
           },
@@ -2325,7 +2417,13 @@ defmodule Wardwright.PolicyProjection do
             "input" => input_preview,
             "stream" => %{
               "released_to_consumer" => true,
-              "rewrites" => [%{"match" => account, "replacement" => "[account-id]", "rule_id" => "account-redactor"}],
+              "rewrites" => [
+                %{
+                  "match" => account,
+                  "replacement" => "[account-id]",
+                  "rule_id" => "account-redactor"
+                }
+              ],
               "state_transition" => nil
             }
           },
@@ -2379,7 +2477,10 @@ defmodule Wardwright.PolicyProjection do
           "receipt_preview" => %{
             "events" => [
               %{"state" => "review_required", "type" => "policy.state_transition"},
-              %{"selected_model" => Wardwright.managed_model(), "type" => "route.next_turn_model_selected"},
+              %{
+                "selected_model" => Wardwright.managed_model(),
+                "type" => "route.next_turn_model_selected"
+              },
               %{"reason" => "no_current_match", "type" => "stream.release_allowed"}
             ],
             "input" => input_preview,
@@ -2451,8 +2552,16 @@ defmodule Wardwright.PolicyProjection do
         "input_summary" => "Provider emits OldClient( split across held chunks.",
         "receipt_preview" => %{
           "events" => [
-            %{"horizon_bytes" => 4096, "rule_id" => "no-old-client", "type" => "stream.window_held"},
-            %{"match_kind" => "regex", "rule_id" => "no-old-client", "type" => "stream.rule_matched"},
+            %{
+              "horizon_bytes" => 4096,
+              "rule_id" => "no-old-client",
+              "type" => "stream.window_held"
+            },
+            %{
+              "match_kind" => "regex",
+              "rule_id" => "no-old-client",
+              "type" => "stream.rule_matched"
+            },
             %{"reason" => "tts_rule_matched", "type" => "attempt.aborted"},
             %{"reminder_id" => "no-old-client.reminder", "type" => "attempt.retry_requested"},
             %{"attempt" => 2, "reason" => "retry_passed_guard", "type" => "stream.released"}
@@ -2489,7 +2598,14 @@ defmodule Wardwright.PolicyProjection do
         "simulation_schema" => "wardwright.policy_simulation.v1",
         "title" => "Split trigger before release",
         "trace" => [
-          trace("t1", "response.streaming", "tts.no-old-client", "input", "chunk held", "avoid introducing Old", "info",
+          trace(
+            "t1",
+            "response.streaming",
+            "tts.no-old-client",
+            "input",
+            "chunk held",
+            "avoid introducing Old",
+            "info",
             state_id: "observing"
           ),
           trace(
@@ -2645,7 +2761,11 @@ defmodule Wardwright.PolicyProjection do
         "receipt_preview" => %{
           "events" => [%{"reason" => "no_policy_match", "type" => "stream.released"}],
           "input" => turn_input_preview(turn),
-          "stream" => %{"released_to_consumer" => true, "retry_attempted" => false, "rule_matched" => nil}
+          "stream" => %{
+            "released_to_consumer" => true,
+            "retry_attempted" => false,
+            "rule_matched" => nil
+          }
         },
         "scenario_id" => "interactive-tts-safe-release",
         "simulation_schema" => "wardwright.policy_simulation.v1",
@@ -2978,13 +3098,104 @@ defmodule Wardwright.PolicyProjection do
     ])
   end
 
-  defp model_turn_stream_policy(model_response, config) do
+  defp model_turn_stream_policy(model_response, config, attempt_index) do
     model_response
     |> input_chunks()
-    |> Wardwright.Policy.Stream.evaluate(Map.get(config, @stream_rules_key, []))
+    |> Wardwright.Policy.Stream.evaluate(Map.get(config, @stream_rules_key, []),
+      attempt_index: attempt_index
+    )
   end
 
-  defp model_turn_stream_output(_model_response, stream_policy) do
+  defp model_turn_stream_run(turn, config) do
+    attempts =
+      [{1, turn_response(turn)}] ++
+        (turn
+         |> turn_response_attempts()
+         |> Enum.reject(&(Map.get(&1, "index") <= 1))
+         |> Enum.map(&{Map.get(&1, "index"), Map.get(&1, "model_output", "")}))
+
+    run_model_turn_stream_attempts(attempts, config, nil, [], [], 0, 0)
+  end
+
+  defp run_model_turn_stream_attempts([], _config, nil, attempts, events, retry_count, max_retries) do
+    policy = Wardwright.Policy.Stream.evaluate([], [])
+
+    %{
+      attempts: attempts,
+      events: events,
+      max_retries: max_retries,
+      policy: policy,
+      retry_count: retry_count
+    }
+  end
+
+  defp run_model_turn_stream_attempts([], _config, policy, attempts, events, retry_count, max_retries) do
+    %{
+      attempts: attempts,
+      events: events,
+      max_retries: max_retries,
+      policy: policy,
+      retry_count: retry_count
+    }
+  end
+
+  defp run_model_turn_stream_attempts(
+         [{attempt_index, model_output} | remaining],
+         config,
+         _previous_policy,
+         attempts,
+         events,
+         retry_count,
+         max_retries
+       ) do
+    policy = model_turn_stream_policy(model_output, config, attempt_index - 1)
+    retry_budget = max(max_retries, model_turn_retry_budget(policy))
+    attempt = model_turn_stream_attempt(attempt_index, model_output, policy)
+    events = events ++ Map.get(policy, :events, [])
+    attempts = attempts ++ [attempt]
+
+    if Map.get(policy, :status) == "stream_policy_retry_required" and retry_count < retry_budget and
+         remaining != [] do
+      run_model_turn_stream_attempts(
+        remaining,
+        config,
+        policy,
+        attempts,
+        events,
+        retry_count + 1,
+        retry_budget
+      )
+    else
+      %{
+        attempts: attempts,
+        events: events,
+        max_retries: retry_budget,
+        policy: policy,
+        retry_count: retry_count
+      }
+    end
+  end
+
+  defp model_turn_retry_budget(policy) do
+    policy
+    |> Map.get(:events, [])
+    |> Enum.map(&(Map.get(&1, "max_retries") || 0))
+    |> Enum.max(fn -> 0 end)
+  end
+
+  defp model_turn_stream_attempt(index, model_output, policy) do
+    {user_output, _rewrites, _events} = model_turn_stream_output(policy)
+
+    Map.new([
+      {"index", index},
+      {"model_output", model_output},
+      {"policy_result", Map.get(policy, :status, @completed_status)},
+      {"status", Map.get(policy, :status, @completed_status)},
+      {"user_output", user_output}
+    ])
+  end
+
+  defp model_turn_stream_output(stream_policy) do
     final_output =
       if Map.get(stream_policy, :released_to_consumer, true) do
         stream_policy
@@ -3011,17 +3222,22 @@ defmodule Wardwright.PolicyProjection do
     {final_output, rewrites, Map.get(stream_policy, :events, [])}
   end
 
-  defp model_turn_stream_preview(final_output, rewrites, stream_policy) do
+  defp model_turn_stream_preview(final_output, rewrites, stream_run) do
+    stream_policy = stream_run.policy
+
     Map.new([
+      {"attempts", stream_run.attempts},
       {@final_output_key, final_output},
       {@released_to_consumer_key, Map.get(stream_policy, :released_to_consumer, true)},
       {@rewrites_key, rewrites},
       {@state_transition_key, nil},
       {@action_key, Map.get(stream_policy, :action)},
-      {@events_key, Map.get(stream_policy, :events, [])},
+      {@events_key, stream_run.events},
       {@generated_bytes_key, Map.get(stream_policy, :generated_bytes, 0)},
       {@held_bytes_key, Map.get(stream_policy, :held_bytes, 0)},
       {@released_bytes_key, Map.get(stream_policy, :released_bytes, 0)},
+      {"max_retries", stream_run.max_retries},
+      {"retry_count", stream_run.retry_count},
       {@status_key, Map.get(stream_policy, :status, @completed_status)},
       {@trigger_count_key, Map.get(stream_policy, :trigger_count, 0)}
     ])
@@ -3054,6 +3270,7 @@ defmodule Wardwright.PolicyProjection do
   defp maybe_add_model_turn_gap(events, nil, _rule_id, _message), do: events
   defp maybe_add_model_turn_gap(events, false, _rule_id, _message), do: events
   defp maybe_add_model_turn_gap(events, [], _rule_id, _message), do: events
+
   defp maybe_add_model_turn_gap(events, %{} = value, _rule_id, _message) when map_size(value) == 0, do: events
 
   defp maybe_add_model_turn_gap(events, _value, rule_id, message) do
@@ -3086,7 +3303,8 @@ defmodule Wardwright.PolicyProjection do
     config
     |> Map.get(@governance_key, [])
     |> Enum.any?(fn rule ->
-      Map.get(rule, @action_key) in [@alert_key, @fail_closed_action] or Map.has_key?(rule, @alert_key)
+      Map.get(rule, @action_key) in [@alert_key, @fail_closed_action] or
+        Map.has_key?(rule, @alert_key)
     end)
   end
 
@@ -3321,7 +3539,10 @@ defmodule Wardwright.PolicyProjection do
         "engine_id" => "request-route-plan",
         "expected_behavior" => "Route selection proceeds without policy constraints.",
         "input_summary" => "Active config has no route-affecting governance rules.",
-        "receipt_preview" => %{"decision" => %{"policy_actions" => []}, "final_status" => "simulated"},
+        "receipt_preview" => %{
+          "decision" => %{"policy_actions" => []},
+          "final_status" => "simulated"
+        },
         "scenario_id" => "no-route-gate-configured",
         "simulation_schema" => "wardwright.policy_simulation.v1",
         "title" => "No route governance configured",
@@ -3431,7 +3652,10 @@ defmodule Wardwright.PolicyProjection do
       "receipt_preview" => %{
         "decision" => %{
           "policy_actions" => [
-            %{"action" => Map.get(rule, "action", default_tool_action(rule)), "rule_id" => Map.get(rule, "id")}
+            %{
+              "action" => Map.get(rule, "action", default_tool_action(rule)),
+              "rule_id" => Map.get(rule, "id")
+            }
           ],
           "tool_context" => %{
             "phase" => tool_context_phase(phase),

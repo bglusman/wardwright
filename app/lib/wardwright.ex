@@ -8,6 +8,7 @@ defmodule Wardwright do
 
   @model_id "coding-balanced"
   @model_version "2026-05-13.mock"
+  @model_definition_version 1
   @local_model "local/qwen-coder"
   @managed_model "managed/kimi-k2.6"
   @local_context_window 32_768
@@ -31,6 +32,7 @@ defmodule Wardwright do
   def model_id, do: @model_id
   def model_id(config) when is_map(config), do: Map.get(config, "model_id", @model_id)
   def model_version, do: @model_version
+  def model_definition_version, do: @model_definition_version
   def local_model, do: @local_model
   def managed_model, do: @managed_model
   def local_context_window, do: @local_context_window
@@ -50,6 +52,7 @@ defmodule Wardwright do
         }
       ],
       "governance" => [%{"action" => "transform", "id" => "prompt_transforms", "kind" => "request_transform"}],
+      "model_definition_version" => @model_definition_version,
       "model_id" => @model_id,
       "policy_cache" => %{"max_entries" => 64, "recent_limit" => 20},
       "prompt_transforms" => %{},
@@ -281,6 +284,7 @@ defmodule Wardwright do
       "fallback_rate" => 0.0,
       "governance" => Map.get(config, "governance", []),
       "id" => model_id,
+      "model_definition_version" => Map.get(config, "model_definition_version", @model_definition_version),
       "model_id" => model_id,
       "prompt_transforms" => Map.get(config, "prompt_transforms", %{}),
       "public_model_id" => model_id,
@@ -728,6 +732,10 @@ defmodule Wardwright do
       "cascades" => normalize_selectors(Map.get(config, "cascades", []), "models"),
       "dispatchers" => normalize_selectors(Map.get(config, "dispatchers", []), "models"),
       "governance" => Map.get(config, "governance", []),
+      "model_definition_version" =>
+        config
+        |> Map.get("model_definition_version", @model_definition_version)
+        |> positive_integer(@model_definition_version),
       "model_id" => model_id,
       "policy_cache" => normalize_policy_cache(Map.get(config, "policy_cache", %{})),
       "prompt_transforms" => Map.get(config, "prompt_transforms", %{}),

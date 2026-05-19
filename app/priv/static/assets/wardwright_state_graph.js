@@ -12,23 +12,41 @@ class WardwrightStateGraph extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this.cy = null;
+    this.lastGraphKey = "";
+    this.pendingRender = null;
   }
 
   connectedCallback() {
-    this.render();
+    this.scheduleRender();
   }
 
   attributeChangedCallback() {
     if (this.isConnected) {
-      this.render();
+      this.scheduleRender();
     }
   }
 
   disconnectedCallback() {
+    if (this.pendingRender) {
+      window.cancelAnimationFrame(this.pendingRender);
+      this.pendingRender = null;
+    }
+
     if (this.cy) {
       this.cy.destroy();
       this.cy = null;
     }
+  }
+
+  scheduleRender() {
+    if (this.pendingRender) {
+      window.cancelAnimationFrame(this.pendingRender);
+    }
+
+    this.pendingRender = window.requestAnimationFrame(() => {
+      this.pendingRender = null;
+      this.render();
+    });
   }
 
   render() {
@@ -36,6 +54,12 @@ class WardwrightStateGraph extends HTMLElement {
     const transitions = parseJsonAttribute(this, "data-transitions", []);
     const activeState = this.getAttribute("data-active-state") || "";
     const finalState = this.getAttribute("data-final-state") || "";
+    const graphKey = graphTopologyKey(states, transitions);
+    const previousViewport = this.cy
+      ? { zoom: this.cy.zoom(), pan: this.cy.pan() }
+      : null;
+    const preserveViewport =
+      previousViewport && this.lastGraphKey !== "" && this.lastGraphKey === graphKey;
 
     if (this.cy) {
       this.cy.destroy();
@@ -59,11 +83,58 @@ class WardwrightStateGraph extends HTMLElement {
         }
 
         .canvas {
+          height: 460px;
           min-height: 460px;
           border: 1px solid #d7dde3;
           border-radius: 8px;
           background: #f8fafb;
+          cursor: grab;
           overflow: hidden;
+          touch-action: none;
+        }
+
+        .canvas:active {
+          cursor: grabbing;
+        }
+
+        .graph-frame {
+          position: relative;
+          min-height: 460px;
+        }
+
+        .viewport-controls {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          z-index: 2;
+          display: flex;
+          gap: 6px;
+        }
+
+        .viewport-controls button {
+          width: 32px;
+          height: 32px;
+          display: grid;
+          place-items: center;
+          border: 1px solid #c7d0d9;
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.92);
+          color: #1f2a37;
+          cursor: pointer;
+          font: inherit;
+          font-size: 15px;
+          font-weight: 900;
+          line-height: 1;
+        }
+
+        .viewport-controls button:hover {
+          border-color: #16605a;
+          color: #16605a;
+        }
+
+        .viewport-controls svg {
+          width: 15px;
+          height: 15px;
         }
 
         .details {
@@ -137,8 +208,14 @@ class WardwrightStateGraph extends HTMLElement {
         .filter((edge) => edge.from === activeState || edge.to === activeState)
         .map((edge) => edge.id)
     );
+    const pathEdgeIds = new Set(
+      transitions.filter((edge) => edge.path || edge.current).map((edge) => edge.id)
+    );
     const initialDetail =
-      transitions.find((edge) => activeEdgeIds.has(edge.id)) || transitions[0];
+      transitions.find((edge) => edge.current) ||
+      transitions.find((edge) => pathEdgeIds.has(edge.id)) ||
+      transitions.find((edge) => activeEdgeIds.has(edge.id)) ||
+      transitions[0];
 
     this.cy = window.cytoscape({
       container: canvas,
@@ -148,7 +225,8 @@ class WardwrightStateGraph extends HTMLElement {
             id: state.id,
             label: state.label || state.id,
             active: state.id === activeState ? "yes" : "no",
-            terminal: state.id === finalState || state.terminal ? "yes" : "no"
+            terminal: state.id === finalState || state.terminal ? "yes" : "no",
+            visited: state.visited ? "yes" : "no"
           }
         })),
         ...transitions.map((edge) => ({
@@ -161,11 +239,19 @@ class WardwrightStateGraph extends HTMLElement {
             action: edge.action,
             node: edge.node,
             detail: edge.detail,
+            current: edge.current ? "yes" : "no",
+            path: edge.path ? "yes" : "no",
             active: activeEdgeIds.has(edge.id) ? "yes" : "no"
           }
         }))
       ],
       style: this.styles(),
+      minZoom: 0.55,
+      maxZoom: 1.75,
+      wheelSensitivity: 0.14,
+      userPanningEnabled: true,
+      userZoomingEnabled: true,
+      autoungrabify: true,
       layout: {
         name: "breadthfirst",
         directed: true,
@@ -173,6 +259,7 @@ class WardwrightStateGraph extends HTMLElement {
         spacingFactor: 1.22
       }
     });
+    this.lastGraphKey = graphKey;
 
     this.cy.on("mouseover", "edge", (event) => {
       event.target.addClass("hovered");
@@ -189,8 +276,13 @@ class WardwrightStateGraph extends HTMLElement {
     this.cy.on("tap", "node", (event) => {
       this.showStateDetail(event.target.data());
     });
+    this.bindViewportControls();
 
-    if (initialDetail) {
+    const activeNode = this.cy.getElementById(activeState);
+    if (activeNode.nonempty()) {
+      activeNode.addClass("inspected");
+      this.showStateDetail(activeNode.data());
+    } else if (initialDetail) {
       this.showEdgeDetail(initialDetail);
     } else if (states[0]) {
       this.showStateDetail(states[0]);
@@ -198,7 +290,14 @@ class WardwrightStateGraph extends HTMLElement {
 
     window.requestAnimationFrame(() => {
       if (this.cy) {
-        this.cy.fit(undefined, 42);
+        this.cy.resize();
+
+        if (preserveViewport) {
+          this.cy.zoom(clamp(previousViewport.zoom, this.minZoom(), this.maxZoom()));
+          this.cy.pan(previousViewport.pan);
+        } else {
+          this.cy.fit(undefined, 42);
+        }
       }
     });
   }
@@ -218,7 +317,18 @@ class WardwrightStateGraph extends HTMLElement {
 
     return `
       <div class="shell">
-        <div class="canvas" aria-label="Interactive state graph"></div>
+        <div class="graph-frame">
+          <div class="canvas" aria-label="Interactive state graph"></div>
+          <div class="viewport-controls" aria-label="Graph viewport controls">
+            <button type="button" data-graph-action="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
+            <button type="button" data-graph-action="zoom-out" aria-label="Zoom out" title="Zoom out">-</button>
+            <button type="button" data-graph-action="fit" aria-label="Fit graph" title="Fit graph">
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
         <aside class="details" aria-live="polite">
           <h3>${detailHeading}</h3>
           <dl>
@@ -257,6 +367,13 @@ class WardwrightStateGraph extends HTMLElement {
         }
       },
       {
+        selector: "node[visited = 'yes']",
+        style: {
+          "border-color": "#31a096",
+          "border-width": 3
+        }
+      },
+      {
         selector: "node[terminal = 'yes']",
         style: {
           "border-color": "#f0b04f"
@@ -289,13 +406,24 @@ class WardwrightStateGraph extends HTMLElement {
         }
       },
       {
-        selector: "edge[active = 'yes']",
+        selector: "edge[path = 'yes']",
         style: {
           label: "data(label)",
           "line-color": "#16605a",
           "target-arrow-color": "#16605a",
           width: 4,
           color: "#16605a"
+        }
+      },
+      {
+        selector: "edge[current = 'yes']",
+        style: {
+          label: "data(label)",
+          "line-color": "#9b6b18",
+          "target-arrow-color": "#9b6b18",
+          width: 5,
+          color: "#9b6b18",
+          "z-index": 9
         }
       },
       {
@@ -313,6 +441,48 @@ class WardwrightStateGraph extends HTMLElement {
     ];
   }
 
+  bindViewportControls() {
+    this.shadowRoot
+      .querySelector('[data-graph-action="zoom-in"]')
+      ?.addEventListener("click", () => this.zoomBy(1.18));
+    this.shadowRoot
+      .querySelector('[data-graph-action="zoom-out"]')
+      ?.addEventListener("click", () => this.zoomBy(1 / 1.18));
+    this.shadowRoot
+      .querySelector('[data-graph-action="fit"]')
+      ?.addEventListener("click", () => this.fitView());
+  }
+
+  zoomBy(factor) {
+    if (!this.cy) {
+      return;
+    }
+
+    const zoom = clamp(this.cy.zoom() * factor, this.minZoom(), this.maxZoom());
+    this.cy.animate({
+      zoom,
+      center: { eles: this.cy.elements() },
+      duration: 100
+    });
+  }
+
+  fitView() {
+    if (this.cy) {
+      this.cy.animate({
+        fit: { eles: this.cy.elements(), padding: 42 },
+        duration: 140
+      });
+    }
+  }
+
+  minZoom() {
+    return 0.55;
+  }
+
+  maxZoom() {
+    return 1.75;
+  }
+
   showEdgeDetail(edge) {
     this.setDetail("selection", `${edge.source || edge.from} -> ${edge.target || edge.to}`);
     this.setDetail("event", edge.event || "-");
@@ -323,7 +493,7 @@ class WardwrightStateGraph extends HTMLElement {
   showStateDetail(state) {
     this.setDetail("selection", state.label || state.id || "-");
     this.setDetail("event", "state");
-    this.setDetail("action", state.active === "yes" ? "active" : "available");
+    this.setDetail("action", state.active === "yes" || state.active === true ? "active" : "available");
     this.setDetail("node", state.id || "-");
   }
 
@@ -342,6 +512,23 @@ function parseJsonAttribute(element, name, fallback) {
   } catch (_error) {
     return fallback;
   }
+}
+
+function graphTopologyKey(states, transitions) {
+  return JSON.stringify({
+    states: states.map((state) => state.id),
+    transitions: transitions.map((edge) => [
+      edge.from,
+      edge.to,
+      edge.event,
+      edge.action,
+      edge.node
+    ])
+  });
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
 }
 
 if (!customElements.get("wardwright-state-graph")) {

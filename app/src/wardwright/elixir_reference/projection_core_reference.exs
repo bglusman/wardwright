@@ -38,8 +38,11 @@ defmodule Wardwright.ElixirReference.ProjectionCore do
       "observing",
       false,
       [
+        {"observing", "stream.release", "recording", "release_stream", "tts.receipt-events"},
         {"observing", "stream.match", "guarding", "abort_attempt", "tts.no-old-client"},
         {"guarding", "attempt.retry", "retrying", "retry_with_reminder", "tts.retry-arbiter"},
+        {"retrying", "stream.match", "guarding", "abort_attempt", "tts.no-old-client"},
+        {"retrying", "retry.release", "retrying", "release_stream", "tts.no-old-client"},
         {"retrying", "receipt.write", "recording", "annotate_receipt", "tts.receipt-events"}
       ]
     }
@@ -50,8 +53,12 @@ defmodule Wardwright.ElixirReference.ProjectionCore do
       "observing",
       false,
       [
+        {"observing", "stream.release", "recording", "release_stream", "stream.rewrite-receipt"},
+        {"observing", "history.related-secret", "review_required", "state_transition",
+         "stream.secret-transition"},
         {"observing", "request.rewrite", "observing", "rewrite_span", "request.rewrite-context"},
         {"observing", "regex.rewrite", "rewriting", "rewrite_span", "stream.redact-account"},
+        {"rewriting", "rewrite.release", "recording", "release_stream", "stream.rewrite-receipt"},
         {"rewriting", "regex.related-secret", "review_required", "state_transition",
          "stream.secret-transition"},
         {"review_required", "receipt.write", "recording", "annotate_receipt", "stream.rewrite-receipt"}

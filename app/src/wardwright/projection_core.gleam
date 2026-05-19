@@ -63,6 +63,13 @@ pub fn state_machine(
     "tts-retry" -> #("observing", False, [
       #(
         "observing",
+        "stream.release",
+        "recording",
+        "release_stream",
+        "tts.receipt-events",
+      ),
+      #(
+        "observing",
         "stream.match",
         "guarding",
         "abort_attempt",
@@ -77,6 +84,20 @@ pub fn state_machine(
       ),
       #(
         "retrying",
+        "stream.match",
+        "guarding",
+        "abort_attempt",
+        "tts.no-old-client",
+      ),
+      #(
+        "retrying",
+        "retry.release",
+        "retrying",
+        "release_stream",
+        "tts.no-old-client",
+      ),
+      #(
+        "retrying",
         "receipt.write",
         "recording",
         "annotate_receipt",
@@ -85,6 +106,20 @@ pub fn state_machine(
     ])
 
     "stream-rewrite-state" -> #("observing", False, [
+      #(
+        "observing",
+        "stream.release",
+        "recording",
+        "release_stream",
+        "stream.rewrite-receipt",
+      ),
+      #(
+        "observing",
+        "history.related-secret",
+        "review_required",
+        "state_transition",
+        "stream.secret-transition",
+      ),
       #(
         "observing",
         "request.rewrite",
@@ -98,6 +133,13 @@ pub fn state_machine(
         "rewriting",
         "rewrite_span",
         "stream.redact-account",
+      ),
+      #(
+        "rewriting",
+        "rewrite.release",
+        "recording",
+        "release_stream",
+        "stream.rewrite-receipt",
       ),
       #(
         "rewriting",
