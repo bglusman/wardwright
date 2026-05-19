@@ -25,6 +25,34 @@ pub fn selecting_policy_slice_exposes_state_graph(
   && view_contains(simulation, expected_transition)
 }
 
+pub fn selecting_model_policy_slice_exposes_state_graph(
+  model_id: String,
+  pattern_id: String,
+  expected_transition: String,
+) -> Bool {
+  let simulation =
+    start()
+    |> change_select("model_id", model_id)
+    |> change_select("pattern_id", pattern_id)
+
+  view_contains(simulation, "State machine")
+  && view_contains(simulation, expected_transition)
+}
+
+pub fn selecting_model_policy_slice_hides_state_graph_transition(
+  model_id: String,
+  pattern_id: String,
+  hidden_transition: String,
+) -> Bool {
+  let simulation =
+    start()
+    |> change_select("model_id", model_id)
+    |> change_select("pattern_id", pattern_id)
+
+  view_contains(simulation, "State machine")
+  && !view_contains(simulation, hidden_transition)
+}
+
 pub fn advancing_playback_highlights_state(
   pattern_id: String,
   expected_state: String,

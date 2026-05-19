@@ -91,13 +91,13 @@ pub type Msg {
 }
 
 @external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "pattern_options")
-fn external_pattern_options() -> List(PatternOption)
+fn external_pattern_options(model_id: String) -> List(PatternOption)
 
 @external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "model_options")
 fn external_model_options() -> List(ModelOption)
 
 @external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "default_pattern_id")
-fn external_default_pattern_id() -> String
+fn external_default_pattern_id(model_id: String) -> String
 
 @external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "default_model_id")
 fn external_default_model_id() -> String
@@ -110,6 +110,12 @@ fn external_default_model_response(model_id: String) -> String
 
 @external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "retry_response_slots")
 fn external_retry_response_slots(model_id: String) -> Int
+
+@external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "projection_summary")
+fn external_projection_summary(
+  pattern_id: String,
+  model_id: String,
+) -> #(String, String, String, Bool, List(projection_core.StateTransition))
 
 @external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "run_simulation")
 fn external_run_simulation(
@@ -137,8 +143,8 @@ pub fn component() {
 }
 
 pub fn init(_flags: Nil) -> Model {
-  let pattern_id = external_default_pattern_id()
   let model_id = external_default_model_id()
+  let pattern_id = external_default_pattern_id(model_id)
   let user_input = external_default_user_input(model_id)
   let model_response = external_default_model_response(model_id)
   let retry_responses = empty_retry_responses(model_id)
@@ -166,6 +172,7 @@ pub fn update(model: Model, msg: Msg) -> Model {
       run_model(Model(..model, pattern_id: pattern_id, step: 0))
 
     ModelChanged(model_id) -> {
+      let pattern_id = external_default_pattern_id(model_id)
       let user_input = external_default_user_input(model_id)
       let model_response = external_default_model_response(model_id)
       let retry_responses = empty_retry_responses(model_id)
@@ -174,6 +181,7 @@ pub fn update(model: Model, msg: Msg) -> Model {
         Model(
           ..model,
           model_id: model_id,
+          pattern_id: pattern_id,
           user_input: user_input,
           model_response: model_response,
           retry_responses: retry_responses,
@@ -260,8 +268,8 @@ fn run_simulation(
     policy_actions,
     trace_events,
     state_events,
-    config_model_id,
-    config_version,
+    _config_model_id,
+    _config_version,
   ) =
     external_run_simulation(
       pattern_id,
@@ -277,8 +285,7 @@ fn run_simulation(
     state_initial,
     state_default_projection,
     state_transitions,
-  ) =
-    projection_core.derive_summary(pattern_id, config_model_id, config_version)
+  ) = external_projection_summary(pattern_id, model_id)
 
   Simulation(
     pattern_title:,
@@ -385,25 +392,31 @@ pub fn view(model: Model) -> Element(Msg) {
         ]),
       ]),
       labeled_select(
-        "Policy slice",
-        "pattern_id",
-        model.pattern_id,
-        pattern_options(model.pattern_id),
-        PatternChanged,
-      ),
-      labeled_select(
         "Registered model",
         "model_id",
         model.model_id,
         model_options(model.model_id),
         ModelChanged,
       ),
+      labeled_select(
+        "Projection view",
+        "pattern_id",
+        model.pattern_id,
+        pattern_options(model.model_id, model.pattern_id),
+        PatternChanged,
+      ),
     ]),
     html.main([class("workspace")], [
       html.header([class("topbar")], [
         html.div([], [
-          html.h1([], [text(model.simulation.pattern_title)]),
-          html.p([], [text(model.simulation.pattern_promise)]),
+          html.h1([], [text(model.model_id)]),
+          html.p([], [
+            text(
+              model.simulation.pattern_title
+              <> ": "
+              <> model.simulation.pattern_promise,
+            ),
+          ]),
         ]),
         html.div([class("status-stack")], [
           badge.badge([badge.variant(badge.Default)], [text("Lustre 5.7")]),
@@ -440,8 +453,11 @@ fn labeled_select(
   ])
 }
 
-fn pattern_options(selected_id: String) -> List(Element(Msg)) {
-  external_pattern_options()
+fn pattern_options(
+  model_id: String,
+  selected_id: String,
+) -> List(Element(Msg)) {
+  external_pattern_options(model_id)
   |> list.map(fn(option) {
     let #(option_id, title, category, _) = option
     select_ui.option(
@@ -453,7 +469,7 @@ fn pattern_options(selected_id: String) -> List(Element(Msg)) {
 }
 
 fn selected_pattern(pattern_id: String) -> #(String, String) {
-  selected_pattern_from(pattern_id, external_pattern_options())
+  selected_pattern_from(pattern_id, external_pattern_options(""))
 }
 
 fn selected_pattern_from(
@@ -1095,6 +1111,7 @@ fn matched_label(matched: Bool) -> String {
 
 fn state_label(state: String) -> String {
   state
+  |> string.replace(each: "::", with: " / ")
   |> string.replace(each: "_", with: " ")
   |> string.replace(each: "-", with: " ")
 }

@@ -3094,6 +3094,7 @@ defmodule Wardwright.PolicyProjection do
       {@policy_conflicts_key, Map.get(policy, @conflicts_key, [])},
       {@route_blocked_key, Map.get(decision, :route_blocked, false)},
       {@route_constraints_key, Map.get(decision, :policy_route_constraints, %{})},
+      {"route_lineage", Map.get(decision, :route_lineage, [])},
       {@selected_model_key, Map.get(decision, :selected_model)}
     ])
   end

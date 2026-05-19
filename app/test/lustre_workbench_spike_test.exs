@@ -158,15 +158,90 @@ defmodule WardwrightWeb.LustreWorkbenchSpikeTest do
   end
 
   test "Lustre UI renders state machine graph and active playback state" do
+    put_retry_model_config()
+
     assert :wardwright@lustre_workbench_test_support.selecting_policy_slice_exposes_state_graph(
+             "tts-retry",
+             "stream.release / release_stream / tts.receipt-events"
+           )
+
+    assert :wardwright@lustre_workbench_test_support.selecting_model_policy_slice_exposes_state_graph(
+             "retry-workbench",
              "tts-retry",
              "stream.match / abort_attempt / tts.no-old-client"
            )
 
     assert :wardwright@lustre_workbench_test_support.advancing_playback_highlights_state(
              "tts-retry",
-             "recording"
+             "guarding"
            )
+  end
+
+  test "Lustre state graph hides retry-only paths for models that cannot adopt them" do
+    put_cow_transform_model_config()
+
+    assert :wardwright@lustre_workbench_test_support.selecting_model_policy_slice_hides_state_graph_transition(
+             "cow-transform-workbench",
+             "tts-retry",
+             "stream.match / abort_attempt / tts.no-old-client"
+           )
+
+    assert :wardwright@lustre_workbench_test_support.selecting_model_policy_slice_exposes_state_graph(
+             "cow-transform-workbench",
+             "tts-retry",
+             "stream.release / release_stream / tts.receipt-events"
+           )
+  end
+
+  test "Lustre workbench offers demo models alongside registered models" do
+    ids =
+      WardwrightWeb.LustreWorkbenchData.model_options()
+      |> Enum.map(&elem(&1, 0))
+
+    assert "coding-balanced" in ids
+    assert "demo-retry-guard" in ids
+    assert "demo-rewrite-review" in ids
+    assert "demo-composed-retry-router" in ids
+    assert "demo-nested-router" in ids
+  end
+
+  test "Lustre composed demo models inherit nested retry inputs" do
+    assert WardwrightWeb.LustreWorkbenchData.retry_response_slots("demo-composed-retry-router") == 3
+    assert WardwrightWeb.LustreWorkbenchData.default_model_response("demo-composed-retry-router") =~ "OldClient"
+  end
+
+  test "Lustre state graph composes across nested Wardwright model targets" do
+    {_engine, _artifact, _initial, _default?, transitions} =
+      WardwrightWeb.LustreWorkbenchData.projection_summary("tts-retry", "demo-composed-retry-router")
+
+    assert {"observing", "route.delegate.demo-retry-guard", "demo-retry-guard::observing", "call_wardwright_model",
+            "route.demo-retry-guard"} in transitions
+
+    assert {"demo-retry-guard::observing", "stream.match", "demo-retry-guard::guarding", "abort_attempt",
+            "tts.no-old-client"} in transitions
+
+    refute {"observing", "stream.match", "guarding", "abort_attempt", "tts.no-old-client"} in transitions
+
+    assert :wardwright@lustre_workbench_test_support.selecting_model_policy_slice_exposes_state_graph(
+             "demo-composed-retry-router",
+             "tts-retry",
+             "route.delegate.demo-retry-guard / call_wardwright_model / route.demo-retry-guard"
+           )
+  end
+
+  test "Lustre replay path follows delegated model policy events" do
+    simulation =
+      WardwrightWeb.LustreWorkbenchData.run_simulation(
+        "tts-retry",
+        "demo-composed-retry-router",
+        "Migrate the old client.",
+        "Use OldClient(arg) in the migration."
+      )
+
+    state_events = elem(simulation, 8)
+
+    assert "route.delegate.demo-retry-guard" in state_events
+    assert "stream.match" in state_events
   end
 
   test "Lustre simulation updates the selected model turn" do
