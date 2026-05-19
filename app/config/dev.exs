@@ -7,6 +7,7 @@ config :phoenix_live_view,
 config :wardwright, WardwrightWeb.Endpoint,
   code_reloader: true,
   debug_errors: true,
+  reloadable_compilers: [:gleam, :erlang, :elixir, :app],
   live_reload: [
     patterns: [
       ~r"priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",

@@ -104,6 +104,7 @@ defmodule Wardwright.MixProject do
         "_build/#{Mix.env()}/lib/wardwright/_gleam_artefacts"
       ],
       erlc_include_path: "_build/#{Mix.env()}/lib/wardwright/include",
+      listeners: [Phoenix.CodeReloader],
       prune_code_paths: false,
       start_permanent: Mix.env() == :prod,
       deps: deps(),

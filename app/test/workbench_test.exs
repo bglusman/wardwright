@@ -160,7 +160,7 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert json =~ "Model Access"
     assert json =~ "Access Policy"
     assert json =~ "Create Key"
-    assert json =~ "Legacy Workbench"
+    assert json =~ "Legacy workbench (deprecated)"
     refute json =~ "Lustre Workbench"
     refute json =~ "Gleam UI"
 

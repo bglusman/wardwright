@@ -449,17 +449,12 @@ pub fn view(model: Model) -> Element(Msg) {
           True,
         ),
         rail_link(
-          "Legacy workbench",
-          "Open the previous policy view.",
-          "/policies",
-          False,
-        ),
-        rail_link(
           "Model access",
           "Configure model keys and access.",
           "/admin/model-api-keys",
           False,
         ),
+        deprecated_rail_link(),
       ]),
       labeled_select(
         "Registered model",
@@ -509,6 +504,13 @@ fn rail_link(
       html.span([], [text(description)]),
     ],
   )
+}
+
+fn deprecated_rail_link() -> Element(Msg) {
+  element("a", [class("deprecated"), attribute("href", "/policies")], [
+    html.strong([], [text("Legacy workbench (deprecated)")]),
+    html.span([], [text("Previous policy view.")]),
+  ])
 }
 
 fn labeled_select(
@@ -1430,6 +1432,19 @@ fn styles() -> String {
     font-size: 12px;
     font-weight: 700;
     line-height: 1.35;
+  }
+  .rail-nav a.deprecated {
+    margin-top: 4px;
+    padding: 7px 10px;
+    opacity: 0.72;
+  }
+  .rail-nav a.deprecated strong {
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .rail-nav a.deprecated span {
+    font-size: 10px;
+    font-weight: 600;
   }
   .field {
     gap: 8px;

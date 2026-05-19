@@ -378,7 +378,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert :wardwright@lustre_model_access_test_support.initial_view_contains("Model Access")
     assert :wardwright@lustre_model_access_test_support.initial_view_contains("coding-balanced")
     assert :wardwright@lustre_model_access_test_support.initial_view_contains("Access Policy")
-    assert :wardwright@lustre_model_access_test_support.initial_view_contains("Legacy Workbench")
+    assert :wardwright@lustre_model_access_test_support.initial_view_contains("Legacy workbench (deprecated)")
 
     assert :wardwright@lustre_model_access_test_support.initial_view_contains(
              "No API keys have been created for this model."
