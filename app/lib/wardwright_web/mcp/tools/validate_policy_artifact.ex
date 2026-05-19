@@ -9,9 +9,7 @@ defmodule WardwrightWeb.MCP.Tools.ValidatePolicyArtifact do
   alias WardwrightWeb.PolicyArtifactValidator
 
   schema do
-    field(:artifact, :map,
-      description: "Optional policy artifact object. Omit to validate current config."
-    )
+    field(:artifact, :map, description: "Optional policy artifact object. Omit to validate current config.")
   end
 
   @impl true

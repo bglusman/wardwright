@@ -58,8 +58,7 @@ defmodule Wardwright.PolicySandbox.Dune do
     """
   end
 
-  defp normalize_policy_result(%{"status" => "ok", "value" => value} = result)
-       when is_map(value) do
+  defp normalize_policy_result(%{"status" => "ok", "value" => value} = result) when is_map(value) do
     result
     |> Map.put("policy_result", normalize_policy_map(value))
     |> Map.put("policy_status", policy_status(value))
@@ -67,36 +66,34 @@ defmodule Wardwright.PolicySandbox.Dune do
 
   defp normalize_policy_result(%{"status" => "ok"} = result) do
     Map.merge(result, %{
-      "policy_status" => "error",
-      "policy_result" => fail_closed_result("invalid_result", "Dune snippet must return a map.")
+      "policy_result" => fail_closed_result("invalid_result", "Dune snippet must return a map."),
+      "policy_status" => "error"
     })
   end
 
-  defp normalize_policy_result(
-         %{"status" => "error", "reason" => reason, "message" => message} = result
-       ) do
+  defp normalize_policy_result(%{"message" => message, "reason" => reason, "status" => "error"} = result) do
     Map.merge(result, %{
-      "policy_status" => "error",
-      "policy_result" => fail_closed_result(reason, message)
+      "policy_result" => fail_closed_result(reason, message),
+      "policy_status" => "error"
     })
   end
 
   defp normalize_result(%Dune.Success{} = success) do
     %{
       "engine" => "dune",
-      "status" => "ok",
-      "value" => success.value,
       "inspected" => success.inspected,
-      "stdio" => success.stdio
+      "status" => "ok",
+      "stdio" => success.stdio,
+      "value" => success.value
     }
   end
 
   defp normalize_result(%Dune.Failure{} = failure) do
     %{
       "engine" => "dune",
-      "status" => "error",
-      "reason" => Atom.to_string(failure.type),
       "message" => failure.message,
+      "reason" => Atom.to_string(failure.type),
+      "status" => "error",
       "stdio" => failure.stdio
     }
   end
@@ -115,30 +112,22 @@ defmodule Wardwright.PolicySandbox.Dune do
 
   defp fail_closed_result(reason, message) do
     %{
+      "action" => "block",
+      "message" => message,
+      "reason" => reason,
       "schema" => "wardwright.policy_result.v1",
       "source" => "dune",
       "status" => "error",
-      "action" => "block",
-      "reason" => reason,
-      "message" => message,
-      "trace" => [
-        %{
-          "rule" => "dune-snippet",
-          "result" => false,
-          "reason" => reason
-        }
-      ]
+      "trace" => [%{"reason" => reason, "result" => false, "rule" => "dune-snippet"}]
     }
   end
 
   defp normalize_json_value(value) when is_map(value) do
     value
-    |> Enum.map(fn {key, inner} -> {to_string(key), normalize_json_value(inner)} end)
-    |> Map.new()
+    |> Map.new(fn {key, inner} -> {to_string(key), normalize_json_value(inner)} end)
   end
 
-  defp normalize_json_value(value) when is_list(value),
-    do: Enum.map(value, &normalize_json_value/1)
+  defp normalize_json_value(value) when is_list(value), do: Enum.map(value, &normalize_json_value/1)
 
   defp normalize_json_value(value) when is_binary(value), do: value
   defp normalize_json_value(value) when is_boolean(value), do: value

@@ -160,13 +160,13 @@ defmodule WardwrightWeb.PolicyAuthoringTools do
 
   defp tool(name, method, path, description, when_to_use, safety, docs_path) do
     %{
-      "name" => name,
-      "method" => method,
-      "path" => path,
       "description" => description,
-      "when_to_use" => when_to_use,
+      "docs_url" => @docs_root <> docs_path,
+      "method" => method,
+      "name" => name,
+      "path" => path,
       "safety" => safety,
-      "docs_url" => @docs_root <> docs_path
+      "when_to_use" => when_to_use
     }
   end
 end

@@ -5,16 +5,16 @@ defmodule Wardwright.RoutePolicyTest do
     config =
       unit_policy_config()
       |> Map.put("targets", [
-        %{"model" => "local/qwen", "context_window" => 32},
-        %{"model" => "managed/kimi", "context_window" => 256}
+        %{"context_window" => 32, "model" => "local/qwen"},
+        %{"context_window" => 256, "model" => "managed/kimi"}
       ])
       |> Map.put("governance", [
         %{
+          "action" => "restrict_routes",
+          "allowed_targets" => ["local"],
+          "contains" => "private",
           "id" => "private-local-only",
           "kind" => "route_gate",
-          "action" => "restrict_routes",
-          "contains" => "private",
-          "allowed_targets" => ["local"],
           "message" => "private context must stay local"
         }
       ])
@@ -24,8 +24,8 @@ defmodule Wardwright.RoutePolicyTest do
     conn =
       call(:post, "/v1/wardwright/simulate", %{
         request: %{
-          model: "unit-model",
-          messages: [%{role: "user", content: "private notes, summarize briefly"}]
+          messages: [%{content: "private notes, summarize briefly", role: "user"}],
+          model: "unit-model"
         }
       })
 
@@ -40,10 +40,10 @@ defmodule Wardwright.RoutePolicyTest do
 
     assert [
              %{
-               "rule_id" => "private-local-only",
-               "kind" => "route_gate",
                "action" => "restrict_routes",
-               "allowed_targets" => ["local"]
+               "allowed_targets" => ["local"],
+               "kind" => "route_gate",
+               "rule_id" => "private-local-only"
              }
            ] = get_in(body, ["receipt", "decision", "policy_actions"])
   end
@@ -53,11 +53,11 @@ defmodule Wardwright.RoutePolicyTest do
       unit_policy_config()
       |> Map.put("governance", [
         %{
-          "id" => "impossible-route",
-          "kind" => "route_gate",
           "action" => "restrict_routes",
+          "allowed_targets" => ["nonexistent-provider"],
           "contains" => "private",
-          "allowed_targets" => ["nonexistent-provider"]
+          "id" => "impossible-route",
+          "kind" => "route_gate"
         }
       ])
 
@@ -65,8 +65,8 @@ defmodule Wardwright.RoutePolicyTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        messages: [%{role: "user", content: "private"}]
+        messages: [%{content: "private", role: "user"}],
+        model: "unit-model"
       })
 
     assert conn.status == 429
@@ -88,12 +88,12 @@ defmodule Wardwright.RoutePolicyTest do
       unit_policy_config()
       |> Map.put("governance", [
         %{
-          "id" => "deep-reasoning",
-          "kind" => "route_gate",
           "action" => "switch_model",
           "contains" => "hard proof",
-          "target_model" => "large/model",
-          "message" => "use the strongest configured model"
+          "id" => "deep-reasoning",
+          "kind" => "route_gate",
+          "message" => "use the strongest configured model",
+          "target_model" => "large/model"
         }
       ])
 
@@ -102,8 +102,8 @@ defmodule Wardwright.RoutePolicyTest do
     conn =
       call(:post, "/v1/wardwright/simulate", %{
         request: %{
-          model: "unit-model",
-          messages: [%{role: "user", content: "hard proof"}]
+          messages: [%{content: "hard proof", role: "user"}],
+          model: "unit-model"
         }
       })
 
@@ -123,10 +123,10 @@ defmodule Wardwright.RoutePolicyTest do
       unit_policy_config()
       |> Map.put("governance", [
         %{
-          "id" => "missing-model",
-          "kind" => "route_gate",
           "action" => "switch_model",
           "contains" => "hard proof",
+          "id" => "missing-model",
+          "kind" => "route_gate",
           "target_model" => "missing/model"
         }
       ])
@@ -135,8 +135,8 @@ defmodule Wardwright.RoutePolicyTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        messages: [%{role: "user", content: "hard proof " <> String.duplicate("x", 60)}]
+        messages: [%{content: "hard proof " <> String.duplicate("x", 60), role: "user"}],
+        model: "unit-model"
       })
 
     assert conn.status == 429
@@ -156,12 +156,12 @@ defmodule Wardwright.RoutePolicyTest do
       unit_policy_config()
       |> Map.put("governance", [
         %{
+          "action" => "switch_model",
+          "allow_fallback" => true,
+          "contains" => "hard proof",
           "id" => "missing-model",
           "kind" => "route_gate",
-          "action" => "switch_model",
-          "contains" => "hard proof",
-          "target_model" => "missing/model",
-          "allow_fallback" => true
+          "target_model" => "missing/model"
         }
       ])
 
@@ -169,8 +169,8 @@ defmodule Wardwright.RoutePolicyTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        messages: [%{role: "user", content: "hard proof " <> String.duplicate("x", 60)}]
+        messages: [%{content: "hard proof " <> String.duplicate("x", 60), role: "user"}],
+        model: "unit-model"
       })
 
     assert conn.status == 200
@@ -185,23 +185,23 @@ defmodule Wardwright.RoutePolicyTest do
     assert get_in(receipt, ["decision", "selected_model"]) == "medium/model"
 
     assert get_in(receipt, ["decision", "policy_route_constraints"]) == %{
-             "forced_model" => "missing/model",
-             "allow_fallback" => true
+             "allow_fallback" => true,
+             "forced_model" => "missing/model"
            }
 
     refute Enum.any?(
              get_in(receipt, ["decision", "skipped"]),
-             &match?(%{"target" => "medium/model", "reason" => "policy_route_gate"}, &1)
+             &match?(%{"reason" => "policy_route_gate", "target" => "medium/model"}, &1)
            )
 
     assert Enum.any?(
              get_in(receipt, ["decision", "skipped"]),
-             &match?(%{"target" => "missing/model", "reason" => "forced_model_unavailable"}, &1)
+             &match?(%{"reason" => "forced_model_unavailable", "target" => "missing/model"}, &1)
            )
 
     assert Enum.any?(
              get_in(receipt, ["decision", "skipped"]),
-             &match?(%{"target" => "tiny/model", "reason" => "context_window_too_small"}, &1)
+             &match?(%{"reason" => "context_window_too_small", "target" => "tiny/model"}, &1)
            )
   end
 
@@ -210,10 +210,10 @@ defmodule Wardwright.RoutePolicyTest do
       unit_policy_config()
       |> Map.put("governance", [
         %{
-          "id" => "too-small-model",
-          "kind" => "route_gate",
           "action" => "switch_model",
           "contains" => "long proof",
+          "id" => "too-small-model",
+          "kind" => "route_gate",
           "target_model" => "tiny/model"
         }
       ])
@@ -222,8 +222,8 @@ defmodule Wardwright.RoutePolicyTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        messages: [%{role: "user", content: "long proof " <> String.duplicate("x", 200)}]
+        messages: [%{content: "long proof " <> String.duplicate("x", 200), role: "user"}],
+        model: "unit-model"
       })
 
     assert conn.status == 429
@@ -235,7 +235,7 @@ defmodule Wardwright.RoutePolicyTest do
     assert get_in(receipt, ["decision", "reason"]) ==
              "policy forced model was too small for estimated prompt"
 
-    assert [%{"target" => "tiny/model", "reason" => "context_window_too_small"} | _] =
+    assert [%{"reason" => "context_window_too_small", "target" => "tiny/model"} | _] =
              get_in(receipt, ["decision", "skipped"])
   end
 
@@ -243,14 +243,14 @@ defmodule Wardwright.RoutePolicyTest do
     config =
       unit_policy_config()
       |> Map.put("targets", [
-        %{"model" => "local/qwen", "context_window" => 32},
-        %{"model" => "managed/kimi", "context_window" => 256}
+        %{"context_window" => 32, "model" => "local/qwen"},
+        %{"context_window" => 256, "model" => "managed/kimi"}
       ])
       |> Map.put("governance", [
         %{
+          "engine" => "dune",
           "id" => "dune-route-gate",
           "kind" => "route_gate",
-          "engine" => "dune",
           "source" =>
             ~s(%{"action" => "restrict_routes", "allowed_targets" => ["local"], "reason" => "private route gate"})
         }
@@ -261,8 +261,8 @@ defmodule Wardwright.RoutePolicyTest do
     conn =
       call(:post, "/v1/wardwright/simulate", %{
         request: %{
-          model: "unit-model",
-          messages: [%{role: "user", content: "small request"}]
+          messages: [%{content: "small request", role: "user"}],
+          model: "unit-model"
         }
       })
 
@@ -275,17 +275,17 @@ defmodule Wardwright.RoutePolicyTest do
              "allowed_targets" => ["local"]
            }
 
-    assert [%{"rule_id" => "dune-route-gate", "action" => "restrict_routes"}] =
+    assert [%{"action" => "restrict_routes", "rule_id" => "dune-route-gate"}] =
              get_in(body, ["receipt", "decision", "policy_actions"])
 
     assert [
              %{
                "action_schema" => "wardwright.policy_action.v1",
-               "phase" => "request.routing",
-               "effect_type" => "route_constraint",
-               "source" => %{"type" => "engine", "engine" => "dune", "status" => "ok"},
                "conflict_key" => "route_constraints",
-               "conflict_policy" => "ordered"
+               "conflict_policy" => "ordered",
+               "effect_type" => "route_constraint",
+               "phase" => "request.routing",
+               "source" => %{"engine" => "dune", "status" => "ok", "type" => "engine"}
              }
            ] = get_in(body, ["receipt", "decision", "policy_actions"])
   end
@@ -294,22 +294,22 @@ defmodule Wardwright.RoutePolicyTest do
     config =
       unit_policy_config()
       |> Map.put("targets", [
-        %{"model" => "local/qwen", "context_window" => 32},
-        %{"model" => "managed/kimi", "context_window" => 256}
+        %{"context_window" => 32, "model" => "local/qwen"},
+        %{"context_window" => 256, "model" => "managed/kimi"}
       ])
       |> Map.put("governance", [
         %{
-          "id" => "private-local-provider",
-          "kind" => "route_gate",
           "action" => "restrict_routes",
+          "allowed_targets" => ["local"],
           "contains" => "private",
-          "allowed_targets" => ["local"]
+          "id" => "private-local-provider",
+          "kind" => "route_gate"
         },
         %{
-          "id" => "private-specific-model",
-          "kind" => "route_gate",
           "action" => "switch_model",
           "contains" => "private",
+          "id" => "private-specific-model",
+          "kind" => "route_gate",
           "target_model" => "local/qwen"
         }
       ])
@@ -319,8 +319,8 @@ defmodule Wardwright.RoutePolicyTest do
     conn =
       call(:post, "/v1/wardwright/simulate", %{
         request: %{
-          model: "unit-model",
-          messages: [%{role: "user", content: "private working notes"}]
+          messages: [%{content: "private working notes", role: "user"}],
+          model: "unit-model"
         }
       })
 
@@ -334,11 +334,11 @@ defmodule Wardwright.RoutePolicyTest do
 
     assert [
              %{
+               "class" => "ordered",
                "conflict_schema" => "wardwright.policy_conflict.v1",
                "key" => "route_constraints",
-               "class" => "ordered",
-               "rule_ids" => ["private-local-provider", "private-specific-model"],
-               "required_resolution" => "preserve policy declaration order"
+               "required_resolution" => "preserve policy declaration order",
+               "rule_ids" => ["private-local-provider", "private-specific-model"]
              }
            ] = get_in(body, ["receipt", "decision", "policy_conflicts"])
   end

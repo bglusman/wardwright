@@ -7,10 +7,10 @@ defmodule Wardwright.StreamPolicyHorizonTest do
         ["alpha ", "beta ", "gamma"],
         [
           %{
-            "id" => "never-matches",
-            "contains" => "OldClient(",
             "action" => "block",
-            "horizon_bytes" => byte_size("OldClient(")
+            "contains" => "OldClient(",
+            "horizon_bytes" => byte_size("OldClient("),
+            "id" => "never-matches"
           }
         ]
       )
@@ -29,10 +29,10 @@ defmodule Wardwright.StreamPolicyHorizonTest do
       Wardwright.Policy.Stream.start(
         [
           %{
-            "id" => "latency-budget",
-            "contains" => "OldClient(",
             "action" => "block",
+            "contains" => "OldClient(",
             "horizon_bytes" => byte_size("OldClient("),
+            "id" => "latency-budget",
             "max_hold_ms" => 5
           }
         ],
@@ -53,12 +53,12 @@ defmodule Wardwright.StreamPolicyHorizonTest do
 
     assert [
              %{
-               "type" => "stream_policy.latency_exceeded",
                "action" => "fail_closed",
                "chunk_index" => 1,
+               "held_bytes" => ^held_bytes,
                "max_hold_ms" => 5,
                "observed_hold_ms" => 6,
-               "held_bytes" => ^held_bytes
+               "type" => "stream_policy.latency_exceeded"
              }
            ] = state.events
   end
@@ -69,10 +69,10 @@ defmodule Wardwright.StreamPolicyHorizonTest do
         ["ééé", "abc"],
         [
           %{
-            "id" => "unicode-near-miss",
-            "contains" => "missing",
             "action" => "block",
-            "horizon_bytes" => 3
+            "contains" => "missing",
+            "horizon_bytes" => 3,
+            "id" => "unicode-near-miss"
           }
         ]
       )
@@ -89,11 +89,11 @@ defmodule Wardwright.StreamPolicyHorizonTest do
         ["abc ", "OldClient(", " done"],
         [
           %{
-            "id" => "bounded-rewrite",
-            "contains" => "OldClient(",
             "action" => "rewrite_chunk",
-            "replacement" => "NewClient(",
-            "horizon_bytes" => byte_size("OldClient(")
+            "contains" => "OldClient(",
+            "horizon_bytes" => byte_size("OldClient("),
+            "id" => "bounded-rewrite",
+            "replacement" => "NewClient("
           }
         ]
       )
@@ -110,10 +110,10 @@ defmodule Wardwright.StreamPolicyHorizonTest do
         ["keep ", "DROP", " done"],
         [
           %{
-            "id" => "bounded-drop",
-            "contains" => "DROP",
             "action" => "drop_chunk",
-            "horizon_bytes" => 5
+            "contains" => "DROP",
+            "horizon_bytes" => 5,
+            "id" => "bounded-drop"
           }
         ]
       )
@@ -129,10 +129,10 @@ defmodule Wardwright.StreamPolicyHorizonTest do
     state =
       Wardwright.Policy.Stream.start([
         %{
-          "id" => "incremental-block",
-          "contains" => "OldClient(",
           "action" => "block",
-          "horizon_bytes" => byte_size("OldClient(")
+          "contains" => "OldClient(",
+          "horizon_bytes" => byte_size("OldClient("),
+          "id" => "incremental-block"
         }
       ])
 
@@ -159,10 +159,10 @@ defmodule Wardwright.StreamPolicyHorizonTest do
     state =
       Wardwright.Policy.Stream.start([
         %{
-          "id" => "incremental-finish",
-          "contains" => "OldClient(",
           "action" => "block",
-          "horizon_bytes" => byte_size("OldClient(")
+          "contains" => "OldClient(",
+          "horizon_bytes" => byte_size("OldClient("),
+          "id" => "incremental-finish"
         }
       ])
 
@@ -184,11 +184,11 @@ defmodule Wardwright.StreamPolicyHorizonTest do
     rewrite_state =
       Wardwright.Policy.Stream.start([
         %{
-          "id" => "incremental-rewrite",
-          "contains" => "OldClient(",
           "action" => "rewrite_chunk",
-          "replacement" => "NewClient(",
-          "horizon_bytes" => byte_size("OldClient(")
+          "contains" => "OldClient(",
+          "horizon_bytes" => byte_size("OldClient("),
+          "id" => "incremental-rewrite",
+          "replacement" => "NewClient("
         }
       ])
 
@@ -208,10 +208,10 @@ defmodule Wardwright.StreamPolicyHorizonTest do
     drop_state =
       Wardwright.Policy.Stream.start([
         %{
-          "id" => "incremental-drop",
-          "contains" => "DROP",
           "action" => "drop_chunk",
-          "horizon_bytes" => 5
+          "contains" => "DROP",
+          "horizon_bytes" => 5,
+          "id" => "incremental-drop"
         }
       ])
 

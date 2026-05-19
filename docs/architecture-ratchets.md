@@ -93,7 +93,10 @@ Every non-trivial review should ask:
 
 ## Tooling Follow-Ups
 
-- Add Credo and Quokka after the Dune snippet spike lands. Configure them as
-  gradual ratchets rather than a noisy whole-repo style rewrite, with an initial
-  bias toward explicit aliases/module-qualified calls in production code while
-  allowing conventional test DSL imports such as ExUnitProperties.
+- Credo is active as a gradual CI ratchet based on the generated community
+  default config. Existing complexity, arity, and nesting debt stays listed as a
+  future ratchet instead of making formatter adoption a broad refactor. Quokka
+  is part of the normal formatter with all built-in style categories enabled and
+  optional autosort enabled for maps, structs, and schemas, so future rewrites
+  land through the existing format check instead of a separate style-only review
+  pass.

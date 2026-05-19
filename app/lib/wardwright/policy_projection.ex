@@ -1,55 +1,125 @@
 defmodule Wardwright.PolicyProjection do
   @moduledoc false
 
+  alias Wardwright.Policy.Action
+  alias Wardwright.Policy.Plan
   alias Wardwright.PolicyProjection.Contract
 
   @kind_key "kind"
   @transition_to_key "transition_to"
   @then_key "then"
   @action_key "action"
+  @alert_key "alert"
+  @alert_delivery_key "alert_delivery"
+  @actions_key "actions"
+  @completed_status "completed"
+  @content_key "content"
+  @conflicts_key "conflicts"
+  @decision_key "decision"
   @tool_sequence_kind "tool_sequence"
   @tool_loop_threshold_kind "tool_loop_threshold"
+  @tool_policy_key "tool_policy"
   @state_transition_action "state_transition"
   @decision_tool_context_read "decision.tool_context"
   @policy_cache_tool_call_read "policy_cache.session.tool_call"
   @policy_cache_state_read "policy_cache.session.policy_state"
   @policy_actions_write "policy.actions"
+  @direction_key "direction"
+  @events_key "events"
+  @engine_id_key "engine_id"
+  @expected_behavior_key "expected_behavior"
+  @final_output_key "final_output"
+  @input_key "input"
+  @input_summary_key "input_summary"
+  @match_key "match"
+  @message_key "message"
+  @model_key "model"
+  @messages_key "messages"
+  @model_received_input_key "model_received_input"
+  @model_response_key "model_response"
+  @name_key "name"
+  @policy_actions_key "policy_actions"
+  @policy_conflicts_key "policy_conflicts"
+  @postscript_key "postscript"
+  @preamble_key "preamble"
+  @prompt_transforms_key "prompt_transforms"
+  @route_blocked_key "route_blocked"
+  @route_constraints_key "route_constraints"
+  @selected_model_key "selected_model"
+  @phase_key "phase"
+  @receipt_preview_key "receipt_preview"
+  @reason_key "reason"
+  @released_to_consumer_key "released_to_consumer"
+  @replacement_key "replacement"
+  @reminder_key "reminder"
+  @request_rewrites_key "request_rewrites"
+  @response_chunks_key "response_chunks"
+  @rewrites_key "rewrites"
+  @rule_id_key "rule_id"
+  @scenario_id_key "scenario_id"
+  @simulation_schema_key "simulation_schema"
+  @state_transition_key "state_transition"
+  @structured_output_key "structured_output"
+  @stream_key "stream"
+  @stream_rules_key "stream_rules"
+  @title_key "title"
+  @trace_key "trace"
+  @role_key "role"
+  @status_key "status"
+  @type_key "type"
+  @user_input_key "user_input"
+  @verdict_key "verdict"
+  @generated_bytes_key "generated_bytes"
+  @governance_key "governance"
+  @held_bytes_key "held_bytes"
+  @released_bytes_key "released_bytes"
+  @trigger_count_key "trigger_count"
+  @default_rule_id "policy"
+  @default_request_role "user"
+  @default_stream_policy_action "stream-policy"
+  @default_transform_action "transform"
+  @fail_closed_action "fail_closed"
+  @match_scope_key "match_scope"
+  @request_pre_model_phase "request.pre_model"
+  @response_streaming_phase "response.streaming"
+  @simulation_coverage_phase "simulation.coverage"
+  @simulation_coverage_gap_type "simulation.coverage_gap"
+  @stream_match_scope "stream"
+  @system_role "system"
 
   @patterns [
     %{
+      "category" => "response.streaming",
       "id" => "tts-retry",
-      "title" => "Time-travel stream retry",
-      "category" => "response.streaming",
       "promise" =>
-        "Hold a bounded stream horizon, catch prohibited output before release, then retry once with a precise reminder."
+        "Hold a bounded stream horizon, catch prohibited output before release, then retry once with a precise reminder.",
+      "title" => "Time-travel stream retry"
     },
     %{
+      "category" => "response.streaming",
       "id" => "stream-rewrite-state",
-      "title" => "Regex rewrite and state transition",
-      "category" => "response.streaming",
       "promise" =>
-        "Show related stream regex matches where one rewrites held output and a later match transitions the session into review."
+        "Show related stream regex matches where one rewrites held output and a later match transitions the session into review.",
+      "title" => "Regex rewrite and state transition"
     },
     %{
-      "id" => "ambiguous-success",
-      "title" => "Ambiguous success alert",
       "category" => "output.finalizing",
-      "promise" =>
-        "Detect final answers that claim completion while required artifacts or fields are missing."
+      "id" => "ambiguous-success",
+      "promise" => "Detect final answers that claim completion while required artifacts or fields are missing.",
+      "title" => "Ambiguous success alert"
     },
     %{
-      "id" => "route-privacy",
-      "title" => "Private context route gate",
       "category" => "route.selecting",
-      "promise" =>
-        "Keep private-risk requests on approved local routes unless cloud escalation is explicitly allowed."
+      "id" => "route-privacy",
+      "promise" => "Keep private-risk requests on approved local routes unless cloud escalation is explicitly allowed.",
+      "title" => "Private context route gate"
     },
     %{
-      "id" => "tool-governance",
-      "title" => "Tool call governance",
       "category" => "tool.using",
+      "id" => "tool-governance",
       "promise" =>
-        "Normalize tool context, expose tool-sensitive policy review points, and make tool selector/loop rules visible before enforcement."
+        "Normalize tool context, expose tool-sensitive policy review points, and make tool selector/loop rules visible before enforcement.",
+      "title" => "Tool call governance"
     }
   ]
 
@@ -70,15 +140,15 @@ defmodule Wardwright.PolicyProjection do
     phases = phases(pattern["id"], config)
 
     %{
-      "projection_schema" => "wardwright.policy_projection.v1",
       "artifact" => artifact(pattern, config),
-      "engine" => engine(pattern["id"], config),
       "compiled_plan" => compiled_plan(pattern["id"], config, phases),
-      "phases" => phases,
-      "state_machine" => state_machine(pattern["id"], phases, config),
-      "effects" => effects(pattern["id"], config),
       "conflicts" => conflicts(pattern["id"], config),
+      "effects" => effects(pattern["id"], config),
+      "engine" => engine(pattern["id"], config),
       "opaque_regions" => opaque_regions(pattern["id"], config),
+      "phases" => phases,
+      "projection_schema" => "wardwright.policy_projection.v1",
+      "state_machine" => state_machine(pattern["id"], phases, config),
       "warnings" => warnings(pattern["id"], config)
     }
   end
@@ -115,18 +185,18 @@ defmodule Wardwright.PolicyProjection do
   defp tts_simulation_inputs do
     [
       %{
-        "id" => "split-old-client",
-        "title" => "TTSR: split prohibited span",
         "description" => "OldClient( appears across held stream chunks and should trigger retry.",
-        "user_input" => "Show me the legacy adapter name in a migration note.",
-        "model_response" => "avoid introducing Old\nClient( into the final answer"
+        "id" => "split-old-client",
+        "model_response" => "avoid introducing Old\nClient( into the final answer",
+        "title" => "TTSR: split prohibited span",
+        "user_input" => "Show me the legacy adapter name in a migration note."
       },
       %{
-        "id" => "safe-stream",
-        "title" => "TTSR: safe stream",
         "description" => "No prohibited span appears, so the stream can release normally.",
-        "user_input" => "Write a migration note that avoids deprecated constructors.",
-        "model_response" => "Use the current client adapter.\nAvoid legacy constructor names."
+        "id" => "safe-stream",
+        "model_response" => "Use the current client adapter.\nAvoid legacy constructor names.",
+        "title" => "TTSR: safe stream",
+        "user_input" => "Write a migration note that avoids deprecated constructors."
       }
     ]
   end
@@ -134,80 +204,63 @@ defmodule Wardwright.PolicyProjection do
   defp stream_rewrite_simulation_inputs do
     [
       %{
+        "description" => "An account identifier is rewritten, then a related token forces review.",
+        "history_context" => %{"policy_state" => "observing", "recent_related_secret_matches" => "0"},
         "id" => "rewrite-then-secret",
+        "model_response" => "account acct_4938 appears in the answer\ntoken_live_4938 follows in the held horizon",
         "title" => "Stream: rewrite then transition",
-        "description" =>
-          "An account identifier is rewritten, then a related token forces review.",
-        "user_input" => "Summarize the billing incident without exposing credentials.",
-        "model_response" =>
-          "account acct_4938 appears in the answer\ntoken_live_4938 follows in the held horizon",
-        "history_context" => %{
-          "recent_related_secret_matches" => "0",
-          "policy_state" => "observing"
-        }
+        "user_input" => "Summarize the billing incident without exposing credentials."
       },
       %{
-        "id" => "input-and-output-rewrite",
-        "title" => "Stream: input and output rewrite",
         "description" =>
           "Private request context is withheld from the provider, then an account identifier is redacted before release.",
-        "user_input" =>
-          "Summarize the incident. private_context{customer email is alex@example.test}",
-        "model_response" =>
-          "The billing incident for account acct_4938 can be summarized without the private email.",
-        "history_context" => %{
-          "recent_related_secret_matches" => "0",
-          "policy_state" => "observing"
-        }
+        "history_context" => %{"policy_state" => "observing", "recent_related_secret_matches" => "0"},
+        "id" => "input-and-output-rewrite",
+        "model_response" => "The billing incident for account acct_4938 can be summarized without the private email.",
+        "title" => "Stream: input and output rewrite",
+        "user_input" => "Summarize the incident. private_context{customer email is alex@example.test}"
       },
       %{
+        "description" => "The account identifier is redacted and the rewritten stream is released.",
+        "history_context" => %{"policy_state" => "observing", "recent_related_secret_matches" => "0"},
         "id" => "rewrite-only",
-        "title" => "Stream: rewrite only",
-        "description" =>
-          "The account identifier is redacted and the rewritten stream is released.",
-        "user_input" => "Summarize the billing incident without exposing credentials.",
         "model_response" => "account acct_4938 appears in the answer\nno related secret follows",
-        "history_context" => %{
-          "recent_related_secret_matches" => "0",
-          "policy_state" => "observing"
-        }
+        "title" => "Stream: rewrite only",
+        "user_input" => "Summarize the billing incident without exposing credentials."
       },
       %{
-        "id" => "history-threshold-escalation",
-        "title" => "Stream: history threshold escalates",
         "description" =>
           "A current account rewrite combines with three recent related matches in the last five turns, so the policy moves to review.",
-        "user_input" => "Summarize the billing incident without exposing credentials.",
-        "model_response" => "account acct_4938 appears in the answer with no new secret token.",
         "history_context" => %{
+          "policy_state" => "observing",
           "recent_related_secret_matches" => "3",
-          "recent_secret_window_requests" => "5",
-          "policy_state" => "observing"
-        }
+          "recent_secret_window_requests" => "5"
+        },
+        "id" => "history-threshold-escalation",
+        "model_response" => "account acct_4938 appears in the answer with no new secret token.",
+        "title" => "Stream: history threshold escalates",
+        "user_input" => "Summarize the billing incident without exposing credentials."
       },
       %{
-        "id" => "next-turn-review-model",
-        "title" => "Stream: next turn uses review model",
         "description" =>
           "No bytes need rewriting on this turn, but session history crosses the review threshold, so the next turn starts in review mode.",
-        "user_input" => "Give a short status update for the billing incident.",
-        "model_response" => "No account identifiers are present in this neutral status update.",
         "history_context" => %{
+          "policy_state" => "observing",
           "recent_related_secret_matches" => "3",
-          "recent_secret_window_requests" => "5",
-          "policy_state" => "observing"
-        }
+          "recent_secret_window_requests" => "5"
+        },
+        "id" => "next-turn-review-model",
+        "model_response" => "No account identifiers are present in this neutral status update.",
+        "title" => "Stream: next turn uses review model",
+        "user_input" => "Give a short status update for the billing incident."
       },
       %{
-        "id" => "no-match",
-        "title" => "Stream: no regex match",
         "description" => "No configured regex matches the held chunks.",
-        "user_input" => "Write a neutral status update.",
+        "history_context" => %{"policy_state" => "observing", "recent_related_secret_matches" => "0"},
+        "id" => "no-match",
         "model_response" => "ordinary response text\nwith no account ids or secret tokens",
-        "history_context" => %{
-          "recent_related_secret_matches" => "0",
-          "policy_state" => "observing"
-        }
+        "title" => "Stream: no regex match",
+        "user_input" => "Write a neutral status update."
       }
     ]
   end
@@ -215,19 +268,18 @@ defmodule Wardwright.PolicyProjection do
   defp ambiguous_success_simulation_inputs do
     [
       %{
+        "description" => "The final text claims completion but does not include artifact evidence.",
         "id" => "claim-without-artifact",
+        "model_response" => "Done, the export is ready for download.",
         "title" => "Artifact: claim without artifact",
-        "description" =>
-          "The final text claims completion but does not include artifact evidence.",
-        "user_input" => "Export the policy audit report as a spreadsheet.",
-        "model_response" => "Done, the export is ready for download."
+        "user_input" => "Export the policy audit report as a spreadsheet."
       },
       %{
-        "id" => "claim-with-artifact",
-        "title" => "Artifact: claim with metadata",
         "description" => "The completion claim is backed by an artifact identifier.",
-        "user_input" => "Export the policy audit report as a spreadsheet.",
-        "model_response" => "Done, the export is ready. Artifact: report-2026-05-16.xlsx"
+        "id" => "claim-with-artifact",
+        "model_response" => "Done, the export is ready. Artifact: report-2026-05-16.xlsx",
+        "title" => "Artifact: claim with metadata",
+        "user_input" => "Export the policy audit report as a spreadsheet."
       }
     ]
   end
@@ -235,39 +287,35 @@ defmodule Wardwright.PolicyProjection do
   defp structured_output_simulation_inputs do
     [
       %{
+        "description" => "The provider returns something JSON-like, but Wardwright cannot parse the promised contract.",
         "id" => "json-malformed-repair",
+        "model_response" => ~s({"status":"done","artifact_id":),
+        "relationship" => "direct",
         "title" => "JSON: malformed response gets repair feedback",
-        "description" =>
-          "The provider returns something JSON-like, but Wardwright cannot parse the promised contract.",
-        "relationship" => "direct",
-        "user_input" => "Return a structured deployment summary.",
-        "model_response" => ~s({"status":"done","artifact_id":)
+        "user_input" => "Return a structured deployment summary."
       },
       %{
+        "description" => "The JSON parses, but no accepted schema branch includes the evidence Wardwright promised.",
         "id" => "json-missing-semantic-field",
-        "title" => "JSON: schema branch missing evidence",
-        "description" =>
-          "The JSON parses, but no accepted schema branch includes the evidence Wardwright promised.",
+        "model_response" => ~s({"status":"done","summary":"Deployment finished."}),
         "relationship" => "direct",
-        "user_input" => "Return a structured deployment summary.",
-        "model_response" => ~s({"status":"done","summary":"Deployment finished."})
+        "title" => "JSON: schema branch missing evidence",
+        "user_input" => "Return a structured deployment summary."
       },
       %{
-        "id" => "json-valid-alternate-schema",
-        "title" => "JSON: alternate accepted schema",
         "description" =>
           "The caller accepts more than one shape, and this response satisfies the receipt-style branch.",
+        "id" => "json-valid-alternate-schema",
+        "model_response" => ~s({"result":{"state":"completed"},"evidence":{"artifact_id":"deploy-4938"}}),
         "relationship" => "direct",
-        "user_input" => "Return a structured deployment summary.",
-        "model_response" =>
-          ~s({"result":{"state":"completed"},"evidence":{"artifact_id":"deploy-4938"}})
+        "title" => "JSON: alternate accepted schema",
+        "user_input" => "Return a structured deployment summary."
       }
     ]
   end
 
-  defp simulation_input_relationship("tts-retry", input_id)
-       when input_id in ["split-old-client", "safe-stream"],
-       do: "direct"
+  defp simulation_input_relationship("tts-retry", input_id) when input_id in ["split-old-client", "safe-stream"],
+    do: "direct"
 
   defp simulation_input_relationship("stream-rewrite-state", input_id)
        when input_id in [
@@ -277,12 +325,10 @@ defmodule Wardwright.PolicyProjection do
               "history-threshold-escalation",
               "next-turn-review-model",
               "no-match"
-            ],
-       do: "direct"
+            ], do: "direct"
 
   defp simulation_input_relationship("ambiguous-success", input_id)
-       when input_id in ["claim-without-artifact", "claim-with-artifact"],
-       do: "direct"
+       when input_id in ["claim-without-artifact", "claim-with-artifact"], do: "direct"
 
   defp simulation_input_relationship(_pattern_id, _input_id), do: "cross_policy_probe"
 
@@ -336,9 +382,9 @@ defmodule Wardwright.PolicyProjection do
     artifact_hash = artifact(pattern(pattern_id), config)["artifact_hash"]
 
     turn = %{
-      "user_input" => user_input || "",
+      "history_context" => normalize_history_context(history_context),
       "model_response" => model_response || "",
-      "history_context" => normalize_history_context(history_context)
+      "user_input" => user_input || ""
     }
 
     pattern_id
@@ -395,6 +441,82 @@ defmodule Wardwright.PolicyProjection do
     |> Map.put("source", "interactive")
   end
 
+  def simulate_model_turn(user_input, model_response, config \\ Wardwright.current_config()) do
+    turn = simulation_turn(user_input, model_response, %{}, [])
+
+    request =
+      turn_user_input(turn)
+      |> model_turn_request(config)
+      |> model_turn_apply_prompt_transforms(config)
+
+    {policy_request, request_policy} = Plan.evaluate_request(request, %{}, config)
+    model_policy_input = model_turn_request_text(policy_request)
+    decision = model_turn_route_decision(policy_request, request_policy, config)
+    stream_policy = model_turn_stream_policy(turn_response(turn), config)
+
+    model_received_input = model_policy_input
+    request_rewrites = model_turn_policy_rewrites(request_policy)
+    request_events = model_turn_policy_events(request_policy)
+
+    {user_received_output, response_rewrites, response_events} =
+      model_turn_stream_output(turn_response(turn), stream_policy)
+
+    rewrites = request_rewrites ++ response_rewrites
+
+    coverage_events = model_turn_coverage_gap_events(config)
+
+    trace =
+      model_turn_trace(request_events, "request.pre_model", "model.request-rewrite") ++
+        model_turn_trace(response_events, "response.streaming", "model.stream-rewrite") ++
+        model_turn_trace(coverage_events, @simulation_coverage_phase, "model.simulation-coverage") ++
+        [
+          trace(
+            "model-receipt",
+            "receipt.finalized",
+            "model.receipt",
+            "receipt_event",
+            "model simulation receipt",
+            model_turn_receipt_detail(rewrites),
+            "pass"
+          )
+        ]
+
+    Map.new([
+      {@engine_id_key, "registered-model-simulator"},
+      {
+        @expected_behavior_key,
+        "Evaluate the selected registered model's deterministic request, route, and stream rules against this turn. Runtime side effects and unsupported surfaces are reported as coverage gaps."
+      },
+      {@input_summary_key, summarize_turn(turn)},
+      {
+        @receipt_preview_key,
+        Map.new([
+          {@events_key, model_turn_receipt_events(request_events, response_events)},
+          {@decision_key, model_turn_decision_preview(decision, request_policy)},
+          {
+            @input_key,
+            Map.new([
+              {@model_received_input_key, model_received_input},
+              {@model_response_key, turn_response(turn)},
+              {@request_rewrites_key, request_rewrites},
+              {@response_chunks_key, input_chunks(turn_response(turn))},
+              {@user_input_key, turn_user_input(turn)}
+            ])
+          },
+          {
+            @stream_key,
+            model_turn_stream_preview(user_received_output, response_rewrites, stream_policy)
+          }
+        ])
+      },
+      {@scenario_id_key, "interactive-registered-model-turn"},
+      {@simulation_schema_key, "wardwright.policy_simulation.v1"},
+      {@title_key, "Selected model turn simulation"},
+      {@trace_key, trace},
+      {@verdict_key, "passed"}
+    ])
+  end
+
   defp simulation_turn(user_input, model_response, history_context, response_attempts) do
     Map.new([
       {"user_input", user_input || ""},
@@ -408,12 +530,12 @@ defmodule Wardwright.PolicyProjection do
 
   defp artifact(pattern, config) do
     normalized = %{
-      "pattern_id" => pattern["id"],
       "config_version" => Map.get(config, "version"),
       "governance" => Map.get(config, "governance", []),
-      "tool_governance" => tool_governance_rules(config),
+      "pattern_id" => pattern["id"],
       "stream_rules" => Map.get(config, "stream_rules", []),
-      "structured_output" => Map.get(config, "structured_output")
+      "structured_output" => Map.get(config, "structured_output"),
+      "tool_governance" => tool_governance_rules(config)
     }
 
     hash =
@@ -422,10 +544,10 @@ defmodule Wardwright.PolicyProjection do
       |> Base.encode16(case: :lower)
 
     %{
-      "artifact_id" => "#{pattern["id"]}-#{Map.get(config, "model_id", "policy")}",
       "artifact_hash" => "sha256:#{hash}",
-      "policy_version" => "draft.#{pattern["id"]}.001",
-      "normalized_format" => "yaml"
+      "artifact_id" => "#{pattern["id"]}-#{Map.get(config, "model_id", "policy")}",
+      "normalized_format" => "yaml",
+      "policy_version" => "draft.#{pattern["id"]}.001"
     }
   end
 
@@ -434,17 +556,17 @@ defmodule Wardwright.PolicyProjection do
     language = route_engine_language(route_rules)
 
     %{
-      "engine_id" => "request-route-plan",
-      "display_name" => "Request route plan",
-      "language" => language,
-      "version" => "0.1",
       "capabilities" => %{
-        "phases" => ["route.selecting", "request.routing", "receipt.finalized"],
-        "can_static_analyze" => language != "opaque",
-        "can_generate_scenarios" => true,
+        "can_emit_source_spans" => Enum.any?(route_rules, &is_map(&1["source_span"])),
         "can_explain_trace" => true,
-        "can_emit_source_spans" => Enum.any?(route_rules, &is_map(&1["source_span"]))
-      }
+        "can_generate_scenarios" => true,
+        "can_static_analyze" => language != "opaque",
+        "phases" => ["route.selecting", "request.routing", "receipt.finalized"]
+      },
+      "display_name" => "Request route plan",
+      "engine_id" => "request-route-plan",
+      "language" => language,
+      "version" => "0.1"
     }
   end
 
@@ -453,63 +575,57 @@ defmodule Wardwright.PolicyProjection do
     language = route_engine_language(tool_rules)
 
     %{
-      "engine_id" => "tool-context-plan",
-      "display_name" => "Tool context plan",
-      "language" => language,
-      "version" => "0.1",
       "capabilities" => %{
-        "phases" => [
-          "tool.planning",
-          "tool.result_interpreting",
-          "tool.loop_governing",
-          "receipt.finalized"
-        ],
-        "can_static_analyze" => language != "opaque",
-        "can_generate_scenarios" => true,
+        "can_emit_source_spans" => Enum.any?(tool_rules, &is_map(&1["source_span"])),
         "can_explain_trace" => true,
-        "can_emit_source_spans" => Enum.any?(tool_rules, &is_map(&1["source_span"]))
-      }
+        "can_generate_scenarios" => true,
+        "can_static_analyze" => language != "opaque",
+        "phases" => ["tool.planning", "tool.result_interpreting", "tool.loop_governing", "receipt.finalized"]
+      },
+      "display_name" => "Tool context plan",
+      "engine_id" => "tool-context-plan",
+      "language" => language,
+      "version" => "0.1"
     }
   end
 
   defp engine("ambiguous-success", _config) do
     %{
-      "engine_id" => "hybrid-output-review",
-      "display_name" => "Hybrid output review",
-      "language" => "hybrid",
-      "version" => "0.1",
       "capabilities" => %{
-        "phases" => ["output.finalizing", "receipt.finalized"],
-        "can_static_analyze" => true,
-        "can_generate_scenarios" => true,
+        "can_emit_source_spans" => true,
         "can_explain_trace" => true,
-        "can_emit_source_spans" => true
-      }
+        "can_generate_scenarios" => true,
+        "can_static_analyze" => true,
+        "phases" => ["output.finalizing", "receipt.finalized"]
+      },
+      "display_name" => "Hybrid output review",
+      "engine_id" => "hybrid-output-review",
+      "language" => "hybrid",
+      "version" => "0.1"
     }
   end
 
   defp engine(_pattern_id, _config) do
     %{
-      "engine_id" => "structured-stream-primitives",
-      "display_name" => "Structured stream primitives",
-      "language" => "structured",
-      "version" => "0.1",
       "capabilities" => %{
-        "phases" => ["response.streaming", "receipt.finalized"],
-        "can_static_analyze" => true,
-        "can_generate_scenarios" => true,
+        "can_emit_source_spans" => false,
         "can_explain_trace" => true,
-        "can_emit_source_spans" => false
-      }
+        "can_generate_scenarios" => true,
+        "can_static_analyze" => true,
+        "phases" => ["response.streaming", "receipt.finalized"]
+      },
+      "display_name" => "Structured stream primitives",
+      "engine_id" => "structured-stream-primitives",
+      "language" => "structured",
+      "version" => "0.1"
     }
   end
 
   defp phases("ambiguous-success", _config) do
     [
       %{
-        "id" => "output.finalizing",
-        "title" => "Final Output",
         "description" => "Compare final text claims against expected artifact facts.",
+        "id" => "output.finalizing",
         "nodes" => [
           node(
             "success.claim-detector",
@@ -533,7 +649,8 @@ defmodule Wardwright.PolicyProjection do
             ["policy.action"],
             ["alert_operator", "annotate_receipt"]
           )
-        ]
+        ],
+        "title" => "Final Output"
       }
     ]
   end
@@ -550,10 +667,10 @@ defmodule Wardwright.PolicyProjection do
 
     [
       %{
-        "id" => "route.selecting",
-        "title" => "Route",
         "description" => "Project configured request governance before provider selection.",
-        "nodes" => nodes
+        "id" => "route.selecting",
+        "nodes" => nodes,
+        "title" => "Route"
       }
     ]
   end
@@ -590,31 +707,26 @@ defmodule Wardwright.PolicyProjection do
 
     [
       %{
+        "description" => "Review declared tools, explicit tool_choice, and planned assistant tool calls.",
         "id" => "tool.planning",
-        "title" => "Tool Planning",
-        "description" =>
-          "Review declared tools, explicit tool_choice, and planned assistant tool calls.",
-        "nodes" => planning_nodes
+        "nodes" => planning_nodes,
+        "title" => "Tool Planning"
       },
       %{
+        "description" => "Review tool result status and hashed result evidence before the model interprets it.",
         "id" => "tool.result_interpreting",
-        "title" => "Tool Results",
-        "description" =>
-          "Review tool result status and hashed result evidence before the model interprets it.",
-        "nodes" => result_nodes
+        "nodes" => result_nodes,
+        "title" => "Tool Results"
       },
       %{
+        "description" => "Review repeated tool use over session history and configured loop budgets.",
         "id" => "tool.loop_governing",
-        "title" => "Tool Loop",
-        "description" =>
-          "Review repeated tool use over session history and configured loop budgets.",
-        "nodes" => loop_nodes
+        "nodes" => loop_nodes,
+        "title" => "Tool Loop"
       },
       %{
+        "description" => "Persist normalized tool context dimensions without raw arguments or raw results.",
         "id" => "receipt.finalized",
-        "title" => "Receipt",
-        "description" =>
-          "Persist normalized tool context dimensions without raw arguments or raw results.",
         "nodes" => [
           node(
             "tool.receipt-context",
@@ -627,7 +739,8 @@ defmodule Wardwright.PolicyProjection do
             ["receipt.decision.tool_context", "receipt.summary.tool_*"],
             ["annotate_receipt"]
           )
-        ]
+        ],
+        "title" => "Receipt"
       }
     ]
   end
@@ -635,9 +748,8 @@ defmodule Wardwright.PolicyProjection do
   defp phases("stream-rewrite-state", _config) do
     [
       %{
-        "id" => "request.preparing",
-        "title" => "Request",
         "description" => "Rewrite or remove request-side spans before the provider sees them.",
+        "id" => "request.preparing",
         "nodes" => [
           node(
             "request.rewrite-context",
@@ -650,13 +762,12 @@ defmodule Wardwright.PolicyProjection do
             ["request.model_input", "policy.events"],
             ["match_regex", "rewrite_span"]
           )
-        ]
+        ],
+        "title" => "Request"
       },
       %{
+        "description" => "Evaluate related regex matches over held chunks before bytes are released.",
         "id" => "response.streaming",
-        "title" => "Stream",
-        "description" =>
-          "Evaluate related regex matches over held chunks before bytes are released.",
         "nodes" => [
           node(
             "stream.redact-account",
@@ -691,12 +802,12 @@ defmodule Wardwright.PolicyProjection do
             ["stream.release_decision", "request.review_required"],
             ["release_rewritten", "hold_for_review"]
           )
-        ]
+        ],
+        "title" => "Stream"
       },
       %{
-        "id" => "receipt.finalized",
-        "title" => "Receipt",
         "description" => "Persist rewrite, transition, and review evidence.",
+        "id" => "receipt.finalized",
         "nodes" => [
           node(
             "stream.rewrite-receipt",
@@ -709,7 +820,8 @@ defmodule Wardwright.PolicyProjection do
             ["receipt.events"],
             ["annotate_receipt"]
           )
-        ]
+        ],
+        "title" => "Receipt"
       }
     ]
   end
@@ -719,9 +831,8 @@ defmodule Wardwright.PolicyProjection do
 
     [
       %{
-        "id" => "response.streaming",
-        "title" => "Stream",
         "description" => "Evaluate bounded stream windows before bytes are released.",
+        "id" => "response.streaming",
         "nodes" => [
           node(
             "tts.no-old-client",
@@ -745,12 +856,12 @@ defmodule Wardwright.PolicyProjection do
             ["request.system_reminder", "final.status"],
             ["retry_with_reminder", "block_final"]
           )
-        ]
+        ],
+        "title" => "Stream"
       },
       %{
-        "id" => "receipt.finalized",
-        "title" => "Receipt",
         "description" => "Persist policy events for audit and future regression fixtures.",
+        "id" => "receipt.finalized",
         "nodes" => [
           node(
             "tts.receipt-events",
@@ -763,85 +874,69 @@ defmodule Wardwright.PolicyProjection do
             ["receipt.events"],
             ["annotate_receipt"]
           )
-        ]
+        ],
+        "title" => "Receipt"
       }
     ]
   end
 
-  defp node(
-         id,
-         label,
-         kind,
-         phase,
-         summary,
-         confidence,
-         reads,
-         writes,
-         actions,
-         source_span \\ nil
-       ) do
+  defp node(id, label, kind, phase, summary, confidence, reads, writes, actions, source_span \\ nil) do
     %Contract.Node{
+      actions: actions,
+      annotations: node_annotations(kind, actions, confidence),
+      confidence: confidence,
       id: id,
       label: label,
       node_class: kind,
       phase: phase,
-      summary: summary,
-      confidence: confidence,
       reads: reads,
-      writes: writes,
-      actions: actions,
-      annotations: node_annotations(kind, actions, confidence),
-      source_span: source_span
+      source_span: source_span,
+      summary: summary,
+      writes: writes
     }
     |> Contract.to_map()
   end
 
   defp node_annotations("plan_gap", _actions, _confidence) do
     %Contract.Annotation{
-      why: "This marks an explicit gap where no configured rule currently applies.",
       change_when: "Add or import a recipe when this gap represents a real governance need.",
-      review_hint: "Safe as a reminder, but unsafe if operators assume enforcement is active."
+      review_hint: "Safe as a reminder, but unsafe if operators assume enforcement is active.",
+      why: "This marks an explicit gap where no configured rule currently applies."
     }
   end
 
   defp node_annotations(_kind, [], "opaque") do
     %Contract.Annotation{
-      why:
-        "This part exists because the projection could not reduce the policy into exact primitives.",
-      change_when:
-        "Replace opaque policy code with declared primitives when visual review matters.",
-      review_hint: "Treat simulation evidence as required before trusting this branch."
+      change_when: "Replace opaque policy code with declared primitives when visual review matters.",
+      review_hint: "Treat simulation evidence as required before trusting this branch.",
+      why: "This part exists because the projection could not reduce the policy into exact primitives."
     }
   end
 
   defp node_annotations(_kind, [], confidence) do
     %Contract.Annotation{
-      why: "This node records evidence or context used by nearby policy decisions.",
-      change_when:
-        "Review when the policy needs different evidence, receipt fields, or routing context.",
-      review_hint:
-        "Confidence is #{confidence}; inspect reads and writes before changing this rule."
+      change_when: "Review when the policy needs different evidence, receipt fields, or routing context.",
+      review_hint: "Confidence is #{confidence}; inspect reads and writes before changing this rule.",
+      why: "This node records evidence or context used by nearby policy decisions."
     }
   end
 
   defp node_annotations(_kind, actions, confidence) do
     %Contract.Annotation{
-      why: "This node explains when Wardwright may #{Enum.join(actions, ", ")}.",
-      change_when:
-        "Review when provider behavior, tool permissions, route costs, or policy intent changes.",
-      review_hint:
-        "Confidence is #{confidence}; inspect reads and writes before changing this rule."
+      change_when: "Review when provider behavior, tool permissions, route costs, or policy intent changes.",
+      review_hint: "Confidence is #{confidence}; inspect reads and writes before changing this rule.",
+      why: "This node explains when Wardwright may #{Enum.join(actions, ", ")}."
     }
   end
 
   defp compiled_plan(pattern_id, config, phases) do
     %{
-      "planner" => "Wardwright.Policy.Plan",
-      "pattern_id" => pattern_id,
-      "request_rule_count" => length(Map.get(config, "governance", [])),
-      "stream_rule_count" => length(Map.get(config, "stream_rules", [])),
       "node_count" => phases |> Enum.flat_map(& &1["nodes"]) |> length(),
-      "source" => "current_config"
+      "pattern_id" => pattern_id,
+      "planner" => "Wardwright.Policy.Plan",
+      "request_rule_count" => length(Map.get(config, "governance", [])),
+      "source" => "current_config",
+      "stream_rule_count" => length(Map.get(config, "stream_rules", []))
     }
   end
 
@@ -862,8 +957,7 @@ defmodule Wardwright.PolicyProjection do
         "A prohibited span has matched before release; current attempt must stop.",
         ["tts.no-old-client", "tts.retry-arbiter"],
         model_id: "none",
-        model_reason:
-          "The guard stops the active provider stream before any matched bytes are released to the user."
+        model_reason: "The guard stops the active provider stream before any matched bytes are released to the user."
       ),
       state(
         "retrying",
@@ -886,11 +980,11 @@ defmodule Wardwright.PolicyProjection do
     ]
 
     %Contract.StateMachine{
-      initial_state: "observing",
       default_projection: false,
-      summary:
-        "Explicit retry loop projection for stream guard, abort, retry, and receipt recording.",
+      initial_state: "observing",
+      simulation_steps: simulation_steps("tts-retry", config, states),
       states: states,
+      summary: "Explicit retry loop projection for stream guard, abort, retry, and receipt recording.",
       transitions: [
         transition(
           "stream.match",
@@ -916,8 +1010,7 @@ defmodule Wardwright.PolicyProjection do
           "annotate_receipt",
           "tts.receipt-events"
         )
-      ],
-      simulation_steps: simulation_steps("tts-retry", config, states)
+      ]
     }
     |> Contract.to_map()
     |> attach_state_node_fallback(phases)
@@ -940,8 +1033,7 @@ defmodule Wardwright.PolicyProjection do
         "A safe rewrite patch is available but more related stream context is still held.",
         ["stream.redact-account", "stream.rewrite-arbiter"],
         model_id: Wardwright.local_model(),
-        model_reason:
-          "Continue local handling while Wardwright decides whether rewritten output can be released."
+        model_reason: "Continue local handling while Wardwright decides whether rewritten output can be released."
       ),
       state(
         "review_required",
@@ -964,11 +1056,12 @@ defmodule Wardwright.PolicyProjection do
     ]
 
     %Contract.StateMachine{
-      initial_state: "observing",
       default_projection: false,
+      initial_state: "observing",
+      simulation_steps: simulation_steps("stream-rewrite-state", config, states),
+      states: states,
       summary:
         "Explicit projection for related stream regex matches, rewrite, state transition, and receipt recording.",
-      states: states,
       transitions: [
         transition(
           "request.rewrite",
@@ -1002,8 +1095,7 @@ defmodule Wardwright.PolicyProjection do
           "annotate_receipt",
           "stream.rewrite-receipt"
         )
-      ],
-      simulation_steps: simulation_steps("stream-rewrite-state", config, states)
+      ]
     }
     |> Contract.to_map()
     |> attach_state_node_fallback(phases)
@@ -1020,13 +1112,12 @@ defmodule Wardwright.PolicyProjection do
     ]
 
     %Contract.StateMachine{
-      initial_state: "active",
       default_projection: true,
-      summary:
-        "Default one-state projection for policies without explicit stateful control flow.",
+      initial_state: "active",
+      simulation_steps: simulation_steps(pattern_id, config, states),
       states: states,
-      transitions: [],
-      simulation_steps: simulation_steps(pattern_id, config, states)
+      summary: "Default one-state projection for policies without explicit stateful control flow.",
+      transitions: []
     }
     |> Contract.to_map()
   end
@@ -1048,22 +1139,22 @@ defmodule Wardwright.PolicyProjection do
     %Contract.State{
       id: id,
       label: label,
-      summary: summary,
-      node_ids: node_ids,
-      terminal: Keyword.get(opts, :terminal, false),
       model_id: Keyword.get(opts, :model_id),
-      model_reason: Keyword.get(opts, :model_reason)
+      model_reason: Keyword.get(opts, :model_reason),
+      node_ids: node_ids,
+      summary: summary,
+      terminal: Keyword.get(opts, :terminal, false)
     }
   end
 
   defp transition(id, from, to, trigger, action, node_id) do
     %Contract.Transition{
-      id: id,
-      from: from,
-      to: to,
-      trigger: trigger,
       action: action,
-      node_id: node_id
+      from: from,
+      id: id,
+      node_id: node_id,
+      to: to,
+      trigger: trigger
     }
   end
 
@@ -1077,18 +1168,17 @@ defmodule Wardwright.PolicyProjection do
       state_id = trace_state(event, states)
 
       %Contract.StateStep{
-        step: index,
-        state: state_id,
         event_id: event["id"],
         node_id: event["node_id"],
-        summary: event["label"],
-        severity: event["severity"]
+        severity: event["severity"],
+        state: state_id,
+        step: index,
+        summary: event["label"]
       }
     end)
   end
 
-  defp trace_state(%{"state_id" => state_id}, states)
-       when is_binary(state_id) and state_id != "" do
+  defp trace_state(%{"state_id" => state_id}, states) when is_binary(state_id) and state_id != "" do
     if Enum.any?(states, &(&1.id == state_id)) do
       state_id
     else
@@ -1198,15 +1288,15 @@ defmodule Wardwright.PolicyProjection do
 
   defp request_governance_action(rule) do
     %{
-      "rule_id" => Map.get(rule, "id", "route-policy"),
-      "kind" => Map.get(rule, "kind", "route_gate"),
       "action" => Map.get(rule, "action", default_projected_action(rule)),
-      "message" => Map.get(rule, "message", "route governance rule"),
+      "allow_fallback" => Map.get(rule, "allow_fallback"),
       "allowed_targets" => Map.get(rule, "allowed_targets"),
-      "target_model" => Map.get(rule, "target_model", Map.get(rule, "model")),
-      "allow_fallback" => Map.get(rule, "allow_fallback")
+      "kind" => Map.get(rule, "kind", "route_gate"),
+      "message" => Map.get(rule, "message", "route governance rule"),
+      "rule_id" => Map.get(rule, "id", "route-policy"),
+      "target_model" => Map.get(rule, "target_model", Map.get(rule, "model"))
     }
-    |> Wardwright.Policy.Action.normalize(rule: rule)
+    |> Action.normalize(rule: rule)
   end
 
   defp default_projected_action(rule) do
@@ -1219,8 +1309,7 @@ defmodule Wardwright.PolicyProjection do
     end
   end
 
-  defp request_governance_kind(%{"engine" => engine}) when engine not in [nil, ""],
-    do: "policy_engine"
+  defp request_governance_kind(%{"engine" => engine}) when engine not in [nil, ""], do: "policy_engine"
 
   defp request_governance_kind(rule), do: Map.get(rule, "kind", "route_gate")
 
@@ -1257,8 +1346,7 @@ defmodule Wardwright.PolicyProjection do
     :wardwright@projection_core.route_confidence(false)
   end
 
-  defp request_governance_reads(%{"kind" => "history_threshold"}),
-    do: ["request.messages", "policy_cache.session"]
+  defp request_governance_reads(%{"kind" => "history_threshold"}), do: ["request.messages", "policy_cache.session"]
 
   defp request_governance_reads(%{"kind" => "history_regex_threshold"}),
     do: ["request.messages", "policy_cache.session"]
@@ -1267,8 +1355,8 @@ defmodule Wardwright.PolicyProjection do
 
   defp request_governance_writes(%{"action" => "restrict_routes"}), do: ["route.allowed_targets"]
 
-  defp request_governance_writes(%{"action" => action})
-       when action in ["switch_model", "reroute"], do: ["route.forced_model"]
+  defp request_governance_writes(%{"action" => action}) when action in ["switch_model", "reroute"],
+    do: ["route.forced_model"]
 
   defp request_governance_writes(%{"action" => "block"}), do: ["decision.blocked"]
   defp request_governance_writes(_action), do: ["policy.actions"]
@@ -1329,8 +1417,7 @@ defmodule Wardwright.PolicyProjection do
         {"phase", Map.get(rule, "phase", Map.get(tool, "phase"))}
       ]
       |> Enum.reject(fn {_key, value} -> value in [nil, ""] end)
-      |> Enum.map(fn {key, value} -> "#{key}=#{value}" end)
-      |> Enum.join(", ")
+      |> Enum.map_join(", ", fn {key, value} -> "#{key}=#{value}" end)
 
     cond do
       matcher != "" -> matcher
@@ -1349,11 +1436,7 @@ defmodule Wardwright.PolicyProjection do
     do: ["decision.tool_context", "policy_cache.session.tool_call"]
 
   defp tool_governance_reads(%{@kind_key => @tool_sequence_kind}, _phase),
-    do: [
-      @decision_tool_context_read,
-      @policy_cache_tool_call_read,
-      @policy_cache_state_read
-    ]
+    do: [@decision_tool_context_read, @policy_cache_tool_call_read, @policy_cache_state_read]
 
   defp tool_governance_reads(_rule, "tool.result_interpreting"),
     do: ["decision.tool_context", "tool.result_hash", "tool.result_status"]
@@ -1365,8 +1448,7 @@ defmodule Wardwright.PolicyProjection do
   defp tool_governance_writes("fail_closed"), do: ["decision.blocked", "final.status"]
   defp tool_governance_writes("review_result"), do: ["policy.actions", "receipt.events"]
 
-  defp tool_governance_writes(@state_transition_action),
-    do: [@policy_actions_write, @policy_cache_state_read]
+  defp tool_governance_writes(@state_transition_action), do: [@policy_actions_write, @policy_cache_state_read]
 
   defp tool_governance_writes(_action), do: ["tool.allowed", "policy.actions"]
 
@@ -1389,8 +1471,7 @@ defmodule Wardwright.PolicyProjection do
   defp stream_summary(rules) do
     ids =
       rules
-      |> Enum.map(&Map.get(&1, "id", "stream-rule"))
-      |> Enum.join(", ")
+      |> Enum.map_join(", ", &Map.get(&1, "id", "stream-rule"))
 
     "Project configured stream rules into a holdback detector: #{ids}."
   end
@@ -1581,12 +1662,12 @@ defmodule Wardwright.PolicyProjection do
 
   defp effect(id, node_id, phase, effect, target, confidence) do
     %Contract.Effect{
+      confidence: confidence,
+      effect: effect,
       id: id,
       node_id: node_id,
       phase: phase,
-      effect: effect,
-      target: target,
-      confidence: confidence
+      target: target
     }
     |> Contract.to_map()
   end
@@ -1594,12 +1675,11 @@ defmodule Wardwright.PolicyProjection do
   defp conflicts("ambiguous-success", _config) do
     [
       %{
-        "id" => "conflict.block-alert-choice",
         "class" => "ambiguous",
+        "id" => "conflict.block-alert-choice",
         "node_ids" => ["success.artifact-check"],
-        "summary" =>
-          "The artifact can alert or block; activation needs the operator to choose the promise.",
-        "required_resolution" => "select alert-only or block-final before activation"
+        "required_resolution" => "select alert-only or block-final before activation",
+        "summary" => "The artifact can alert or block; activation needs the operator to choose the promise."
       }
     ]
   end
@@ -1608,16 +1688,16 @@ defmodule Wardwright.PolicyProjection do
     config
     |> route_governance_rules()
     |> Enum.map(&request_governance_action/1)
-    |> Wardwright.Policy.Action.conflicts()
+    |> Action.conflicts()
     |> Enum.map(fn conflict ->
       rule_ids = Map.get(conflict, "rule_ids", [])
 
       %{
-        "id" => "conflict.#{Map.get(conflict, "key", "policy")}",
         "class" => Map.get(conflict, "class", "ordered"),
+        "id" => "conflict.#{Map.get(conflict, "key", "policy")}",
         "node_ids" => Enum.map(rule_ids, &"request-policy.#{safe_id(&1)}"),
-        "summary" => Map.get(conflict, "summary"),
-        "required_resolution" => Map.get(conflict, "required_resolution")
+        "required_resolution" => Map.get(conflict, "required_resolution"),
+        "summary" => Map.get(conflict, "summary")
       }
       |> Enum.reject(fn {_key, value} -> value in [nil, "", []] end)
       |> Map.new()
@@ -1632,14 +1712,13 @@ defmodule Wardwright.PolicyProjection do
       if length(rules) > 1 do
         [
           %{
-            "id" => "conflict.tool-policy.#{safe_id(phase)}",
             "class" => "ordered",
-            "node_ids" =>
-              Enum.map(rules, &"tool-policy.#{safe_id(Map.get(&1, "id", "tool-policy"))}"),
-            "summary" =>
-              "Multiple tool-governance rules can affect #{phase}; activation needs explicit priority or proof that actions do not conflict.",
+            "id" => "conflict.tool-policy.#{safe_id(phase)}",
+            "node_ids" => Enum.map(rules, &"tool-policy.#{safe_id(Map.get(&1, "id", "tool-policy"))}"),
             "required_resolution" =>
-              "declare priority, mutual exclusivity, or an allow/deny precedence contract before enforcement"
+              "declare priority, mutual exclusivity, or an allow/deny precedence contract before enforcement",
+            "summary" =>
+              "Multiple tool-governance rules can affect #{phase}; activation needs explicit priority or proof that actions do not conflict."
           }
         ]
       else
@@ -1651,13 +1730,12 @@ defmodule Wardwright.PolicyProjection do
   defp conflicts("stream-rewrite-state", _config) do
     [
       %{
-        "id" => "conflict.rewrite-before-transition",
         "class" => "ordered",
+        "id" => "conflict.rewrite-before-transition",
         "node_ids" => ["stream.redact-account", "stream.secret-transition"],
+        "required_resolution" => "preserve enough held context after rewriting to evaluate related transition rules",
         "summary" =>
-          "The safe rewrite may run, but a later related secret-token match can still force review before release.",
-        "required_resolution" =>
-          "preserve enough held context after rewriting to evaluate related transition rules"
+          "The safe rewrite may run, but a later related secret-token match can still force review before release."
       }
     ]
   end
@@ -1665,12 +1743,11 @@ defmodule Wardwright.PolicyProjection do
   defp conflicts(_pattern_id, _config) do
     [
       %{
-        "id" => "conflict.retry-block-order",
         "class" => "ordered",
+        "id" => "conflict.retry-block-order",
         "node_ids" => ["tts.no-old-client", "tts.retry-arbiter"],
-        "summary" =>
-          "Abort happens before retry arbitration; repeated violation resolves to block_final.",
-        "required_resolution" => "priority order is encoded by the compiled stream plan"
+        "required_resolution" => "priority order is encoded by the compiled stream plan",
+        "summary" => "Abort happens before retry arbitration; repeated violation resolves to block_final."
       }
     ]
   end
@@ -1685,8 +1762,7 @@ defmodule Wardwright.PolicyProjection do
         "node_id" => "request-policy.#{safe_id(Map.get(rule, "id", "route-policy"))}",
         "reason" =>
           "Sandboxed route policy is represented through its action contract; static adapter cannot prove every internal branch.",
-        "review_requirement" =>
-          "Require scenario coverage for route denial, allowed fallback, and no-match cases."
+        "review_requirement" => "Require scenario coverage for route denial, allowed fallback, and no-match cases."
       }
     end)
   end
@@ -1735,8 +1811,7 @@ defmodule Wardwright.PolicyProjection do
     ]
   end
 
-  defp warnings(_pattern_id, _config),
-    do: ["Adds stream latency up to the configured holdback horizon."]
+  defp warnings(_pattern_id, _config), do: ["Adds stream latency up to the configured holdback horizon."]
 
   defp simulation_records(pattern_id, config) do
     case Wardwright.PolicyScenarioStore.list(pattern_id) do
@@ -1745,25 +1820,20 @@ defmodule Wardwright.PolicyProjection do
     end
   end
 
-  defp simulation_cases("ambiguous-success", config),
-    do: ambiguous_success_simulation_cases(config)
+  defp simulation_cases("ambiguous-success", config), do: ambiguous_success_simulation_cases(config)
 
   defp simulation_cases("route-privacy", config), do: route_privacy_simulation_cases(config)
   defp simulation_cases("tool-governance", config), do: tool_governance_simulation_cases(config)
 
-  defp simulation_cases("stream-rewrite-state", config),
-    do: stream_rewrite_simulation_cases(config)
+  defp simulation_cases("stream-rewrite-state", config), do: stream_rewrite_simulation_cases(config)
 
   defp simulation_cases(pattern_id, config), do: default_simulation_cases(pattern_id, config)
 
-  defp evaluated_simulation("ambiguous-success", turn, config),
-    do: evaluated_ambiguous_success_simulation(turn, config)
+  defp evaluated_simulation("ambiguous-success", turn, config), do: evaluated_ambiguous_success_simulation(turn, config)
 
-  defp evaluated_simulation("stream-rewrite-state", turn, config),
-    do: evaluated_stream_rewrite_simulation(turn, config)
+  defp evaluated_simulation("stream-rewrite-state", turn, config), do: evaluated_stream_rewrite_simulation(turn, config)
 
-  defp evaluated_simulation("tts-retry", turn, config),
-    do: evaluated_tts_retry_simulation(turn, config)
+  defp evaluated_simulation("tts-retry", turn, config), do: evaluated_tts_retry_simulation(turn, config)
 
   defp evaluated_simulation(pattern_id, _turn, config) do
     pattern_id
@@ -1771,13 +1841,8 @@ defmodule Wardwright.PolicyProjection do
     |> List.first()
   end
 
-  defp evaluated_recipe_simulation(
-         "ambiguous-success",
-         "structured-output-repair-gate",
-         turn,
-         _config
-       ),
-       do: evaluated_structured_output_simulation(turn)
+  defp evaluated_recipe_simulation("ambiguous-success", "structured-output-repair-gate", turn, _config),
+    do: evaluated_structured_output_simulation(turn)
 
   defp evaluated_recipe_simulation(pattern_id, _recipe_id, turn, config),
     do: evaluated_simulation(pattern_id, turn, config)
@@ -1785,13 +1850,16 @@ defmodule Wardwright.PolicyProjection do
   defp ambiguous_success_simulation_cases(_config) do
     [
       %{
-        "simulation_schema" => "wardwright.policy_simulation.v1",
-        "scenario_id" => "missing-artifact",
-        "title" => "Completion claim missing artifact",
         "engine_id" => "hybrid-output-review",
-        "input_summary" => "Final answer says export is ready, but artifact metadata is empty.",
         "expected_behavior" => "Receipt is annotated and operator alert is emitted.",
-        "verdict" => "passed",
+        "input_summary" => "Final answer says export is ready, but artifact metadata is empty.",
+        "receipt_preview" => %{
+          "events" => [%{"rule_id" => "missing-artifact-after-success", "type" => "policy.alert"}],
+          "final_status" => "completed_with_alert"
+        },
+        "scenario_id" => "missing-artifact",
+        "simulation_schema" => "wardwright.policy_simulation.v1",
+        "title" => "Completion claim missing artifact",
         "trace" => [
           trace(
             "a1",
@@ -1821,10 +1889,7 @@ defmodule Wardwright.PolicyProjection do
             "pass"
           )
         ],
-        "receipt_preview" => %{
-          "events" => [%{"type" => "policy.alert", "rule_id" => "missing-artifact-after-success"}],
-          "final_status" => "completed_with_alert"
-        }
+        "verdict" => "passed"
       }
       |> fixture_case()
     ]
@@ -1837,14 +1902,17 @@ defmodule Wardwright.PolicyProjection do
 
     if has_claim? and not has_artifact? do
       %{
-        "simulation_schema" => "wardwright.policy_simulation.v1",
-        "scenario_id" => "interactive-ambiguous-success-alert",
-        "title" => "Edited input triggers missing artifact alert",
         "engine_id" => "hybrid-output-review",
+        "expected_behavior" => "Completion language without artifact evidence emits an operator alert.",
         "input_summary" => summarize_turn(turn),
-        "expected_behavior" =>
-          "Completion language without artifact evidence emits an operator alert.",
-        "verdict" => "passed",
+        "receipt_preview" => %{
+          "events" => [%{"rule_id" => "missing-artifact-after-success", "type" => "policy.alert"}],
+          "final_status" => "completed_with_alert",
+          "input" => turn
+        },
+        "scenario_id" => "interactive-ambiguous-success-alert",
+        "simulation_schema" => "wardwright.policy_simulation.v1",
+        "title" => "Edited input triggers missing artifact alert",
         "trace" => [
           trace(
             "i1",
@@ -1874,22 +1942,17 @@ defmodule Wardwright.PolicyProjection do
             "pass"
           )
         ],
-        "receipt_preview" => %{
-          "input" => turn,
-          "events" => [%{"type" => "policy.alert", "rule_id" => "missing-artifact-after-success"}],
-          "final_status" => "completed_with_alert"
-        }
+        "verdict" => "passed"
       }
     else
       %{
-        "simulation_schema" => "wardwright.policy_simulation.v1",
-        "scenario_id" => "interactive-ambiguous-success-clear",
-        "title" => "Edited input clears missing artifact alert",
         "engine_id" => "hybrid-output-review",
+        "expected_behavior" => "No alert is emitted unless completion language lacks artifact evidence.",
         "input_summary" => summarize_turn(turn),
-        "expected_behavior" =>
-          "No alert is emitted unless completion language lacks artifact evidence.",
-        "verdict" => "passed",
+        "receipt_preview" => %{"events" => [], "final_status" => "completed", "input" => turn},
+        "scenario_id" => "interactive-ambiguous-success-clear",
+        "simulation_schema" => "wardwright.policy_simulation.v1",
+        "title" => "Edited input clears missing artifact alert",
         "trace" => [
           trace(
             "i1",
@@ -1910,11 +1973,7 @@ defmodule Wardwright.PolicyProjection do
             "pass"
           )
         ],
-        "receipt_preview" => %{
-          "input" => turn,
-          "events" => [],
-          "final_status" => "completed"
-        }
+        "verdict" => "passed"
       }
     end
   end
@@ -1936,14 +1995,17 @@ defmodule Wardwright.PolicyProjection do
       {:ok, decoded} ->
         if structured_output_has_evidence?(decoded) do
           %{
-            "simulation_schema" => "wardwright.policy_simulation.v1",
-            "scenario_id" => "interactive-structured-output-valid",
-            "title" => "Edited JSON satisfies an accepted schema branch",
             "engine_id" => "hybrid-output-review",
+            "expected_behavior" => "The parsed JSON satisfies one accepted branch of the Wardwright model contract.",
             "input_summary" => summarize_turn(turn),
-            "expected_behavior" =>
-              "The parsed JSON satisfies one accepted branch of the Wardwright model contract.",
-            "verdict" => "passed",
+            "receipt_preview" => %{
+              "events" => [%{"rule_id" => "structured-output-repair-gate", "type" => "structured_output.accepted"}],
+              "final_status" => "completed",
+              "input" => turn
+            },
+            "scenario_id" => "interactive-structured-output-valid",
+            "simulation_schema" => "wardwright.policy_simulation.v1",
+            "title" => "Edited JSON satisfies an accepted schema branch",
             "trace" => [
               trace(
                 "j1",
@@ -1973,16 +2035,7 @@ defmodule Wardwright.PolicyProjection do
                 "pass"
               )
             ],
-            "receipt_preview" => %{
-              "input" => turn,
-              "events" => [
-                %{
-                  "type" => "structured_output.accepted",
-                  "rule_id" => "structured-output-repair-gate"
-                }
-              ],
-              "final_status" => "completed"
-            }
+            "verdict" => "passed"
           }
         else
           structured_output_retry_simulation(
@@ -1997,22 +2050,19 @@ defmodule Wardwright.PolicyProjection do
     end
   end
 
-  defp structured_output_retry_simulation(
-         turn,
-         scenario_id,
-         title,
-         expected_behavior,
-         match_detail,
-         action_label
-       ) do
+  defp structured_output_retry_simulation(turn, scenario_id, title, expected_behavior, match_detail, action_label) do
     %{
-      "simulation_schema" => "wardwright.policy_simulation.v1",
-      "scenario_id" => scenario_id,
-      "title" => title,
       "engine_id" => "hybrid-output-review",
-      "input_summary" => summarize_turn(turn),
       "expected_behavior" => expected_behavior,
-      "verdict" => "passed",
+      "input_summary" => summarize_turn(turn),
+      "receipt_preview" => %{
+        "events" => [%{"rule_id" => "structured-output-repair-gate", "type" => "structured_output.retry_requested"}],
+        "final_status" => "retry_requested",
+        "input" => turn
+      },
+      "scenario_id" => scenario_id,
+      "simulation_schema" => "wardwright.policy_simulation.v1",
+      "title" => title,
       "trace" => [
         trace(
           "j1",
@@ -2042,27 +2092,15 @@ defmodule Wardwright.PolicyProjection do
           "pass"
         )
       ],
-      "receipt_preview" => %{
-        "input" => turn,
-        "events" => [
-          %{
-            "type" => "structured_output.retry_requested",
-            "rule_id" => "structured-output-repair-gate"
-          }
-        ],
-        "final_status" => "retry_requested"
-      }
+      "verdict" => "passed"
     }
   end
 
-  defp structured_output_has_evidence?(%{"artifact_id" => value}) when value not in [nil, ""],
-    do: true
+  defp structured_output_has_evidence?(%{"artifact_id" => value}) when value not in [nil, ""], do: true
 
-  defp structured_output_has_evidence?(%{"file_id" => value}) when value not in [nil, ""],
-    do: true
+  defp structured_output_has_evidence?(%{"file_id" => value}) when value not in [nil, ""], do: true
 
-  defp structured_output_has_evidence?(%{"download_id" => value}) when value not in [nil, ""],
-    do: true
+  defp structured_output_has_evidence?(%{"download_id" => value}) when value not in [nil, ""], do: true
 
   defp structured_output_has_evidence?(%{"evidence" => evidence}) when is_map(evidence),
     do: structured_output_has_evidence?(evidence)
@@ -2093,15 +2131,27 @@ defmodule Wardwright.PolicyProjection do
   defp stream_rewrite_simulation_cases(_config) do
     [
       %{
-        "simulation_schema" => "wardwright.policy_simulation.v1",
-        "scenario_id" => "rewrite-then-transition",
-        "title" => "Rewrite followed by related transition",
         "engine_id" => "structured-stream-primitives",
-        "input_summary" =>
-          "Provider emits an account identifier, then a related secret token inside the held stream horizon.",
         "expected_behavior" =>
           "Account span is rewritten, later secret-token match transitions to review_required, and no unsafe bytes are released.",
-        "verdict" => "passed",
+        "input_summary" =>
+          "Provider emits an account identifier, then a related secret token inside the held stream horizon.",
+        "receipt_preview" => %{
+          "events" => [
+            %{"rule_id" => "account-redactor", "type" => "stream.rewrite_applied"},
+            %{"state" => "review_required", "type" => "policy.state_transition"},
+            %{"reason" => "related_secret_match", "type" => "stream.release_blocked"}
+          ],
+          "receipt_id" => "simulated-rewrite-transition-receipt",
+          "stream" => %{
+            "released_to_consumer" => false,
+            "rewrites" => [%{"replacement" => "[account-id]", "rule_id" => "account-redactor"}],
+            "state_transition" => "review_required"
+          }
+        },
+        "scenario_id" => "rewrite-then-transition",
+        "simulation_schema" => "wardwright.policy_simulation.v1",
+        "title" => "Rewrite followed by related transition",
         "trace" => [
           trace(
             "r1",
@@ -2154,21 +2204,7 @@ defmodule Wardwright.PolicyProjection do
             state_id: "recording"
           )
         ],
-        "receipt_preview" => %{
-          "receipt_id" => "simulated-rewrite-transition-receipt",
-          "stream" => %{
-            "rewrites" => [
-              %{"rule_id" => "account-redactor", "replacement" => "[account-id]"}
-            ],
-            "state_transition" => "review_required",
-            "released_to_consumer" => false
-          },
-          "events" => [
-            %{"type" => "stream.rewrite_applied", "rule_id" => "account-redactor"},
-            %{"type" => "policy.state_transition", "state" => "review_required"},
-            %{"type" => "stream.release_blocked", "reason" => "related_secret_match"}
-          ]
-        }
+        "verdict" => "passed"
       }
       |> fixture_case()
     ]
@@ -2198,14 +2234,27 @@ defmodule Wardwright.PolicyProjection do
           )
 
         %{
-          "simulation_schema" => "wardwright.policy_simulation.v1",
-          "scenario_id" => "interactive-rewrite-then-transition",
-          "title" => "Edited stream rewrites then transitions",
           "engine_id" => "structured-stream-primitives",
-          "input_summary" => summarize_turn(turn),
           "expected_behavior" =>
             "Account span is rewritten, a related secret pattern or session-history threshold transitions to review_required, and release is blocked.",
-          "verdict" => "passed",
+          "input_summary" => summarize_turn(turn),
+          "receipt_preview" => %{
+            "events" => [
+              %{"rule_id" => "account-redactor", "type" => "stream.rewrite_applied"},
+              %{"state" => "review_required", "type" => "policy.state_transition"},
+              %{"reason" => "related_secret_match", "type" => "stream.release_blocked"}
+            ],
+            "input" => input_preview,
+            "stream" => %{
+              "history" => stream_history_receipt(turn, related_secret_history_count),
+              "released_to_consumer" => false,
+              "rewrites" => [%{"match" => account, "replacement" => "[account-id]", "rule_id" => "account-redactor"}],
+              "state_transition" => "review_required"
+            }
+          },
+          "scenario_id" => "interactive-rewrite-then-transition",
+          "simulation_schema" => "wardwright.policy_simulation.v1",
+          "title" => "Edited stream rewrites then transitions",
           "trace" =>
             request_trace ++
               history_trace ++
@@ -2261,40 +2310,28 @@ defmodule Wardwright.PolicyProjection do
                   state_id: "recording"
                 )
               ],
-          "receipt_preview" => %{
-            "input" => input_preview,
-            "stream" => %{
-              "rewrites" => [
-                %{
-                  "rule_id" => "account-redactor",
-                  "match" => account,
-                  "replacement" => "[account-id]"
-                }
-              ],
-              "state_transition" => "review_required",
-              "released_to_consumer" => false,
-              "history" => stream_history_receipt(turn, related_secret_history_count)
-            },
-            "events" => [
-              %{"type" => "stream.rewrite_applied", "rule_id" => "account-redactor"},
-              %{"type" => "policy.state_transition", "state" => "review_required"},
-              %{"type" => "stream.release_blocked", "reason" => "related_secret_match"}
-            ]
-          }
+          "verdict" => "passed"
         }
 
       account_match ->
         account = hd(account_match)
 
         %{
-          "simulation_schema" => "wardwright.policy_simulation.v1",
-          "scenario_id" => "interactive-rewrite-only",
-          "title" => "Edited stream rewrites and releases",
           "engine_id" => "structured-stream-primitives",
+          "expected_behavior" => "Account span is rewritten and released because no related secret pattern appears.",
           "input_summary" => summarize_turn(turn),
-          "expected_behavior" =>
-            "Account span is rewritten and released because no related secret pattern appears.",
-          "verdict" => "passed",
+          "receipt_preview" => %{
+            "events" => [%{"rule_id" => "account-redactor", "type" => "stream.rewrite_applied"}],
+            "input" => input_preview,
+            "stream" => %{
+              "released_to_consumer" => true,
+              "rewrites" => [%{"match" => account, "replacement" => "[account-id]", "rule_id" => "account-redactor"}],
+              "state_transition" => nil
+            }
+          },
+          "scenario_id" => "interactive-rewrite-only",
+          "simulation_schema" => "wardwright.policy_simulation.v1",
+          "title" => "Edited stream rewrites and releases",
           "trace" =>
             request_trace ++
               history_trace ++
@@ -2330,33 +2367,38 @@ defmodule Wardwright.PolicyProjection do
                   state_id: "recording"
                 )
               ],
-          "receipt_preview" => %{
-            "input" => input_preview,
-            "stream" => %{
-              "rewrites" => [
-                %{
-                  "rule_id" => "account-redactor",
-                  "match" => account,
-                  "replacement" => "[account-id]"
-                }
-              ],
-              "state_transition" => nil,
-              "released_to_consumer" => true
-            },
-            "events" => [%{"type" => "stream.rewrite_applied", "rule_id" => "account-redactor"}]
-          }
+          "verdict" => "passed"
         }
 
       related_secret_history_count >= 3 ->
         %{
-          "simulation_schema" => "wardwright.policy_simulation.v1",
-          "scenario_id" => "interactive-next-turn-review",
-          "title" => "Edited turn changes the next turn",
           "engine_id" => "structured-stream-primitives",
-          "input_summary" => summarize_turn(turn),
           "expected_behavior" =>
             "Current output releases unchanged, but session history crosses the threshold and the next turn starts in review_required with the managed model.",
-          "verdict" => "passed",
+          "input_summary" => summarize_turn(turn),
+          "receipt_preview" => %{
+            "events" => [
+              %{"state" => "review_required", "type" => "policy.state_transition"},
+              %{"selected_model" => Wardwright.managed_model(), "type" => "route.next_turn_model_selected"},
+              %{"reason" => "no_current_match", "type" => "stream.release_allowed"}
+            ],
+            "input" => input_preview,
+            "stream" => %{
+              "final_output" => text,
+              "history" => stream_history_receipt(turn, related_secret_history_count),
+              "next_turn" => %{
+                "reason" => "session history threshold crossed",
+                "selected_model" => Wardwright.managed_model(),
+                "state" => "review_required"
+              },
+              "released_to_consumer" => true,
+              "rewrites" => [],
+              "state_transition" => "review_required"
+            }
+          },
+          "scenario_id" => "interactive-next-turn-review",
+          "simulation_schema" => "wardwright.policy_simulation.v1",
+          "title" => "Edited turn changes the next turn",
           "trace" =>
             request_trace ++
               history_trace ++
@@ -2392,29 +2434,7 @@ defmodule Wardwright.PolicyProjection do
                   state_id: "recording"
                 )
               ],
-          "receipt_preview" => %{
-            "input" => input_preview,
-            "stream" => %{
-              "rewrites" => [],
-              "state_transition" => "review_required",
-              "released_to_consumer" => true,
-              "final_output" => text,
-              "history" => stream_history_receipt(turn, related_secret_history_count),
-              "next_turn" => %{
-                "state" => "review_required",
-                "selected_model" => Wardwright.managed_model(),
-                "reason" => "session history threshold crossed"
-              }
-            },
-            "events" => [
-              %{"type" => "policy.state_transition", "state" => "review_required"},
-              %{
-                "type" => "route.next_turn_model_selected",
-                "selected_model" => Wardwright.managed_model()
-              },
-              %{"type" => "stream.release_allowed", "reason" => "no_current_match"}
-            ]
-          }
+          "verdict" => "passed"
         }
 
       true ->
@@ -2425,23 +2445,51 @@ defmodule Wardwright.PolicyProjection do
   defp default_simulation_cases(_pattern_id, _config) do
     [
       %{
-        "simulation_schema" => "wardwright.policy_simulation.v1",
-        "scenario_id" => "split-trigger",
-        "title" => "Split trigger before release",
         "engine_id" => "structured-stream-primitives",
-        "input_summary" => "Provider emits OldClient( split across held chunks.",
         "expected_behavior" =>
           "No violating bytes from the first attempt are released; the second attempt is generated with a reminder and then released.",
-        "verdict" => "passed",
+        "input_summary" => "Provider emits OldClient( split across held chunks.",
+        "receipt_preview" => %{
+          "events" => [
+            %{"horizon_bytes" => 4096, "rule_id" => "no-old-client", "type" => "stream.window_held"},
+            %{"match_kind" => "regex", "rule_id" => "no-old-client", "type" => "stream.rule_matched"},
+            %{"reason" => "tts_rule_matched", "type" => "attempt.aborted"},
+            %{"reminder_id" => "no-old-client.reminder", "type" => "attempt.retry_requested"},
+            %{"attempt" => 2, "reason" => "retry_passed_guard", "type" => "stream.released"}
+          ],
+          "model_id" => Wardwright.model_id(),
+          "policy_version" => "draft.ttsr.001",
+          "receipt_id" => "simulated-policy-receipt",
+          "stream" => %{
+            "abort_offset" => 42,
+            "attempts" => [
+              %{
+                "index" => 1,
+                "model_output" => "avoid introducing Old\nClient( into the final answer",
+                "policy_result" => "prohibited span matched inside the held horizon",
+                "status" => "withheld_and_aborted",
+                "user_output" => ""
+              },
+              %{
+                "index" => 2,
+                "model_output" => "Use the current client adapter in the migration note.",
+                "policy_result" => "retry output passed the stream guard",
+                "retry_instruction" => "Do not emit OldClient(. Use current client adapter wording instead.",
+                "status" => "released_after_retry",
+                "user_output" => "Use the current client adapter in the migration note."
+              }
+            ],
+            "final_output" => "Use the current client adapter in the migration note.",
+            "released_to_consumer" => true,
+            "retry_attempted" => true,
+            "rule_matched" => "no-old-client"
+          }
+        },
+        "scenario_id" => "split-trigger",
+        "simulation_schema" => "wardwright.policy_simulation.v1",
+        "title" => "Split trigger before release",
         "trace" => [
-          trace(
-            "t1",
-            "response.streaming",
-            "tts.no-old-client",
-            "input",
-            "chunk held",
-            "avoid introducing Old",
-            "info",
+          trace("t1", "response.streaming", "tts.no-old-client", "input", "chunk held", "avoid introducing Old", "info",
             state_id: "observing"
           ),
           trace(
@@ -2485,51 +2533,7 @@ defmodule Wardwright.PolicyProjection do
             state_id: "recording"
           )
         ],
-        "receipt_preview" => %{
-          "receipt_id" => "simulated-policy-receipt",
-          "model_id" => Wardwright.model_id(),
-          "policy_version" => "draft.ttsr.001",
-          "stream" => %{
-            "rule_matched" => "no-old-client",
-            "released_to_consumer" => true,
-            "abort_offset" => 42,
-            "retry_attempted" => true,
-            "final_output" => "Use the current client adapter in the migration note.",
-            "attempts" => [
-              %{
-                "index" => 1,
-                "status" => "withheld_and_aborted",
-                "model_output" => "avoid introducing Old\nClient( into the final answer",
-                "user_output" => "",
-                "policy_result" => "prohibited span matched inside the held horizon"
-              },
-              %{
-                "index" => 2,
-                "status" => "released_after_retry",
-                "model_output" => "Use the current client adapter in the migration note.",
-                "user_output" => "Use the current client adapter in the migration note.",
-                "retry_instruction" =>
-                  "Do not emit OldClient(. Use current client adapter wording instead.",
-                "policy_result" => "retry output passed the stream guard"
-              }
-            ]
-          },
-          "events" => [
-            %{
-              "type" => "stream.window_held",
-              "rule_id" => "no-old-client",
-              "horizon_bytes" => 4096
-            },
-            %{
-              "type" => "stream.rule_matched",
-              "rule_id" => "no-old-client",
-              "match_kind" => "regex"
-            },
-            %{"type" => "attempt.aborted", "reason" => "tts_rule_matched"},
-            %{"type" => "attempt.retry_requested", "reminder_id" => "no-old-client.reminder"},
-            %{"type" => "stream.released", "attempt" => 2, "reason" => "retry_passed_guard"}
-          ]
-        }
+        "verdict" => "passed"
       }
       |> fixture_case()
     ]
@@ -2540,14 +2544,45 @@ defmodule Wardwright.PolicyProjection do
 
     if Regex.match?(~r/Old\s*Client\(/, text) do
       %{
-        "simulation_schema" => "wardwright.policy_simulation.v1",
-        "scenario_id" => "interactive-tts-retry",
-        "title" => "Edited stream triggers retry",
         "engine_id" => "structured-stream-primitives",
-        "input_summary" => summarize_turn(turn),
         "expected_behavior" =>
           "No violating bytes from the first attempt are released; the second attempt is generated with a reminder and then released.",
-        "verdict" => "passed",
+        "input_summary" => summarize_turn(turn),
+        "receipt_preview" => %{
+          "events" => [
+            %{"rule_id" => "no-old-client", "type" => "stream.rule_matched"},
+            %{"reason" => "tts_rule_matched", "type" => "attempt.aborted"},
+            %{"reminder_id" => "no-old-client.reminder", "type" => "attempt.retry_requested"},
+            %{"attempt" => 2, "reason" => "retry_passed_guard", "type" => "stream.released"}
+          ],
+          "input" => turn_input_preview(turn),
+          "stream" => %{
+            "attempts" => [
+              %{
+                "index" => 1,
+                "model_output" => text,
+                "policy_result" => "prohibited span matched inside the held horizon",
+                "status" => "withheld_and_aborted",
+                "user_output" => ""
+              },
+              %{
+                "index" => 2,
+                "model_output" => tts_retry_final_output(turn),
+                "policy_result" => "retry output passed the stream guard",
+                "retry_instruction" => "Do not emit OldClient(. Use current client adapter wording instead.",
+                "status" => "released_after_retry",
+                "user_output" => tts_retry_final_output(turn)
+              }
+            ],
+            "final_output" => tts_retry_final_output(turn),
+            "released_to_consumer" => true,
+            "retry_attempted" => true,
+            "rule_matched" => "no-old-client"
+          }
+        },
+        "scenario_id" => "interactive-tts-retry",
+        "simulation_schema" => "wardwright.policy_simulation.v1",
+        "title" => "Edited stream triggers retry",
         "trace" => [
           trace(
             "i1",
@@ -2600,50 +2635,21 @@ defmodule Wardwright.PolicyProjection do
             state_id: "recording"
           )
         ],
-        "receipt_preview" => %{
-          "input" => turn_input_preview(turn),
-          "stream" => %{
-            "rule_matched" => "no-old-client",
-            "released_to_consumer" => true,
-            "retry_attempted" => true,
-            "final_output" => tts_retry_final_output(turn),
-            "attempts" => [
-              %{
-                "index" => 1,
-                "status" => "withheld_and_aborted",
-                "model_output" => text,
-                "user_output" => "",
-                "policy_result" => "prohibited span matched inside the held horizon"
-              },
-              %{
-                "index" => 2,
-                "status" => "released_after_retry",
-                "model_output" => tts_retry_final_output(turn),
-                "user_output" => tts_retry_final_output(turn),
-                "retry_instruction" =>
-                  "Do not emit OldClient(. Use current client adapter wording instead.",
-                "policy_result" => "retry output passed the stream guard"
-              }
-            ]
-          },
-          "events" => [
-            %{"type" => "stream.rule_matched", "rule_id" => "no-old-client"},
-            %{"type" => "attempt.aborted", "reason" => "tts_rule_matched"},
-            %{"type" => "attempt.retry_requested", "reminder_id" => "no-old-client.reminder"},
-            %{"type" => "stream.released", "attempt" => 2, "reason" => "retry_passed_guard"}
-          ]
-        }
+        "verdict" => "passed"
       }
     else
       %{
-        "simulation_schema" => "wardwright.policy_simulation.v1",
-        "scenario_id" => "interactive-tts-safe-release",
-        "title" => "Edited stream releases normally",
         "engine_id" => "structured-stream-primitives",
+        "expected_behavior" => "No prohibited span appears inside the holdback window, so the stream can release.",
         "input_summary" => summarize_turn(turn),
-        "expected_behavior" =>
-          "No prohibited span appears inside the holdback window, so the stream can release.",
-        "verdict" => "passed",
+        "receipt_preview" => %{
+          "events" => [%{"reason" => "no_policy_match", "type" => "stream.released"}],
+          "input" => turn_input_preview(turn),
+          "stream" => %{"released_to_consumer" => true, "retry_attempted" => false, "rule_matched" => nil}
+        },
+        "scenario_id" => "interactive-tts-safe-release",
+        "simulation_schema" => "wardwright.policy_simulation.v1",
+        "title" => "Edited stream releases normally",
         "trace" => [
           trace(
             "i1",
@@ -2666,15 +2672,7 @@ defmodule Wardwright.PolicyProjection do
             state_id: "recording"
           )
         ],
-        "receipt_preview" => %{
-          "input" => turn_input_preview(turn),
-          "stream" => %{
-            "rule_matched" => nil,
-            "released_to_consumer" => true,
-            "retry_attempted" => false
-          },
-          "events" => [%{"type" => "stream.released", "reason" => "no_policy_match"}]
-        }
+        "verdict" => "passed"
       }
     end
   end
@@ -2699,14 +2697,17 @@ defmodule Wardwright.PolicyProjection do
 
   defp no_stream_rewrite_match_simulation(turn, input_preview, request_trace) do
     %{
-      "simulation_schema" => "wardwright.policy_simulation.v1",
-      "scenario_id" => "interactive-stream-no-match",
-      "title" => "Edited stream has no regex match",
       "engine_id" => "structured-stream-primitives",
+      "expected_behavior" => "No rewrite or state transition is applied because no configured regex matches.",
       "input_summary" => summarize_turn(turn),
-      "expected_behavior" =>
-        "No rewrite or state transition is applied because no configured regex matches.",
-      "verdict" => "passed",
+      "receipt_preview" => %{
+        "events" => [%{"reason" => "no_policy_match", "type" => "stream.released"}],
+        "input" => input_preview,
+        "stream" => %{"released_to_consumer" => true, "rewrites" => [], "state_transition" => nil}
+      },
+      "scenario_id" => "interactive-stream-no-match",
+      "simulation_schema" => "wardwright.policy_simulation.v1",
+      "title" => "Edited stream has no regex match",
       "trace" =>
         request_trace ++
           [
@@ -2741,15 +2742,7 @@ defmodule Wardwright.PolicyProjection do
               state_id: "recording"
             )
           ],
-      "receipt_preview" => %{
-        "input" => input_preview,
-        "stream" => %{
-          "rewrites" => [],
-          "state_transition" => nil,
-          "released_to_consumer" => true
-        },
-        "events" => [%{"type" => "stream.released", "reason" => "no_policy_match"}]
-      }
+      "verdict" => "passed"
     }
   end
 
@@ -2759,12 +2752,7 @@ defmodule Wardwright.PolicyProjection do
     "#{related_secret_history_count} prior related secret match(es) #{window} trigger review_required after this account rewrite"
   end
 
-  defp stream_secret_transition_detail(
-         _secret_match,
-         secret,
-         _related_secret_history_count,
-         _turn
-       ) do
+  defp stream_secret_transition_detail(_secret_match, secret, _related_secret_history_count, _turn) do
     "#{secret} appears after the account rewrite and triggers review_required"
   end
 
@@ -2809,10 +2797,10 @@ defmodule Wardwright.PolicyProjection do
         rewrites =
           Enum.map(matches, fn match ->
             %{
-              "rule_id" => "private-context-redactor",
+              "direction" => "request",
               "match" => match,
               "replacement" => "[private-context omitted]",
-              "direction" => "request"
+              "rule_id" => "private-context-redactor"
             }
           end)
 
@@ -2835,6 +2823,344 @@ defmodule Wardwright.PolicyProjection do
         state_id: "observing"
       )
     ]
+  end
+
+  defp model_turn_request(user_input, config) do
+    Map.new([
+      {@model_key, Wardwright.model_id(config)},
+      {
+        @messages_key,
+        [
+          Map.new([
+            {@content_key, user_input || ""},
+            {@role_key, @default_request_role}
+          ])
+        ]
+      }
+    ])
+  end
+
+  defp model_turn_apply_prompt_transforms(request, config) do
+    transforms = Map.get(config, @prompt_transforms_key, %{})
+    messages = Map.get(request, @messages_key, [])
+
+    messages =
+      transforms
+      |> Map.get(@preamble_key)
+      |> model_turn_blank_to_nil()
+      |> case do
+        nil ->
+          messages
+
+        text ->
+          [
+            Map.new([
+              {@content_key, text},
+              {@name_key, "wardwright_preamble"},
+              {@role_key, @system_role}
+            ])
+            | messages
+          ]
+      end
+
+    messages =
+      transforms
+      |> Map.get(@postscript_key)
+      |> model_turn_blank_to_nil()
+      |> case do
+        nil ->
+          messages
+
+        text ->
+          messages ++
+            [
+              Map.new([
+                {@content_key, text},
+                {@name_key, "wardwright_postscript"},
+                {@role_key, @system_role}
+              ])
+            ]
+      end
+
+    Map.put(request, @messages_key, messages)
+  end
+
+  defp model_turn_blank_to_nil(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp model_turn_blank_to_nil(_value), do: nil
+
+  defp model_turn_request_text(%{@messages_key => messages}) when is_list(messages) do
+    messages
+    |> Enum.map(&model_turn_message_text/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join("\n\n")
+  end
+
+  defp model_turn_request_text(_request), do: ""
+
+  defp model_turn_message_text(message) when is_map(message) do
+    content = Map.get(message, @content_key)
+
+    if is_binary(content) and String.trim(content) != "" do
+      role = Map.get(message, @role_key, @default_request_role)
+      name = Map.get(message, @name_key)
+
+      [role, name]
+      |> Enum.filter(&is_binary/1)
+      |> Enum.reject(&(String.trim(&1) == ""))
+      |> Enum.join("/")
+      |> then(&"#{&1}: #{content}")
+    else
+      ""
+    end
+  end
+
+  defp model_turn_message_text(_message), do: ""
+
+  defp model_turn_policy_events(%{@actions_key => actions}) when is_list(actions) do
+    actions
+    |> Enum.filter(&model_turn_request_transform_action?/1)
+    |> Enum.map(fn action ->
+      Map.new([
+        {@action_key, Map.get(action, @action_key, @default_transform_action)},
+        {@direction_key, "request"},
+        {@match_key, Map.get(action, @match_key)},
+        {@message_key, Map.get(action, @message_key)},
+        {@phase_key, @request_pre_model_phase},
+        {@reason_key, Map.get(action, @message_key)},
+        {@replacement_key, Map.get(action, @reminder_key)},
+        {@rule_id_key, Map.get(action, @rule_id_key, @default_rule_id)},
+        {@type_key, "request.transform_applied"}
+      ])
+    end)
+  end
+
+  defp model_turn_policy_events(_policy), do: []
+
+  defp model_turn_policy_rewrites(%{@actions_key => actions}) when is_list(actions) do
+    actions
+    |> Enum.filter(&model_turn_request_transform_action?/1)
+    |> Enum.map(fn action ->
+      Map.new([
+        {@direction_key, "request"},
+        {@match_key, Map.get(action, @match_key)},
+        {@phase_key, @request_pre_model_phase},
+        {@replacement_key, Map.get(action, @reminder_key)},
+        {@rule_id_key, Map.get(action, @rule_id_key, @default_rule_id)}
+      ])
+    end)
+  end
+
+  defp model_turn_policy_rewrites(_policy), do: []
+
+  defp model_turn_request_transform_action?(%{@action_key => action})
+       when action in ["inject_reminder_and_retry", "transform"], do: true
+
+  defp model_turn_request_transform_action?(_action), do: false
+
+  defp model_turn_route_decision(request, policy, config) do
+    estimate = Wardwright.estimate_prompt_tokens(Map.get(request, @messages_key, []))
+    Wardwright.select_route(config, estimate, Map.get(policy, @route_constraints_key, %{}))
+  end
+
+  defp model_turn_decision_preview(decision, policy) do
+    Map.new([
+      {@policy_actions_key, Map.get(policy, @actions_key, [])},
+      {@policy_conflicts_key, Map.get(policy, @conflicts_key, [])},
+      {@route_blocked_key, Map.get(decision, :route_blocked, false)},
+      {@route_constraints_key, Map.get(decision, :policy_route_constraints, %{})},
+      {@selected_model_key, Map.get(decision, :selected_model)}
+    ])
+  end
+
+  defp model_turn_stream_policy(model_response, config) do
+    model_response
+    |> input_chunks()
+    |> Wardwright.Policy.Stream.evaluate(Map.get(config, @stream_rules_key, []))
+  end
+
+  defp model_turn_stream_output(_model_response, stream_policy) do
+    final_output =
+      if Map.get(stream_policy, :released_to_consumer, true) do
+        stream_policy
+        |> Map.get(:chunks, [])
+        |> Enum.join()
+      else
+        ""
+      end
+
+    rewrites =
+      if Map.get(stream_policy, :rewritten_bytes, 0) > 0 do
+        [
+          Map.new([
+            {@direction_key, "response"},
+            {@phase_key, @response_streaming_phase},
+            {@rule_id_key, Map.get(stream_policy, :action, @default_stream_policy_action)},
+            {@type_key, "stream.rewrite_applied"}
+          ])
+        ]
+      else
+        []
+      end
+
+    {final_output, rewrites, Map.get(stream_policy, :events, [])}
+  end
+
+  defp model_turn_stream_preview(final_output, rewrites, stream_policy) do
+    Map.new([
+      {@final_output_key, final_output},
+      {@released_to_consumer_key, Map.get(stream_policy, :released_to_consumer, true)},
+      {@rewrites_key, rewrites},
+      {@state_transition_key, nil},
+      {@action_key, Map.get(stream_policy, :action)},
+      {@events_key, Map.get(stream_policy, :events, [])},
+      {@generated_bytes_key, Map.get(stream_policy, :generated_bytes, 0)},
+      {@held_bytes_key, Map.get(stream_policy, :held_bytes, 0)},
+      {@released_bytes_key, Map.get(stream_policy, :released_bytes, 0)},
+      {@status_key, Map.get(stream_policy, :status, @completed_status)},
+      {@trigger_count_key, Map.get(stream_policy, :trigger_count, 0)}
+    ])
+  end
+
+  defp model_turn_coverage_gap_events(config) do
+    []
+    |> maybe_add_model_turn_gap(
+      Map.get(config, @structured_output_key),
+      @structured_output_key,
+      "Structured-output repair and validation are not executed by this single-turn model simulator."
+    )
+    |> maybe_add_model_turn_gap(
+      model_turn_tool_policy?(config),
+      @tool_policy_key,
+      "Tool planning, tool-use, and tool-result policy phases are not executed by this text turn simulator."
+    )
+    |> maybe_add_model_turn_gap(
+      model_turn_alert_policy?(config),
+      @alert_delivery_key,
+      "Alert sink delivery and fail-closed delivery errors are not executed by this local simulator."
+    )
+    |> maybe_add_model_turn_gap(
+      model_turn_request_stream_rules?(config),
+      "stream_rules.request",
+      "Request-direction stream_rules are not executed by the runtime or this simulator; use governance request_transform rules for request-side changes."
+    )
+  end
+
+  defp maybe_add_model_turn_gap(events, nil, _rule_id, _message), do: events
+  defp maybe_add_model_turn_gap(events, false, _rule_id, _message), do: events
+  defp maybe_add_model_turn_gap(events, [], _rule_id, _message), do: events
+  defp maybe_add_model_turn_gap(events, %{} = value, _rule_id, _message) when map_size(value) == 0, do: events
+
+  defp maybe_add_model_turn_gap(events, _value, rule_id, message) do
+    events ++
+      [
+        Map.new([
+          {@message_key, message},
+          {@phase_key, @simulation_coverage_phase},
+          {@rule_id_key, rule_id},
+          {@type_key, @simulation_coverage_gap_type}
+        ])
+      ]
+  end
+
+  defp model_turn_tool_policy?(config) do
+    config
+    |> Map.get(@governance_key, [])
+    |> Enum.any?(fn rule ->
+      Map.get(rule, @kind_key) in [@tool_sequence_kind, @tool_loop_threshold_kind] or
+        Map.get(rule, @phase_key) in [
+          "tool.planning",
+          "tool.using",
+          "tool.result_interpreting",
+          "tool.loop_governing"
+        ]
+    end)
+  end
+
+  defp model_turn_alert_policy?(config) do
+    config
+    |> Map.get(@governance_key, [])
+    |> Enum.any?(fn rule ->
+      Map.get(rule, @action_key) in [@alert_key, @fail_closed_action] or Map.has_key?(rule, @alert_key)
+    end)
+  end
+
+  defp model_turn_request_stream_rules?(config) do
+    config
+    |> Map.get(@stream_rules_key, [])
+    |> Enum.any?(&request_stream_rule?/1)
+  end
+
+  defp request_stream_rule?(%{@phase_key => "request" <> _rest}), do: true
+  defp request_stream_rule?(%{@direction_key => "request"}), do: true
+  defp request_stream_rule?(_rule), do: false
+
+  defp model_turn_trace([], _phase, _node_id), do: []
+
+  defp model_turn_trace(events, phase, node_id) do
+    events
+    |> Enum.with_index(1)
+    |> Enum.map(fn {event, index} ->
+      event_type = Map.get(event, @type_key)
+      invalid_rule? = event_type == "stream.rule_invalid"
+
+      trace(
+        "#{node_id}-#{index}",
+        Map.get(event, @phase_key, phase),
+        node_id,
+        if(invalid_rule?, do: "warning", else: "match"),
+        model_turn_trace_label(event),
+        model_turn_trace_detail(event),
+        if(invalid_rule?, do: "warn", else: "pass")
+      )
+    end)
+  end
+
+  defp model_turn_trace_label(%{@type_key => "stream.rule_invalid"}), do: "rule invalid"
+
+  defp model_turn_trace_label(%{@type_key => "request.transform_applied"}), do: "request transform applied"
+
+  defp model_turn_trace_label(%{@type_key => "stream_policy.triggered"}), do: "stream policy triggered"
+
+  defp model_turn_trace_label(%{@type_key => @simulation_coverage_gap_type}), do: "simulation coverage gap"
+
+  defp model_turn_trace_label(%{@direction_key => "request"}), do: "request rewrite matched"
+
+  defp model_turn_trace_label(_event), do: "response rewrite matched"
+
+  defp model_turn_trace_detail(%{@type_key => "stream.rule_invalid"} = event) do
+    "#{Map.get(event, @rule_id_key)} could not compile: #{Map.get(event, @reason_key)}"
+  end
+
+  defp model_turn_trace_detail(%{@type_key => "request.transform_applied"} = event) do
+    "#{Map.get(event, @rule_id_key)} matched the request and injected #{inspect(Map.get(event, @replacement_key))}."
+  end
+
+  defp model_turn_trace_detail(%{@type_key => "stream_policy.triggered"} = event) do
+    "#{Map.get(event, @rule_id_key)} triggered #{Map.get(event, @action_key)} in #{Map.get(event, @match_scope_key, @stream_match_scope)}."
+  end
+
+  defp model_turn_trace_detail(%{@type_key => @simulation_coverage_gap_type} = event) do
+    Map.get(event, @message_key)
+  end
+
+  defp model_turn_trace_detail(event) do
+    "#{Map.get(event, @rule_id_key)} matched #{inspect(Map.get(event, @match_key))} in #{Map.get(event, @phase_key)} and rewrote it to #{inspect(Map.get(event, @replacement_key))}."
+  end
+
+  defp model_turn_receipt_events(request_events, response_events) do
+    request_events ++ response_events
+  end
+
+  defp model_turn_receipt_detail([]), do: "No configured rewrite rules matched this simulated turn."
+
+  defp model_turn_receipt_detail(rewrites) do
+    "#{length(rewrites)} configured rewrite match(es) recorded for this simulated turn."
   end
 
   defp summarize_turn(turn) do
@@ -2860,12 +3186,12 @@ defmodule Wardwright.PolicyProjection do
 
   defp turn_input_preview(turn, model_received_input, request_rewrites) do
     %{
-      "user_input" => turn_user_input(turn),
-      "model_received_input" => model_received_input,
-      "request_rewrites" => request_rewrites,
       "history_context" => turn_history_context(turn),
+      "model_received_input" => model_received_input,
       "model_response" => turn_response(turn),
-      "response_chunks" => input_chunks(turn_response(turn))
+      "request_rewrites" => request_rewrites,
+      "response_chunks" => input_chunks(turn_response(turn)),
+      "user_input" => turn_user_input(turn)
     }
   end
 
@@ -2891,8 +3217,7 @@ defmodule Wardwright.PolicyProjection do
     end
   end
 
-  defp turn_history_context(%{"history_context" => value}) when is_map(value),
-    do: normalize_history_context(value)
+  defp turn_history_context(%{"history_context" => value}) when is_map(value), do: normalize_history_context(value)
 
   defp turn_history_context(_turn), do: %{}
 
@@ -2953,8 +3278,7 @@ defmodule Wardwright.PolicyProjection do
   defp normalize_history_context(context) when is_map(context) do
     context
     |> Enum.reject(fn {key, _value} -> String.starts_with?(to_string(key), "_unused_") end)
-    |> Enum.map(fn {key, value} -> {to_string(key), history_context_value(value)} end)
-    |> Map.new()
+    |> Map.new(fn {key, value} -> {to_string(key), history_context_value(value)} end)
   end
 
   defp normalize_history_context(_context), do: %{}
@@ -2996,13 +3320,13 @@ defmodule Wardwright.PolicyProjection do
   defp no_route_gate_simulation do
     [
       %{
-        "simulation_schema" => "wardwright.policy_simulation.v1",
-        "scenario_id" => "no-route-gate-configured",
-        "title" => "No route governance configured",
         "engine_id" => "request-route-plan",
-        "input_summary" => "Active config has no route-affecting governance rules.",
         "expected_behavior" => "Route selection proceeds without policy constraints.",
-        "verdict" => "inconclusive",
+        "input_summary" => "Active config has no route-affecting governance rules.",
+        "receipt_preview" => %{"decision" => %{"policy_actions" => []}, "final_status" => "simulated"},
+        "scenario_id" => "no-route-gate-configured",
+        "simulation_schema" => "wardwright.policy_simulation.v1",
+        "title" => "No route governance configured",
         "trace" => [
           trace(
             "p1",
@@ -3014,10 +3338,7 @@ defmodule Wardwright.PolicyProjection do
             "warn"
           )
         ],
-        "receipt_preview" => %{
-          "decision" => %{"policy_actions" => []},
-          "final_status" => "simulated"
-        }
+        "verdict" => "inconclusive"
       }
       |> fixture_case()
     ]
@@ -3025,44 +3346,57 @@ defmodule Wardwright.PolicyProjection do
 
   defp route_governance_simulation(config, rules) do
     text = route_simulation_text(rules)
-    request = %{"messages" => [%{"role" => "user", "content" => text}]}
+    request = %{"messages" => [%{"content" => text, "role" => "user"}]}
 
     {_request, policy} =
-      Wardwright.Policy.Plan.evaluate_request(request, %{"source" => "projection"}, config)
+      Plan.evaluate_request(request, %{"source" => "projection"}, config)
 
     actions = Map.get(policy, "actions", [])
 
     %{
-      "simulation_schema" => "wardwright.policy_simulation.v1",
-      "scenario_id" => "configured-route-policy",
-      "title" => "Configured route governance path",
       "engine_id" => "request-route-plan",
-      "input_summary" => "Generated request chosen to exercise the first configured route rule.",
       "expected_behavior" => "Policy.Plan emits route constraints or an explicit no-match trace.",
-      "verdict" => if(actions == [], do: "inconclusive", else: "passed"),
-      "trace" => route_policy_trace(actions, rules),
+      "input_summary" => "Generated request chosen to exercise the first configured route rule.",
       "receipt_preview" => %{
         "decision" => %{
           "policy_actions" => actions,
-          "route_constraints" => Map.get(policy, "route_constraints", %{}),
-          "policy_conflicts" => Map.get(policy, "conflicts", [])
+          "policy_conflicts" => Map.get(policy, "conflicts", []),
+          "route_constraints" => Map.get(policy, "route_constraints", %{})
         },
         "final_status" => "simulated"
-      }
+      },
+      "scenario_id" => "configured-route-policy",
+      "simulation_schema" => "wardwright.policy_simulation.v1",
+      "title" => "Configured route governance path",
+      "trace" => route_policy_trace(actions, rules),
+      "verdict" => if(actions == [], do: "inconclusive", else: "passed")
     }
     |> fixture_case()
   end
 
   defp no_tool_governance_simulation do
     %{
-      "simulation_schema" => "wardwright.policy_simulation.v1",
-      "scenario_id" => "no-tool-policy-configured",
-      "title" => "No tool governance configured",
       "engine_id" => "tool-context-plan",
-      "input_summary" =>
-        "A request includes declared tools, but active config has no tool policy.",
       "expected_behavior" => "Tool context is normalized into receipt evidence only.",
-      "verdict" => "inconclusive",
+      "input_summary" => "A request includes declared tools, but active config has no tool policy.",
+      "receipt_preview" => %{
+        "decision" => %{
+          "tool_context" => %{
+            "phase" => "planning",
+            "primary_tool" => %{
+              "name" => "lookup_customer",
+              "namespace" => "openai.function",
+              "risk_class" => "unknown",
+              "source" => "declared_tool"
+            },
+            "schema" => "wardwright.tool_context.v1"
+          }
+        },
+        "final_status" => "simulated"
+      },
+      "scenario_id" => "no-tool-policy-configured",
+      "simulation_schema" => "wardwright.policy_simulation.v1",
+      "title" => "No tool governance configured",
       "trace" => [
         trace(
           "g1",
@@ -3083,21 +3417,7 @@ defmodule Wardwright.PolicyProjection do
           "info"
         )
       ],
-      "receipt_preview" => %{
-        "decision" => %{
-          "tool_context" => %{
-            "schema" => "wardwright.tool_context.v1",
-            "phase" => "planning",
-            "primary_tool" => %{
-              "namespace" => "openai.function",
-              "name" => "lookup_customer",
-              "risk_class" => "unknown",
-              "source" => "declared_tool"
-            }
-          }
-        },
-        "final_status" => "simulated"
-      }
+      "verdict" => "inconclusive"
     }
     |> fixture_case()
   end
@@ -3107,14 +3427,30 @@ defmodule Wardwright.PolicyProjection do
     phase = tool_rule_phase(rule)
 
     %{
-      "simulation_schema" => "wardwright.policy_simulation.v1",
-      "scenario_id" => "configured-tool-policy",
-      "title" => "Configured tool governance path",
       "engine_id" => "tool-context-plan",
+      "expected_behavior" => "Projection links normalized tool context to a declared tool policy action.",
       "input_summary" => "Generated request chosen to exercise the first configured tool rule.",
-      "expected_behavior" =>
-        "Projection links normalized tool context to a declared tool policy action.",
-      "verdict" => "passed",
+      "receipt_preview" => %{
+        "decision" => %{
+          "policy_actions" => [
+            %{"action" => Map.get(rule, "action", default_tool_action(rule)), "rule_id" => Map.get(rule, "id")}
+          ],
+          "tool_context" => %{
+            "phase" => tool_context_phase(phase),
+            "primary_tool" => %{
+              "name" => Map.get(rule, "name", "create_pull_request"),
+              "namespace" => Map.get(rule, "namespace", "mcp.github"),
+              "risk_class" => Map.get(rule, "risk_class", "write"),
+              "source" => "declared_tool"
+            },
+            "schema" => "wardwright.tool_context.v1"
+          }
+        },
+        "final_status" => "simulated"
+      },
+      "scenario_id" => "configured-tool-policy",
+      "simulation_schema" => "wardwright.policy_simulation.v1",
+      "title" => "Configured tool governance path",
       "trace" => [
         trace(
           "g1",
@@ -3135,27 +3471,7 @@ defmodule Wardwright.PolicyProjection do
           "info"
         )
       ],
-      "receipt_preview" => %{
-        "decision" => %{
-          "tool_context" => %{
-            "schema" => "wardwright.tool_context.v1",
-            "phase" => tool_context_phase(phase),
-            "primary_tool" => %{
-              "namespace" => Map.get(rule, "namespace", "mcp.github"),
-              "name" => Map.get(rule, "name", "create_pull_request"),
-              "risk_class" => Map.get(rule, "risk_class", "write"),
-              "source" => "declared_tool"
-            }
-          },
-          "policy_actions" => [
-            %{
-              "rule_id" => Map.get(rule, "id"),
-              "action" => Map.get(rule, "action", default_tool_action(rule))
-            }
-          ]
-        },
-        "final_status" => "simulated"
-      }
+      "verdict" => "passed"
     }
     |> fixture_case()
   end
@@ -3224,15 +3540,15 @@ defmodule Wardwright.PolicyProjection do
     opts = trace_opts(opts)
 
     %Contract.TraceEvent{
+      detail: detail,
       id: id,
-      phase: phase,
-      node_id: node_id,
       kind: kind,
       label: label,
-      detail: detail,
+      node_id: node_id,
+      phase: phase,
       severity: severity,
-      state_id: Keyword.get(opts, :state_id),
-      source_span: Keyword.get(opts, :source_span)
+      source_span: Keyword.get(opts, :source_span),
+      state_id: Keyword.get(opts, :state_id)
     }
     |> Contract.to_map()
   end

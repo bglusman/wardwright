@@ -1,5 +1,6 @@
 defmodule Wardwright.PolicyProjectionLiveTest do
   use ExUnit.Case, async: false
+
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
@@ -114,27 +115,26 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   test "projection simulations prefer persisted reviewed scenarios over fixtures" do
     assert {:ok, _scenario} =
              Wardwright.PolicyScenarioStore.create("tts-retry", %{
-               "scenario_id" => "reviewed-split-trigger",
-               "title" => "Reviewed split trigger",
-               "source" => "assistant",
-               "pinned" => true,
+               "expected_behavior" => "Retry is requested before any violating bytes are released.",
                "input_summary" => "Reviewed request keeps OldClient split across stream chunks.",
-               "expected_behavior" =>
-                 "Retry is requested before any violating bytes are released.",
-               "verdict" => "passed",
+               "pinned" => true,
+               "receipt_preview" => %{"final_status" => "simulated"},
+               "scenario_id" => "reviewed-split-trigger",
+               "source" => "assistant",
+               "title" => "Reviewed split trigger",
                "trace" => [
                  %{
+                   "detail" => "persisted scenario hit the stream rule",
                    "id" => "r1",
-                   "phase" => "response.streaming",
-                   "node_id" => "tts.no-old-client",
                    "kind" => "match",
                    "label" => "reviewed match",
-                   "detail" => "persisted scenario hit the stream rule",
+                   "node_id" => "tts.no-old-client",
+                   "phase" => "response.streaming",
                    "severity" => "pass",
                    "state_id" => "guarding"
                  }
                ],
-               "receipt_preview" => %{"final_status" => "simulated"}
+               "verdict" => "passed"
              })
 
     [simulation] = Wardwright.PolicyProjection.simulations("tts-retry")
@@ -161,9 +161,9 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     assert [
              %{
-               "rule_id" => "private-route-gate",
                "action" => "restrict_routes",
-               "allowed_targets" => [local_model]
+               "allowed_targets" => [local_model],
+               "rule_id" => "private-route-gate"
              }
            ] = get_in(simulation, ["receipt_preview", "decision", "policy_actions"])
 
@@ -217,8 +217,8 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     assert get_in(simulation, ["receipt_preview", "decision", "tool_context", "primary_tool"]) ==
              %{
-               "namespace" => "mcp.github",
                "name" => "create_pull_request",
+               "namespace" => "mcp.github",
                "risk_class" => "write",
                "source" => "declared_tool"
              }
@@ -263,9 +263,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert connected_html =~ "Review load"
     assert connected_html =~ "Why this exists"
 
-    assert {:error,
-            {:redirect,
-             %{to: "/policies/route-privacy/effect_matrix/recipe/private-helpdesk-local-gate"}}} =
+    assert {:error, {:redirect, %{to: "/policies/route-privacy/effect_matrix/recipe/private-helpdesk-local-gate"}}} =
              view
              |> element("a", "Effect table")
              |> render_click()
@@ -530,7 +528,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
         [Map.put(first, "provider_headers", %{"X-Api-Key" => "visible-secret"}) | rest]
       end)
       |> Map.put("stream_rules", [
-        %{"id" => "beta-moo", "pattern" => "\\bmoo+\\b", "action" => "rewrite_chunk"}
+        %{"action" => "rewrite_chunk", "id" => "beta-moo", "regex" => "\\bmoo+\\b", "replacement" => "[rewritten]"}
       ])
 
     assert {:ok, _alpha} = Wardwright.put_config(alpha)
@@ -549,7 +547,11 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Selected Model Configuration"
     assert html =~ "Show redacted model configuration"
     assert html =~ "Registered model selected"
-    assert html =~ "state machines, stream traces, and receipt previews are hidden here"
+    assert html =~ "Try this registered model"
+    assert html =~ "stream policy triggered"
+    assert html =~ "User receives after Wardwright"
+    assert html =~ "The model says [rewritten] in a draft answer."
+    assert html =~ "Model receives"
     assert html =~ "beta-moo"
     assert html =~ "\\\\bmoo+\\\\b"
     assert html =~ "X-Api-Key"
@@ -569,6 +571,36 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     refute html =~ "A coding assistant keeps recommending an old client constructor"
     refute html =~ "Choose a registered model"
 
+    changed =
+      view
+      |> element("#model-turn-editor-form")
+      |> render_change(%{
+        "model_simulation" => %{
+          "model_response" => "ordinary answer",
+          "user_input" => "moo from the user"
+        }
+      })
+
+    assert changed =~ "Model receives this input unchanged."
+    assert changed =~ "Released unchanged. The user receives this raw model output."
+    assert changed =~ "User receives"
+    assert changed =~ "ordinary answer"
+
+    changed =
+      view
+      |> element("#model-turn-editor-form")
+      |> render_submit(%{
+        "model_simulation" => %{
+          "model_response" => "the model says mooo",
+          "user_input" => "ordinary user input"
+        }
+      })
+
+    assert changed =~ "User receives after Wardwright"
+    assert changed =~ "the model says [rewritten]"
+    assert changed =~ "beta-moo triggered rewrite_chunk"
+    assert changed =~ "response.streaming"
+
     updated =
       view
       |> element("form.workbench_model_selector")
@@ -578,7 +610,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert updated =~ "<h1>alpha-workbench</h1>"
     assert updated =~ "<strong>alpha-workbench</strong>"
     assert updated =~ "Registered model selected"
-    assert updated =~ "state machines, stream traces, and receipt previews are hidden here"
+    assert updated =~ "Try this registered model"
     assert updated =~ "Runtime Visibility"
     assert updated =~ "History Cache"
     refute updated =~ "Policy run map"
@@ -595,6 +627,152 @@ defmodule Wardwright.PolicyProjectionLiveTest do
              "/policies/stream-rewrite-state/diagram/recipe/credential-redaction-ladder?model=alpha-workbench"
   end
 
+  test "registered model simulator includes request governance and route decisions" do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "cow-transform-workbench")
+      |> Map.put("version", "request-transform-test")
+      |> Map.put("governance", [
+        %{
+          "action" => "transform",
+          "contains" => "moo",
+          "id" => "cow-moo-user-reminder",
+          "kind" => "request_transform",
+          "message" => "mooing user input matched",
+          "reminder" => "Include a small ASCII cow, then answer normally."
+        }
+      ])
+      |> Map.put("stream_rules", [])
+      |> Map.put("targets", [%{"context_window" => 8192, "model" => "ollama/gemma4:e4b"}])
+      |> Map.put("dispatchers", [%{"id" => "dispatcher.cow", "models" => ["ollama/gemma4:e4b"]}])
+      |> Map.put("route_root", "dispatcher.cow")
+
+    simulation =
+      Wardwright.PolicyProjection.simulate_model_turn(
+        "please moo for me",
+        "ordinary answer",
+        config
+      )
+
+    assert get_in(simulation, ["receipt_preview", "decision", "selected_model"]) ==
+             "ollama/gemma4:e4b"
+
+    assert [
+             %{
+               "action" => "transform",
+               "reminder_injected" => true,
+               "rule_id" => "cow-moo-user-reminder"
+             }
+           ] = get_in(simulation, ["receipt_preview", "decision", "policy_actions"])
+
+    assert get_in(simulation, ["receipt_preview", "input", "model_received_input"]) =~
+             "user: please moo for me"
+
+    assert get_in(simulation, ["receipt_preview", "input", "model_received_input"]) =~
+             "system/wardwright_policy_reminder: Include a small ASCII cow"
+
+    assert Enum.any?(simulation["trace"], fn event ->
+             event["label"] == "request transform applied" and
+               event["detail"] =~ "Include a small ASCII cow"
+           end)
+
+    {:ok, _config} = Wardwright.put_model_config(config)
+    {:ok, view, html} = live(build_conn(), "/policies/tts-retry/diagram?model=cow-transform-workbench")
+
+    assert html =~ "Try this registered model"
+
+    changed =
+      view
+      |> element("#model-turn-editor-form")
+      |> render_submit(%{
+        "model_simulation" => %{
+          "model_response" => "plain response",
+          "user_input" => "no trigger"
+        }
+      })
+
+    assert changed =~ "Model receives this input unchanged."
+  end
+
+  test "registered model simulator does not pretend stream rules rewrite requests" do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "request-stream-rule-workbench")
+      |> Map.put("governance", [])
+      |> Map.put("stream_rules", [
+        %{
+          "action" => "rewrite_chunk",
+          "direction" => "request",
+          "id" => "literal-pattern",
+          "pattern" => "\\bmoo\\b",
+          "replacement" => "[literal-pattern]"
+        },
+        %{
+          "action" => "rewrite_chunk",
+          "direction" => "request",
+          "id" => "regex-moo",
+          "regex" => "\\bmoo+\\b",
+          "replacement" => "[regex-moo]"
+        },
+        %{
+          "action" => "rewrite_chunk",
+          "contains" => "snack",
+          "direction" => "request",
+          "id" => "literal-contains",
+          "replacement" => "[literal-contains]"
+        }
+      ])
+
+    simulation =
+      Wardwright.PolicyProjection.simulate_model_turn(
+        "please mooo and bring snack",
+        "plain response",
+        config
+      )
+
+    assert get_in(simulation, ["receipt_preview", "input", "model_received_input"]) =~
+             "please mooo and bring snack"
+
+    refute get_in(simulation, ["receipt_preview", "input", "model_received_input"]) =~ "[regex-moo]"
+    refute get_in(simulation, ["receipt_preview", "input", "model_received_input"]) =~ "[literal-contains]"
+
+    assert Enum.any?(simulation["trace"], fn event ->
+             event["label"] == "simulation coverage gap" and
+               event["detail"] =~ "Request-direction stream_rules are not executed"
+           end)
+  end
+
+  test "registered model simulator reports unsupported coverage gaps loudly" do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "coverage-gap-workbench")
+      |> Map.put("structured_output", %{"schema" => %{"type" => "object"}})
+      |> Map.put("governance", [
+        %{
+          "action" => "constrain_tools",
+          "id" => "tool-policy",
+          "kind" => "tool_sequence",
+          "phase" => "tool.using"
+        }
+      ])
+
+    simulation =
+      Wardwright.PolicyProjection.simulate_model_turn(
+        "ordinary user input",
+        ~s({"status":"ok"}),
+        config
+      )
+
+    assert Enum.any?(simulation["trace"], fn event ->
+             event["label"] == "simulation coverage gap" and
+               event["detail"] =~ "Structured-output repair"
+           end)
+
+    assert Enum.any?(simulation["trace"], fn event ->
+             event["label"] == "simulation coverage gap" and event["detail"] =~ "Tool planning"
+           end)
+  end
+
   test "LiveView can save the edited user and model turn as a reusable scenario" do
     {:ok, view, _html} = live(build_conn(), "/policies/tts-retry/diagram")
 
@@ -602,11 +780,9 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     |> element("#turn-editor-form")
     |> render_change(%{
       "simulation" => %{
-        "user_input" => "Please mention the old client constructor.",
         "model_response" => "The migration used Old\nClient( in a draft.",
-        "response_attempts" => %{
-          "2" => "Use the current client adapter in the migration note."
-        }
+        "response_attempts" => %{"2" => "Use the current client adapter in the migration note."},
+        "user_input" => "Please mention the old client constructor."
       }
     })
 
@@ -614,7 +790,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
       view
       |> element("form[phx-submit='save-simulation-scenario']")
       |> render_submit(%{
-        "scenario" => %{"title" => "Reviewed old-client split", "pinned" => "true"}
+        "scenario" => %{"pinned" => "true", "title" => "Reviewed old-client split"}
       })
 
     assert html =~ "Saved Reviewed old-client split."
@@ -722,7 +898,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert activated =~ "Activated cow-lover-mode"
     assert {:ok, config} = Wardwright.model_config("cow-lover-mode")
     assert Wardwright.model_id(config) == "cow-lover-mode"
-    assert [%{"id" => "cow-art", "action" => "rewrite_chunk"}] = config["stream_rules"]
+    assert [%{"action" => "rewrite_chunk", "id" => "cow-art"}] = config["stream_rules"]
   end
 
   test "LiveView authoring agent reports malformed tool plans without leaking raw JSON" do
@@ -912,8 +1088,8 @@ defmodule Wardwright.PolicyProjectionLiveTest do
       |> element("form.turn_editor_grid")
       |> render_change(%{
         "simulation" => %{
-          "user_input" => "Write a neutral update.",
-          "model_response" => "ordinary response text with no matching tokens"
+          "model_response" => "ordinary response text with no matching tokens",
+          "user_input" => "Write a neutral update."
         }
       })
 
@@ -941,13 +1117,9 @@ defmodule Wardwright.PolicyProjectionLiveTest do
       |> element("form.turn_editor_grid")
       |> render_change(%{
         "simulation" => %{
-          "user_input" => "Summarize the billing incident without exposing credentials.",
-          "model_response" =>
-            "account {redacted} appears in the answer\n{redacted} follows in the held horizon",
-          "history_context" => %{
-            "recent_related_secret_matches" => "0",
-            "policy_state" => "observing"
-          }
+          "history_context" => %{"policy_state" => "observing", "recent_related_secret_matches" => "0"},
+          "model_response" => "account {redacted} appears in the answer\n{redacted} follows in the held horizon",
+          "user_input" => "Summarize the billing incident without exposing credentials."
         }
       })
 
@@ -1019,13 +1191,13 @@ defmodule Wardwright.PolicyProjectionLiveTest do
       |> element("form.turn_editor_grid")
       |> render_change(%{
         "simulation" => %{
-          "user_input" => "Summarize the billing incident without exposing credentials.",
-          "model_response" => "account acct_4938 appears in the answer with no new token.",
           "history_context" => %{
+            "policy_state" => "observing",
             "recent_related_secret_matches" => "3",
-            "recent_secret_window_requests" => "5",
-            "policy_state" => "observing"
-          }
+            "recent_secret_window_requests" => "5"
+          },
+          "model_response" => "account acct_4938 appears in the answer with no new token.",
+          "user_input" => "Summarize the billing incident without exposing credentials."
         }
       })
 
@@ -1080,22 +1252,22 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     File.write!(
       Path.join(workspace_dir, "tool-demo.json"),
       Jason.encode!(%{
-        "id" => "tool-demo",
-        "title" => "Workspace tool policy",
         "category" => "tool.using",
+        "id" => "tool-demo",
+        "pattern_id" => "tool-governance",
         "promise" => "Review a locally curated tool policy recipe.",
-        "pattern_id" => "tool-governance"
+        "title" => "Workspace tool policy"
       })
     )
 
     File.write!(
       Path.join(workspace_dir, "unsupported-demo.json"),
       Jason.encode!(%{
-        "id" => "unsupported-demo",
-        "title" => "Unsupported future policy",
         "category" => "policy.future",
+        "id" => "unsupported-demo",
+        "pattern_id" => "future-policy-engine",
         "promise" => "Exercise a recipe that this build cannot project yet.",
-        "pattern_id" => "future-policy-engine"
+        "title" => "Unsupported future policy"
       })
     )
 
@@ -1130,9 +1302,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     {:ok, view, _html} = live(build_conn(), "/policies/tool-governance/diagram?source=workspace")
 
-    assert {:error,
-            {:redirect,
-             %{to: "/policies/tool-governance/state_machine/recipe/tool-loop-cost-brake"}}} =
+    assert {:error, {:redirect, %{to: "/policies/tool-governance/state_machine/recipe/tool-loop-cost-brake"}}} =
              view
              |> element("a", "State model")
              |> render_click()
@@ -1297,18 +1467,18 @@ defmodule Wardwright.PolicyProjectionLiveTest do
       Wardwright.default_config()
       |> Map.put("governance", [
         %{
+          "action" => "restrict_routes",
+          "allowed_targets" => [Wardwright.local_model()],
+          "contains" => "private-data-risk",
           "id" => "private-route-gate",
           "kind" => "route_gate",
-          "action" => "restrict_routes",
-          "contains" => "private-data-risk",
-          "message" => "private context must stay local",
-          "allowed_targets" => [Wardwright.local_model()]
+          "message" => "private context must stay local"
         },
         %{
-          "id" => "fallback-route-gate",
-          "kind" => "route_gate",
           "action" => "switch_model",
           "contains" => "force-managed",
+          "id" => "fallback-route-gate",
+          "kind" => "route_gate",
           "message" => "operator selected managed fallback",
           "target_model" => Wardwright.managed_model()
         }
@@ -1323,27 +1493,27 @@ defmodule Wardwright.PolicyProjectionLiveTest do
       Wardwright.default_config()
       |> Map.put("governance", [
         %{
+          "action" => "constrain_tools",
           "id" => "github-write-tools",
           "kind" => "tool_selector",
-          "namespace" => "mcp.github",
           "name" => "create_pull_request",
-          "risk_class" => "write",
-          "action" => "constrain_tools"
+          "namespace" => "mcp.github",
+          "risk_class" => "write"
         },
         %{
+          "action" => "deny_tool",
           "id" => "shell-write-tools",
           "kind" => "tool_denylist",
           "namespace" => "shell",
-          "risk_class" => "irreversible",
-          "action" => "deny_tool"
+          "risk_class" => "irreversible"
         },
         %{
+          "action" => "fail_closed",
           "id" => "repeat-github-tool",
           "kind" => "tool_loop_threshold",
-          "namespace" => "mcp.github",
           "name" => "create_pull_request",
-          "threshold" => 3,
-          "action" => "fail_closed"
+          "namespace" => "mcp.github",
+          "threshold" => 3
         }
       ])
 
@@ -1385,10 +1555,10 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     assert {:ok, _event} =
              Wardwright.PolicyCache.add(%{
-               "kind" => "tool_call",
+               "created_at_unix_ms" => 1,
                "key" => "shell:ls",
-               "scope" => %{"session_id" => "live-history-session"},
-               "created_at_unix_ms" => 1
+               "kind" => "tool_call",
+               "scope" => %{"session_id" => "live-history-session"}
              })
 
     updated = render(view)
@@ -1406,10 +1576,10 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     assert {:ok, _event} =
              Wardwright.PolicyCache.add(%{
-               "kind" => "request_text",
+               "created_at_unix_ms" => 1,
                "key" => "chat_completion",
-               "value" => %{"text" => "do not show this private prompt"},
-               "created_at_unix_ms" => 1
+               "kind" => "request_text",
+               "value" => %{"text" => "do not show this private prompt"}
              })
 
     updated = render(view)
@@ -1458,27 +1628,23 @@ defmodule Wardwright.PolicyProjectionLiveTest do
          "answer" => "Drafted a cow-focused model.",
          "tool_calls" => [
            %{
-             "name" => "draft_wardwright_model",
              "arguments" => %{
-               "model_id" => "cow-lover-mode",
-               "version" => "draft-cow",
                "description" => "Responds normally except when the user sends mooing text.",
-               "targets" => [%{"model" => "ollama/gemma4:e4b", "context_window" => 8192}],
-               "route" => %{
-                 "type" => "dispatcher",
-                 "id" => "dispatcher.cow",
-                 "models" => ["ollama/gemma4:e4b"]
-               },
+               "model_id" => "cow-lover-mode",
+               "route" => %{"id" => "dispatcher.cow", "models" => ["ollama/gemma4:e4b"], "type" => "dispatcher"},
                "stream_rules" => [
                  %{
-                   "id" => "cow-art",
-                   "phase" => "response.streaming",
-                   "pattern" => "\\bmoo+\\b",
                    "action" => "rewrite_chunk",
+                   "id" => "cow-art",
+                   "pattern" => "\\bmoo+\\b",
+                   "phase" => "response.streaming",
                    "replacement" => "moo\n^__^\n(oo)\\\\_______"
                  }
-               ]
-             }
+               ],
+               "targets" => [%{"context_window" => 8192, "model" => "ollama/gemma4:e4b"}],
+               "version" => "draft-cow"
+             },
+             "name" => "draft_wardwright_model"
            }
          ]
        })}

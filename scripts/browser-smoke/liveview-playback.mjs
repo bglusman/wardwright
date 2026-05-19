@@ -6,8 +6,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const appPort = Number(process.env.WARDWRIGHT_BROWSER_TEST_PORT || 8797);
-const chromePort = Number(process.env.WARDWRIGHT_CHROME_DEBUG_PORT || 9237);
+const appPort = Number(process.env.WARDWRIGHT_BROWSER_TEST_PORT || randomPort(18_000, 27_999));
+const chromePort = Number(process.env.WARDWRIGHT_CHROME_DEBUG_PORT || randomPort(28_000, 37_999));
 const appUrl = `http://127.0.0.1:${appPort}`;
 const chromePath = process.env.CHROME_PATH || findChromePath();
 
@@ -47,6 +47,7 @@ if (!chromePath) {
 const serverCommand = mixCommand();
 const server = spawn(serverCommand.command, [...serverCommand.args, "phx.server"], {
   cwd: "app",
+  detached: true,
   env: {
     ...process.env,
     MIX_ENV: process.env.MIX_ENV || "dev",
@@ -73,7 +74,7 @@ const chrome = spawn(
     `--user-data-dir=${userDataDir}`,
     "about:blank"
   ],
-  { stdio: ["ignore", "ignore", "pipe"] }
+  { detached: true, stdio: ["ignore", "ignore", "pipe"] }
 );
 
 try {
@@ -93,8 +94,8 @@ try {
     }
   }
 } finally {
-  chrome.kill("SIGTERM");
-  server.kill("SIGTERM");
+  await stopProcessGroup(chrome);
+  await stopProcessGroup(server);
   await rm(userDataDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }).catch(
     () => {}
   );
@@ -248,37 +249,37 @@ async function runViewportSmoke(viewport) {
     await waitForLiveView(cdp);
 
     await assertClickableControl(cdp, viewport.name, "Step");
-    await clickControl(cdp, "Step");
-    await waitForEval(
+    await clickControlAndWait(
       cdp,
+      "Step",
       `document.querySelector(".player_status span")?.textContent.includes("Step 1 of 5")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Back");
-    await clickControl(cdp, "Back");
-    await waitForEval(
+    await clickControlAndWait(
       cdp,
+      "Back",
       `document.querySelector(".player_status span")?.textContent.includes("Ready: 5")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Step");
-    await clickControl(cdp, "Step");
-    await waitForEval(
+    await clickControlAndWait(
       cdp,
+      "Step",
       `document.querySelector(".player_status span")?.textContent.includes("Step 1 of 5")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Reset");
-    await clickControl(cdp, "Reset");
-    await waitForEval(
+    await clickControlAndWait(
       cdp,
+      "Reset",
       `document.querySelector(".player_status span")?.textContent.includes("Ready: 5")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Play");
-    await clickControl(cdp, "Play");
-    await waitForEval(
+    await clickControlAndWait(
       cdp,
+      "Play",
       `[...document.querySelectorAll(".simulation_player button")].some((button) => button.textContent.trim() === "Pause")`
     );
 
@@ -288,32 +289,39 @@ async function runViewportSmoke(viewport) {
   }
 }
 
-async function clickControl(cdp, label) {
-  const point = await evaluate(cdp, controlPointExpression(label));
-  if (!point || point.error) {
-    throw new Error(point?.error || `Could not find ${label} control`);
+async function clickControlAndWait(cdp, label, condition) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await clickControl(cdp, label);
+
+    try {
+      await waitForEval(cdp, condition, 2_000);
+      return;
+    } catch (error) {
+      lastError = error;
+      await waitForLiveView(cdp);
+    }
   }
 
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mouseMoved",
-    x: point.x,
-    y: point.y,
-    button: "left"
-  });
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mousePressed",
-    x: point.x,
-    y: point.y,
-    button: "left",
-    clickCount: 1
-  });
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mouseReleased",
-    x: point.x,
-    y: point.y,
-    button: "left",
-    clickCount: 1
-  });
+  throw lastError;
+}
+
+async function clickControl(cdp, label) {
+  const result = await evaluate(
+    cdp,
+    `(() => {
+      const button = [...document.querySelectorAll(".simulation_player button")]
+        .find((candidate) => candidate.textContent.trim() === ${JSON.stringify(label)});
+      if (!button) return { error: "missing ${label} control" };
+      button.click();
+      return { clicked: true };
+    })()`
+  );
+
+  if (!result || result.error) {
+    throw new Error(result?.error || `Could not click ${label} control`);
+  }
 }
 
 async function assertClickableControl(cdp, viewportName, label) {
@@ -333,7 +341,7 @@ async function assertClickableControl(cdp, viewportName, label) {
 async function waitForLiveView(cdp) {
   await waitForEval(
     cdp,
-    `window.liveSocket && (typeof window.liveSocket.isConnected !== "function" || window.liveSocket.isConnected())`
+    `window.liveSocket && typeof window.liveSocket.isConnected === "function" && window.liveSocket.isConnected()`
   );
   await waitForEval(cdp, `document.querySelector("[data-phx-main]") !== null`);
 }
@@ -500,4 +508,61 @@ function mixCommand() {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function randomPort(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+async function stopProcessGroup(child) {
+  if (!child.pid || child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+
+  try {
+    process.kill(-child.pid, "SIGTERM");
+  } catch {
+    try {
+      child.kill("SIGTERM");
+    } catch {
+      return;
+    }
+  }
+
+  if (await waitForExit(child, 2_000)) {
+    return;
+  }
+
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // Process already exited.
+    }
+  }
+
+  await waitForExit(child, 1_000);
+}
+
+function waitForExit(child, timeoutMs) {
+  return new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolve(true);
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      child.off("exit", onExit);
+      resolve(false);
+    }, timeoutMs);
+
+    function onExit() {
+      clearTimeout(timeout);
+      resolve(true);
+    }
+
+    child.once("exit", onExit);
+  });
 }

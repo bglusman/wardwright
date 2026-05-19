@@ -1,8 +1,7 @@
 defmodule Wardwright.Policy.AlertDelivery do
   @moduledoc false
 
-  def configure(config),
-    do: Wardwright.Sinks.configure([Wardwright.Sinks.legacy_alert_sink(config)])
+  def configure(config), do: Wardwright.Sinks.configure([Wardwright.Sinks.legacy_alert_sink(config)])
 
   def reset, do: configure(%{})
 

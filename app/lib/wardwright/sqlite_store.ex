@@ -238,7 +238,9 @@ defmodule Wardwright.SQLiteStore do
   defp fallback_to_env(value, _env), do: value
 
   defp fallback_to_fnox(nil) do
-    case System.get_env("WARDWRIGHT_SQLITE_KEY_FNOX") |> blank_to_nil() do
+    System.get_env("WARDWRIGHT_SQLITE_KEY_FNOX")
+    |> blank_to_nil()
+    |> case do
       nil ->
         nil
 
@@ -289,61 +291,67 @@ defmodule Wardwright.SQLiteStore do
   end
 
   defp exec!(conn, sql, params) do
-    with {:ok, statement} <- Sqlite3.prepare(conn, sql) do
-      try do
-        :ok = Sqlite3.bind(statement, params)
+    case Sqlite3.prepare(conn, sql) do
+      {:ok, statement} ->
+        try do
+          :ok = Sqlite3.bind(statement, params)
 
-        case Sqlite3.step(conn, statement) do
-          :done -> :ok
-          {:row, _row} -> :ok
-          {:error, reason} -> raise "sqlite statement failed: #{inspect(reason)}"
+          case Sqlite3.step(conn, statement) do
+            :done -> :ok
+            {:row, _row} -> :ok
+            {:error, reason} -> raise "sqlite statement failed: #{inspect(reason)}"
+          end
+        after
+          Sqlite3.release(conn, statement)
         end
-      after
-        Sqlite3.release(conn, statement)
-      end
-    else
-      {:error, reason} -> raise "sqlite prepare failed: #{inspect(reason)}"
+
+      {:error, reason} ->
+        raise "sqlite prepare failed: #{inspect(reason)}"
     end
   end
 
   defp query_one(conn, sql, params \\ []) do
-    with {:ok, statement} <- Sqlite3.prepare(conn, sql) do
-      try do
-        :ok = Sqlite3.bind(statement, params)
-        Sqlite3.step(conn, statement)
-      after
-        Sqlite3.release(conn, statement)
-      end
-    else
-      {:error, reason} -> raise "sqlite prepare failed: #{inspect(reason)}"
+    case Sqlite3.prepare(conn, sql) do
+      {:ok, statement} ->
+        try do
+          :ok = Sqlite3.bind(statement, params)
+          Sqlite3.step(conn, statement)
+        after
+          Sqlite3.release(conn, statement)
+        end
+
+      {:error, reason} ->
+        raise "sqlite prepare failed: #{inspect(reason)}"
     end
   end
 
   defp query_all(conn, sql, params) do
-    with {:ok, statement} <- Sqlite3.prepare(conn, sql) do
-      try do
-        :ok = Sqlite3.bind(statement, params)
+    case Sqlite3.prepare(conn, sql) do
+      {:ok, statement} ->
+        try do
+          :ok = Sqlite3.bind(statement, params)
 
-        case Sqlite3.fetch_all(conn, statement) do
-          {:ok, rows} -> rows
-          {:error, reason} -> raise "sqlite query failed: #{inspect(reason)}"
+          case Sqlite3.fetch_all(conn, statement) do
+            {:ok, rows} -> rows
+            {:error, reason} -> raise "sqlite query failed: #{inspect(reason)}"
+          end
+        after
+          Sqlite3.release(conn, statement)
         end
-      after
-        Sqlite3.release(conn, statement)
-      end
-    else
-      {:error, reason} -> raise "sqlite prepare failed: #{inspect(reason)}"
+
+      {:error, reason} ->
+        raise "sqlite prepare failed: #{inspect(reason)}"
     end
   end
 
   defp key_record([id, model_id, label, prefix, key_hash, created_at]) do
     %{
+      "created_at" => created_at,
       "id" => id,
-      "model_id" => model_id,
-      "label" => label,
-      "prefix" => prefix,
       "key_hash" => key_hash,
-      "created_at" => created_at
+      "label" => label,
+      "model_id" => model_id,
+      "prefix" => prefix
     }
   end
 

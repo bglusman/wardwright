@@ -16,6 +16,10 @@ run = "ruby scripts/check-docs-site.rb"
 description = "Ensure string-keyed Elixir map access does not grow in core modules"
 run = "ruby scripts/check-elixir-map-boundaries.rb"
 
+[tasks."check:style"]
+description = "Run gradual Elixir static-analysis ratchets"
+run = "cd app && mix credo --format=oneline"
+
 [tasks."check:browser"]
 description = "Run headless Chrome smoke tests for responsive LiveView playback"
 run = "node scripts/browser-smoke/liveview-playback.mjs"
@@ -26,6 +30,7 @@ run = [
   "mise run check:app",
   "mise run check:docs",
   "mise run check:maps",
+  "mise run check:style",
   "mise run check:browser",
 ]
 

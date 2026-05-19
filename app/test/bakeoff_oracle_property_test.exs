@@ -20,7 +20,7 @@ defmodule Wardwright.BakeoffOraclePropertyTest do
 
         assert result.final_status == "completed_after_guard"
 
-        assert [%{attempt_index: 0, action: "retry_with_validation_feedback"}] =
+        assert [%{action: "retry_with_validation_feedback", attempt_index: 0}] =
                  result.guard_events
 
         assert result.parsed_output == valid_output
@@ -40,30 +40,30 @@ defmodule Wardwright.BakeoffOraclePropertyTest do
     test "matches representative regeneration paths" do
       scenarios = [
         %{
+          expected_rules: ["minimum-confidence"],
+          expected_status: "completed_after_guard",
+          expected_types: ["semantic_validation"],
           outputs: [
             ~s({"answer":"too uncertain","confidence":0.2}),
             ~s({"answer":"Use the current API.","confidence":0.93})
-          ],
-          expected_status: "completed_after_guard",
-          expected_types: ["semantic_validation"],
-          expected_rules: ["minimum-confidence"]
+          ]
         },
         %{
+          expected_rules: ["answer-json", "answer-json", "minimum-confidence"],
+          expected_status: "completed_after_guard",
+          expected_types: ["json_syntax", "schema_validation", "semantic_validation"],
           outputs: [
             "{not json",
             ~s({"answer":"missing confidence"}),
             ~s({"answer":"valid shape but still uncertain","confidence":0.4}),
             ~s({"answer":"Use the deterministic cache receipt.","confidence":0.91,"citations":["receipt-42"]})
-          ],
-          expected_status: "completed_after_guard",
-          expected_types: ["json_syntax", "schema_validation", "semantic_validation"],
-          expected_rules: ["answer-json", "answer-json", "minimum-confidence"]
+          ]
         },
         %{
-          outputs: ["{not json", "{still not json", "{nope"],
+          expected_rules: ["answer-json", "answer-json", "answer-json"],
           expected_status: "exhausted_guard_budget",
           expected_types: ["json_syntax", "json_syntax", "json_syntax"],
-          expected_rules: ["answer-json", "answer-json", "answer-json"]
+          outputs: ["{not json", "{still not json", "{nope"]
         }
       ]
 
@@ -181,22 +181,20 @@ defmodule Wardwright.BakeoffOraclePropertyTest do
 
     test "matches representative backpressure scenarios" do
       scenarios = [
-        {[%{decision_id: "a1", triggers_alert: true, idempotency_key: "alert-a"}], 4,
-         "dead_letter", ["queued"]},
+        {[%{decision_id: "a1", idempotency_key: "alert-a", triggers_alert: true}], 4, "dead_letter", ["queued"]},
         {[
-           %{decision_id: "a1", triggers_alert: true, idempotency_key: "same-alert"},
-           %{decision_id: "a2", triggers_alert: true, idempotency_key: "same-alert"}
+           %{decision_id: "a1", idempotency_key: "same-alert", triggers_alert: true},
+           %{decision_id: "a2", idempotency_key: "same-alert", triggers_alert: true}
          ], 4, "dead_letter", ["queued", "duplicate_suppressed"]},
         {[
-           %{decision_id: "a1", triggers_alert: true, idempotency_key: "alert-a"},
-           %{decision_id: "a2", triggers_alert: true, idempotency_key: "alert-b"}
+           %{decision_id: "a1", idempotency_key: "alert-a", triggers_alert: true},
+           %{decision_id: "a2", idempotency_key: "alert-b", triggers_alert: true}
          ], 1, "dead_letter", ["queued", "dead_lettered"]},
         {[
-           %{decision_id: "a1", triggers_alert: true, idempotency_key: "alert-a"},
-           %{decision_id: "a2", triggers_alert: true, idempotency_key: "alert-b"}
+           %{decision_id: "a1", idempotency_key: "alert-a", triggers_alert: true},
+           %{decision_id: "a2", idempotency_key: "alert-b", triggers_alert: true}
          ], 1, "drop", ["queued", "dropped"]},
-        {[%{decision_id: "a1", triggers_alert: true, idempotency_key: "alert-a"}], 0,
-         "fail_closed", ["failed_closed"]}
+        {[%{decision_id: "a1", idempotency_key: "alert-a", triggers_alert: true}], 0, "fail_closed", ["failed_closed"]}
       ]
 
       for {decisions, capacity, on_full, expected} <- scenarios do
@@ -209,8 +207,8 @@ defmodule Wardwright.BakeoffOraclePropertyTest do
   defp valid_answer do
     fixed_map(%{
       "answer" => string(:alphanumeric, min_length: 1, max_length: 80),
-      "confidence" => float(min: 0.7, max: 1.0),
-      "citations" => list_of(string(:alphanumeric, min_length: 1, max_length: 40), max_length: 3)
+      "citations" => list_of(string(:alphanumeric, min_length: 1, max_length: 40), max_length: 3),
+      "confidence" => float(min: 0.7, max: 1.0)
     })
   end
 
@@ -240,17 +238,17 @@ defmodule Wardwright.BakeoffOraclePropertyTest do
            %{
              final_status: status,
              guard_events: acc.guard_events,
-             selected_schema: "answer_v1",
-             parsed_output: parsed
+             parsed_output: parsed,
+             selected_schema: "answer_v1"
            }}
 
         {:error, guard_type, rule_id} ->
           event = %{
-            type: "structured_output.guard",
+            action: "retry_with_validation_feedback",
             attempt_index: attempt_index,
-            rule_id: rule_id,
             guard_type: guard_type,
-            action: "retry_with_validation_feedback"
+            rule_id: rule_id,
+            type: "structured_output.guard"
           }
 
           {:cont, %{acc | guard_events: acc.guard_events ++ [event]}}
@@ -264,8 +262,8 @@ defmodule Wardwright.BakeoffOraclePropertyTest do
         %{
           final_status: "exhausted_guard_budget",
           guard_events: guard_events,
-          selected_schema: nil,
-          parsed_output: nil
+          parsed_output: nil,
+          selected_schema: nil
         }
     end
   end
@@ -313,9 +311,9 @@ defmodule Wardwright.BakeoffOraclePropertyTest do
     attrs =
       fixed_map(%{
         created_at_unix_ms: integer(0..1_000),
-        session_id: member_of(["session-a", "session-b", "session-c"]),
+        key: member_of(["shell:ls", "shell:rm", "regex:secret", "note"]),
         kind: member_of(["tool_call", "response_text", "receipt_event"]),
-        key: member_of(["shell:ls", "shell:rm", "regex:secret", "note"])
+        session_id: member_of(["session-a", "session-b", "session-c"])
       })
 
     attrs
@@ -353,8 +351,8 @@ defmodule Wardwright.BakeoffOraclePropertyTest do
   defp alert_decisions do
     fixed_map(%{
       decision_id: string(:alphanumeric, min_length: 1, max_length: 12),
-      triggers_alert: boolean(),
-      idempotency_key: member_of(["same-alert", "alert-a", "alert-b", "alert-c", "alert-d"])
+      idempotency_key: member_of(["same-alert", "alert-a", "alert-b", "alert-c", "alert-d"]),
+      triggers_alert: boolean()
     })
     |> list_of(max_length: 40)
   end
@@ -364,7 +362,7 @@ defmodule Wardwright.BakeoffOraclePropertyTest do
     on_full = Keyword.fetch!(opts, :on_full)
 
     decisions
-    |> Enum.reduce(%{queue: [], seen_keys: MapSet.new(), results: []}, fn decision, acc ->
+    |> Enum.reduce(%{queue: [], results: [], seen_keys: MapSet.new()}, fn decision, acc ->
       cond do
         not decision.triggers_alert ->
           append_alert_result(acc, decision, "not_alerting")
@@ -400,8 +398,8 @@ defmodule Wardwright.BakeoffOraclePropertyTest do
   defp append_alert_result(acc, decision, outcome) do
     result = %{
       decision_id: decision.decision_id,
-      outcome: outcome,
-      idempotency_key: decision.idempotency_key
+      idempotency_key: decision.idempotency_key,
+      outcome: outcome
     }
 
     Map.update!(acc, :results, &(&1 ++ [result]))

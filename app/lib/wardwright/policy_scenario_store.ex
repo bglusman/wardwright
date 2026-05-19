@@ -4,6 +4,7 @@ defmodule Wardwright.PolicyScenarioStore do
   use Agent
 
   alias Wardwright.PolicyScenario
+  alias Wardwright.Runtime.Events
 
   defstruct path: nil, scenarios: %{}
 
@@ -55,7 +56,7 @@ defmodule Wardwright.PolicyScenarioStore do
 
           case Map.fetch(state.scenarios, scenario_key) do
             {:ok, scenario} ->
-              updated = %__MODULE__{state | scenarios: Map.delete(state.scenarios, scenario_key)}
+              updated = %{state | scenarios: Map.delete(state.scenarios, scenario_key)}
 
               case persist(updated) do
                 :ok -> {{:ok, scenario}, updated}
@@ -87,21 +88,19 @@ defmodule Wardwright.PolicyScenarioStore do
        Map.new([
          {"schema", "wardwright.policy_regression_pack.v1"},
          {"pattern_id", pattern_id},
-         {"generated_at",
-          DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()},
+         {"generated_at", DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()},
          {"scenario_count", length(scenarios)},
          {"scenarios", scenarios}
        ])}
     end
   end
 
-  def enforce_retention(pattern_id, max_unpinned)
-      when is_integer(max_unpinned) and max_unpinned >= 0 do
+  def enforce_retention(pattern_id, max_unpinned) when is_integer(max_unpinned) and max_unpinned >= 0 do
     with :ok <- known_pattern(pattern_id) do
       result =
         Agent.get_and_update(__MODULE__, fn %__MODULE__{} = state ->
           {updated_scenarios, pruned} = prune_unpinned(state.scenarios, pattern_id, max_unpinned)
-          updated = %__MODULE__{state | scenarios: updated_scenarios}
+          updated = %{state | scenarios: updated_scenarios}
 
           case persist(updated) do
             :ok -> {{:ok, retention_result(pattern_id, max_unpinned, pruned, updated)}, updated}
@@ -115,12 +114,11 @@ defmodule Wardwright.PolicyScenarioStore do
     end
   end
 
-  def enforce_retention(_pattern_id, _max_unpinned),
-    do: {:error, "max_unpinned must be a non-negative integer"}
+  def enforce_retention(_pattern_id, _max_unpinned), do: {:error, "max_unpinned must be a non-negative integer"}
 
   def clear do
     Agent.get_and_update(__MODULE__, fn %__MODULE__{} = state ->
-      updated = %__MODULE__{state | scenarios: %{}}
+      updated = %{state | scenarios: %{}}
 
       case persist(updated) do
         :ok -> {:ok, updated}
@@ -131,9 +129,8 @@ defmodule Wardwright.PolicyScenarioStore do
 
   def configure_storage(path) when is_binary(path) or is_nil(path) do
     Agent.get_and_update(__MODULE__, fn state ->
-      with {:ok, loaded} <- load_state(path) do
-        {{:ok, loaded}, loaded}
-      else
+      case load_state(path) do
+        {:ok, loaded} -> {{:ok, loaded}, loaded}
         {:error, message} -> {{:error, message}, state}
       end
     end)
@@ -190,7 +187,7 @@ defmodule Wardwright.PolicyScenarioStore do
     result =
       Agent.get_and_update(__MODULE__, fn %__MODULE__{} = state ->
         scenarios = Map.put(state.scenarios, key(scenario.pattern_id, scenario.id), scenario)
-        updated = %__MODULE__{state | scenarios: scenarios}
+        updated = %{state | scenarios: scenarios}
 
         case persist(updated) do
           :ok -> {{:ok, scenario}, updated}
@@ -204,8 +201,8 @@ defmodule Wardwright.PolicyScenarioStore do
   end
 
   defp publish_stored(scenario) do
-    Wardwright.Runtime.Events.publish(
-      Wardwright.Runtime.Events.topic(:simulations),
+    Events.publish(
+      Events.topic(:simulations),
       Map.new([
         {"type", "policy_scenario.stored"},
         {"pattern_id", scenario.pattern_id},
@@ -219,8 +216,8 @@ defmodule Wardwright.PolicyScenarioStore do
   end
 
   defp publish_deleted(scenario) do
-    Wardwright.Runtime.Events.publish(
-      Wardwright.Runtime.Events.topic(:simulations),
+    Events.publish(
+      Events.topic(:simulations),
       Map.new([
         {"type", "policy_scenario.deleted"},
         {"pattern_id", scenario.pattern_id},
@@ -232,8 +229,8 @@ defmodule Wardwright.PolicyScenarioStore do
   end
 
   defp publish_retention(retention) do
-    Wardwright.Runtime.Events.publish(
-      Wardwright.Runtime.Events.topic(:simulations),
+    Events.publish(
+      Events.topic(:simulations),
       Map.new([
         {"type", "policy_scenario.retention_applied"},
         {"pattern_id", Map.get(retention, @pattern_id_key)},
@@ -328,8 +325,7 @@ defmodule Wardwright.PolicyScenarioStore do
       |> Enum.map(fn {key, scenario} -> {key, scenario_sort_key(scenario)} end)
       |> Enum.sort_by(fn {_key, sort_key} -> sort_key end, :desc)
       |> Enum.take(max_unpinned)
-      |> Enum.map(fn {key, _sort_key} -> key end)
-      |> MapSet.new()
+      |> MapSet.new(fn {key, _sort_key} -> key end)
 
     {kept_unpinned, pruned} =
       Enum.split_with(target_unpinned, fn {key, _scenario} -> MapSet.member?(keep_ids, key) end)
@@ -337,8 +333,7 @@ defmodule Wardwright.PolicyScenarioStore do
     {Map.new(rest ++ kept_unpinned), Enum.map(pruned, fn {_key, scenario} -> scenario end)}
   end
 
-  defp scenario_sort_key(scenario),
-    do: {scenario.created_at || "", scenario.updated_at || "", scenario.id}
+  defp scenario_sort_key(scenario), do: {scenario.created_at || "", scenario.updated_at || "", scenario.id}
 
   defp retention_result(pattern_id, max_unpinned, pruned, %__MODULE__{} = state) do
     remaining_unpinned =

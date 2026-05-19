@@ -27,8 +27,7 @@ defmodule WardwrightWeb.ProtectedAccess do
 
   def basic_auth_configured?, do: is_binary(basic_auth_password())
 
-  defp local_request?(conn),
-    do: conn.remote_ip in [{127, 0, 0, 1}, {0, 0, 0, 0, 0, 0, 0, 1}]
+  defp local_request?(conn), do: conn.remote_ip in [{127, 0, 0, 1}, {0, 0, 0, 0, 0, 0, 0, 1}]
 
   defp forbidden(conn) do
     conn
@@ -47,9 +46,8 @@ defmodule WardwrightWeb.ProtectedAccess do
   end
 
   defp basic_auth_valid?(conn, password) do
-    with {:ok, "admin", request_password} <- basic_credentials(conn) do
-      Plug.Crypto.secure_compare(password, request_password)
-    else
+    case basic_credentials(conn) do
+      {:ok, "admin", request_password} -> Plug.Crypto.secure_compare(password, request_password)
       _ -> false
     end
   rescue
@@ -140,8 +138,7 @@ defmodule WardwrightWeb.ProtectedAccess do
   defp metadata_string(value) when is_binary(value), do: String.trim(value)
   defp metadata_string(value) when is_atom(value), do: value |> Atom.to_string() |> String.trim()
 
-  defp metadata_string(value) when is_integer(value),
-    do: value |> Integer.to_string() |> String.trim()
+  defp metadata_string(value) when is_integer(value), do: value |> Integer.to_string() |> String.trim()
 
   defp metadata_string(_value), do: nil
 

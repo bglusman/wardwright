@@ -8,9 +8,10 @@ defmodule WardwrightWeb.AuthoringAgent do
   """
 
   alias Wardwright.PolicySandbox.DuneSnippetRegistry
-  alias WardwrightWeb.PolicyAuthoringDrafts
   alias WardwrightWeb.PolicyArtifactValidator
+  alias WardwrightWeb.PolicyAuthoringDrafts
   alias WardwrightWeb.PolicyAuthoringTools
+
   require Logger
 
   @default_base_url "https://opencode.ai/zen/go/v1"
@@ -28,18 +29,18 @@ defmodule WardwrightWeb.AuthoringAgent do
 
   def status(context \\ %{}) do
     %{
-      configured: configured?(context),
       backend: "jido_ai",
-      route: authoring_route(),
       base_url: base_url(),
-      model: model(context),
-      max_tokens: max_tokens(),
-      timeout_ms: timeout_ms(),
       can_execute_tools: true,
-      tool_access: "read_and_draft_tools",
-      required_structured_schema: if(local_wardwright_route?(), do: @required_authoring_schema),
+      configured: configured?(context),
       instructions:
-        "Set WARDWRIGHT_AUTHORING_AGENT_ENABLED=1, WARDWRIGHT_AUTHORING_AGENT_ROUTE=wardwright, and WARDWRIGHT_AUTHORING_AGENT_MODEL to dogfood a specific local Wardwright /v1 model. Dogfood mode requires that local model to expose the #{@required_authoring_schema} structured-output schema so authoring tool plans are governed by Wardwright before execution. If that local model requires keyed access, set WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY or WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY_FILE. For direct provider calls, set WARDWRIGHT_AUTHORING_AGENT_API_KEY or WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE. Reasoning-heavy coding models may also need WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS and WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS."
+        "Set WARDWRIGHT_AUTHORING_AGENT_ENABLED=1, WARDWRIGHT_AUTHORING_AGENT_ROUTE=wardwright, and WARDWRIGHT_AUTHORING_AGENT_MODEL to dogfood a specific local Wardwright /v1 model. Dogfood mode requires that local model to expose the #{@required_authoring_schema} structured-output schema so authoring tool plans are governed by Wardwright before execution. If that local model requires keyed access, set WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY or WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY_FILE. For direct provider calls, set WARDWRIGHT_AUTHORING_AGENT_API_KEY or WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE. Reasoning-heavy coding models may also need WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS and WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS.",
+      max_tokens: max_tokens(),
+      model: model(context),
+      required_structured_schema: if(local_wardwright_route?(), do: @required_authoring_schema),
+      route: authoring_route(),
+      timeout_ms: timeout_ms(),
+      tool_access: "read_and_draft_tools"
     }
   end
 
@@ -51,10 +52,10 @@ defmodule WardwrightWeb.AuthoringAgent do
     else
       {:ok,
        %{
-         status: "not_configured",
+         backend: status(context),
          content: not_configured_message(prompt),
          prompt_preview: prompt,
-         backend: status(context)
+         status: "not_configured"
        }}
     end
   end
@@ -71,9 +72,9 @@ defmodule WardwrightWeb.AuthoringAgent do
     - Help the operator design, refine, validate, simulate, and activate Wardwright models.
     - Prefer small reviewable changes over broad rewrites.
     - Never claim a model is active unless an activation tool result says it is active.
-    - Always explain what evidence would convince you and which tool should gather it.
     - Treat deterministic artifacts as source of truth, projections as explanation, and simulations as evidence.
     - Ask for human confirmation before any durable write-capable action.
+    - Be skeptical of your own draft. A plausible artifact is not enough.
     - Draft-only tools are safe to call immediately; they create reviewable
       artifacts but do not activate models or persist policy changes.
     - You may call read-only and draft-only authoring tools by returning a
@@ -93,6 +94,22 @@ defmodule WardwrightWeb.AuthoringAgent do
       Wardwright will normalize it, but top-level fields are clearer.
       If Wardwright cannot express the requested behavior exactly yet, say that
       clearly and draft the closest reviewable approximation with limitations.
+    - For regex semantics, use stream_rules[].regex. Use stream_rules[].pattern
+      only for literal substring replacement.
+    - Before drafting, inspect the current surface with explain_projection when
+      the request depends on an existing pattern or model.
+    - After drafting or proposing a change, validate it and simulate at least
+      one matching case and one non-matching control case when the available
+      tools can express those cases.
+    - If a simulation does not exercise the behavior you changed, say so plainly
+      and propose the missing scenario instead of claiming success.
+    - Report validation warnings, coverage gaps, and simulator limitations in
+      your answer. Do not bury them in next steps.
+    - Good authoring tasks include: request reminders that trigger on user text,
+      response stream rewrites or retries, route/model switching, structured
+      output repair, tool-use constraints, history thresholds, and Dune snippet
+      sketches. Pick the smallest Wardwright primitive that can express the
+      requested behavior.
 
     Current workbench context:
     - active_model_id: #{selected_model}
@@ -122,7 +139,7 @@ defmodule WardwrightWeb.AuthoringAgent do
   defp run_jido(prompt, context) do
     model_id = model(context)
     provider_base_url = base_url()
-    model_spec = %{provider: :openai, id: model_id, model: model_id, base_url: provider_base_url}
+    model_spec = %{base_url: provider_base_url, id: model_id, model: model_id, provider: :openai}
     started_at = System.monotonic_time(:millisecond)
     backend_status = status(context)
 
@@ -162,11 +179,11 @@ defmodule WardwrightWeb.AuthoringAgent do
 
         {:ok,
          %{
-           status: "error",
+           backend: backend_status,
            content:
              "The Wardwright authoring assistant failed before returning an answer.\n\nProvider error: #{error_summary}",
            error: error_summary,
-           backend: backend_status
+           status: "error"
          }}
     end
   rescue
@@ -177,10 +194,10 @@ defmodule WardwrightWeb.AuthoringAgent do
 
       {:ok,
        %{
-         status: "error",
+         backend: status(context),
          content: "The Wardwright authoring assistant raised #{inspect(exception.__struct__)}.",
          error: Exception.message(exception),
-         backend: status(context)
+         status: "error"
        }}
   end
 
@@ -196,17 +213,15 @@ defmodule WardwrightWeb.AuthoringAgent do
 
         next_steps =
           tool_results
-          |> add_default_next_steps(
-            Map.get(plan, "next_steps", Map.get(plan, "approval_needed", []))
-          )
+          |> add_default_next_steps(Map.get(plan, "next_steps", Map.get(plan, "approval_needed", [])))
 
         rendered = render_tool_answer(answer_text, tool_results, next_steps)
 
-        answer(rendered, Keyword.merge(extras, tool_results: tool_results))
+        answer(rendered, Keyword.put(extras, :tool_results, tool_results))
 
       :error ->
         if looks_like_tool_plan?(content) do
-          answer(unreadable_tool_plan_message(), Keyword.merge(extras, status: "error"))
+          answer(unreadable_tool_plan_message(), Keyword.put(extras, :status, "error"))
         else
           answer(content, extras)
         end
@@ -220,17 +235,17 @@ defmodule WardwrightWeb.AuthoringAgent do
     if content == "" do
       {:ok,
        %{
-         status: "error",
+         backend: status(),
          content: empty_answer_message(extras),
-         backend: status()
+         status: "error"
        }
        |> Map.merge(Map.new(extras))}
     else
       {:ok,
        %{
-         status: status,
+         backend: status(),
          content: content,
-         backend: status()
+         status: status
        }
        |> Map.merge(Map.new(extras))}
     end
@@ -306,8 +321,7 @@ defmodule WardwrightWeb.AuthoringAgent do
     end
   end
 
-  defp execute_tool_call(_call),
-    do: skipped_tool("unknown", "tool call must include a string name")
+  defp execute_tool_call(_call), do: skipped_tool("unknown", "tool call must include a string name")
 
   defp safe_run_auto_tool(name, arguments) do
     run_auto_tool(name, arguments)
@@ -386,7 +400,7 @@ defmodule WardwrightWeb.AuthoringAgent do
   end
 
   defp tool_result(name, status, result) do
-    %{"name" => name, "status" => status, "result" => result}
+    %{"name" => name, "result" => result, "status" => status}
   end
 
   defp render_tool_answer(answer_text, tool_results, next_steps) do
@@ -424,9 +438,7 @@ defmodule WardwrightWeb.AuthoringAgent do
     " (draft #{model_id}, #{length(errors)} validation errors, #{length(warnings)} warnings, not active)"
   end
 
-  defp tool_result_summary(%{
-         "result" => %{"validation" => %{"errors" => errors, "warnings" => warnings}}
-       })
+  defp tool_result_summary(%{"result" => %{"validation" => %{"errors" => errors, "warnings" => warnings}}})
        when is_list(errors) and is_list(warnings) do
     " (#{length(errors)} validation errors, #{length(warnings)} warnings)"
   end
@@ -436,8 +448,7 @@ defmodule WardwrightWeb.AuthoringAgent do
     " (#{length(errors)} validation errors, #{length(warnings)} warnings)"
   end
 
-  defp tool_result_summary(%{"result" => %{"error" => error}}) when is_binary(error),
-    do: " (#{error})"
+  defp tool_result_summary(%{"result" => %{"error" => error}}) when is_binary(error), do: " (#{error})"
 
   defp tool_result_summary(_tool_result), do: ""
 
@@ -456,11 +467,10 @@ defmodule WardwrightWeb.AuthoringAgent do
 
   defp draft_model_tool_result?(%{
          "name" => "draft_wardwright_model",
-         "status" => "executed",
-         "result" => %{"artifact" => %{"model_id" => model_id}}
+         "result" => %{"artifact" => %{"model_id" => model_id}},
+         "status" => "executed"
        })
-       when is_binary(model_id),
-       do: true
+       when is_binary(model_id), do: true
 
   defp draft_model_tool_result?(_result), do: false
 
@@ -566,8 +576,7 @@ defmodule WardwrightWeb.AuthoringAgent do
 
   defp tool_manifest do
     PolicyAuthoringTools.list()
-    |> Enum.map(&tool_manifest_line/1)
-    |> Enum.join("\n")
+    |> Enum.map_join("\n", &tool_manifest_line/1)
   end
 
   defp tool_manifest_line(%{
@@ -592,7 +601,7 @@ defmodule WardwrightWeb.AuthoringAgent do
   defp enabled? do
     System.get_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "")
     |> String.downcase()
-    |> then(&(&1 in ["1", "true", "yes", "on"]))
+    |> Kernel.in(["1", "true", "yes", "on"])
   end
 
   defp base_url do

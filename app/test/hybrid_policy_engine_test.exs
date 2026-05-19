@@ -1,22 +1,23 @@
 defmodule Wardwright.HybridPolicyEngineTest do
   use Wardwright.RouterCase
 
+  alias Wardwright.Policy.Engine
+  alias Wardwright.PolicySandbox.DuneSnippetRegistry
+
   test "hybrid policy engine propagates nested blocking actions" do
     config =
       unit_policy_config()
       |> Map.put("governance", [
         %{
-          "id" => "hybrid-block",
-          "kind" => "route_gate",
           "engine" => "hybrid",
           "engines" => [
             %{
               "engine" => "primitive",
-              "rules" => [
-                %{"id" => "primitive-deny", "contains" => "deny me", "action" => "block"}
-              ]
+              "rules" => [%{"action" => "block", "contains" => "deny me", "id" => "primitive-deny"}]
             }
-          ]
+          ],
+          "id" => "hybrid-block",
+          "kind" => "route_gate"
         }
       ])
 
@@ -24,8 +25,8 @@ defmodule Wardwright.HybridPolicyEngineTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        messages: [%{role: "user", content: "please deny me"}]
+        messages: [%{content: "please deny me", role: "user"}],
+        model: "unit-model"
       })
 
     assert conn.status == 429
@@ -34,41 +35,41 @@ defmodule Wardwright.HybridPolicyEngineTest do
 
     assert [
              %{
-               "action_schema" => "wardwright.policy_action.v1",
-               "rule_id" => "primitive-deny",
-               "kind" => "route_gate",
                "action" => "block",
+               "action_schema" => "wardwright.policy_action.v1",
+               "conflict_key" => "terminal_decision",
                "effect_type" => "terminal",
-               "source" => %{"type" => "engine", "engine" => "dune", "status" => "ok"},
-               "conflict_key" => "terminal_decision"
+               "kind" => "route_gate",
+               "rule_id" => "primitive-deny",
+               "source" => %{"engine" => "dune", "status" => "ok", "type" => "engine"}
              }
            ] = get_in(receipt, ["decision", "policy_actions"])
   end
 
   test "hybrid policy reports policy blocks separately from engine failures" do
     assert %{
-             "engine" => "hybrid",
-             "result_schema" => "wardwright.policy_result.v1",
-             "status" => "ok",
              "action" => "block",
              "actions" => [
                %{
-                 "action_schema" => "wardwright.policy_action.v1",
-                 "rule_id" => "primitive-deny",
                  "action" => "block",
+                 "action_schema" => "wardwright.policy_action.v1",
                  "effect_type" => "terminal",
-                 "source" => %{"type" => "engine", "engine" => "dune", "status" => "ok"}
+                 "rule_id" => "primitive-deny",
+                 "source" => %{"engine" => "dune", "status" => "ok", "type" => "engine"}
                }
-             ]
+             ],
+             "engine" => "hybrid",
+             "result_schema" => "wardwright.policy_result.v1",
+             "status" => "ok"
            } =
-             Wardwright.Policy.Engine.evaluate(
+             Engine.evaluate(
                %{
                  "engine" => "hybrid",
                  "engines" => [
                    %{
                      "engine" => "primitive",
                      "rules" => [
-                       %{"id" => "primitive-deny", "contains" => "deny me", "action" => "block"}
+                       %{"action" => "block", "contains" => "deny me", "id" => "primitive-deny"}
                      ]
                    }
                  ]
@@ -92,7 +93,7 @@ defmodule Wardwright.HybridPolicyEngineTest do
     end)
 
     assert {:ok, _saved} =
-             Wardwright.PolicySandbox.DuneSnippetRegistry.save(%{
+             DuneSnippetRegistry.save(%{
                "id" => "workspace.block-risk",
                "source" => """
                if String.contains?(input["request_text"], "deny me") do
@@ -104,28 +105,22 @@ defmodule Wardwright.HybridPolicyEngineTest do
              })
 
     assert %{
-             "engine" => "hybrid",
-             "status" => "ok",
              "action" => "block",
              "actions" => [
                %{
-                 "rule_id" => "saved-dune",
                  "action" => "block",
-                 "source" => %{"type" => "engine", "engine" => "dune", "status" => "ok"}
+                 "rule_id" => "saved-dune",
+                 "source" => %{"engine" => "dune", "status" => "ok", "type" => "engine"}
                }
-             ]
+             ],
+             "engine" => "hybrid",
+             "status" => "ok"
            } =
-             Wardwright.Policy.Engine.evaluate(
+             Engine.evaluate(
                %{
-                 "id" => "saved-dune",
                  "engine" => "hybrid",
-                 "engines" => [
-                   %{
-                     "id" => "saved-dune",
-                     "engine" => "dune",
-                     "snippet_id" => "workspace.block-risk"
-                   }
-                 ]
+                 "engines" => [%{"engine" => "dune", "id" => "saved-dune", "snippet_id" => "workspace.block-risk"}],
+                 "id" => "saved-dune"
                },
                %{"request_text" => "please deny me"}
              )
@@ -136,9 +131,9 @@ defmodule Wardwright.HybridPolicyEngineTest do
       unit_policy_config()
       |> Map.put("governance", [
         %{
+          "engine" => "wasm",
           "id" => "unavailable-wasm-policy",
-          "kind" => "route_gate",
-          "engine" => "wasm"
+          "kind" => "route_gate"
         }
       ])
 
@@ -146,8 +141,8 @@ defmodule Wardwright.HybridPolicyEngineTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        messages: [%{role: "user", content: "hello"}]
+        messages: [%{content: "hello", role: "user"}],
+        model: "unit-model"
       })
 
     assert conn.status == 429
@@ -158,9 +153,9 @@ defmodule Wardwright.HybridPolicyEngineTest do
 
     assert [
              %{
-               "rule_id" => "unavailable-wasm-policy",
+               "action" => "block",
                "kind" => "route_gate",
-               "action" => "block"
+               "rule_id" => "unavailable-wasm-policy"
              }
            ] = get_in(receipt, ["decision", "policy_actions"])
   end

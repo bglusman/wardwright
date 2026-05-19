@@ -35,6 +35,9 @@ jobs:
       - name: Check formatting
         run: mix format --check-formatted
         working-directory: app
+      - name: Run Credo ratchets
+        run: mix credo --format=oneline
+        working-directory: app
       - name: Run tests
         run: mix test
         working-directory: app

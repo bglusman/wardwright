@@ -1,10 +1,12 @@
 defmodule Wardwright.RuntimeVisibilityTest do
   use ExUnit.Case, async: false
+
   import Plug.Conn
   import Plug.Test
 
   alias Wardwright.Runtime
   alias Wardwright.Runtime.Events
+  alias Wardwright.Runtime.SessionRuntime
 
   @opts Wardwright.Router.init([])
 
@@ -27,16 +29,15 @@ defmodule Wardwright.RuntimeVisibilityTest do
     assert {:ok, pid_a} = Runtime.ensure_session(model, version, session_a)
     assert {:ok, pid_b} = Runtime.ensure_session(model, version, session_b)
 
-    assert_receive {:wardwright_runtime_event, ^topic_a,
-                    %{"type" => "session.started", "sequence" => 1}}
+    assert_receive {:wardwright_runtime_event, ^topic_a, %{"sequence" => 1, "type" => "session.started"}}
 
-    assert {:ok, %{"type" => "route.selected", "sequence" => 2}} =
+    assert {:ok, %{"sequence" => 2, "type" => "route.selected"}} =
              Runtime.record_session_event(model, version, session_a, "route.selected", %{
                "selected_model" => "mock/a"
              })
 
     assert_receive {:wardwright_runtime_event, ^topic_a,
-                    %{"type" => "route.selected", "sequence" => 2, "selected_model" => "mock/a"}}
+                    %{"selected_model" => "mock/a", "sequence" => 2, "type" => "route.selected"}}
 
     ref = Process.monitor(pid_a)
     Process.exit(pid_a, :kill)
@@ -45,7 +46,7 @@ defmodule Wardwright.RuntimeVisibilityTest do
     assert Process.alive?(pid_b)
 
     assert %{"event_count" => 1, "session_id" => ^session_b} =
-             Wardwright.Runtime.SessionRuntime.status(pid_b)
+             SessionRuntime.status(pid_b)
   end
 
   test "chat requests publish session and receipt visibility and expose runtime status" do
@@ -58,7 +59,7 @@ defmodule Wardwright.RuntimeVisibilityTest do
       :post
       |> call(
         "/v1/chat/completions",
-        %{model: "coding-balanced", messages: [%{role: "user", content: "hello"}]},
+        %{messages: [%{content: "hello", role: "user"}], model: "coding-balanced"},
         [{"x-wardwright-session-id", "runtime-session"}]
       )
 
@@ -66,30 +67,30 @@ defmodule Wardwright.RuntimeVisibilityTest do
 
     assert_receive {:wardwright_runtime_event, ^model_topic,
                     %{
-                      "type" => "session.started",
+                      "sequence" => 1,
                       "session_id" => "runtime-session",
-                      "sequence" => 1
+                      "type" => "session.started"
                     }}
 
     assert_receive {:wardwright_runtime_event, ^model_topic,
                     %{
-                      "type" => "route.selected",
+                      "sequence" => 2,
                       "session_id" => "runtime-session",
-                      "sequence" => 2
+                      "type" => "route.selected"
                     }}
 
     assert_receive {:wardwright_runtime_event, ^receipt_topic,
                     %{
-                      "type" => "receipt.stored",
                       "session_id" => "runtime-session",
-                      "status" => "completed"
+                      "status" => "completed",
+                      "type" => "receipt.stored"
                     }}
 
     assert_receive {:wardwright_runtime_event, ^model_topic,
                     %{
-                      "type" => "receipt.finalized",
+                      "sequence" => 3,
                       "session_id" => "runtime-session",
-                      "sequence" => 3
+                      "type" => "receipt.finalized"
                     }}
 
     status =
@@ -116,9 +117,9 @@ defmodule Wardwright.RuntimeVisibilityTest do
         :post,
         "/v1/chat/completions",
         %{
-          model: "coding-balanced",
-          messages: [%{role: "user", content: "hello with malformed metadata"}],
-          metadata: "not-a-map"
+          messages: [%{content: "hello with malformed metadata", role: "user"}],
+          metadata: "not-a-map",
+          model: "coding-balanced"
         },
         [{"x-wardwright-session-id", session_id}]
       )
@@ -127,16 +128,16 @@ defmodule Wardwright.RuntimeVisibilityTest do
 
     assert_receive {:wardwright_runtime_event, ^model_topic,
                     %{
-                      "type" => "session.started",
+                      "sequence" => 1,
                       "session_id" => ^session_id,
-                      "sequence" => 1
+                      "type" => "session.started"
                     }}
 
     assert_receive {:wardwright_runtime_event, ^model_topic,
                     %{
-                      "type" => "route.selected",
+                      "sequence" => 2,
                       "session_id" => ^session_id,
-                      "sequence" => 2
+                      "type" => "route.selected"
                     }}
 
     status =
@@ -198,17 +199,17 @@ defmodule Wardwright.RuntimeVisibilityTest do
 
     assert_receive {:wardwright_runtime_event, ^models_topic,
                     %{
-                      "type" => "provider.attempt.finished",
                       "model" => "direct/provider-health",
-                      "status" => "completed"
+                      "status" => "completed",
+                      "type" => "provider.attempt.finished"
                     }}
 
     assert_receive {:wardwright_runtime_event, ^models_topic,
                     %{
-                      "type" => "provider.attempt.finished",
+                      "created_at" => finished_at,
                       "model" => "direct/provider-health",
                       "status" => "provider_error",
-                      "created_at" => finished_at
+                      "type" => "provider.attempt.finished"
                     }}
 
     status =
@@ -217,16 +218,16 @@ defmodule Wardwright.RuntimeVisibilityTest do
       |> then(&Jason.decode!(&1.resp_body))
 
     assert %{
-             "provider_id" => "direct",
-             "model" => "direct/provider-health",
-             "configured" => false,
-             "health" => "degraded",
              "attempt_count" => 2,
              "completed_count" => 1,
-             "error_count" => 1,
+             "configured" => false,
              "consecutive_failures" => 1,
+             "error_count" => 1,
+             "health" => "degraded",
+             "last_attempt_at" => ^finished_at,
              "last_status" => "provider_error",
-             "last_attempt_at" => ^finished_at
+             "model" => "direct/provider-health",
+             "provider_id" => "direct"
            } = Enum.find(status["providers"], &(&1["model"] == "direct/provider-health"))
   end
 
@@ -265,10 +266,10 @@ defmodule Wardwright.RuntimeVisibilityTest do
 
     assert %{
              "attempt_id" => attempt_id,
-             "provider_id" => "direct",
+             "chunk_count" => 0,
              "model" => "direct/slow-provider",
-             "stream" => false,
-             "chunk_count" => 0
+             "provider_id" => "direct",
+             "stream" => false
            } = active
 
     assert {:ok, "slow response"} = Task.await(task)
@@ -286,7 +287,7 @@ defmodule Wardwright.RuntimeVisibilityTest do
                    &(&1["attempt_id"] == attempt_id)
                  )
 
-               if active?, do: nil, else: :cleared
+               if !active?, do: :cleared
              end)
   end
 
@@ -334,10 +335,10 @@ defmodule Wardwright.RuntimeVisibilityTest do
       end)
 
     assert %{
-             "provider_id" => "direct",
+             "chunk_count" => 1,
              "model" => "direct/slow-stream",
-             "stream" => true,
-             "chunk_count" => 1
+             "provider_id" => "direct",
+             "stream" => true
            } = active
 
     assert {{:ok, :done}, ["first chunk"]} = Task.await(task)
@@ -359,7 +360,7 @@ defmodule Wardwright.RuntimeVisibilityTest do
   defp wait_for(_fun, 0), do: flunk("condition was not met before timeout")
 
   defp call(method, path, body \\ nil, headers \\ []) do
-    encoded = if is_nil(body), do: nil, else: Jason.encode!(body)
+    encoded = if !is_nil(body), do: Jason.encode!(body)
 
     method
     |> conn(path, encoded)

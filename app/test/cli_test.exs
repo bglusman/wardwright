@@ -1,6 +1,8 @@
 defmodule Wardwright.CLITest do
   use ExUnit.Case, async: true
 
+  alias Wardwright.CLI.Admin
+
   test "bare command prints help instead of starting or crashing" do
     collector = collector()
 
@@ -66,7 +68,7 @@ defmodule Wardwright.CLITest do
     test_pid = self()
 
     assert 0 =
-             Wardwright.CLI.Admin.open("/policies", collector,
+             Admin.open("/policies", collector,
                bind: "0.0.0.0:8797",
                running?: fn url ->
                  send(test_pid, {:admin_running_probe, url})
@@ -88,7 +90,7 @@ defmodule Wardwright.CLITest do
     test_pid = self()
 
     assert 0 =
-             Wardwright.CLI.Admin.open("/admin/model-api-keys", collector,
+             Admin.open("/admin/model-api-keys", collector,
                bind: "127.0.0.1:8798",
                running?: fn url ->
                  send(test_pid, {:admin_running_probe, url})

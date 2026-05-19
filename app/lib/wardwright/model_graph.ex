@@ -115,12 +115,12 @@ defmodule Wardwright.ModelGraph do
   def lineage_step(config, decision, extra \\ %{}) do
     %{
       @model_key => model_id(config),
-      @version_key => version(config),
-      @route_type_key => decision.route_type,
+      @reason_key => decision.reason,
       @route_id_key => decision.route_id,
-      @selected_model_key => decision.selected_model,
+      @route_type_key => decision.route_type,
       @selected_context_window_key => decision.selected_context_window,
-      @reason_key => decision.reason
+      @selected_model_key => decision.selected_model,
+      @version_key => version(config)
     }
     |> Map.merge(extra)
     |> Enum.reject(fn {_key, value} -> value in [nil, "", []] end)

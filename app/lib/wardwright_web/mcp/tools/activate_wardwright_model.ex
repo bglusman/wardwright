@@ -19,9 +19,7 @@ defmodule WardwrightWeb.MCP.Tools.ActivateWardwrightModel do
         "Optional full artifact. When omitted, provide model_id, targets, route, governance, and stream_rules fields."
     )
 
-    field(:model_id, :string,
-      description: "Unprefixed Wardwright model id, for example support-router."
-    )
+    field(:model_id, :string, description: "Unprefixed Wardwright model id, for example support-router.")
 
     field(:version, :string, description: "Draft version label.")
 
@@ -35,13 +33,10 @@ defmodule WardwrightWeb.MCP.Tools.ActivateWardwrightModel do
         "Route graph node object. Current type values are dispatcher/context-fit, cascade/ordered fallback, and alloy/blended route."
     )
 
-    field(:governance, :list,
-      description: "Request, route, alert, history, and tool governance rule objects."
-    )
+    field(:governance, :list, description: "Request, route, alert, history, and tool governance rule objects.")
 
     field(:stream_rules, :list,
-      description:
-        "Streaming response rules such as hold/rewrite/retry actions over literal or regex matches."
+      description: "Streaming response rules such as hold/rewrite/retry actions over literal or regex matches."
     )
   end
 

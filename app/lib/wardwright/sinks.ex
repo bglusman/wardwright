@@ -3,6 +3,9 @@ defmodule Wardwright.Sinks do
 
   use Agent
 
+  alias Wardwright.Policy.AlertCore
+  alias Wardwright.Runtime.Events
+
   @default_history_limit 100
   @default_timeout_ms 1_000
   @supported_sink_kinds ["memory_alert", "jsonl_file", "webhook"]
@@ -13,8 +16,7 @@ defmodule Wardwright.Sinks do
     )
   end
 
-  def configure(config),
-    do: Agent.update(__MODULE__, fn _state -> initial_state(config || []) end)
+  def configure(config), do: Agent.update(__MODULE__, fn _state -> initial_state(config || []) end)
 
   def reset, do: configure(Wardwright.default_config()["sinks"])
 
@@ -39,8 +41,7 @@ defmodule Wardwright.Sinks do
     end)
   end
 
-  def fail_closed?(results),
-    do: Enum.any?(results, &(&1["outcome"] == "failed_closed"))
+  def fail_closed?(results), do: Enum.any?(results, &(&1["outcome"] == "failed_closed"))
 
   def status do
     Agent.get(__MODULE__, fn state ->
@@ -71,18 +72,18 @@ defmodule Wardwright.Sinks do
         end
       end)
       |> Kernel.||(%{
-        "id" => "policy-alerts",
-        "kind" => "in_memory_alert_sink",
         "capacity" => 0,
-        "on_full" => "dead_letter",
-        "queue_depth" => 0,
-        "seen_count" => 0,
-        "queued_count" => 0,
         "dead_letter_count" => 0,
         "dropped_count" => 0,
-        "failed_closed_count" => 0,
         "duplicate_suppressed_count" => 0,
-        "last_result" => nil
+        "failed_closed_count" => 0,
+        "id" => "policy-alerts",
+        "kind" => "in_memory_alert_sink",
+        "last_result" => nil,
+        "on_full" => "dead_letter",
+        "queue_depth" => 0,
+        "queued_count" => 0,
+        "seen_count" => 0
       })
     end)
   end
@@ -104,21 +105,20 @@ defmodule Wardwright.Sinks do
     config = normalize_alert_delivery(config)
 
     %{
+      "delivery" => config,
       "id" => "policy-alerts",
       "kind" => "memory_alert",
-      "select" => %{"types" => ["policy.alert"]},
       "redaction" => "metadata",
-      "delivery" => config
+      "select" => %{"types" => ["policy.alert"]}
     }
   end
 
   defp initial_state(config) do
     sinks =
       config
-      |> Enum.map(fn sink_config ->
+      |> Map.new(fn sink_config ->
         {sink_config["id"], new_sink_state(sink_config)}
       end)
-      |> Map.new()
 
     %{sinks: sinks}
   end
@@ -126,11 +126,11 @@ defmodule Wardwright.Sinks do
   defp new_sink_state(config) do
     %{
       config: config,
-      queue: [],
-      seen: MapSet.new(),
-      outcomes: %{},
       history: [],
-      last_result: nil
+      last_result: nil,
+      outcomes: %{},
+      queue: [],
+      seen: MapSet.new()
     }
   end
 
@@ -171,7 +171,7 @@ defmodule Wardwright.Sinks do
     delivery = sink_state.config["delivery"] || %{}
 
     decision =
-      Wardwright.Policy.AlertCore.decide_enqueue(
+      AlertCore.decide_enqueue(
         delivery,
         length(sink_state.queue),
         MapSet.member?(sink_state.seen, key),
@@ -276,27 +276,26 @@ defmodule Wardwright.Sinks do
   defp maybe_mark_seen(sink_state, nil), do: sink_state
   defp maybe_mark_seen(sink_state, key), do: Map.update!(sink_state, :seen, &MapSet.put(&1, key))
 
-  defp maybe_enqueue(sink_state, key, "queued") when is_binary(key),
-    do: Map.update!(sink_state, :queue, &(&1 ++ [key]))
+  defp maybe_enqueue(sink_state, key, "queued") when is_binary(key), do: Map.update!(sink_state, :queue, &(&1 ++ [key]))
 
   defp maybe_enqueue(sink_state, _key, _outcome), do: sink_state
 
   defp event_envelope(event, receipt_hint) do
     type = string_value(event["type"])
     receipt_id = event["receipt_id"] || receipt_hint
-    payload = Map.drop(event, ["receipt_id"])
+    payload = Map.delete(event, "receipt_id")
     created_at = event["created_at"] || DateTime.utc_now() |> DateTime.to_iso8601()
 
     %{
+      "created_at" => created_at,
       "event_schema" => "wardwright.sink_event.v1",
       "id" => event["id"] || event_id(type, receipt_id, payload, created_at),
-      "type" => type,
-      "created_at" => created_at,
+      "payload" => payload,
+      "policy_id" => event["policy_id"] || event["rule_id"],
       "receipt_id" => receipt_id,
       "session_id" => event["session_id"],
-      "policy_id" => event["policy_id"] || event["rule_id"],
       "severity" => event["severity"],
-      "payload" => payload
+      "type" => type
     }
   end
 
@@ -335,13 +334,13 @@ defmodule Wardwright.Sinks do
 
   defp base_result(sink_id, kind, event, key, outcome) do
     %{
-      "sink_id" => sink_id,
-      "kind" => kind,
       "event_id" => event["id"],
       "event_type" => event["type"],
-      "rule_id" => payload_value(event, "rule_id"),
       "idempotency_key" => key,
-      "outcome" => outcome
+      "kind" => kind,
+      "outcome" => outcome,
+      "rule_id" => payload_value(event, "rule_id"),
+      "sink_id" => sink_id
     }
   end
 
@@ -353,22 +352,22 @@ defmodule Wardwright.Sinks do
     kind = sink_state.config["kind"]
 
     %{
+      "capacity" => get_in(sink_state.config, ["delivery", "capacity"]),
+      "dead_letter_count" => Map.get(outcomes, "dead_lettered", 0),
+      "delivered_count" => Map.get(outcomes, "delivered", 0),
+      "dropped_count" => Map.get(outcomes, "dropped", 0),
+      "duplicate_suppressed_count" => Map.get(outcomes, "duplicate_suppressed", 0),
+      "failed_closed_count" => Map.get(outcomes, "failed_closed", 0),
       "id" => sink_id,
       "kind" => status_kind(kind),
-      "select" => sink_state.config["select"],
-      "redaction" => sink_state.config["redaction"],
-      "capacity" => get_in(sink_state.config, ["delivery", "capacity"]),
+      "last_result" => sink_state.last_result,
       "on_full" => get_in(sink_state.config, ["delivery", "on_full"]),
       "queue_depth" => length(sink_state.queue),
-      "seen_count" => MapSet.size(sink_state.seen),
-      "delivered_count" => Map.get(outcomes, "delivered", 0),
       "queued_count" => Map.get(outcomes, "queued", 0),
-      "dead_letter_count" => Map.get(outcomes, "dead_lettered", 0),
-      "dropped_count" => Map.get(outcomes, "dropped", 0),
-      "failed_closed_count" => Map.get(outcomes, "failed_closed", 0),
-      "duplicate_suppressed_count" => Map.get(outcomes, "duplicate_suppressed", 0),
-      "last_result" => sink_state.last_result,
-      "recent" => Enum.reverse(sink_state.history)
+      "recent" => Enum.reverse(sink_state.history),
+      "redaction" => sink_state.config["redaction"],
+      "seen_count" => MapSet.size(sink_state.seen),
+      "select" => sink_state.config["select"]
     }
   end
 
@@ -432,9 +431,9 @@ defmodule Wardwright.Sinks do
       [:wardwright, :sinks, :delivery],
       %{count: 1, duration: duration},
       %{
-        sink_id: result["sink_id"],
         kind: config["kind"],
-        outcome: result["outcome"]
+        outcome: result["outcome"],
+        sink_id: result["sink_id"]
       }
     )
   end
@@ -445,16 +444,15 @@ defmodule Wardwright.Sinks do
     :telemetry.execute(
       [:wardwright, :sinks, :queue_depth],
       %{
-        depth: depth,
         capacity: capacity || 0,
+        depth: depth,
         utilization: queue_utilization(depth, capacity)
       },
-      %{sink_id: config["id"], kind: config["kind"]}
+      %{kind: config["kind"], sink_id: config["id"]}
     )
   end
 
-  defp queue_utilization(depth, capacity) when is_integer(capacity) and capacity > 0,
-    do: depth / capacity
+  defp queue_utilization(depth, capacity) when is_integer(capacity) and capacity > 0, do: depth / capacity
 
   defp queue_utilization(_depth, _capacity), do: 0.0
 
@@ -462,17 +460,17 @@ defmodule Wardwright.Sinks do
     :telemetry.execute(
       [:wardwright, :model, :usage],
       %{
+        completion_tokens: integer_payload_value(event, "completion_tokens"),
         count: 1,
         estimated_prompt_tokens: integer_payload_value(event, "estimated_prompt_tokens"),
         prompt_tokens: integer_payload_value(event, "prompt_tokens"),
-        completion_tokens: integer_payload_value(event, "completion_tokens"),
         total_tokens: integer_payload_value(event, "total_tokens")
       },
       %{
         selected_model: payload_value(event, "selected_model"),
         selected_provider: payload_value(event, "selected_provider"),
-        status: payload_value(event, "status"),
-        simulation: payload_value(event, "simulation")
+        simulation: payload_value(event, "simulation"),
+        status: payload_value(event, "status")
       }
     )
   end
@@ -488,15 +486,15 @@ defmodule Wardwright.Sinks do
 
   defp publish_policy_alert_delivery(%{config: %{"kind" => "memory_alert"}} = sink_state, result) do
     if Process.whereis(Wardwright.PubSub) do
-      Wardwright.Runtime.Events.publish(Wardwright.Runtime.Events.topic(:policies), %{
-        "type" => "policy_alert.delivery",
-        "sink_id" => result["sink_id"],
-        "rule_id" => result["rule_id"],
+      Events.publish(Events.topic(:policies), %{
+        "capacity" => get_in(sink_state.config, ["delivery", "capacity"]),
+        "created_at" => System.system_time(:second),
         "idempotency_key" => result["idempotency_key"],
         "outcome" => result["outcome"],
         "queue_depth" => length(sink_state.queue),
-        "capacity" => get_in(sink_state.config, ["delivery", "capacity"]),
-        "created_at" => System.system_time(:second)
+        "rule_id" => result["rule_id"],
+        "sink_id" => result["sink_id"],
+        "type" => "policy_alert.delivery"
       })
     end
   end
@@ -507,15 +505,13 @@ defmodule Wardwright.Sinks do
     kind = config |> Map.get("kind", "") |> to_string() |> String.trim()
     id = config |> Map.get("id", default_sink_id(kind)) |> to_string() |> String.trim()
 
-    if id == "" or kind not in @supported_sink_kinds do
-      nil
-    else
+    if !(id == "" or kind not in @supported_sink_kinds) do
       %{
+        "delivery" => normalize_delivery(Map.get(config, "delivery", %{}), kind),
         "id" => id,
         "kind" => kind,
-        "select" => normalize_select(Map.get(config, "select", %{}), kind),
         "redaction" => normalize_redaction(Map.get(config, "redaction", "metadata")),
-        "delivery" => normalize_delivery(Map.get(config, "delivery", %{}), kind)
+        "select" => normalize_select(Map.get(config, "select", %{}), kind)
       }
     end
   end

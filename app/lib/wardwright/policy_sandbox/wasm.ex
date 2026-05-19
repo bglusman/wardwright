@@ -10,17 +10,11 @@ defmodule Wardwright.PolicySandbox.Wasm do
 
   def evaluate(_policy) do
     %{
-      "engine" => "wasm",
-      "status" => "error",
       "action" => "block",
+      "engine" => "wasm",
       "reason" => "wasm policy runtime is not enabled",
-      "trace" => [
-        %{
-          "rule" => "wasm-runtime",
-          "result" => false,
-          "reason" => "runtime_unavailable"
-        }
-      ]
+      "status" => "error",
+      "trace" => [%{"reason" => "runtime_unavailable", "result" => false, "rule" => "wasm-runtime"}]
     }
   end
 end

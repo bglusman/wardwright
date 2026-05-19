@@ -57,7 +57,10 @@ defmodule WardwrightWeb.RequestContext do
 
   def cache_scope_from_query(params) do
     Enum.reduce(@cache_scope_keys, %{}, fn key, acc ->
-      case params |> Map.get(key) |> blank_to_nil() do
+      params
+      |> Map.get(key)
+      |> blank_to_nil()
+      |> case do
         nil -> acc
         value -> Map.put(acc, key, value)
       end
@@ -71,10 +74,14 @@ defmodule WardwrightWeb.RequestContext do
   def metadata_string(_), do: ""
 
   def blank_to_nil(nil), do: nil
-  def blank_to_nil(value), do: if(String.trim(value) == "", do: nil, else: String.trim(value))
+  def blank_to_nil(value), do: if(String.trim(value) != "", do: String.trim(value))
 
   defp header_or_metadata(conn, metadata, header_name, metadata_key) do
-    case conn |> get_req_header(header_name) |> List.first() |> blank_to_nil() do
+    conn
+    |> get_req_header(header_name)
+    |> List.first()
+    |> blank_to_nil()
+    |> case do
       nil ->
         metadata
         |> Map.get(metadata_key)
@@ -82,11 +89,11 @@ defmodule WardwrightWeb.RequestContext do
         |> blank_to_nil()
         |> case do
           nil -> nil
-          value -> %{"value" => value, "source" => "body_metadata"}
+          value -> %{"source" => "body_metadata", "value" => value}
         end
 
       value ->
-        %{"value" => value, "source" => "header"}
+        %{"source" => "header", "value" => value}
     end
   end
 

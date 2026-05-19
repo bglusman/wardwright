@@ -2,6 +2,8 @@ defmodule Wardwright.Runtime do
   @moduledoc false
 
   alias Wardwright.Runtime.{ModelRuntime, SessionRuntime}
+  alias Wardwright.Runtime.ModelSupervisor
+  alias Wardwright.Runtime.SessionSupervisor
 
   @anonymous_session "anonymous"
   @provider_attempts_key "provider_attempts"
@@ -15,7 +17,7 @@ defmodule Wardwright.Runtime do
       [] ->
         spec = {ModelRuntime, model_id: model_id, version: version}
 
-        case DynamicSupervisor.start_child(Wardwright.Runtime.ModelSupervisor, spec) do
+        case DynamicSupervisor.start_child(ModelSupervisor, spec) do
           {:ok, pid} ->
             {:ok, pid}
 
@@ -45,7 +47,7 @@ defmodule Wardwright.Runtime do
         [] ->
           spec = {SessionRuntime, model_id: model_id, version: version, session_id: session_id}
 
-          case DynamicSupervisor.start_child(Wardwright.Runtime.SessionSupervisor, spec) do
+          case DynamicSupervisor.start_child(SessionSupervisor, spec) do
             {:ok, pid} ->
               {:ok, pid}
 
@@ -68,15 +70,7 @@ defmodule Wardwright.Runtime do
     end
   end
 
-  def eval_dune_snippet(
-        model_id,
-        version,
-        session_id,
-        source,
-        input,
-        session_opts,
-        eval_opts \\ []
-      ) do
+  def eval_dune_snippet(model_id, version, session_id, source, input, session_opts, eval_opts \\ []) do
     with {:ok, pid} <- ensure_session(model_id, version, session_id) do
       SessionRuntime.eval_dune_snippet(pid, source, input, session_opts, eval_opts)
     end
@@ -88,25 +82,18 @@ defmodule Wardwright.Runtime do
     %{
       "models" =>
         Wardwright.Runtime.Registry
-        |> Registry.select([
-          {{{:"$1", :"$2", :"$3"}, :"$4", :_}, [{:==, :"$1", :model}], [{{:"$2", :"$3", :"$4"}}]}
-        ])
-        |> Enum.flat_map(fn {_model_id, _version, pid} ->
-          safe_status(pid, &ModelRuntime.status/1)
-        end)
+        |> Registry.select([{{{:"$1", :"$2", :"$3"}, :"$4", :_}, [{:==, :"$1", :model}], [{{:"$2", :"$3", :"$4"}}]}])
+        |> Enum.flat_map(fn {_model_id, _version, pid} -> safe_status(pid, &ModelRuntime.status/1) end)
         |> Enum.sort_by(&{&1["model_id"], &1["version"]}),
       "sessions" =>
         Wardwright.Runtime.Registry
         |> Registry.select([
-          {{{:"$1", :"$2", :"$3", :"$4"}, :"$5", :_}, [{:==, :"$1", :session}],
-           [{{:"$2", :"$3", :"$4", :"$5"}}]}
+          {{{:"$1", :"$2", :"$3", :"$4"}, :"$5", :_}, [{:==, :"$1", :session}], [{{:"$2", :"$3", :"$4", :"$5"}}]}
         ])
-        |> Enum.flat_map(fn {_model_id, _version, _session_id, pid} ->
-          safe_status(pid, &SessionRuntime.status/1)
-        end)
+        |> Enum.flat_map(fn {_model_id, _version, _session_id, pid} -> safe_status(pid, &SessionRuntime.status/1) end)
         |> Enum.sort_by(&{&1["model_id"], &1["version"], &1["session_id"]}),
-      @providers_key => Map.get(provider_runtime, @providers_key, []),
-      @provider_attempts_key => Map.get(provider_runtime, @provider_attempts_key, [])
+      @provider_attempts_key => Map.get(provider_runtime, @provider_attempts_key, []),
+      @providers_key => Map.get(provider_runtime, @providers_key, [])
     }
   end
 

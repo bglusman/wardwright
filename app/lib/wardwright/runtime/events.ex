@@ -9,8 +9,7 @@ defmodule Wardwright.Runtime.Events do
   def topic(:simulations), do: "runtime:simulations"
   def topic(:model, model_id, version), do: "runtime:model:#{model_id}:#{version}"
 
-  def topic(:session, model_id, version, session_id),
-    do: "runtime:session:#{model_id}:#{version}:#{session_id}"
+  def topic(:session, model_id, version, session_id), do: "runtime:session:#{model_id}:#{version}:#{session_id}"
 
   def subscribe(topic) when is_binary(topic), do: Phoenix.PubSub.subscribe(@pubsub, topic)
 

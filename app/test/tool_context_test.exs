@@ -4,23 +4,17 @@ defmodule Wardwright.ToolContextTest do
   test "normalizes OpenAI-style tool choice and declared schema evidence" do
     {_request, context} =
       Wardwright.ToolContext.normalize_request(%{
+        "messages" => [%{"content" => "file this incident", "role" => "user"}],
+        "tool_choice" => %{"function" => %{"name" => "create_ticket"}, "type" => "function"},
         "tools" => [
           %{
-            "type" => "function",
             "function" => %{
               "name" => "create_ticket",
-              "parameters" => %{
-                "type" => "object",
-                "properties" => %{"title" => %{"type" => "string"}}
-              }
-            }
+              "parameters" => %{"properties" => %{"title" => %{"type" => "string"}}, "type" => "object"}
+            },
+            "type" => "function"
           }
-        ],
-        "tool_choice" => %{
-          "type" => "function",
-          "function" => %{"name" => "create_ticket"}
-        },
-        "messages" => [%{"role" => "user", "content" => "file this incident"}]
+        ]
       })
 
     assert context["schema"] == "wardwright.tool_context.v1"
@@ -28,18 +22,18 @@ defmodule Wardwright.ToolContextTest do
     assert context["confidence"] == "exact"
 
     assert context["primary_tool"] == %{
-             "namespace" => "openai.function",
              "name" => "create_ticket",
-             "source" => "tool_choice",
-             "risk_class" => "unknown"
+             "namespace" => "openai.function",
+             "risk_class" => "unknown",
+             "source" => "tool_choice"
            }
 
     assert get_in(context, ["available_tools", Access.at(0), "schema_hash"]) =~ "sha256:"
     assert Wardwright.ToolContext.cache_key(context) == "openai.function:create_ticket:planning"
 
     assert Wardwright.ToolContext.matches?(context, %{
-             "namespace" => "openai.function",
              "name" => "create_ticket",
+             "namespace" => "openai.function",
              "phase" => "planning"
            })
 
@@ -53,19 +47,19 @@ defmodule Wardwright.ToolContextTest do
     context =
       Wardwright.ToolContext.normalize(%{
         "messages" => [
-          %{"role" => "user", "content" => "prepare the command"},
+          %{"content" => "prepare the command", "role" => "user"},
           %{
-            "role" => "assistant",
             "content" => nil,
+            "role" => "assistant",
             "tool_calls" => [
               %{
+                "function" => %{"arguments" => raw_argument, "name" => "run_shell"},
                 "id" => "call_secret",
-                "type" => "function",
-                "function" => %{"name" => "run_shell", "arguments" => raw_argument}
+                "type" => "function"
               }
             ]
           },
-          %{"role" => "tool", "tool_call_id" => "call_secret", "content" => raw_result}
+          %{"content" => raw_result, "role" => "tool", "tool_call_id" => "call_secret"}
         ]
       })
 
@@ -87,21 +81,19 @@ defmodule Wardwright.ToolContextTest do
         %{
           "metadata" => %{
             "tool_context" => %{
-              "schema" => "caller-controlled",
+              "argument_hash" => "raw secret argument",
+              "available_tools" => [%{"name" => "create_pull_request", "namespace" => "mcp.github"}],
+              "confidence" => "unexpected",
               "phase" => "planning",
               "primary_tool" => %{
-                "namespace" => "mcp.github",
                 "name" => "create_pull_request",
+                "namespace" => "mcp.github",
                 "risk_class" => "write",
                 "source" => "unexpected"
               },
-              "tool_call_id" => 42,
-              "argument_hash" => "raw secret argument",
               "result_hash" => "raw secret result",
-              "available_tools" => [
-                %{"namespace" => "mcp.github", "name" => "create_pull_request"}
-              ],
-              "confidence" => "unexpected"
+              "schema" => "caller-controlled",
+              "tool_call_id" => 42
             }
           }
         },
@@ -118,8 +110,8 @@ defmodule Wardwright.ToolContextTest do
     refute inspect(context) =~ "raw secret"
 
     assert Wardwright.ToolContext.matches?(context, %{
-             "namespaces" => ["mcp.github"],
              "names" => ["create_pull_request"],
+             "namespaces" => ["mcp.github"],
              "risk_classes" => ["read_only", "write"]
            })
   end
@@ -129,7 +121,7 @@ defmodule Wardwright.ToolContextTest do
       "metadata" => %{
         "tool_context" => %{
           "phase" => "planning",
-          "primary_tool" => %{"namespace" => "mcp.github", "name" => "create_pull_request"}
+          "primary_tool" => %{"name" => "create_pull_request", "namespace" => "mcp.github"}
         }
       }
     }

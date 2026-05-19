@@ -8,6 +8,12 @@ defmodule Wardwright.Policy.Plan do
   events.
   """
 
+  alias Wardwright.Policy.Action
+  alias Wardwright.Policy.Engine
+  alias Wardwright.Policy.History
+  alias Wardwright.Policy.PlanCore
+  alias Wardwright.PolicySandbox.DuneSnippetRegistry
+
   @action_key "action"
   @actions_key "actions"
   @after_key "after"
@@ -79,8 +85,6 @@ defmodule Wardwright.Policy.Plan do
   @tool_context_schema "wardwright.tool_context.v1"
   @turns_window_key "turns"
 
-  alias Wardwright.Policy.PlanCore
-
   def evaluate_request(request, caller, config \\ Wardwright.current_config(), opts \\ []) do
     text = request |> Map.get("messages", []) |> request_text() |> String.downcase()
     tool_context = Wardwright.ToolContext.normalize(request, opts)
@@ -97,7 +101,7 @@ defmodule Wardwright.Policy.Plan do
         |> Map.update!("events", &Enum.reverse/1)
         |> Map.update!("tool_policy_selectors", &Enum.reverse/1)
         |> then(fn policy ->
-          Map.put(policy, "conflicts", Wardwright.Policy.Action.conflicts(policy["actions"]))
+          Map.put(policy, "conflicts", Action.conflicts(policy["actions"]))
         end)
 
       {request, policy}
@@ -109,11 +113,11 @@ defmodule Wardwright.Policy.Plan do
   def empty_policy(tool_context),
     do: %{
       "actions" => [],
-      "events" => [],
       "alert_count" => 0,
-      "route_constraints" => %{},
       "blocked" => false,
       "conflicts" => [],
+      "events" => [],
+      "route_constraints" => %{},
       "tool_context" => tool_context,
       "tool_policy_selectors" => []
     }
@@ -163,15 +167,15 @@ defmodule Wardwright.Policy.Plan do
 
     action_record =
       %{
-        "rule_id" => rule_id,
-        "kind" => kind,
         "action" => action,
+        "kind" => kind,
         "matched" => true,
         "message" => message,
+        "rule_id" => rule_id,
         "severity" => severity
       }
       |> put_route_action_fields(rule)
-      |> Wardwright.Policy.Action.normalize(rule: rule)
+      |> Action.normalize(rule: rule)
 
     apply_policy_action_effect(action_record, rule, request, policy)
   end
@@ -181,7 +185,7 @@ defmodule Wardwright.Policy.Plan do
       rule
       |> Map.merge(%{
         @engine_key => @dune_engine,
-        @source_key => Wardwright.PolicySandbox.DuneSnippetRegistry.source!(@request_rule_snippet)
+        @source_key => DuneSnippetRegistry.source!(@request_rule_snippet)
       })
 
     context = %{
@@ -189,7 +193,7 @@ defmodule Wardwright.Policy.Plan do
       @rule_key => rule
     }
 
-    result = Wardwright.Policy.Engine.evaluate(engine_rule, context)
+    result = Engine.evaluate(engine_rule, context)
 
     action_records =
       result
@@ -218,12 +222,11 @@ defmodule Wardwright.Policy.Plan do
     case action do
       action when action in ["escalate", "alert_async"] ->
         event = %{
-          "type" => "policy.alert",
-          "rule_id" => rule_id,
+          "idempotency_key" => Map.get(action_record, @idempotency_key, Map.get(rule, @idempotency_key)),
           "message" => message,
+          "rule_id" => rule_id,
           "severity" => severity,
-          "idempotency_key" =>
-            Map.get(action_record, @idempotency_key, Map.get(rule, @idempotency_key))
+          "type" => "policy.alert"
         }
 
         {request,
@@ -239,9 +242,9 @@ defmodule Wardwright.Policy.Plan do
           |> blank_to_nil() || message
 
         message_record = %{
-          "role" => "system",
+          "content" => reminder,
           "name" => "wardwright_policy_reminder",
-          "content" => reminder
+          "role" => "system"
         }
 
         request =
@@ -254,10 +257,10 @@ defmodule Wardwright.Policy.Plan do
 
       "annotate" ->
         event = %{
-          "type" => "policy.annotated",
-          "rule_id" => rule_id,
           "message" => message,
-          "severity" => severity
+          "rule_id" => rule_id,
+          "severity" => severity,
+          "type" => "policy.annotated"
         }
 
         {request,
@@ -278,14 +281,13 @@ defmodule Wardwright.Policy.Plan do
 
   defp apply_engine_governance_rule(rule, caller, request, policy) do
     context = %{
-      "request_text" => request |> Map.get("messages", []) |> request_text(),
-      "request" => request,
       "caller" => caller,
-      "estimated_prompt_tokens" =>
-        Wardwright.estimate_prompt_tokens(Map.get(request, "messages", []))
+      "estimated_prompt_tokens" => Wardwright.estimate_prompt_tokens(Map.get(request, "messages", [])),
+      "request" => request,
+      "request_text" => request |> Map.get("messages", []) |> request_text()
     }
 
-    result = Wardwright.Policy.Engine.evaluate(rule, context)
+    result = Engine.evaluate(rule, context)
 
     action_records =
       result
@@ -312,47 +314,41 @@ defmodule Wardwright.Policy.Plan do
     value = if is_map(value), do: value, else: %{}
 
     %{
-      @rule_id_key => Map.get(action, @rule_id_key, Map.get(rule, @id_key, "policy-engine")),
-      @kind_key => Map.get(rule, @kind_key, @policy_engine_kind),
       @action_key => Map.get(action, @action_key, @annotate_action),
+      @allow_fallback_key => Map.get(action, @allow_fallback_key, Map.get(value, @allow_fallback_key)),
+      @allowed_targets_key => Map.get(action, @allowed_targets_key, Map.get(value, @allowed_targets_key)),
+      @idempotency_key => Map.get(action, @idempotency_key, Map.get(value, @idempotency_key)),
+      @kind_key => Map.get(rule, @kind_key, @policy_engine_kind),
+      @match_key => Map.get(action, @match_key, Map.get(value, @match_key)),
       @matched_key => Map.get(action, @matched_key, true),
       @message_key =>
-        Map.get(
-          action,
-          @message_key,
-          Map.get(action, "reason", Map.get(value, "reason", "policy engine matched"))
-        ),
+        Map.get(action, @message_key, Map.get(action, "reason", Map.get(value, "reason", "policy engine matched"))),
+      @reminder_key => Map.get(action, @reminder_key, Map.get(value, @reminder_key)),
+      @rule_id_key => Map.get(action, @rule_id_key, Map.get(rule, @id_key, "policy-engine")),
       @severity_key => Map.get(action, @severity_key, @default_info_severity),
-      @allowed_targets_key =>
-        Map.get(action, @allowed_targets_key, Map.get(value, @allowed_targets_key)),
+      @source_key => Map.get(action, @source_key),
       @target_model_key =>
         Map.get(
           action,
           @target_model_key,
           Map.get(action, "model", Map.get(value, "target_model", Map.get(value, "model")))
-        ),
-      @allow_fallback_key =>
-        Map.get(action, @allow_fallback_key, Map.get(value, @allow_fallback_key)),
-      @reminder_key => Map.get(action, @reminder_key, Map.get(value, @reminder_key)),
-      @idempotency_key => Map.get(action, @idempotency_key, Map.get(value, @idempotency_key)),
-      @match_key => Map.get(action, @match_key, Map.get(value, @match_key)),
-      @source_key => Map.get(action, @source_key)
+        )
     }
     |> Enum.reject(fn {_key, value} -> value in [nil, "", []] end)
     |> Map.new()
-    |> Wardwright.Policy.Action.normalize(rule: rule)
+    |> Action.normalize(rule: rule)
   end
 
   defp engine_action_record(_action, rule) do
     %{
-      "rule_id" => Map.get(rule, "id", "policy-engine"),
-      "kind" => Map.get(rule, "kind", "policy_engine"),
       "action" => "annotate",
+      "kind" => Map.get(rule, "kind", "policy_engine"),
       "matched" => true,
       "message" => "policy engine returned a non-map action",
+      "rule_id" => Map.get(rule, "id", "policy-engine"),
       "severity" => "warning"
     }
-    |> Wardwright.Policy.Action.normalize(rule: rule)
+    |> Action.normalize(rule: rule)
   end
 
   defp apply_route_action(request, policy, action_record) do
@@ -414,8 +410,7 @@ defmodule Wardwright.Policy.Plan do
     |> maybe_put_boolean("allow_fallback", Map.get(rule, "allow_fallback"))
   end
 
-  defp put_route_action_fields(action_record),
-    do: put_route_action_fields(action_record, action_record)
+  defp put_route_action_fields(action_record), do: put_route_action_fields(action_record, action_record)
 
   defp maybe_put_string_list(map, key, value) do
     value = normalize_string_list(value)
@@ -429,8 +424,7 @@ defmodule Wardwright.Policy.Plan do
     end
   end
 
-  defp maybe_put_boolean(map, key, value) when value in [true, false],
-    do: Map.put(map, key, value)
+  defp maybe_put_boolean(map, key, value) when value in [true, false], do: Map.put(map, key, value)
 
   defp maybe_put_boolean(map, _key, _value), do: map
 
@@ -452,16 +446,14 @@ defmodule Wardwright.Policy.Plan do
     threshold = PlanCore.threshold(integer_value(Map.get(rule, "threshold", 1)) || 1)
 
     filter = %{
-      "kind" => blank_to_nil(Map.get(rule, "cache_kind")),
       "key" => blank_to_nil(Map.get(rule, "cache_key")),
+      "kind" => blank_to_nil(Map.get(rule, "cache_kind")),
       "scope" => cache_scope_from_caller(caller, Map.get(rule, "cache_scope", ""))
     }
 
     count = Wardwright.PolicyCache.count(filter)
 
-    if not PlanCore.threshold_triggered?(count, threshold) do
-      {request, policy}
-    else
+    if PlanCore.threshold_triggered?(count, threshold) do
       action = Map.get(rule, "action", "annotate")
       rule_id = Map.get(rule, "id", "policy")
 
@@ -473,31 +465,31 @@ defmodule Wardwright.Policy.Plan do
 
       action_record =
         %{
-          "rule_id" => rule_id,
-          "kind" => "history_threshold",
           "action" => action,
-          "matched" => true,
-          "message" => message,
-          "severity" => severity,
-          "cache_kind" => Map.get(rule, "cache_kind", ""),
           "cache_key" => Map.get(rule, "cache_key", ""),
+          "cache_kind" => Map.get(rule, "cache_kind", ""),
           "cache_scope" => Map.get(rule, "cache_scope", ""),
           "history_count" => count,
+          "kind" => "history_threshold",
+          "matched" => true,
+          "message" => message,
+          "rule_id" => rule_id,
+          "severity" => severity,
           "threshold" => threshold
         }
-        |> Wardwright.Policy.Action.normalize(rule: rule)
+        |> Action.normalize(rule: rule)
 
       policy = Map.update!(policy, "actions", &[action_record | &1])
 
       if action in ["escalate", "alert_async"] do
         event = %{
-          "type" => "policy.alert",
-          "rule_id" => rule_id,
-          "message" => message,
-          "severity" => severity,
           "history_count" => count,
+          "idempotency_key" => Map.get(rule, "idempotency_key"),
+          "message" => message,
+          "rule_id" => rule_id,
+          "severity" => severity,
           "threshold" => threshold,
-          "idempotency_key" => Map.get(rule, "idempotency_key")
+          "type" => "policy.alert"
         }
 
         {request,
@@ -507,6 +499,8 @@ defmodule Wardwright.Policy.Plan do
       else
         {request, policy}
       end
+    else
+      {request, policy}
     end
   end
 
@@ -514,21 +508,19 @@ defmodule Wardwright.Policy.Plan do
     threshold = PlanCore.threshold(integer_value(Map.get(rule, "threshold", 1)) || 1)
 
     filter = %{
-      "kind" => blank_to_nil(Map.get(rule, "cache_kind")),
       "key" => blank_to_nil(Map.get(rule, "cache_key")),
+      "kind" => blank_to_nil(Map.get(rule, "cache_kind")),
       "scope" => cache_scope_from_caller(caller, Map.get(rule, "cache_scope", ""))
     }
 
     count =
       filter
-      |> Wardwright.Policy.History.regex_count(
+      |> History.regex_count(
         Map.get(rule, "pattern", ""),
         Map.get(rule, "limit")
       )
 
-    if not PlanCore.threshold_triggered?(count, threshold) do
-      {request, policy}
-    else
+    if PlanCore.threshold_triggered?(count, threshold) do
       action = Map.get(rule, "action", "annotate")
       rule_id = Map.get(rule, "id", "policy")
 
@@ -540,32 +532,32 @@ defmodule Wardwright.Policy.Plan do
 
       action_record =
         %{
-          "rule_id" => rule_id,
-          "kind" => "history_regex_threshold",
           "action" => action,
+          "cache_key" => Map.get(rule, "cache_key", ""),
+          "cache_kind" => Map.get(rule, "cache_kind", ""),
+          "cache_scope" => Map.get(rule, "cache_scope", ""),
+          "history_count" => count,
+          "kind" => "history_regex_threshold",
           "matched" => true,
           "message" => message,
-          "severity" => severity,
-          "cache_kind" => Map.get(rule, "cache_kind", ""),
-          "cache_key" => Map.get(rule, "cache_key", ""),
-          "cache_scope" => Map.get(rule, "cache_scope", ""),
           "pattern" => Map.get(rule, "pattern", ""),
-          "history_count" => count,
+          "rule_id" => rule_id,
+          "severity" => severity,
           "threshold" => threshold
         }
-        |> Wardwright.Policy.Action.normalize(rule: rule)
+        |> Action.normalize(rule: rule)
 
       policy = Map.update!(policy, "actions", &[action_record | &1])
 
       if action in ["escalate", "alert_async"] do
         event = %{
-          "type" => "policy.alert",
-          "rule_id" => rule_id,
-          "message" => message,
-          "severity" => severity,
           "history_count" => count,
+          "idempotency_key" => Map.get(rule, "idempotency_key"),
+          "message" => message,
+          "rule_id" => rule_id,
+          "severity" => severity,
           "threshold" => threshold,
-          "idempotency_key" => Map.get(rule, "idempotency_key")
+          "type" => "policy.alert"
         }
 
         {request,
@@ -575,6 +567,8 @@ defmodule Wardwright.Policy.Plan do
       else
         {request, policy}
       end
+    else
+      {request, policy}
     end
   end
 
@@ -602,8 +596,8 @@ defmodule Wardwright.Policy.Plan do
     cache_scope = Map.get(rule, "cache_scope", "session_id")
 
     filter = %{
-      "kind" => cache_kind,
       "key" => cache_key,
+      "kind" => cache_kind,
       "scope" => cache_scope_from_caller(caller, cache_scope)
     }
 
@@ -625,21 +619,21 @@ defmodule Wardwright.Policy.Plan do
 
       action_record =
         %{
-          "rule_id" => rule_id,
-          "kind" => "tool_loop_threshold",
           "action" => action,
-          "matched" => true,
-          "message" => message,
-          "severity" => severity,
-          "cache_kind" => cache_kind,
           "cache_key" => cache_key,
+          "cache_kind" => cache_kind,
           "cache_scope" => cache_scope,
           "history_count" => count,
+          "kind" => "tool_loop_threshold",
+          "matched" => true,
+          "message" => message,
+          "rule_id" => rule_id,
+          "severity" => severity,
           "threshold" => threshold,
           "tool_context" => tool_context
         }
         |> put_route_action_fields(rule)
-        |> Wardwright.Policy.Action.normalize(rule: rule)
+        |> Action.normalize(rule: rule)
 
       policy =
         policy
@@ -649,14 +643,14 @@ defmodule Wardwright.Policy.Plan do
 
       if action in ["escalate", "alert_async"] do
         event = %{
-          "type" => "policy.alert",
-          "rule_id" => rule_id,
-          "message" => message,
-          "severity" => severity,
           "history_count" => count,
+          "idempotency_key" => Map.get(rule, "idempotency_key"),
+          "message" => message,
+          "rule_id" => rule_id,
+          "severity" => severity,
           "threshold" => threshold,
           "tool_context" => tool_context,
-          "idempotency_key" => Map.get(rule, "idempotency_key")
+          "type" => "policy.alert"
         }
 
         {request,
@@ -675,8 +669,7 @@ defmodule Wardwright.Policy.Plan do
     Map.put(policy, "route_constraints", route_constraints)
   end
 
-  defp apply_tool_loop_action_policy(policy, "block", _action_record),
-    do: Map.put(policy, "blocked", true)
+  defp apply_tool_loop_action_policy(policy, "block", _action_record), do: Map.put(policy, "blocked", true)
 
   defp apply_tool_loop_action_policy(policy, _action, _action_record), do: policy
 
@@ -706,29 +699,26 @@ defmodule Wardwright.Policy.Plan do
 
       action_record =
         %{
-          @rule_id_key => rule_id,
-          @kind_key => @tool_sequence_kind,
           @action_key => @state_transition_key,
+          @cache_scope_key => cache_scope,
+          @kind_key => @tool_sequence_kind,
           @matched_key => true,
           @message_key =>
-            rule
-            |> Map.get(@message_key, "tool sequence state transition matched")
-            |> blank_to_nil() ||
+            rule |> Map.get(@message_key, "tool sequence state transition matched") |> blank_to_nil() ||
               "tool sequence state transition matched",
+          @rule_id_key => rule_id,
           @severity_key =>
-            rule |> Map.get(@severity_key, @default_info_severity) |> blank_to_nil() ||
-              @default_info_severity,
+            rule |> Map.get(@severity_key, @default_info_severity) |> blank_to_nil() || @default_info_severity,
           @state_transition_key => transition_to,
-          @cache_scope_key => cache_scope,
           @tool_context_key => tool_context
         }
-        |> Wardwright.Policy.Action.normalize(rule: rule)
+        |> Action.normalize(rule: rule)
 
       event = %{
-        @type_key => "policy.state_transition",
         @rule_id_key => rule_id,
         @state_key => transition_to,
-        @tool_context_key => tool_context
+        @tool_context_key => tool_context,
+        @type_key => "policy.state_transition"
       }
 
       {request,
@@ -740,8 +730,7 @@ defmodule Wardwright.Policy.Plan do
     end
   end
 
-  defp apply_tool_sequence_then_rule(rule, caller, request, policy, tool_context, then_rule)
-       when is_map(then_rule) do
+  defp apply_tool_sequence_then_rule(rule, caller, request, policy, tool_context, then_rule) when is_map(then_rule) do
     current_matcher =
       Map.get(
         then_rule,
@@ -759,26 +748,24 @@ defmodule Wardwright.Policy.Plan do
 
       action_record =
         %{
-          @rule_id_key => rule_id,
-          @kind_key => @tool_sequence_kind,
           @action_key => action,
+          @cache_scope_key => Map.get(rule, @cache_scope_key, @default_cache_scope),
+          @kind_key => @tool_sequence_kind,
           @matched_key => true,
           @message_key =>
-            then_rule
-            |> Map.get(@message_key, Map.get(rule, @message_key, "tool sequence matched"))
-            |> blank_to_nil() || "tool sequence matched",
-          @severity_key =>
-            then_rule
-            |> Map.get(@severity_key, Map.get(rule, @severity_key, @default_info_severity))
-            |> blank_to_nil() || @default_info_severity,
-          @cache_scope_key => Map.get(rule, @cache_scope_key, @default_cache_scope),
+            then_rule |> Map.get(@message_key, Map.get(rule, @message_key, "tool sequence matched")) |> blank_to_nil() ||
+              "tool sequence matched",
+          @rule_id_key => rule_id,
           @sequence_after_event_id_key => Map.get(prior_event, @id_key),
           @sequence_after_key_key => Map.get(prior_event, @key_key),
           @sequence_inspected_count_key => inspected_count,
+          @severity_key =>
+            then_rule |> Map.get(@severity_key, Map.get(rule, @severity_key, @default_info_severity)) |> blank_to_nil() ||
+              @default_info_severity,
           @tool_context_key => tool_context
         }
         |> put_route_action_fields(Map.merge(rule, then_rule))
-        |> Wardwright.Policy.Action.normalize(rule: rule)
+        |> Action.normalize(rule: rule)
 
       policy =
         policy
@@ -787,12 +774,12 @@ defmodule Wardwright.Policy.Plan do
 
       if action in [@escalate_action, @alert_async_action] do
         event = %{
-          @type_key => "policy.alert",
-          @rule_id_key => rule_id,
+          @idempotency_key => Map.get(rule, @idempotency_key),
           @message_key => action_record[@message_key],
+          @rule_id_key => rule_id,
           @severity_key => action_record[@severity_key],
           @tool_context_key => tool_context,
-          @idempotency_key => Map.get(rule, @idempotency_key)
+          @type_key => "policy.alert"
         }
 
         {request,
@@ -807,8 +794,7 @@ defmodule Wardwright.Policy.Plan do
     end
   end
 
-  defp apply_tool_sequence_then_rule(_rule, _caller, request, policy, _tool_context, _then_rule),
-    do: {request, policy}
+  defp apply_tool_sequence_then_rule(_rule, _caller, request, policy, _tool_context, _then_rule), do: {request, policy}
 
   defp apply_tool_sequence_action_policy(policy, action, action_record)
        when action in [@restrict_routes_action, @switch_model_action, @reroute_action] do
@@ -816,8 +802,7 @@ defmodule Wardwright.Policy.Plan do
     Map.put(policy, @route_constraints_key, route_constraints)
   end
 
-  defp apply_tool_sequence_action_policy(policy, @block_action, _action_record),
-    do: Map.put(policy, @blocked_key, true)
+  defp apply_tool_sequence_action_policy(policy, @block_action, _action_record), do: Map.put(policy, @blocked_key, true)
 
   defp apply_tool_sequence_action_policy(policy, _action, _action_record), do: policy
 
@@ -935,16 +920,13 @@ defmodule Wardwright.Policy.Plan do
 
   defp record_policy_state(caller, cache_scope, state, rule, tool_context) do
     case Wardwright.PolicyCache.add(%{
-           @kind_key => @policy_state_kind,
+           @created_at_key => System.system_time(:millisecond),
            @key_key => state,
+           @kind_key => @policy_state_kind,
            @scope_key => cache_scope_from_caller(caller, cache_scope),
            @value_key =>
-             %{
-               @rule_id_key => Map.get(rule, @id_key, @default_tool_sequence_id),
-               @tool_context_key => tool_context
-             }
-             |> reject_blank(),
-           @created_at_key => System.system_time(:millisecond)
+             %{@rule_id_key => Map.get(rule, @id_key, @default_tool_sequence_id), @tool_context_key => tool_context}
+             |> reject_blank()
          }) do
       {:ok, _event} -> :ok
       {:error, _message} -> :ok
@@ -969,8 +951,7 @@ defmodule Wardwright.Policy.Plan do
     Wardwright.PolicyCache.recent(
       %{
         @kind_key => kind,
-        @scope_key =>
-          cache_scope_from_caller(caller, Map.get(rule, @cache_scope_key, @default_cache_scope))
+        @scope_key => cache_scope_from_caller(caller, Map.get(rule, @cache_scope_key, @default_cache_scope))
       },
       sequence_window_limit(rule)
     )
@@ -984,16 +965,13 @@ defmodule Wardwright.Policy.Plan do
     end)
   end
 
-  defp tool_event_matches?(
-         %{@value_key => %{@primary_tool_key => primary_tool, @phase_key => phase}},
-         matcher
-       )
+  defp tool_event_matches?(%{@value_key => %{@phase_key => phase, @primary_tool_key => primary_tool}}, matcher)
        when is_map(primary_tool) and is_map(matcher) do
     tool_context =
       %{
-        @schema_key => @tool_context_schema,
         @phase_key => phase,
-        @primary_tool_key => primary_tool
+        @primary_tool_key => primary_tool,
+        @schema_key => @tool_context_schema
       }
       |> reject_blank()
 
@@ -1005,14 +983,14 @@ defmodule Wardwright.Policy.Plan do
   defp record_tool_selector(policy, rule, matched) do
     selector =
       %{
+        "action" => Map.get(rule, "action", "annotate"),
+        "allow_fallback" => Map.get(rule, "allow_fallback"),
+        "allowed_targets" => normalize_string_list(Map.get(rule, "allowed_targets")),
+        "attached_policy_bundle" => Map.get(rule, "attach_policy_bundle"),
         "id" => Map.get(rule, "id", "tool-selector"),
         "matched" => matched,
-        "tool" => Map.get(rule, "tool", %{}),
-        "attached_policy_bundle" => Map.get(rule, "attach_policy_bundle"),
-        "action" => Map.get(rule, "action", "annotate"),
-        "allowed_targets" => normalize_string_list(Map.get(rule, "allowed_targets")),
         "target_model" => blank_to_nil(Map.get(rule, "target_model", Map.get(rule, "model"))),
-        "allow_fallback" => Map.get(rule, "allow_fallback")
+        "tool" => Map.get(rule, "tool", %{})
       }
       |> reject_blank()
 
@@ -1023,12 +1001,12 @@ defmodule Wardwright.Policy.Plan do
     status = PlanCore.tool_policy_status(action)
 
     Map.put(policy, "tool_policy", %{
-      "status" => status,
+      "counter_key_hash" => content_hash(cache_key),
+      "observed_count" => count,
       "rule_id" => rule_id,
       "state_scope" => PlanCore.scope_label(cache_scope),
-      "counter_key_hash" => content_hash(cache_key),
-      "threshold" => threshold,
-      "observed_count" => count
+      "status" => status,
+      "threshold" => threshold
     })
   end
 
@@ -1040,12 +1018,10 @@ defmodule Wardwright.Policy.Plan do
 
   defp request_text(_), do: ""
 
-  defp request_tool_context(_request, %{"tool_context" => tool_context}, _opts)
-       when is_map(tool_context),
-       do: tool_context
+  defp request_tool_context(_request, %{"tool_context" => tool_context}, _opts) when is_map(tool_context),
+    do: tool_context
 
-  defp request_tool_context(request, _policy, opts),
-    do: Wardwright.ToolContext.normalize(request, opts)
+  defp request_tool_context(request, _policy, opts), do: Wardwright.ToolContext.normalize(request, opts)
 
   defp cache_scope_from_caller(_caller, scope_name) when scope_name in [nil, ""], do: %{}
 
@@ -1066,7 +1042,7 @@ defmodule Wardwright.Policy.Plan do
   defp metadata_string(_), do: ""
 
   defp blank_to_nil(nil), do: nil
-  defp blank_to_nil(value), do: if(String.trim(value) == "", do: nil, else: String.trim(value))
+  defp blank_to_nil(value), do: if(String.trim(value) != "", do: String.trim(value))
 
   defp integer_value(value) when is_integer(value), do: value
 
@@ -1081,8 +1057,7 @@ defmodule Wardwright.Policy.Plan do
 
   defp content_hash(nil), do: nil
 
-  defp content_hash(value),
-    do: "sha256:" <> Base.encode16(:crypto.hash(:sha256, to_string(value)), case: :lower)
+  defp content_hash(value), do: "sha256:" <> Base.encode16(:crypto.hash(:sha256, to_string(value)), case: :lower)
 
   defp reject_blank(map) when is_map(map) do
     map

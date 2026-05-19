@@ -1,19 +1,21 @@
 defmodule Wardwright.StreamRetryPolicyTest do
   use Wardwright.RouterCase
 
+  alias Wardwright.Runtime.Events
+
   test "stream policy retry_with_reminder restarts generation before release" do
     config =
       unit_policy_config()
       |> Map.put("targets", [
-        %{"model" => "large/model", "context_window" => 256}
+        %{"context_window" => 256, "model" => "large/model"}
       ])
       |> Map.put("stream_rules", [
         %{
-          "id" => "deprecated-client-retry",
-          "contains" => "OldClient(",
           "action" => "retry_with_reminder",
-          "reminder" => "Use NewClient instead.",
-          "max_retries" => 1
+          "contains" => "OldClient(",
+          "id" => "deprecated-client-retry",
+          "max_retries" => 1,
+          "reminder" => "Use NewClient instead."
         }
       ])
 
@@ -21,15 +23,10 @@ defmodule Wardwright.StreamRetryPolicyTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "stream code", role: "user"}],
+        metadata: %{"mock_stream_attempt_chunks" => [["use OldClient(", "arg) now"], ["use NewClient(", "arg) now"]]},
         model: "unit-model",
-        stream: true,
-        metadata: %{
-          "mock_stream_attempt_chunks" => [
-            ["use OldClient(", "arg) now"],
-            ["use NewClient(", "arg) now"]
-          ]
-        },
-        messages: [%{role: "user", content: "stream code"}]
+        stream: true
       })
 
     assert conn.status == 200
@@ -50,12 +47,12 @@ defmodule Wardwright.StreamRetryPolicyTest do
 
     assert [
              %{
-               "status" => "stream_policy_retry_required",
-               "released_to_consumer" => false,
                "generated_bytes" => generated_bytes,
-               "held_bytes" => held_bytes
+               "held_bytes" => held_bytes,
+               "released_to_consumer" => false,
+               "status" => "stream_policy_retry_required"
              },
-             %{"status" => "completed", "released_to_consumer" => true}
+             %{"released_to_consumer" => true, "status" => "completed"}
            ] = stream_policy["attempts"]
 
     assert held_bytes > 0
@@ -63,15 +60,15 @@ defmodule Wardwright.StreamRetryPolicyTest do
 
     assert [
              %{
-               "type" => "stream_policy.triggered",
+               "action" => "retry_with_reminder",
                "rule_id" => "deprecated-client-retry",
-               "action" => "retry_with_reminder"
+               "type" => "stream_policy.triggered"
              },
              %{
-               "type" => "attempt.retry_requested",
-               "rule_id" => "deprecated-client-retry",
+               "reminder" => "Use NewClient instead.",
                "retry_count" => 1,
-               "reminder" => "Use NewClient instead."
+               "rule_id" => "deprecated-client-retry",
+               "type" => "attempt.retry_requested"
              }
            ] = stream_policy["events"]
   end
@@ -81,34 +78,31 @@ defmodule Wardwright.StreamRetryPolicyTest do
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "canned/model",
+          "canned_stream_attempt_chunks" => [["use Old", "Client(arg) now"], ["use NewClient(", "arg) now"]],
           "context_window" => 256,
-          "provider_kind" => "canned_sequence",
-          "canned_stream_attempt_chunks" => [
-            ["use Old", "Client(arg) now"],
-            ["use NewClient(", "arg) now"]
-          ]
+          "model" => "canned/model",
+          "provider_kind" => "canned_sequence"
         }
       ])
       |> Map.put("governance", [])
       |> Map.put("stream_rules", [
         %{
-          "id" => "deprecated-client-provider-retry",
-          "contains" => "OldClient(",
           "action" => "retry_with_reminder",
-          "reminder" => "Use NewClient instead.",
-          "max_retries" => 1
+          "contains" => "OldClient(",
+          "id" => "deprecated-client-provider-retry",
+          "max_retries" => 1,
+          "reminder" => "Use NewClient instead."
         }
       ])
 
-    assert :ok = Wardwright.Runtime.Events.subscribe(Wardwright.Runtime.Events.topic(:models))
+    assert :ok = Events.subscribe(Events.topic(:models))
     assert call(:post, "/__test/config", config).status == 200
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "stream code", role: "user"}],
         model: "unit-model",
-        stream: true,
-        messages: [%{role: "user", content: "stream code"}]
+        stream: true
       })
 
     assert conn.status == 200
@@ -128,52 +122,52 @@ defmodule Wardwright.StreamRetryPolicyTest do
     assert [
              %{
                "attempt_index" => 0,
-               "status" => "stream_policy_retry_required",
                "called_provider" => true,
                "mock" => false,
                "provider_status" => "cancelled",
-               "released_to_consumer" => false
+               "released_to_consumer" => false,
+               "status" => "stream_policy_retry_required"
              },
              %{
                "attempt_index" => 1,
-               "status" => "completed",
                "called_provider" => true,
                "mock" => false,
                "provider_status" => "completed",
-               "released_to_consumer" => true
+               "released_to_consumer" => true,
+               "status" => "completed"
              }
            ] = stream_policy["attempts"]
 
     assert_receive {:wardwright_runtime_event, "runtime:models",
                     %{
-                      "type" => "provider.attempt.started",
-                      "provider_id" => "canned",
                       "model" => "canned/model",
-                      "stream" => true
+                      "provider_id" => "canned",
+                      "stream" => true,
+                      "type" => "provider.attempt.started"
                     }}
 
     assert_receive {:wardwright_runtime_event, "runtime:models",
                     %{
-                      "type" => "provider.attempt.finished",
-                      "provider_id" => "canned",
                       "model" => "canned/model",
-                      "status" => "cancelled"
+                      "provider_id" => "canned",
+                      "status" => "cancelled",
+                      "type" => "provider.attempt.finished"
                     }}
 
     assert_receive {:wardwright_runtime_event, "runtime:models",
                     %{
-                      "type" => "provider.attempt.started",
-                      "provider_id" => "canned",
                       "model" => "canned/model",
-                      "stream" => true
+                      "provider_id" => "canned",
+                      "stream" => true,
+                      "type" => "provider.attempt.started"
                     }}
 
     assert_receive {:wardwright_runtime_event, "runtime:models",
                     %{
-                      "type" => "provider.attempt.finished",
-                      "provider_id" => "canned",
                       "model" => "canned/model",
-                      "status" => "completed"
+                      "provider_id" => "canned",
+                      "status" => "completed",
+                      "type" => "provider.attempt.finished"
                     }}
   end
 end

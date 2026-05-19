@@ -25,42 +25,40 @@ defmodule Wardwright do
 
   def default_config do
     %{
-      "model_id" => @model_id,
-      "version" => @model_version,
-      @description_key => @default_description,
-      "targets" => [
-        %{"model" => @local_model, "context_window" => @local_context_window},
-        %{"model" => @managed_model, "context_window" => @managed_context_window}
-      ],
-      "route_root" => "dispatcher.prompt_length",
+      "alert_delivery" => %{"capacity" => 16, "on_full" => "dead_letter"},
+      "alloys" => [],
+      "auth" => %{"unkeyed_model_access" => "public"},
+      "cascades" => [],
       "dispatchers" => [
         %{
           "id" => "dispatcher.prompt_length",
-          "name" => "Use local until prompt length requires managed context",
-          "models" => [@local_model, @managed_model]
+          "models" => [@local_model, @managed_model],
+          "name" => "Use local until prompt length requires managed context"
         }
       ],
-      "cascades" => [],
-      "alloys" => [],
-      "stream_rules" => [%{"id" => "mock_noop", "pattern" => "", "action" => "pass"}],
-      "requires_api_key" => false,
-      "auth" => %{"unkeyed_model_access" => "public"},
+      "governance" => [%{"action" => "transform", "id" => "prompt_transforms", "kind" => "request_transform"}],
+      "model_id" => @model_id,
+      "policy_cache" => %{"max_entries" => 64, "recent_limit" => 20},
       "prompt_transforms" => %{},
-      "structured_output" => nil,
-      "alert_delivery" => %{"capacity" => 16, "on_full" => "dead_letter"},
+      "requires_api_key" => false,
+      "route_root" => "dispatcher.prompt_length",
       "sinks" => [
         %{
+          "delivery" => %{"capacity" => 16, "on_full" => "dead_letter"},
           "id" => "policy-alerts",
           "kind" => "memory_alert",
-          "select" => %{"types" => ["policy.alert"]},
           "redaction" => "metadata",
-          "delivery" => %{"capacity" => 16, "on_full" => "dead_letter"}
+          "select" => %{"types" => ["policy.alert"]}
         }
       ],
-      "policy_cache" => %{"max_entries" => 64, "recent_limit" => 20},
-      "governance" => [
-        %{"id" => "prompt_transforms", "kind" => "request_transform", "action" => "transform"}
-      ]
+      "stream_rules" => [%{"action" => "pass", "id" => "mock_noop", "pattern" => ""}],
+      "structured_output" => nil,
+      "targets" => [
+        %{"context_window" => @local_context_window, "model" => @local_model},
+        %{"context_window" => @managed_context_window, "model" => @managed_model}
+      ],
+      "version" => @model_version,
+      @description_key => @default_description
     }
   end
 
@@ -190,11 +188,9 @@ defmodule Wardwright do
 
   defp canonical_model_id(_), do: {:error, "model is required"}
 
-  def model_requires_api_key?(config \\ current_config()),
-    do: Map.get(config, "requires_api_key", false) == true
+  def model_requires_api_key?(config \\ current_config()), do: Map.get(config, "requires_api_key", false) == true
 
-  def unkeyed_model_access(config \\ current_config()),
-    do: get_in(config, ["auth", "unkeyed_model_access"]) || "public"
+  def unkeyed_model_access(config \\ current_config()), do: get_in(config, ["auth", "unkeyed_model_access"]) || "public"
 
   def externally_callable?(config \\ current_config()) do
     model_requires_api_key?(config) or unkeyed_model_access(config) == "public"
@@ -208,8 +204,7 @@ defmodule Wardwright do
     Wardwright.RoutePlanner.select(current_config(), estimated_prompt_tokens, attrs)
   end
 
-  def select_route(config, estimated_prompt_tokens, attrs)
-      when is_map(config) and is_map(attrs) do
+  def select_route(config, estimated_prompt_tokens, attrs) when is_map(config) and is_map(attrs) do
     Wardwright.RoutePlanner.select(config, estimated_prompt_tokens, attrs)
   end
 
@@ -260,40 +255,37 @@ defmodule Wardwright do
       selector_nodes(config, target_ids) ++
         Enum.map(targets, fn target ->
           %{
+            "context_window" => target["context_window"],
             "id" => node_id(target["model"]),
-            "type" => "concrete_model",
             "provider_id" => target["model"] |> String.split("/", parts: 2) |> List.first(),
-            "upstream_model_id" => target["model"],
-            "context_window" => target["context_window"]
+            "type" => "concrete_model",
+            "upstream_model_id" => target["model"]
           }
         end)
 
     %{
+      "active_version" => config["version"],
+      "fallback_rate" => 0.0,
+      "governance" => Map.get(config, "governance", []),
       "id" => model_id,
       "model_id" => model_id,
+      "prompt_transforms" => Map.get(config, "prompt_transforms", %{}),
       "public_model_id" => model_id,
-      "active_version" => config["version"],
-      @description_key => model_description(config),
       "public_namespace" => "flat",
+      "requires_api_key" => model_requires_api_key?(config),
+      "route_graph" => %{"nodes" => nodes, "root" => Map.get(config, "route_root", "dispatcher.prompt_length")},
       "route_type" => root_route_type(config),
       "status" => "active",
-      "traffic_24h" => 0,
-      "fallback_rate" => 0.0,
-      "stream_trigger_count_24h" => 0,
-      "requires_api_key" => model_requires_api_key?(config),
-      "unkeyed_model_access" => unkeyed_model_access(config),
-      "route_graph" => %{
-        "root" => Map.get(config, "route_root", "dispatcher.prompt_length"),
-        "nodes" => nodes
-      },
       "stream_policy" => %{
-        "mode" => "buffered_horizon",
         "buffer_tokens" => 256,
+        "mode" => "buffered_horizon",
         "rules" => Map.get(config, "stream_rules", [])
       },
-      "prompt_transforms" => Map.get(config, "prompt_transforms", %{}),
+      "stream_trigger_count_24h" => 0,
       "structured_output" => Map.get(config, "structured_output"),
-      "governance" => Map.get(config, "governance", [])
+      "traffic_24h" => 0,
+      "unkeyed_model_access" => unkeyed_model_access(config),
+      @description_key => model_description(config)
     }
   end
 
@@ -305,15 +297,15 @@ defmodule Wardwright do
     model_id = model_id(config)
 
     %{
+      "active_version" => config["version"],
       "id" => model_id,
       "model_id" => model_id,
       "public_model_id" => model_id,
-      "active_version" => config["version"],
-      @description_key => model_description(config),
       "public_namespace" => "flat",
-      "route_type" => root_route_type(config),
       "requires_api_key" => model_requires_api_key?(config),
-      "status" => "active"
+      "route_type" => root_route_type(config),
+      "status" => "active",
+      @description_key => model_description(config)
     }
   end
 
@@ -337,9 +329,9 @@ defmodule Wardwright do
       |> Enum.map(fn dispatcher ->
         %{
           "id" => dispatcher["id"],
-          "type" => "dispatcher",
+          "strategy" => "smallest_context_window",
           "targets" => selector_target_ids(dispatcher, "models"),
-          "strategy" => "smallest_context_window"
+          "type" => "dispatcher"
         }
       end)
 
@@ -349,9 +341,9 @@ defmodule Wardwright do
       |> Enum.map(fn cascade ->
         %{
           "id" => cascade["id"],
-          "type" => "cascade",
+          "strategy" => "ordered_fallback",
           "targets" => selector_target_ids(cascade, "models"),
-          "strategy" => "ordered_fallback"
+          "type" => "cascade"
         }
       end)
 
@@ -361,10 +353,10 @@ defmodule Wardwright do
       |> Enum.map(fn alloy ->
         %{
           "id" => alloy["id"],
-          "type" => "alloy",
-          "targets" => selector_target_ids(alloy, "constituents"),
+          "partial_context" => Map.get(alloy, "partial_context", false),
           "strategy" => Map.get(alloy, "strategy", "weighted"),
-          "partial_context" => Map.get(alloy, "partial_context", false)
+          "targets" => selector_target_ids(alloy, "constituents"),
+          "type" => "alloy"
         }
       end)
 
@@ -402,15 +394,14 @@ defmodule Wardwright do
       {kind, base_url} = provider_kind_and_base_url(provider, target)
 
       %{
-        "id" => provider,
-        "kind" => kind,
         "base_url" => base_url,
+        # boundary-map-ok
+        "capabilities" => Wardwright.ProviderCapabilities.for_provider(kind, credential_source(target)),
         "credential_owner" => "wardwright",
         "credential_source" => credential_source(target),
         "health" => "healthy",
-        # boundary-map-ok
-        "capabilities" =>
-          Wardwright.ProviderCapabilities.for_provider(kind, credential_source(target))
+        "id" => provider,
+        "kind" => kind
       }
     end)
   end
@@ -718,68 +709,16 @@ defmodule Wardwright do
       |> String.trim()
 
     %{
+      "alert_delivery" => normalize_alert_delivery(Map.get(config, "alert_delivery", %{})),
+      "alloys" => normalize_selectors(Map.get(config, "alloys", []), "constituents"),
+      "auth" => normalize_auth(Map.get(config, "auth", %{})),
+      "cascades" => normalize_selectors(Map.get(config, "cascades", []), "models"),
+      "dispatchers" => normalize_selectors(Map.get(config, "dispatchers", []), "models"),
+      "governance" => Map.get(config, "governance", []),
       "model_id" => model_id,
-      "version" =>
-        config
-        |> Map.get("version", @model_version)
-        |> to_string()
-        |> String.trim()
-        |> then(fn
-          "" -> @model_version
-          version -> version
-        end),
-      @description_key => normalize_description(config),
-      "targets" =>
-        config
-        |> Map.get("targets", [])
-        |> Enum.map(fn target ->
-          normalized_target = %{
-            "model" => target |> Map.get("model", "") |> to_string() |> String.trim(),
-            "context_window" => integer_value(Map.get(target, "context_window")),
-            "target_kind" =>
-              target
-              |> Map.get(
-                "target_kind",
-                Map.get(target, "kind", Wardwright.ModelGraph.default_target_kind(target))
-              )
-              |> to_string()
-              |> String.trim(),
-            "provider_kind" =>
-              target |> Map.get("provider_kind", "") |> to_string() |> String.trim(),
-            "provider_base_url" =>
-              target |> Map.get("provider_base_url", "") |> to_string() |> String.trim(),
-            "provider_headers" => normalize_headers(Map.get(target, "provider_headers", %{})),
-            "credential_env" =>
-              target |> Map.get("credential_env", "") |> to_string() |> String.trim(),
-            "credential_fnox_key" =>
-              target |> Map.get("credential_fnox_key", "") |> to_string() |> String.trim(),
-            "canned_outputs" => normalize_canned_outputs(Map.get(target, "canned_outputs", [])),
-            "canned_stream_chunks" =>
-              normalize_canned_outputs(Map.get(target, "canned_stream_chunks", [])),
-            "canned_stream_attempt_chunks" =>
-              normalize_canned_stream_attempt_chunks(
-                Map.get(target, "canned_stream_attempt_chunks", [])
-              ),
-            "canned_stream_error" =>
-              target |> Map.get("canned_stream_error", "") |> to_string() |> String.trim(),
-            "canned_delay_ms" => non_negative_integer(Map.get(target, "canned_delay_ms"), 0),
-            "provider_timeout_ms" =>
-              positive_integer(Map.get(target, "provider_timeout_ms"), 180_000)
-          }
-
-          normalized_target =
-            case Wardwright.ModelGraph.target_artifact(target) do
-              artifact when is_map(artifact) ->
-                Map.put(normalized_target, "artifact", normalize_config(artifact))
-
-              _other ->
-                normalized_target
-            end
-
-          normalized_target
-          |> Enum.reject(fn {_key, value} -> value == "" or value == [] end)
-          |> Map.new()
-        end),
+      "policy_cache" => normalize_policy_cache(Map.get(config, "policy_cache", %{})),
+      "prompt_transforms" => Map.get(config, "prompt_transforms", %{}),
+      "requires_api_key" => Map.get(config, "requires_api_key", false) == true,
       "route_root" =>
         config
         |> Map.get("route_root", "dispatcher.prompt_length")
@@ -789,22 +728,57 @@ defmodule Wardwright do
           "" -> "dispatcher.prompt_length"
           route_root -> route_root
         end),
-      "dispatchers" => normalize_selectors(Map.get(config, "dispatchers", []), "models"),
-      "cascades" => normalize_selectors(Map.get(config, "cascades", []), "models"),
-      "alloys" => normalize_selectors(Map.get(config, "alloys", []), "constituents"),
-      "stream_rules" => Map.get(config, "stream_rules", []),
-      "requires_api_key" => Map.get(config, "requires_api_key", false) == true,
-      "auth" => normalize_auth(Map.get(config, "auth", %{})),
-      "prompt_transforms" => Map.get(config, "prompt_transforms", %{}),
-      "structured_output" => Map.get(config, "structured_output"),
-      "alert_delivery" => normalize_alert_delivery(Map.get(config, "alert_delivery", %{})),
       "sinks" =>
         Wardwright.Sinks.normalize_config(
           Map.get(config, "sinks"),
           normalize_alert_delivery(Map.get(config, "alert_delivery", %{}))
         ),
-      "policy_cache" => normalize_policy_cache(Map.get(config, "policy_cache", %{})),
-      "governance" => Map.get(config, "governance", [])
+      "stream_rules" => Map.get(config, "stream_rules", []),
+      "structured_output" => Map.get(config, "structured_output"),
+      "targets" =>
+        config
+        |> Map.get("targets", [])
+        |> Enum.map(fn target ->
+          normalized_target = %{
+            "canned_delay_ms" => non_negative_integer(Map.get(target, "canned_delay_ms"), 0),
+            "canned_outputs" => normalize_canned_outputs(Map.get(target, "canned_outputs", [])),
+            "canned_stream_attempt_chunks" =>
+              normalize_canned_stream_attempt_chunks(Map.get(target, "canned_stream_attempt_chunks", [])),
+            "canned_stream_chunks" => normalize_canned_outputs(Map.get(target, "canned_stream_chunks", [])),
+            "canned_stream_error" => target |> Map.get("canned_stream_error", "") |> to_string() |> String.trim(),
+            "context_window" => integer_value(Map.get(target, "context_window")),
+            "credential_env" => target |> Map.get("credential_env", "") |> to_string() |> String.trim(),
+            "credential_fnox_key" => target |> Map.get("credential_fnox_key", "") |> to_string() |> String.trim(),
+            "model" => target |> Map.get("model", "") |> to_string() |> String.trim(),
+            "provider_base_url" => target |> Map.get("provider_base_url", "") |> to_string() |> String.trim(),
+            "provider_headers" => normalize_headers(Map.get(target, "provider_headers", %{})),
+            "provider_kind" => target |> Map.get("provider_kind", "") |> to_string() |> String.trim(),
+            "provider_timeout_ms" => positive_integer(Map.get(target, "provider_timeout_ms"), 180_000),
+            "target_kind" =>
+              target
+              |> Map.get("target_kind", Map.get(target, "kind", Wardwright.ModelGraph.default_target_kind(target)))
+              |> to_string()
+              |> String.trim()
+          }
+
+          normalized_target =
+            case Wardwright.ModelGraph.target_artifact(target) do
+              artifact when is_map(artifact) -> Map.put(normalized_target, "artifact", normalize_config(artifact))
+              _other -> normalized_target
+            end
+
+          normalized_target |> Enum.reject(fn {_key, value} -> value == "" or value == [] end) |> Map.new()
+        end),
+      "version" =>
+        config
+        |> Map.get("version", @model_version)
+        |> to_string()
+        |> String.trim()
+        |> then(fn
+          "" -> @model_version
+          version -> version
+        end),
+      @description_key => normalize_description(config)
     }
   end
 
@@ -819,8 +793,7 @@ defmodule Wardwright do
     end)
   end
 
-  defp normalize_canned_outputs(outputs) when is_list(outputs),
-    do: Enum.map(outputs, &to_string/1)
+  defp normalize_canned_outputs(outputs) when is_list(outputs), do: Enum.map(outputs, &to_string/1)
 
   defp normalize_canned_outputs(_), do: []
 
@@ -833,17 +806,13 @@ defmodule Wardwright do
   defp normalize_selectors(selectors, model_key) when is_list(selectors) do
     Enum.map(selectors, fn selector ->
       %{
+        "fallback_model" => selector |> Map.get("fallback_model", "") |> to_string() |> String.trim(),
         "id" => selector |> Map.get("id", "") |> to_string() |> String.trim(),
-        "name" => selector |> Map.get("name", "") |> to_string() |> String.trim(),
-        "strategy" => selector |> Map.get("strategy", "") |> to_string() |> String.trim(),
-        "partial_context" => Map.get(selector, "partial_context", false) == true,
         "min_context_window" => integer_value(Map.get(selector, "min_context_window")),
-        "fallback_model" =>
-          selector |> Map.get("fallback_model", "") |> to_string() |> String.trim(),
-        model_key =>
-          normalize_selector_models(
-            Map.get(selector, model_key, Map.get(selector, "targets", []))
-          )
+        "name" => selector |> Map.get("name", "") |> to_string() |> String.trim(),
+        "partial_context" => Map.get(selector, "partial_context", false) == true,
+        "strategy" => selector |> Map.get("strategy", "") |> to_string() |> String.trim(),
+        model_key => normalize_selector_models(Map.get(selector, model_key, Map.get(selector, "targets", [])))
       }
       |> Enum.reject(fn {_key, value} -> value in ["", nil, []] end)
       |> Map.new()
@@ -859,8 +828,8 @@ defmodule Wardwright do
 
       model when is_map(model) ->
         %{
-          "model" => model |> Map.get("model", "") |> to_string() |> String.trim(),
           "context_window" => integer_value(Map.get(model, "context_window")),
+          "model" => model |> Map.get("model", "") |> to_string() |> String.trim(),
           "weight" => integer_value(Map.get(model, "weight"))
         }
         |> Enum.reject(fn {_key, value} -> value in ["", nil] end)
@@ -907,7 +876,7 @@ defmodule Wardwright do
 
   defp normalize_auth(_), do: %{"unkeyed_model_access" => "public"}
 
-  defp validate_config(config = %{"model_id" => model_id, "targets" => targets}) do
+  defp validate_config(%{"model_id" => model_id, "targets" => targets} = config) do
     cond do
       model_id == "" ->
         {:error, "model_id must not be empty"}
@@ -933,24 +902,18 @@ defmodule Wardwright do
 
         not is_integer(Wardwright.ModelGraph.target_context_window(target)) or
             Wardwright.ModelGraph.target_context_window(target) <= 0 ->
-          {:halt,
-           {:error,
-            "target #{Wardwright.ModelGraph.target_model(target)} context_window must be positive"}}
+          {:halt, {:error, "target #{Wardwright.ModelGraph.target_model(target)} context_window must be positive"}}
 
         MapSet.member?(seen, Wardwright.ModelGraph.target_model(target)) ->
           {:halt, {:error, "duplicate target #{Wardwright.ModelGraph.target_model(target)}"}}
 
         credential_reference?(target) and
             System.get_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS") != "1" ->
-          {:halt,
-           {:error,
-            "credential references in __test/config require WARDWRIGHT_ALLOW_TEST_CREDENTIALS=1"}}
+          {:halt, {:error, "credential references in __test/config require WARDWRIGHT_ALLOW_TEST_CREDENTIALS=1"}}
 
         Wardwright.ModelGraph.wardwright_model_target?(target) and
             not is_map(Wardwright.ModelGraph.target_artifact(target)) ->
-          {:halt,
-           {:error,
-            "model target #{Wardwright.ModelGraph.target_model(target)} must include artifact"}}
+          {:halt, {:error, "model target #{Wardwright.ModelGraph.target_model(target)} must include artifact"}}
 
         true ->
           {:cont, MapSet.put(seen, Wardwright.ModelGraph.target_model(target))}
@@ -989,7 +952,7 @@ defmodule Wardwright do
 
   defp public_provider_base_url(base_url) when is_binary(base_url) do
     case URI.parse(base_url) do
-      %URI{scheme: scheme, host: host} = uri when is_binary(scheme) and is_binary(host) ->
+      %URI{host: host, scheme: scheme} = uri when is_binary(scheme) and is_binary(host) ->
         path = uri.path || ""
         port = if uri.port in [nil, 80, 443], do: "", else: ":#{uri.port}"
         "#{scheme}://#{host}#{port}#{path}"
@@ -1026,8 +989,8 @@ defmodule Wardwright do
 
     body =
       Jason.encode!(%{
-        model: model,
         messages: request_messages(request),
+        model: model,
         stream: false
       })
 
@@ -1047,8 +1010,8 @@ defmodule Wardwright do
 
     body =
       Jason.encode!(%{
-        model: model,
         messages: request_messages(request),
+        model: model,
         stream: true
       })
 
@@ -1069,8 +1032,8 @@ defmodule Wardwright do
 
     body =
       Jason.encode!(%{
-        model: model,
         messages: request_messages(request),
+        model: model,
         stream: true
       })
 
@@ -1089,8 +1052,8 @@ defmodule Wardwright do
          {:ok, credential} <- provider_credential(target) do
       body =
         Jason.encode!(%{
-          model: provider_model(target),
           messages: request_messages(request),
+          model: provider_model(target),
           stream: false
         })
 
@@ -1116,8 +1079,8 @@ defmodule Wardwright do
          {:ok, credential} <- provider_credential(target) do
       body =
         Jason.encode!(%{
-          model: provider_model(target),
           messages: request_messages(request),
+          model: provider_model(target),
           stream: true
         })
 
@@ -1140,8 +1103,8 @@ defmodule Wardwright do
          {:ok, credential} <- provider_credential(target) do
       body =
         Jason.encode!(%{
-          model: provider_model(target),
           messages: request_messages(request),
+          model: provider_model(target),
           stream: true
         })
 
@@ -1351,11 +1314,9 @@ defmodule Wardwright do
     parser_fun.("\n\n", parser_state, emit)
   end
 
-  defp stream_parser_metadata({:sse, _pending, metadata}) when map_size(metadata) > 0,
-    do: metadata
+  defp stream_parser_metadata({:sse, _pending, metadata}) when map_size(metadata) > 0, do: metadata
 
-  defp stream_parser_metadata({:lines, _pending, metadata}) when map_size(metadata) > 0,
-    do: metadata
+  defp stream_parser_metadata({:lines, _pending, metadata}) when map_size(metadata) > 0, do: metadata
 
   defp stream_parser_metadata(_parser_state), do: nil
 
@@ -1519,7 +1480,9 @@ defmodule Wardwright do
       Map.get(target, "credential_env", "") != "" ->
         key = target["credential_env"]
 
-        case System.get_env(key) |> blank_to_nil() do
+        System.get_env(key)
+        |> blank_to_nil()
+        |> case do
           nil -> {:error, "credential env var #{key} is not set"}
           value -> {:ok, value}
         end
@@ -1576,8 +1539,8 @@ defmodule Wardwright do
     |> Map.get("messages", [])
     |> Enum.map(fn message ->
       %{
-        role: Map.get(message, "role", ""),
-        content: content_string(Map.get(message, "content"))
+        content: content_string(Map.get(message, "content")),
+        role: Map.get(message, "role", "")
       }
     end)
   end
@@ -1606,12 +1569,12 @@ defmodule Wardwright do
 
   defp provider_outcome(content, status, started, error, called_provider, mock) do
     %{
-      content: content,
-      status: status,
-      latency_ms: max(0, System.monotonic_time(:millisecond) - started),
-      error: error,
       called_provider: called_provider,
-      mock: mock
+      content: content,
+      error: error,
+      latency_ms: max(0, System.monotonic_time(:millisecond) - started),
+      mock: mock,
+      status: status
     }
   end
 
@@ -1660,7 +1623,7 @@ defmodule Wardwright do
   end
 
   defp blank_to_nil(nil), do: nil
-  defp blank_to_nil(value), do: if(String.trim(value) == "", do: nil, else: String.trim(value))
+  defp blank_to_nil(value), do: if(String.trim(value) != "", do: String.trim(value))
 
   defp put_if_present(map, _key, nil), do: map
   defp put_if_present(map, key, value), do: Map.put(map, key, value)

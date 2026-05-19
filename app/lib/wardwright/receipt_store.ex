@@ -3,6 +3,8 @@ defmodule Wardwright.ReceiptStore do
 
   use Agent
 
+  alias Wardwright.Runtime.Events
+
   @contract_version "storage-contract-v0"
   @migration_version 1
   @decision_key "decision"
@@ -30,16 +32,16 @@ defmodule Wardwright.ReceiptStore do
       put_in(state, [:receipts, receipt["receipt_id"]], receipt)
     end)
 
-    Wardwright.Runtime.Events.publish(Wardwright.Runtime.Events.topic(:receipts), %{
-      "type" => "receipt.stored",
-      "receipt_id" => receipt["receipt_id"],
+    Events.publish(Events.topic(:receipts), %{
+      "created_at" => receipt["created_at"],
       "model_id" => receipt["model_id"],
       "model_version" => receipt["model_version"],
-      "session_id" => sourced_value(receipt, ["caller", "session_id"]),
+      "receipt_id" => receipt["receipt_id"],
       "run_id" => sourced_value(receipt, ["caller", "run_id"]) || receipt["run_id"],
-      "status" => get_in(receipt, ["final", "status"]),
+      "session_id" => sourced_value(receipt, ["caller", "session_id"]),
       "simulation" => receipt["simulation"] || false,
-      "created_at" => receipt["created_at"]
+      "status" => get_in(receipt, ["final", "status"]),
+      "type" => "receipt.stored"
     })
 
     receipt
@@ -70,20 +72,20 @@ defmodule Wardwright.ReceiptStore do
 
   def health do
     %{
-      "kind" => "memory",
+      "capabilities" => %{
+        "concurrent_writers" => false,
+        "durable" => false,
+        "event_replay" => true,
+        "json_queries" => true,
+        "retention_jobs" => false,
+        "time_range_indexes" => false,
+        "transactional" => true
+      },
       "contract_version" => @contract_version,
+      "kind" => "memory",
       "migration_version" => @migration_version,
       "read_health" => "ok",
-      "write_health" => "ok",
-      "capabilities" => %{
-        "durable" => false,
-        "transactional" => true,
-        "concurrent_writers" => false,
-        "json_queries" => true,
-        "event_replay" => true,
-        "time_range_indexes" => false,
-        "retention_jobs" => false
-      }
+      "write_health" => "ok"
     }
   end
 
@@ -94,23 +96,23 @@ defmodule Wardwright.ReceiptStore do
     primary_tool = primary_tool(tool_context)
 
     %{
-      "receipt_id" => receipt["receipt_id"],
-      "created_at" => receipt["created_at"],
-      "receipt_schema" => receipt["receipt_schema"],
-      "model_id" => receipt["model_id"],
-      "model_version" => receipt["model_version"],
-      "caller" => receipt["caller"] || %{},
-      "tenant_id" => sourced_value(receipt, ["caller", "tenant_id"]),
       "application_id" => sourced_value(receipt, ["caller", "application_id"]),
+      "caller" => receipt["caller"] || %{},
       "consuming_agent_id" => sourced_value(receipt, ["caller", "consuming_agent_id"]),
       "consuming_user_id" => sourced_value(receipt, ["caller", "consuming_user_id"]),
-      "session_id" => sourced_value(receipt, ["caller", "session_id"]),
+      "created_at" => receipt["created_at"],
+      "model_id" => receipt["model_id"],
+      "model_version" => receipt["model_version"],
+      "receipt_id" => receipt["receipt_id"],
+      "receipt_schema" => receipt["receipt_schema"],
       "run_id" => sourced_value(receipt, ["caller", "run_id"]) || receipt["run_id"],
-      "selected_provider" => selected_provider(receipt),
       "selected_model" => get_in(receipt, ["decision", "selected_model"]),
-      "status" => get_in(receipt, ["final", "status"]),
+      "selected_provider" => selected_provider(receipt),
+      "session_id" => sourced_value(receipt, ["caller", "session_id"]),
       "simulation" => receipt["simulation"] || false,
-      "stream_policy_action" => get_in(receipt, ["final", "stream_policy_action"])
+      "status" => get_in(receipt, ["final", "status"]),
+      "stream_policy_action" => get_in(receipt, ["final", "stream_policy_action"]),
+      "tenant_id" => sourced_value(receipt, ["caller", "tenant_id"])
     }
     |> put_if_present(@tool_namespace_key, Map.get(primary_tool, @namespace_key))
     |> put_if_present(@tool_name_key, Map.get(primary_tool, @name_key))
@@ -129,9 +131,8 @@ defmodule Wardwright.ReceiptStore do
 
     Enum.all?(filters, fn
       {"model", value} ->
-        with {:ok, model} <- Wardwright.normalize_model(value) do
-          summary["model_id"] == model
-        else
+        case Wardwright.normalize_model(value) do
+          {:ok, model} -> summary["model_id"] == model
           _ -> false
         end
 

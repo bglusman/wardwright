@@ -34,9 +34,9 @@ defmodule Wardwright.LiveProviderSmokeTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
+        messages: [%{content: @prompt, role: "user"}],
         model: "live-smoke",
-        stream: true,
-        messages: [%{role: "user", content: @prompt}]
+        stream: true
       })
 
     assert conn.status == 200, live_failure_message(target, conn)
@@ -71,15 +71,14 @@ defmodule Wardwright.LiveProviderSmokeTest do
 
       model ->
         %{
-          stream_format: "ollama_ndjson",
           config: %{
-            "model" => "ollama/#{model}",
             "context_window" => positive_env("WARDWRIGHT_LIVE_OLLAMA_CONTEXT", 32_768),
+            "model" => "ollama/#{model}",
+            "provider_base_url" => env("WARDWRIGHT_LIVE_OLLAMA_BASE_URL") || "http://127.0.0.1:11434",
             "provider_kind" => "ollama",
-            "provider_base_url" =>
-              env("WARDWRIGHT_LIVE_OLLAMA_BASE_URL") || "http://127.0.0.1:11434",
             "provider_timeout_ms" => positive_env("WARDWRIGHT_LIVE_PROVIDER_TIMEOUT_MS", 30_000)
-          }
+          },
+          stream_format: "ollama_ndjson"
         }
     end
   end
@@ -91,15 +90,15 @@ defmodule Wardwright.LiveProviderSmokeTest do
       System.put_env("WARDWRIGHT_LIVE_OPENAI_API_KEY", credential)
 
       %{
-        stream_format: "openai_sse",
         config: %{
-          "model" => "openai-compatible/#{model}",
           "context_window" => positive_env("WARDWRIGHT_LIVE_OPENAI_CONTEXT", 128_000),
-          "provider_kind" => "openai-compatible",
-          "provider_base_url" => base_url,
           "credential_env" => "WARDWRIGHT_LIVE_OPENAI_API_KEY",
+          "model" => "openai-compatible/#{model}",
+          "provider_base_url" => base_url,
+          "provider_kind" => "openai-compatible",
           "provider_timeout_ms" => positive_env("WARDWRIGHT_LIVE_PROVIDER_TIMEOUT_MS", 30_000)
-        }
+        },
+        stream_format: "openai_sse"
       }
     else
       _ -> nil
@@ -114,8 +113,7 @@ defmodule Wardwright.LiveProviderSmokeTest do
     |> Enum.map(&(&1 |> String.replace_prefix("data:", "") |> String.trim()))
     |> Enum.reject(&(&1 == "[DONE]"))
     |> Enum.map(&Jason.decode!/1)
-    |> Enum.map(&(get_in(&1, ["choices", Access.at(0), "delta", "content"]) || ""))
-    |> Enum.join()
+    |> Enum.map_join(&(get_in(&1, ["choices", Access.at(0), "delta", "content"]) || ""))
   end
 
   defp live_failure_message(target, conn) do
@@ -129,7 +127,7 @@ defmodule Wardwright.LiveProviderSmokeTest do
   defp env(name) do
     case System.get_env(name) do
       nil -> nil
-      value -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      value -> if String.trim(value) != "", do: String.trim(value)
     end
   end
 

@@ -1,7 +1,6 @@
 defmodule Wardwright.GleamPolicyCoreTest do
   use ExUnit.Case, async: true
 
-  Code.require_file("../src/wardwright/elixir_reference/policy_core_reference.exs", __DIR__)
   alias Wardwright.ElixirReference.ActionCore, as: ActionCoreReference
   alias Wardwright.ElixirReference.AlertCore, as: AlertCoreReference
   alias Wardwright.ElixirReference.PlanCore, as: PlanCoreReference
@@ -11,13 +10,21 @@ defmodule Wardwright.GleamPolicyCoreTest do
   alias Wardwright.ElixirReference.StructuredCore, as: StructuredCoreReference
   alias Wardwright.ElixirReference.StructuredValidationCore, as: StructuredValidationCoreReference
   alias Wardwright.ElixirReference.ToolContextCore, as: ToolContextCoreReference
+  alias Wardwright.Policy.Action
+  alias Wardwright.Policy.AlertCore
+  alias Wardwright.Policy.HistoryCore
+  alias Wardwright.Policy.PlanCore
+  alias Wardwright.Policy.StructuredCore
+  alias Wardwright.Policy.StructuredOutput
   alias Wardwright.PolicyCoreReference
 
-  test "structured core classifies successful guard-loop outcomes" do
-    assert Wardwright.Policy.StructuredCore.success_status(0) == "completed"
-    assert Wardwright.Policy.StructuredCore.success_status(2) == "completed_after_guard"
+  Code.require_file("../src/wardwright/elixir_reference/policy_core_reference.exs", __DIR__)
 
-    assert Wardwright.Policy.StructuredCore.guard_rule_id_for_string(
+  test "structured core classifies successful guard-loop outcomes" do
+    assert StructuredCore.success_status(0) == "completed"
+    assert StructuredCore.success_status(2) == "completed_after_guard"
+
+    assert StructuredCore.guard_rule_id_for_string(
              "semantic_validation",
              "structured-json",
              "minimum-confidence"
@@ -25,7 +32,7 @@ defmodule Wardwright.GleamPolicyCoreTest do
   end
 
   test "structured core classifies guard budget exhaustion before another retry" do
-    assert Wardwright.Policy.StructuredCore.loop_outcome_status(
+    assert StructuredCore.loop_outcome_status(
              "minimum-confidence",
              2,
              2,
@@ -33,7 +40,7 @@ defmodule Wardwright.GleamPolicyCoreTest do
              4
            ) == "exhausted_rule_budget"
 
-    assert Wardwright.Policy.StructuredCore.loop_outcome_status(
+    assert StructuredCore.loop_outcome_status(
              "structured-json",
              1,
              2,
@@ -41,7 +48,7 @@ defmodule Wardwright.GleamPolicyCoreTest do
              4
            ) == "exhausted_guard_budget"
 
-    assert Wardwright.Policy.StructuredCore.loop_outcome_status(
+    assert StructuredCore.loop_outcome_status(
              "structured-json",
              1,
              2,
@@ -52,7 +59,7 @@ defmodule Wardwright.GleamPolicyCoreTest do
 
   test "history core classifies threshold decisions over the recent window" do
     decision =
-      Wardwright.Policy.HistoryCore.count_decision([true, false, true, true],
+      HistoryCore.count_decision([true, false, true, true],
         threshold: 2,
         recent_limit: 3,
         working_set_size: 4,
@@ -62,7 +69,7 @@ defmodule Wardwright.GleamPolicyCoreTest do
     assert {:triggered, "session_id", 2, 2, 3, 4} = decision
 
     decision =
-      Wardwright.Policy.HistoryCore.count_decision([true, true, true, true],
+      HistoryCore.count_decision([true, true, true, true],
         threshold: 3,
         recent_limit: 2,
         working_set_size: 4,
@@ -71,35 +78,35 @@ defmodule Wardwright.GleamPolicyCoreTest do
 
     assert {:not_triggered, "session_id", 2, 3, 2, 4} = decision
 
-    assert Wardwright.Policy.HistoryCore.triggered_count?(3, 3)
-    refute Wardwright.Policy.HistoryCore.triggered_count?(2, 3)
+    assert HistoryCore.triggered_count?(3, 3)
+    refute HistoryCore.triggered_count?(2, 3)
   end
 
   test "plan core classifies policy thresholds, sequence windows, and scope decisions" do
-    assert Wardwright.Policy.PlanCore.threshold(0) == 1
-    assert Wardwright.Policy.PlanCore.threshold_triggered?(2, 2)
-    refute Wardwright.Policy.PlanCore.threshold_triggered?(1, 2)
+    assert PlanCore.threshold(0) == 1
+    assert PlanCore.threshold_triggered?(2, 2)
+    refute PlanCore.threshold_triggered?(1, 2)
 
-    assert Wardwright.Policy.PlanCore.tool_policy_status("block") == "blocked"
-    assert Wardwright.Policy.PlanCore.tool_policy_status("switch_model") == "rerouted"
-    assert Wardwright.Policy.PlanCore.tool_policy_status("alert_async") == "alerted"
-    assert Wardwright.Policy.PlanCore.tool_policy_status("annotate") == "allowed"
+    assert PlanCore.tool_policy_status("block") == "blocked"
+    assert PlanCore.tool_policy_status("switch_model") == "rerouted"
+    assert PlanCore.tool_policy_status("alert_async") == "alerted"
+    assert PlanCore.tool_policy_status("annotate") == "allowed"
 
-    assert Wardwright.Policy.PlanCore.scope_label("") == "session"
-    assert Wardwright.Policy.PlanCore.scope_label("run_id") == "run"
+    assert PlanCore.scope_label("") == "session"
+    assert PlanCore.scope_label("run_id") == "run"
 
-    assert Wardwright.Policy.PlanCore.state_scope_matches?("", "reviewing")
-    assert Wardwright.Policy.PlanCore.state_scope_matches?("reviewing", "reviewing")
-    refute Wardwright.Policy.PlanCore.state_scope_matches?("reviewing", "active")
+    assert PlanCore.state_scope_matches?("", "reviewing")
+    assert PlanCore.state_scope_matches?("reviewing", "reviewing")
+    refute PlanCore.state_scope_matches?("reviewing", "active")
 
-    assert Wardwright.Policy.PlanCore.sequence_window_limit(nil, nil) == 21
-    assert Wardwright.Policy.PlanCore.sequence_window_limit(0, nil) == 2
-    assert Wardwright.Policy.PlanCore.sequence_window_limit(nil, 4) == 5
+    assert PlanCore.sequence_window_limit(nil, nil) == 21
+    assert PlanCore.sequence_window_limit(0, nil) == 2
+    assert PlanCore.sequence_window_limit(nil, 4) == 5
 
-    assert Wardwright.Policy.PlanCore.within_wall_clock_window?(100, 1_100, 1_001)
-    refute Wardwright.Policy.PlanCore.within_wall_clock_window?(100, 1_102, 1_001)
+    assert PlanCore.within_wall_clock_window?(100, 1_100, 1_001)
+    refute PlanCore.within_wall_clock_window?(100, 1_102, 1_001)
 
-    assert Wardwright.Policy.PlanCore.event_after?(10, 2, 10, 1)
+    assert PlanCore.event_after?(10, 2, 10, 1)
   end
 
   test "alert core classifies queue capacity, duplicate, and terminal states" do
@@ -109,129 +116,126 @@ defmodule Wardwright.GleamPolicyCoreTest do
     assert %{
              key: "key-1",
              outcome: "queued",
-             queue_depth: 1,
-             queue_capacity: 1
-           } = Wardwright.Policy.AlertCore.decide_enqueue(config, 0, false, alert)
+             queue_capacity: 1,
+             queue_depth: 1
+           } = AlertCore.decide_enqueue(config, 0, false, alert)
 
     assert %{outcome: "duplicate_suppressed"} =
-             Wardwright.Policy.AlertCore.decide_enqueue(config, 1, true, alert)
+             AlertCore.decide_enqueue(config, 1, true, alert)
 
     assert %{outcome: "dead_lettered"} =
-             Wardwright.Policy.AlertCore.decide_enqueue(config, 1, false, alert)
+             AlertCore.decide_enqueue(config, 1, false, alert)
 
-    refute Wardwright.Policy.AlertCore.terminal?(:enqueued)
-    assert Wardwright.Policy.AlertCore.terminal?(:dead_lettered)
+    refute AlertCore.terminal?(:enqueued)
+    assert AlertCore.terminal?(:dead_lettered)
   end
 
   test "action core normalizes policy actions and conflicts" do
     action =
-      Wardwright.Policy.Action.normalize(
-        %{"rule_id" => "private-local-only", "action" => "restrict_routes"},
+      Action.normalize(
+        %{"action" => "restrict_routes", "rule_id" => "private-local-only"},
         rule: %{"kind" => "route_gate", "priority" => "25"}
       )
 
     assert %{
-             "action_schema" => "wardwright.policy_action.v1",
-             "rule_id" => "private-local-only",
-             "kind" => "route_gate",
              "action" => "restrict_routes",
-             "phase" => "request.routing",
-             "effect_type" => "route_constraint",
-             "priority" => 25,
+             "action_schema" => "wardwright.policy_action.v1",
              "conflict_key" => "route_constraints",
-             "conflict_policy" => "ordered"
+             "conflict_policy" => "ordered",
+             "effect_type" => "route_constraint",
+             "kind" => "route_gate",
+             "phase" => "request.routing",
+             "priority" => 25,
+             "rule_id" => "private-local-only"
            } = action
 
     assert [
              %{
+               "action_count" => 2,
+               "class" => "ordered",
                "conflict_schema" => "wardwright.policy_conflict.v1",
                "key" => "route_constraints",
-               "class" => "ordered",
-               "action_count" => 2,
-               "rule_ids" => ["local-only", "strong-model"],
-               "required_resolution" => "preserve policy declaration order"
+               "required_resolution" => "preserve policy declaration order",
+               "rule_ids" => ["local-only", "strong-model"]
              }
            ] =
-             Wardwright.Policy.Action.conflicts([
-               Wardwright.Policy.Action.normalize(%{
-                 "rule_id" => "local-only",
+             Action.conflicts([
+               Action.normalize(%{
+                 "action" => "restrict_routes",
                  "kind" => "route_gate",
-                 "action" => "restrict_routes"
+                 "rule_id" => "local-only"
                }),
-               Wardwright.Policy.Action.normalize(%{
-                 "rule_id" => "strong-model",
+               Action.normalize(%{
+                 "action" => "switch_model",
                  "kind" => "route_gate",
-                 "action" => "switch_model"
+                 "rule_id" => "strong-model"
                })
              ])
   end
 
   test "action result core keeps policy blocks distinct from successful annotations" do
     assert %{
-             "result_schema" => "wardwright.policy_result.v1",
-             "status" => "ok",
              "action" => "block",
-             "actions" => [%{"rule_id" => "deny", "effect_type" => "terminal"}]
+             "actions" => [%{"effect_type" => "terminal", "rule_id" => "deny"}],
+             "result_schema" => "wardwright.policy_result.v1",
+             "status" => "ok"
            } =
-             Wardwright.Policy.Action.normalize_result(%{
+             Action.normalize_result(%{
+               "actions" => [%{"action" => "block", "rule_id" => "deny"}],
                "engine" => "primitive",
-               "status" => "ok",
-               "actions" => [%{"rule_id" => "deny", "action" => "block"}]
+               "status" => "ok"
              })
 
     assert %{
-             "status" => "error",
              "action" => "block",
-             "actions" => []
+             "actions" => [],
+             "status" => "error"
            } =
-             Wardwright.Policy.Action.normalize_result(%{
+             Action.normalize_result(%{
                "engine" => "wasm",
-               "status" => "error",
-               "reason" => "engine unavailable"
+               "reason" => "engine unavailable",
+               "status" => "error"
              })
   end
 
   test "route core classifies route strategies and reasons" do
     config = %{
+      "dispatchers" => [%{"id" => "fit-dispatcher", "models" => ["small/model", "medium/model", "large/model"]}],
       "model_id" => "unit-model",
-      "version" => "unit-version",
       "targets" => [
-        %{"model" => "small/model", "context_window" => 16},
-        %{"model" => "medium/model", "context_window" => 64},
-        %{"model" => "large/model", "context_window" => 256}
+        %{"context_window" => 16, "model" => "small/model"},
+        %{"context_window" => 64, "model" => "medium/model"},
+        %{"context_window" => 256, "model" => "large/model"}
       ],
-      "dispatchers" => [
-        %{"id" => "fit-dispatcher", "models" => ["small/model", "medium/model", "large/model"]}
-      ]
+      "version" => "unit-version"
     }
 
     assert %{
-             route_type: "dispatcher",
-             route_id: "fit-dispatcher",
-             selected_provider: "medium",
-             selected_model: "medium/model",
              reason: "estimated prompt exceeded smaller configured context windows",
-             skipped: [%{"target" => "small/model", "reason" => "context_window_too_small"}]
+             route_id: "fit-dispatcher",
+             route_type: "dispatcher",
+             selected_model: "medium/model",
+             selected_provider: "medium",
+             skipped: [%{"reason" => "context_window_too_small", "target" => "small/model"}]
            } = Wardwright.RoutePlanner.select(config, 32)
 
     assert %{
+             fallback_used: true,
+             reason: "policy forced model was not in the allowed route set; explicit policy fallback allowed",
              route_type: "policy_override_fallback",
-             reason:
-               "policy forced model was not in the allowed route set; explicit policy fallback allowed",
-             selected_model: "medium/model",
-             fallback_used: true
+             selected_model: "medium/model"
            } =
              Wardwright.RoutePlanner.select(config, 32, %{
-               "forced_model" => "missing/model",
-               "allow_fallback" => true
+               "allow_fallback" => true,
+               "forced_model" => "missing/model"
              })
   end
 
   test "Gleam policy cores produce representative route and policy decisions" do
-    assert Wardwright.Policy.StructuredCore.success_status(1) == "completed_after_guard"
+    assert StructuredCore.success_status(1) == "completed_after_guard"
 
     assert {:triggered, "session_id", 2, 2, 3, 3} =
-             Wardwright.Policy.HistoryCore.count_decision([true, false, true],
+             HistoryCore.count_decision([true, false, true],
                threshold: 2,
                recent_limit: 3,
                working_set_size: 3,
@@ -239,7 +243,7 @@ defmodule Wardwright.GleamPolicyCoreTest do
              )
 
     assert %{outcome: "failed_closed"} =
-             Wardwright.Policy.AlertCore.decide_enqueue(
+             AlertCore.decide_enqueue(
                %{"capacity" => 1, "on_full" => "fail_closed"},
                1,
                false,
@@ -247,30 +251,27 @@ defmodule Wardwright.GleamPolicyCoreTest do
              )
 
     assert %{"action" => "block", "effect_type" => "terminal"} =
-             Wardwright.Policy.Action.normalize(%{
-               "rule_id" => "block-private",
-               "kind" => "request_guard",
+             Action.normalize(%{
                "action" => "block",
-               "message" => "private data blocked"
+               "kind" => "request_guard",
+               "message" => "private data blocked",
+               "rule_id" => "block-private"
              })
 
     assert %{route_type: "dispatcher", selected_model: "medium/model"} =
              Wardwright.RoutePlanner.select(
                %{
-                 "model_id" => "unit-model",
-                 "version" => "unit-version",
-                 "targets" => [
-                   %{"model" => "small/model", "context_window" => 16},
-                   %{"model" => "medium/model", "context_window" => 64},
-                   %{"model" => "large/model", "context_window" => 256}
-                 ],
-                 "route_root" => "fit-dispatcher",
                  "dispatchers" => [
-                   %{
-                     "id" => "fit-dispatcher",
-                     "models" => ["small/model", "medium/model", "large/model"]
-                   }
-                 ]
+                   %{"id" => "fit-dispatcher", "models" => ["small/model", "medium/model", "large/model"]}
+                 ],
+                 "model_id" => "unit-model",
+                 "route_root" => "fit-dispatcher",
+                 "targets" => [
+                   %{"context_window" => 16, "model" => "small/model"},
+                   %{"context_window" => 64, "model" => "medium/model"},
+                   %{"context_window" => 256, "model" => "large/model"}
+                 ],
+                 "version" => "unit-version"
                },
                32
              )
@@ -278,9 +279,9 @@ defmodule Wardwright.GleamPolicyCoreTest do
 
   test "extended Gleam kernels produce public policy-surface decisions" do
     assert %{
+             reason: "policy forced model was too small for estimated prompt",
              route_blocked: true,
-             selected_model: "unconfigured/no-target",
-             reason: "policy forced model was too small for estimated prompt"
+             selected_model: "unconfigured/no-target"
            } = route_forced_model_context_block()
 
     assert [
@@ -290,8 +291,8 @@ defmodule Wardwright.GleamPolicyCoreTest do
            ] = structured_output_validation_results()
 
     assert [
-             %{status: "completed", action: "rewrite_chunk", chunks: rewritten_chunks},
-             %{status: "completed", action: "drop_chunk", chunks: dropped_chunks}
+             %{action: "rewrite_chunk", chunks: rewritten_chunks, status: "completed"},
+             %{action: "drop_chunk", chunks: dropped_chunks, status: "completed"}
            ] = stream_window_results()
 
     assert Enum.join(rewritten_chunks) == "abc NewClient( done"
@@ -325,7 +326,7 @@ defmodule Wardwright.GleamPolicyCoreTest do
     assert :wardwright@structured_core.loop_outcome_status("semantic", 3, 2, 1, 4) ==
              PolicyCoreReference.loop_outcome_status("semantic", 3, 2, 1, 4)
 
-    assert Wardwright.Policy.HistoryCore.count_decision([true, false, true, true],
+    assert HistoryCore.count_decision([true, false, true, true],
              threshold: 2,
              recent_limit: 3,
              working_set_size: 4,
@@ -347,7 +348,7 @@ defmodule Wardwright.GleamPolicyCoreTest do
     assert :wardwright@plan_core.within_wall_clock_window(true, 50, 120, 60) == false
     assert :wardwright@plan_core.event_after(120, 0, 100, 99)
 
-    assert Wardwright.Policy.AlertCore.decide_enqueue(
+    assert AlertCore.decide_enqueue(
              %{"capacity" => 1, "on_full" => "fail_closed"},
              1,
              false,
@@ -360,7 +361,7 @@ defmodule Wardwright.GleamPolicyCoreTest do
                %{idempotency_key: "key-1", rule_id: "alert-rule", session_id: "s1"}
              ).status
 
-    assert Wardwright.Policy.AlertCore.terminal?(:dead_lettered) ==
+    assert AlertCore.terminal?(:dead_lettered) ==
              AlertCoreReference.terminal?(:dead_lettered)
 
     assert :wardwright@structured_validation_core.object_schema_valid(true, true, false) ==
@@ -478,18 +479,16 @@ defmodule Wardwright.GleamPolicyCoreTest do
   defp route_forced_model_context_block do
     Wardwright.RoutePlanner.select(
       %{
+        "dispatchers" => [%{"id" => "fit-dispatcher", "models" => ["small/model", "medium/model"]}],
         "model_id" => "unit-model",
-        "version" => "unit-version",
         "targets" => [
-          %{"model" => "small/model", "context_window" => 16},
-          %{"model" => "medium/model", "context_window" => 128}
+          %{"context_window" => 16, "model" => "small/model"},
+          %{"context_window" => 128, "model" => "medium/model"}
         ],
-        "dispatchers" => [
-          %{"id" => "fit-dispatcher", "models" => ["small/model", "medium/model"]}
-        ]
+        "version" => "unit-version"
       },
       64,
-      %{"forced_model" => "small/model", "allow_fallback" => false}
+      %{"allow_fallback" => false, "forced_model" => "small/model"}
     )
   end
 
@@ -497,22 +496,22 @@ defmodule Wardwright.GleamPolicyCoreTest do
     config = %{
       "schemas" => %{
         "answer_v1" => %{
-          "type" => "object",
-          "required" => ["answer", "confidence"],
+          "additionalProperties" => false,
           "properties" => %{
-            "answer" => %{"type" => "string", "minLength" => 1},
-            "confidence" => %{"type" => "number", "minimum" => 0, "maximum" => 1},
-            "citations" => %{"type" => "array", "items" => %{"type" => "string"}}
+            "answer" => %{"minLength" => 1, "type" => "string"},
+            "citations" => %{"items" => %{"type" => "string"}, "type" => "array"},
+            "confidence" => %{"maximum" => 1, "minimum" => 0, "type" => "number"}
           },
-          "additionalProperties" => false
+          "required" => ["answer", "confidence"],
+          "type" => "object"
         }
       },
       "semantic_rules" => [
         %{
+          "gte" => 0.7,
           "id" => "minimum-confidence",
           "kind" => "json_path_number",
-          "path" => "/confidence",
-          "gte" => 0.7
+          "path" => "/confidence"
         },
         %{
           "id" => "answer-not-draft",
@@ -524,24 +523,23 @@ defmodule Wardwright.GleamPolicyCoreTest do
     }
 
     [
-      Wardwright.Policy.StructuredOutput.validate_output(
+      StructuredOutput.validate_output(
         ~s({"answer":"final","confidence":0.91,"citations":["one"]}),
         config
       )
       |> strip_structured_payload(),
-      Wardwright.Policy.StructuredOutput.validate_output(
+      StructuredOutput.validate_output(
         ~s({"answer":"draft","confidence":0.91}),
         config
       ),
-      Wardwright.Policy.StructuredOutput.validate_output(
+      StructuredOutput.validate_output(
         ~s({"answer":"final","confidence":1.2}),
         config
       )
     ]
   end
 
-  defp strip_structured_payload({:ok, schema_id, parsed}),
-    do: {:ok, schema_id, Map.take(parsed, ["answer"])}
+  defp strip_structured_payload({:ok, schema_id, parsed}), do: {:ok, schema_id, Map.take(parsed, ["answer"])}
 
   defp strip_structured_payload(result), do: result
 
@@ -551,11 +549,11 @@ defmodule Wardwright.GleamPolicyCoreTest do
         ["abc ", "OldClient(", " done"],
         [
           %{
-            "id" => "bounded-rewrite",
-            "contains" => "OldClient(",
             "action" => "rewrite_chunk",
-            "replacement" => "NewClient(",
-            "horizon_bytes" => byte_size("OldClient(")
+            "contains" => "OldClient(",
+            "horizon_bytes" => byte_size("OldClient("),
+            "id" => "bounded-rewrite",
+            "replacement" => "NewClient("
           }
         ]
       )
@@ -564,10 +562,10 @@ defmodule Wardwright.GleamPolicyCoreTest do
         ["keep ", "DROP", " done"],
         [
           %{
-            "id" => "bounded-drop",
-            "contains" => "DROP",
             "action" => "drop_chunk",
-            "horizon_bytes" => byte_size("DROP")
+            "contains" => "DROP",
+            "horizon_bytes" => byte_size("DROP"),
+            "id" => "bounded-drop"
           }
         ]
       )
@@ -593,30 +591,21 @@ defmodule Wardwright.GleamPolicyCoreTest do
   defp tool_context_results do
     {_request, context} =
       Wardwright.ToolContext.normalize_request(%{
-        "tools" => [
-          %{
-            "type" => "function",
-            "function" => %{
-              "name" => "create_ticket",
-              "parameters" => %{"type" => "object"}
-            }
-          }
-        ],
-        "tool_choice" => %{
-          "type" => "function",
-          "function" => %{"name" => "create_ticket"}
-        },
         "messages" => [
           %{"role" => "assistant", "tool_calls" => [%{"id" => "call_1"}]},
-          %{"role" => "tool", "tool_call_id" => "call_1", "content" => "ok"}
+          %{"content" => "ok", "role" => "tool", "tool_call_id" => "call_1"}
+        ],
+        "tool_choice" => %{"function" => %{"name" => "create_ticket"}, "type" => "function"},
+        "tools" => [
+          %{"function" => %{"name" => "create_ticket", "parameters" => %{"type" => "object"}}, "type" => "function"}
         ]
       })
 
     [
       context,
       Wardwright.ToolContext.matches?(context, %{
-        "namespaces" => ["openai.function"],
         "names" => ["create_ticket"],
+        "namespaces" => ["openai.function"],
         "phases" => ["result_interpretation"]
       }),
       Wardwright.ToolContext.matches?(context, %{"risk_classes" => ["write"]})
@@ -625,33 +614,33 @@ defmodule Wardwright.GleamPolicyCoreTest do
 
   defp plan_core_results do
     [
-      Wardwright.Policy.PlanCore.threshold(0),
-      Wardwright.Policy.PlanCore.threshold_triggered?(3, 2),
-      Wardwright.Policy.PlanCore.tool_policy_status("reroute"),
-      Wardwright.Policy.PlanCore.scope_label("session_id"),
-      Wardwright.Policy.PlanCore.state_scope_matches?("reviewing", "active"),
-      Wardwright.Policy.PlanCore.sequence_window_limit(0, nil),
-      Wardwright.Policy.PlanCore.within_wall_clock_window?(50, 120, 60),
-      Wardwright.Policy.PlanCore.event_after?(120, 0, 100, 99)
+      PlanCore.threshold(0),
+      PlanCore.threshold_triggered?(3, 2),
+      PlanCore.tool_policy_status("reroute"),
+      PlanCore.scope_label("session_id"),
+      PlanCore.state_scope_matches?("reviewing", "active"),
+      PlanCore.sequence_window_limit(0, nil),
+      PlanCore.within_wall_clock_window?(50, 120, 60),
+      PlanCore.event_after?(120, 0, 100, 99)
     ]
   end
 
   defp projection_results do
     config = %{
-      "model_id" => "unit-model",
-      "version" => "unit-version",
       "governance" => [
-        %{"id" => "private-route", "kind" => "route_gate", "allowed_targets" => ["local/model"]},
+        %{"allowed_targets" => ["local/model"], "id" => "private-route", "kind" => "route_gate"},
         %{
           "id" => "transition-first",
           "kind" => "tool_sequence",
           "phase" => "tool.loop_governing",
-          "transition_to" => "review_required",
-          "then" => %{"action" => "annotate_receipt"}
+          "then" => %{"action" => "annotate_receipt"},
+          "transition_to" => "review_required"
         },
         %{"id" => "deny-shell", "kind" => "tool_denylist", "phase" => "tool.planning"}
       ],
-      "stream_rules" => []
+      "model_id" => "unit-model",
+      "stream_rules" => [],
+      "version" => "unit-version"
     }
 
     projection = Wardwright.PolicyProjection.projection("tool-governance", config)

@@ -3,8 +3,8 @@ defmodule Wardwright.Runtime.SessionRuntime do
 
   use GenServer
 
-  alias Wardwright.Runtime.Events
   alias Wardwright.PolicySandbox.Dune, as: DuneSandbox
+  alias Wardwright.Runtime.Events
 
   @max_dune_sessions 64
 
@@ -13,9 +13,7 @@ defmodule Wardwright.Runtime.SessionRuntime do
     version = Keyword.fetch!(opts, :version)
     session_id = Keyword.fetch!(opts, :session_id)
 
-    GenServer.start_link(__MODULE__, {model_id, version, session_id},
-      name: via(model_id, version, session_id)
-    )
+    GenServer.start_link(__MODULE__, {model_id, version, session_id}, name: via(model_id, version, session_id))
   end
 
   def child_spec(opts) do
@@ -25,9 +23,9 @@ defmodule Wardwright.Runtime.SessionRuntime do
 
     %{
       id: {__MODULE__, model_id, version, session_id},
-      start: {__MODULE__, :start_link, [opts]},
       restart: :temporary,
       shutdown: 5_000,
+      start: {__MODULE__, :start_link, [opts]},
       type: :worker
     }
   end
@@ -50,14 +48,14 @@ defmodule Wardwright.Runtime.SessionRuntime do
   @impl true
   def init({model_id, version, session_id}) do
     state = %{
-      model_id: model_id,
-      version: version,
-      session_id: session_id,
-      sequence: 0,
+      dune_sessions: %{},
       event_count: 0,
-      started_at: System.system_time(:second),
       last_event: nil,
-      dune_sessions: %{}
+      model_id: model_id,
+      sequence: 0,
+      session_id: session_id,
+      started_at: System.system_time(:second),
+      version: version
     }
 
     {:ok, state, {:continue, :publish_started}}
@@ -92,8 +90,8 @@ defmodule Wardwright.Runtime.SessionRuntime do
     metadata = %{
       metadata
       | model_id: state.model_id,
-        version: state.version,
-        session_id: state.session_id
+        session_id: state.session_id,
+        version: state.version
     }
 
     {:reply, {:ok, {result, metadata}}, %{state | dune_sessions: dune_sessions}}
@@ -102,13 +100,13 @@ defmodule Wardwright.Runtime.SessionRuntime do
   def handle_call(:status, _from, state) do
     {:reply,
      %{
-       "model_id" => state.model_id,
-       "version" => state.version,
-       "session_id" => state.session_id,
-       "pid" => inspect(self()),
-       "started_at" => state.started_at,
        "event_count" => state.event_count,
-       "last_event" => state.last_event
+       "last_event" => state.last_event,
+       "model_id" => state.model_id,
+       "pid" => inspect(self()),
+       "session_id" => state.session_id,
+       "started_at" => state.started_at,
+       "version" => state.version
      }, state}
   end
 
@@ -121,7 +119,7 @@ defmodule Wardwright.Runtime.SessionRuntime do
       nil ->
         {Dune.Session.new(), dune_metadata(config, "new", false)}
 
-      %{session: session, updated_at_ms: updated_at, ttl_ms: ttl_ms}
+      %{session: session, ttl_ms: ttl_ms, updated_at_ms: updated_at}
       when now - updated_at <= ttl_ms ->
         {session, dune_metadata(config, "reused", true)}
 
@@ -133,27 +131,25 @@ defmodule Wardwright.Runtime.SessionRuntime do
   defp dune_metadata(config, status, reused?) do
     %{
       key: config.key,
-      status: status,
-      reused?: reused?,
-      ttl_ms: config.ttl_ms,
       model_id: nil,
-      version: nil,
-      session_id: nil
+      reused?: reused?,
+      session_id: nil,
+      status: status,
+      ttl_ms: config.ttl_ms,
+      version: nil
     }
   end
 
   defp prune_dune_sessions(state, now) do
     dune_sessions =
-      Map.reject(state.dune_sessions, fn {_key, %{updated_at_ms: updated_at, ttl_ms: ttl_ms}} ->
+      Map.reject(state.dune_sessions, fn {_key, %{ttl_ms: ttl_ms, updated_at_ms: updated_at}} ->
         now - updated_at > ttl_ms
       end)
 
     %{state | dune_sessions: dune_sessions}
   end
 
-  defp trim_oldest_dune_sessions(dune_sessions)
-       when map_size(dune_sessions) <= @max_dune_sessions,
-       do: dune_sessions
+  defp trim_oldest_dune_sessions(dune_sessions) when map_size(dune_sessions) <= @max_dune_sessions, do: dune_sessions
 
   defp trim_oldest_dune_sessions(dune_sessions) do
     dune_sessions
@@ -171,12 +167,12 @@ defmodule Wardwright.Runtime.SessionRuntime do
       fields
       |> stringify_keys()
       |> Map.merge(%{
-        "type" => type,
+        "created_at" => System.system_time(:second),
         "model_id" => state.model_id,
-        "version" => state.version,
-        "session_id" => state.session_id,
         "sequence" => sequence,
-        "created_at" => System.system_time(:second)
+        "session_id" => state.session_id,
+        "type" => type,
+        "version" => state.version
       })
 
     topics = [
@@ -187,7 +183,7 @@ defmodule Wardwright.Runtime.SessionRuntime do
 
     Events.publish_many(topics, event)
 
-    %{state | sequence: sequence, event_count: state.event_count + 1, last_event: event}
+    %{state | event_count: state.event_count + 1, last_event: event, sequence: sequence}
   end
 
   defp stringify_keys(map) do

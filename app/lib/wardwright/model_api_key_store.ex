@@ -8,8 +8,8 @@ defmodule Wardwright.ModelApiKeyStore do
   def init(:ok) do
     state =
       case Wardwright.SQLiteStore.enabled?() do
-        true -> %{storage: :sqlite, keys: load_sqlite_keys()}
-        false -> %{storage: :memory, keys: %{}}
+        true -> %{keys: load_sqlite_keys(), storage: :sqlite}
+        false -> %{keys: %{}, storage: :memory}
       end
 
     {:ok, state}
@@ -37,12 +37,12 @@ defmodule Wardwright.ModelApiKeyStore do
     now = DateTime.utc_now() |> DateTime.to_iso8601()
 
     record = %{
+      "created_at" => now,
       "id" => generate_id(),
-      "model_id" => model_id |> to_string() |> String.trim(),
-      "label" => label |> to_string() |> String.trim(),
-      "prefix" => String.slice(raw_key, 0, 16),
       "key_hash" => hash_key(raw_key),
-      "created_at" => now
+      "label" => label |> to_string() |> String.trim(),
+      "model_id" => model_id |> to_string() |> String.trim(),
+      "prefix" => String.slice(raw_key, 0, 16)
     }
 
     case persist_insert(state, record) do
@@ -71,7 +71,7 @@ defmodule Wardwright.ModelApiKeyStore do
   end
 
   def handle_call({:valid?, model_id, key}, _from, state) do
-    key_hash = hash_key(key |> to_string() |> String.trim())
+    key_hash = key |> to_string() |> String.trim() |> hash_key()
 
     valid? =
       Enum.any?(state.keys, fn {_id, record} ->
@@ -99,11 +99,7 @@ defmodule Wardwright.ModelApiKeyStore do
     Map.take(record, ["id", "model_id", "label", "prefix", "created_at"])
   end
 
-  defp key_hash_matches?(
-         %{"model_id" => record_model_id, "key_hash" => stored_hash},
-         model_id,
-         key_hash
-       )
+  defp key_hash_matches?(%{"key_hash" => stored_hash, "model_id" => record_model_id}, model_id, key_hash)
        when record_model_id == model_id and is_binary(stored_hash) and is_binary(key_hash) do
     Plug.Crypto.secure_compare(stored_hash, key_hash)
   rescue
@@ -132,8 +128,7 @@ defmodule Wardwright.ModelApiKeyStore do
       "wardwright-local-model-api-key-hash-secret"
   end
 
-  defp persist_insert(%{storage: :sqlite}, record),
-    do: sqlite_result(Wardwright.SQLiteStore.insert_api_key(record))
+  defp persist_insert(%{storage: :sqlite}, record), do: sqlite_result(Wardwright.SQLiteStore.insert_api_key(record))
 
   defp persist_insert(%{storage: :memory}, _record), do: :ok
 
@@ -148,8 +143,7 @@ defmodule Wardwright.ModelApiKeyStore do
 
   defp persist_delete(%{storage: :memory}, _id), do: :ok
 
-  defp persist_clear(%{storage: :sqlite}),
-    do: sqlite_result(Wardwright.SQLiteStore.clear_api_keys())
+  defp persist_clear(%{storage: :sqlite}), do: sqlite_result(Wardwright.SQLiteStore.clear_api_keys())
 
   defp persist_clear(%{storage: :memory}), do: :ok
 

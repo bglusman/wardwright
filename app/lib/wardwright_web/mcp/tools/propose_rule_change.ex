@@ -13,9 +13,7 @@ defmodule WardwrightWeb.MCP.Tools.ProposeRuleChange do
   alias WardwrightWeb.PolicyAuthoringDrafts
 
   schema do
-    field(:artifact, :map,
-      description: "Optional artifact to modify; defaults to current config."
-    )
+    field(:artifact, :map, description: "Optional artifact to modify; defaults to current config.")
 
     field(:operation, :string, description: "append_rule, replace_rule, or remove_rule.")
 

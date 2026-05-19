@@ -64,9 +64,8 @@ defmodule Wardwright.RoutePlanner do
   end
 
   def validate(config) when is_map(config) do
-    with :ok <- validate_local_config(config),
-         :ok <- validate_model_graph(config, MapSet.new(), 0) do
-      :ok
+    with :ok <- validate_local_config(config) do
+      validate_model_graph(config, MapSet.new(), 0)
     end
   end
 
@@ -75,9 +74,8 @@ defmodule Wardwright.RoutePlanner do
 
     with :ok <- validate_root(config),
          :ok <- validate_selectors("alloy", Map.get(config, "alloys", []), targets),
-         :ok <- validate_selectors("cascade", Map.get(config, "cascades", []), targets),
-         :ok <- validate_selectors("dispatcher", Map.get(config, "dispatchers", []), targets) do
-      :ok
+         :ok <- validate_selectors("cascade", Map.get(config, "cascades", []), targets) do
+      validate_selectors("dispatcher", Map.get(config, "dispatchers", []), targets)
     end
   end
 
@@ -200,7 +198,7 @@ defmodule Wardwright.RoutePlanner do
 
       true ->
         select_dispatcher(%{"id" => root, "models" => Map.keys(targets)}, targets, estimated)
-        |> Map.merge(%{reason: "route root #{inspect(root)} was not configured"})
+        |> Map.put(:reason, "route root #{inspect(root)} was not configured")
     end
   end
 
@@ -217,9 +215,9 @@ defmodule Wardwright.RoutePlanner do
 
     :wardwright@route_core.select_dispatcher(models, all_targets, estimated)
     |> route_selection_decision(%{
-      route_type: "dispatcher",
-      route_id: Map.fetch!(dispatcher, "id"),
       combine_strategy: "smallest_context_window",
+      route_id: Map.fetch!(dispatcher, "id"),
+      route_type: "dispatcher",
       rule: "select the smallest configured context window that fits the estimated prompt"
     })
   end
@@ -236,11 +234,11 @@ defmodule Wardwright.RoutePlanner do
     forced
     |> :wardwright@route_core.select_forced_model(skipped_targets, estimated)
     |> forced_selection_decision(%{
-      route_type: "policy_override",
-      route_id: "policy.forced_model",
       combine_strategy: "policy_forced_model",
       fallback_models: [],
       fallback_used: false,
+      route_id: "policy.forced_model",
+      route_type: "policy_override",
       rule: "apply policy route override before provider selection"
     })
     |> maybe_forced_fallback(model, config, targets, forced_targets, estimated, attrs)
@@ -278,7 +276,7 @@ defmodule Wardwright.RoutePlanner do
   end
 
   defp forced_failure_skips(model, nil, _estimated) do
-    [%{"target" => model, "reason" => "forced_model_unavailable"}]
+    [%{"reason" => "forced_model_unavailable", "target" => model}]
   end
 
   defp forced_failure_skips(_model, forced, estimated), do: [context_skip(forced, estimated)]
@@ -291,23 +289,23 @@ defmodule Wardwright.RoutePlanner do
 
     :wardwright@route_core.select_cascade(models, all_targets, estimated)
     |> route_selection_decision(%{
-      route_type: "cascade",
-      route_id: Map.fetch!(cascade, "id"),
       combine_strategy: "ordered_fallback",
+      route_id: Map.fetch!(cascade, "id"),
+      route_type: "cascade",
       rule: "try configured models in order, skipping models whose context window cannot fit"
     })
   end
 
   defp route_selection_decision(
-         {:route_selection, selected_model, selected_context_window, selected_models,
-          fallback_models, skipped, route_blocked?, reason},
+         {:route_selection, selected_model, selected_context_window, selected_models, fallback_models, skipped,
+          route_blocked?, reason},
          attrs
        ) do
     attrs
     |> Map.put(:selected_model, selected_model)
     |> Map.put(
       :selected_context_window,
-      if(route_blocked?, do: nil, else: selected_context_window)
+      if(!route_blocked?, do: selected_context_window)
     )
     |> Map.put(:selected_provider, provider_from_model(selected_model))
     |> Map.put(:selected_models, selected_models)
@@ -319,15 +317,14 @@ defmodule Wardwright.RoutePlanner do
   end
 
   defp forced_selection_decision(
-         {:forced_selection, selected_model, selected_context_window, selected_models, skipped,
-          route_blocked?, reason},
+         {:forced_selection, selected_model, selected_context_window, selected_models, skipped, route_blocked?, reason},
          attrs
        ) do
     attrs
     |> Map.put(:selected_model, selected_model)
     |> Map.put(
       :selected_context_window,
-      if(route_blocked?, do: nil, else: selected_context_window)
+      if(!route_blocked?, do: selected_context_window)
     )
     |> Map.put(:selected_provider, provider_from_model(selected_model))
     |> Map.put(:selected_models, selected_models)
@@ -361,15 +358,15 @@ defmodule Wardwright.RoutePlanner do
     selected_models = selected_models(selected, ordered)
 
     decision(selected, %{
-      route_type: "alloy",
-      route_id: alloy["id"],
       combine_strategy: strategy,
-      selected_models: selected_models,
       fallback_models: Enum.drop(selected_models, 1),
-      skipped: skipped,
       fallback_used: eligible == [],
       reason: alloy_reason(partial_context, skipped, selected_models),
-      rule: "blend eligible alloy constituents while respecting declared context windows"
+      route_id: alloy["id"],
+      route_type: "alloy",
+      rule: "blend eligible alloy constituents while respecting declared context windows",
+      selected_models: selected_models,
+      skipped: skipped
     })
   end
 
@@ -458,8 +455,7 @@ defmodule Wardwright.RoutePlanner do
   end
 
   defp target_for_core(model) do
-    {:target, Map.fetch!(model, "model"), Map.fetch!(model, "context_window"),
-     model_weight(model)}
+    {:target, Map.fetch!(model, "model"), Map.fetch!(model, "context_window"), model_weight(model)}
   end
 
   defp forced_target_for_core(nil), do: []
@@ -467,10 +463,10 @@ defmodule Wardwright.RoutePlanner do
 
   defp route_skip_from_core({:context_too_small, target, context_window, estimated}) do
     %{
-      "target" => target,
-      "reason" => "context_window_too_small",
       "context_window" => context_window,
-      "estimated_prompt_tokens" => estimated
+      "estimated_prompt_tokens" => estimated,
+      "reason" => "context_window_too_small",
+      "target" => target
     }
   end
 
@@ -497,10 +493,10 @@ defmodule Wardwright.RoutePlanner do
 
   defp context_skip(model, estimated) do
     %{
-      "target" => model["model"],
-      "reason" => "context_window_too_small",
       "context_window" => model["context_window"],
-      "estimated_prompt_tokens" => estimated
+      "estimated_prompt_tokens" => estimated,
+      "reason" => "context_window_too_small",
+      "target" => model["model"]
     }
   end
 
@@ -533,7 +529,7 @@ defmodule Wardwright.RoutePlanner do
 
   defp fallback_model(selector, targets) do
     fallback = Map.get(selector, "fallback_model", "")
-    if fallback == "", do: nil, else: Map.get(targets, fallback)
+    if fallback != "", do: Map.get(targets, fallback)
   end
 
   defp largest_known_model(targets) do
@@ -591,9 +587,9 @@ defmodule Wardwright.RoutePlanner do
 
   defp route_constraints(attrs) do
     %{
+      "allow_fallback" => Map.get(attrs, "allow_fallback"),
       "allowed_targets" => Map.get(attrs, "allowed_targets"),
-      "forced_model" => Map.get(attrs, "forced_model"),
-      "allow_fallback" => Map.get(attrs, "allow_fallback")
+      "forced_model" => Map.get(attrs, "forced_model")
     }
     |> Enum.reject(fn {_key, value} -> value in [nil, "", [], false] end)
     |> Map.new()
@@ -747,16 +743,13 @@ defmodule Wardwright.RoutePlanner do
         {:error, "alloy #{selector["id"]} must define at least 2 constituents"}
 
       invalid_model = Enum.find(models, &invalid_model?/1) ->
-        {:error,
-         "alloy #{selector["id"]} target #{invalid_model["model"]} context_window must be positive"}
+        {:error, "alloy #{selector["id"]} target #{invalid_model["model"]} context_window must be positive"}
 
       invalid_weight = Enum.find(models, &(model_weight(&1) <= 0)) ->
-        {:error,
-         "alloy #{selector["id"]} target #{invalid_weight["model"]} weight must be positive"}
+        {:error, "alloy #{selector["id"]} target #{invalid_weight["model"]} weight must be positive"}
 
       not valid_alloy_strategy?(Map.get(selector, "strategy", "weighted")) ->
-        {:error,
-         "alloy #{selector["id"]} strategy must be weighted, round_robin, or deterministic_all"}
+        {:error, "alloy #{selector["id"]} strategy must be weighted, round_robin, or deterministic_all"}
 
       true ->
         :ok
@@ -771,8 +764,7 @@ defmodule Wardwright.RoutePlanner do
         {:error, "#{kind} #{selector["id"]} must define at least 1 model"}
 
       invalid_model = Enum.find(models, &invalid_model?/1) ->
-        {:error,
-         "#{kind} #{selector["id"]} target #{invalid_model["model"]} context_window must be positive"}
+        {:error, "#{kind} #{selector["id"]} target #{invalid_model["model"]} context_window must be positive"}
 
       true ->
         :ok
@@ -780,9 +772,7 @@ defmodule Wardwright.RoutePlanner do
   end
 
   defp invalid_model?(model),
-    do:
-      model["model"] in [nil, ""] or not is_integer(model["context_window"]) or
-        model["context_window"] <= 0
+    do: model["model"] in [nil, ""] or not is_integer(model["context_window"]) or model["context_window"] <= 0
 
   defp integer_value(value) when is_integer(value), do: value
 

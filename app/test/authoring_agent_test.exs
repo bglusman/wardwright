@@ -50,6 +50,11 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert prompt =~ "You may call read-only and draft-only authoring tools"
     assert prompt =~ "draft_wardwright_model is intentionally ephemeral"
     assert prompt =~ "do not draft a route-only model"
+    assert prompt =~ "For regex semantics, use stream_rules[].regex"
+    assert prompt =~ "validate it and simulate at least"
+    assert prompt =~ "one matching case and one non-matching control case"
+    assert prompt =~ "Report validation warnings, coverage gaps, and simulator limitations"
+    assert prompt =~ "A plausible artifact is not enough."
     assert prompt =~ "draft_wardwright_model"
     assert prompt =~ "activate_wardwright_model"
     assert prompt =~ "simulate_policy"
@@ -324,7 +329,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
 
     assert response.status == "error"
     assert response.finish_reason == :length
-    assert response.provider_usage == %{output_tokens: 20, is_byok: true}
+    assert response.provider_usage == %{is_byok: true, output_tokens: 20}
     assert response.content =~ "reasoning metadata but no final answer"
     assert response.content =~ "WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS"
     assert response.content =~ "no extra Wardwright request-body flag"
@@ -365,14 +370,14 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert response.content =~ "Executed authoring tools:"
 
     assert response.content =~
-             "draft_wardwright_model: executed (draft cow-guard, 0 validation errors, 0 warnings, not active)"
+             "draft_wardwright_model: executed (draft cow-guard, 0 validation errors, 1 warnings, not active)"
 
     assert response.content =~ "Suggested next steps:"
     assert response.content =~ "Review and activate the draft from the workbench"
     refute response.content =~ "\"tool_calls\""
     refute response.content =~ "\"approval_needed\""
 
-    assert [%{"name" => "draft_wardwright_model", "status" => "executed", "result" => result}] =
+    assert [%{"name" => "draft_wardwright_model", "result" => result, "status" => "executed"}] =
              response.tool_results
 
     assert get_in(result, ["artifact", "model_id"]) == "cow-guard"
@@ -390,9 +395,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
 
     {:ok, response} =
-      WardwrightWeb.AuthoringAgent.respond(
-        "Make a cow model that reacts to moo and includes ASCII art."
-      )
+      WardwrightWeb.AuthoringAgent.respond("Make a cow model that reacts to moo and includes ASCII art.")
 
     assert response.status == "completed"
     assert response.content =~ "I drafted a cow-focused model."
@@ -400,7 +403,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     refute response.content =~ "\"tool_calls\""
     refute response.content =~ "behavior_primitives"
 
-    assert [%{"name" => "draft_wardwright_model", "status" => "executed", "result" => result}] =
+    assert [%{"name" => "draft_wardwright_model", "result" => result, "status" => "executed"}] =
              response.tool_results
 
     assert get_in(result, ["artifact", "model_id"]) == "moo_rewrite_model"
@@ -410,10 +413,10 @@ defmodule WardwrightWeb.AuthoringAgentTest do
 
     assert [
              %{
-               "id" => "request-transform-1",
-               "kind" => "request_transform",
                "action" => "transform",
                "contains" => "moo",
+               "id" => "request-transform-1",
+               "kind" => "request_transform",
                "message" => "request input matched",
                "reminder" => reminder
              }
@@ -433,23 +436,21 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
 
     {:ok, response} =
-      WardwrightWeb.AuthoringAgent.respond(
-        "Make a cow model that rewrites moo in generated output."
-      )
+      WardwrightWeb.AuthoringAgent.respond("Make a cow model that rewrites moo in generated output.")
 
     assert response.status == "completed"
     assert response.content =~ "I drafted an output-stream cow model."
 
-    assert [%{"name" => "draft_wardwright_model", "status" => "executed", "result" => result}] =
+    assert [%{"name" => "draft_wardwright_model", "result" => result, "status" => "executed"}] =
              response.tool_results
 
     assert get_in(result, ["artifact", "governance"]) == []
 
     assert [
              %{
-               "id" => "stream-rule-1",
-               "pattern" => "\\bmoo\\b",
                "action" => "rewrite_chunk",
+               "id" => "stream-rule-1",
+               "regex" => "\\bmoo\\b",
                "replacement" => replacement
              }
            ] = get_in(result, ["artifact", "stream_rules"])
@@ -508,7 +509,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert response.status == "completed"
     assert response.content =~ "activate_wardwright_model: skipped"
 
-    assert [%{"name" => "activate_wardwright_model", "status" => "skipped", "result" => result}] =
+    assert [%{"name" => "activate_wardwright_model", "result" => result, "status" => "skipped"}] =
              response.tool_results
 
     assert result["reason"] =~ "explicit user approval"
@@ -518,12 +519,12 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     def generate_text(_prompt, _opts) do
       {:ok,
        %ReqLLM.Response{
-         id: "test-response",
-         model: "kimi-k2.6",
          context: nil,
-         message: %ReqLLM.Message{role: :assistant, content: []},
          finish_reason: :length,
-         usage: %{output_tokens: 20, is_byok: true}
+         id: "test-response",
+         message: %ReqLLM.Message{content: [], role: :assistant},
+         model: "kimi-k2.6",
+         usage: %{is_byok: true, output_tokens: 20}
        }}
     end
   end
@@ -533,30 +534,26 @@ defmodule WardwrightWeb.AuthoringAgentTest do
       {:ok,
        Jason.encode!(%{
          "answer" => "Drafted a cow-focused model.",
+         "next_steps" => ["activate_wardwright_model after review"],
          "tool_calls" => [
            %{
-             "name" => "draft_wardwright_model",
              "arguments" => %{
                "model_id" => "cow-guard",
-               "targets" => [%{"model" => "local-ollama", "context_window" => 8192}],
-               "route" => %{
-                 "type" => "dispatcher",
-                 "id" => "dispatcher.cow",
-                 "models" => ["local-ollama"]
-               },
+               "route" => %{"id" => "dispatcher.cow", "models" => ["local-ollama"], "type" => "dispatcher"},
                "stream_rules" => [
                  %{
-                   "id" => "cow-art",
-                   "phase" => "response.streaming",
-                   "pattern" => "\\bmoo+\\b",
                    "action" => "rewrite_chunk",
+                   "id" => "cow-art",
+                   "pattern" => "\\bmoo+\\b",
+                   "phase" => "response.streaming",
                    "replacement" => "moo\n(^__^)\n(oo)\\\\_______"
                  }
-               ]
-             }
+               ],
+               "targets" => [%{"context_window" => 8192, "model" => "local-ollama"}]
+             },
+             "name" => "draft_wardwright_model"
            }
-         ],
-         "next_steps" => ["activate_wardwright_model after review"]
+         ]
        })}
     end
   end
@@ -566,28 +563,28 @@ defmodule WardwrightWeb.AuthoringAgentTest do
       {:ok,
        Jason.encode!(%{
          "answer" => "I drafted a cow-focused model.",
-         "tool_calls" => [
-           %{
-             "name" => "draft_wardwright_model",
-             "arguments" => %{
-               "model_id" => "moo_rewrite_model",
-               "description" => "Rewrites responses when mooing text is detected.",
-               "targets" => [%{"model" => "local-ollama", "context_window" => 8192}],
-               "behavior_primitives" => %{
-                 "stream_rules" => [
-                   %{
-                     "trigger" => "contains('moo', input_text)",
-                     "action" => "rewrite_stream",
-                     "replacement_text" => "moo\n ^__^\n (oo)\\\\_______"
-                   }
-                 ]
-               }
-             }
-           }
-         ],
          "approval_needed" => [
            "validate_policy_artifact after draft generation",
            "activate_wardwright_model after review"
+         ],
+         "tool_calls" => [
+           %{
+             "arguments" => %{
+               "behavior_primitives" => %{
+                 "stream_rules" => [
+                   %{
+                     "action" => "rewrite_stream",
+                     "replacement_text" => "moo\n ^__^\n (oo)\\\\_______",
+                     "trigger" => "contains('moo', input_text)"
+                   }
+                 ]
+               },
+               "description" => "Rewrites responses when mooing text is detected.",
+               "model_id" => "moo_rewrite_model",
+               "targets" => [%{"context_window" => 8192, "model" => "local-ollama"}]
+             },
+             "name" => "draft_wardwright_model"
+           }
          ]
        })}
     end
@@ -600,20 +597,20 @@ defmodule WardwrightWeb.AuthoringAgentTest do
          "answer" => "I drafted an output-stream cow model.",
          "tool_calls" => [
            %{
-             "name" => "draft_wardwright_model",
              "arguments" => %{
-               "model_id" => "moo_output_rewrite_model",
-               "targets" => [%{"model" => "local-ollama", "context_window" => 8192}],
                "behavior_primitives" => %{
                  "stream_rules" => [
                    %{
-                     "trigger" => "contains('moo', output_text)",
                      "action" => "rewrite_stream",
-                     "replacement_text" => "moo\n ^__^\n (oo)\\\\_______"
+                     "replacement_text" => "moo\n ^__^\n (oo)\\\\_______",
+                     "trigger" => "contains('moo', output_text)"
                    }
                  ]
-               }
-             }
+               },
+               "model_id" => "moo_output_rewrite_model",
+               "targets" => [%{"context_window" => 8192, "model" => "local-ollama"}]
+             },
+             "name" => "draft_wardwright_model"
            }
          ]
        })}
@@ -644,7 +641,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
        Jason.encode!(%{
          "answer" => "I prepared an activation.",
          "tool_calls" => [
-           %{"name" => "activate_wardwright_model", "arguments" => %{"artifact" => %{}}}
+           %{"arguments" => %{"artifact" => %{}}, "name" => "activate_wardwright_model"}
          ]
        })}
     end

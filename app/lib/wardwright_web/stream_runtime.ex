@@ -3,6 +3,7 @@ defmodule WardwrightWeb.StreamRuntime do
 
   import Plug.Conn
 
+  alias Wardwright.Policy.History
   alias WardwrightWeb.ReceiptBuilder
   alias WardwrightWeb.RequestContext
 
@@ -14,14 +15,14 @@ defmodule WardwrightWeb.StreamRuntime do
     rules = config["stream_rules"] || []
 
     acc = %{
+      chunks: [],
       conn:
         conn
         |> put_resp_header("x-wardwright-receipt-id", receipt_id)
         |> put_resp_header("x-wardwright-selected-model", decision.selected_model),
-      sent?: false,
-      request: request,
       receipt_id: receipt_id,
-      chunks: []
+      request: request,
+      sent?: false
     }
 
     {stream_policy, provider, acc} =
@@ -34,27 +35,27 @@ defmodule WardwrightWeb.StreamRuntime do
       |> Map.put(:content, released_content(acc))
       |> Map.put_new(:structured_output, nil)
 
-    Wardwright.Policy.History.record_response(caller, provider.content)
+    History.record_response(caller, provider.content)
 
     receipt = ReceiptBuilder.apply_provider_outcome(receipt, provider)
     Wardwright.ReceiptStore.insert(receipt)
 
     record_runtime_event(model, config, caller, "receipt.finalized", %{
+      "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0,
       "receipt_id" => receipt["receipt_id"],
-      "status" => get_in(receipt, ["final", "status"]),
       "simulation" => false,
-      "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0
+      "status" => get_in(receipt, ["final", "status"])
     })
 
     Wardwright.Sinks.emit([
       %{
-        "type" => "receipt.finalized",
-        "receipt_id" => receipt["receipt_id"],
-        "status" => get_in(receipt, ["final", "status"]),
-        "simulation" => false,
         "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0,
+        "receipt_id" => receipt["receipt_id"],
         "selected_model" => get_in(receipt, ["decision", "selected_model"]),
-        "selected_provider" => get_in(receipt, ["decision", "selected_provider"])
+        "selected_provider" => get_in(receipt, ["decision", "selected_provider"]),
+        "simulation" => false,
+        "status" => get_in(receipt, ["final", "status"]),
+        "type" => "receipt.finalized"
       }
       |> Map.merge(ReceiptBuilder.sink_usage(receipt))
     ])
@@ -83,9 +84,7 @@ defmodule WardwrightWeb.StreamRuntime do
          acc
        ) do
     stream_acc =
-      Map.merge(acc, %{
-        policy: Wardwright.Policy.Stream.start(rules, attempt_index: attempt_index)
-      })
+      Map.put(acc, :policy, Wardwright.Policy.Stream.start(rules, attempt_index: attempt_index))
 
     {provider, stream_acc} =
       stream_attempt_each(
@@ -144,15 +143,15 @@ defmodule WardwrightWeb.StreamRuntime do
         case stream_retry_decision(decision, retry_request, config) do
           {:ok, retry_decision, route_event} ->
             retry_event = %{
-              "type" => "attempt.retry_requested",
               "attempt_index" => attempt_index,
-              "next_attempt_index" => attempt_index + 1,
-              "retry_count" => retry_count + 1,
               "max_retries" => retry_budget,
-              "rule_id" => Map.get(trigger_event, "rule_id"),
+              "next_attempt_index" => attempt_index + 1,
               "reminder" => Map.get(trigger_event, "reminder"),
               "reminder_injected" => reminder_injected?,
-              "selected_model" => retry_decision.selected_model
+              "retry_count" => retry_count + 1,
+              "rule_id" => Map.get(trigger_event, "rule_id"),
+              "selected_model" => retry_decision.selected_model,
+              "type" => "attempt.retry_requested"
             }
 
             retry_events =
@@ -171,28 +170,23 @@ defmodule WardwrightWeb.StreamRuntime do
               attempts,
               %{
                 stream_acc
-                | conn:
-                    put_resp_header(
-                      stream_acc.conn,
-                      "x-wardwright-selected-model",
-                      retry_decision.selected_model
-                    ),
-                  sent?: false,
-                  chunks: acc.chunks
+                | chunks: acc.chunks,
+                  conn: put_resp_header(stream_acc.conn, "x-wardwright-selected-model", retry_decision.selected_model),
+                  sent?: false
               }
             )
 
           {:error, fit_error} ->
             context_event =
               %{
-                "type" => "attempt.retry_context_exceeded",
                 "attempt_index" => attempt_index,
-                "next_attempt_index" => attempt_index + 1,
-                "retry_count" => retry_count,
                 "max_retries" => retry_budget,
-                "rule_id" => Map.get(trigger_event, "rule_id"),
+                "next_attempt_index" => attempt_index + 1,
                 "reminder" => Map.get(trigger_event, "reminder"),
-                "reminder_injected" => reminder_injected?
+                "reminder_injected" => reminder_injected?,
+                "retry_count" => retry_count,
+                "rule_id" => Map.get(trigger_event, "rule_id"),
+                "type" => "attempt.retry_context_exceeded"
               }
               |> Map.merge(fit_error)
               |> ReceiptBuilder.reject_blank()
@@ -208,19 +202,19 @@ defmodule WardwrightWeb.StreamRuntime do
               |> Map.put(:mock, provider.mock)
               |> Map.put(:provider_latency_ms, stream_latency_ms(attempts))
 
-            {policy, %{provider | status: policy.status, content: nil}, stream_acc}
+            {policy, %{provider | content: nil, status: policy.status}, stream_acc}
         end
 
       policy.status == "stream_policy_retry_required" and stream_acc.sent? ->
         skip_event =
           %{
-            "type" => "attempt.retry_skipped_after_release",
             "attempt_index" => attempt_index,
-            "retry_count" => retry_count,
             "max_retries" => retry_budget,
-            "rule_id" => Map.get(trigger_event, "rule_id"),
             "reason" => "response_already_started",
-            "released_bytes" => policy.released_bytes
+            "released_bytes" => policy.released_bytes,
+            "retry_count" => retry_count,
+            "rule_id" => Map.get(trigger_event, "rule_id"),
+            "type" => "attempt.retry_skipped_after_release"
           }
           |> ReceiptBuilder.reject_blank()
 
@@ -241,8 +235,7 @@ defmodule WardwrightWeb.StreamRuntime do
           |> Map.put(:mock, provider.mock)
           |> Map.put(:provider_latency_ms, stream_latency_ms(attempts))
 
-        {policy, %{provider | status: policy.status, content: released_content(stream_acc)},
-         stream_acc}
+        {policy, %{provider | content: released_content(stream_acc), status: policy.status}, stream_acc}
 
       policy.status != "completed" and stream_acc.sent? ->
         stream_acc = send_stream_policy_terminal(stream_acc, policy)
@@ -257,8 +250,7 @@ defmodule WardwrightWeb.StreamRuntime do
           |> Map.put(:mock, provider.mock)
           |> Map.put(:provider_latency_ms, stream_latency_ms(attempts))
 
-        {policy, %{provider | status: policy.status, content: released_content(stream_acc)},
-         stream_acc}
+        {policy, %{provider | content: released_content(stream_acc), status: policy.status}, stream_acc}
 
       true ->
         stream_acc = maybe_finish_sse(stream_acc)
@@ -287,10 +279,10 @@ defmodule WardwrightWeb.StreamRuntime do
 
     if is_integer(context_window) and context_window < estimated do
       %{
-        "selected_model" => selected_model,
-        "reason" => "context_window_too_small",
         "context_window" => context_window,
-        "estimated_prompt_tokens" => estimated
+        "estimated_prompt_tokens" => estimated,
+        "reason" => "context_window_too_small",
+        "selected_model" => selected_model
       }
     end
   end
@@ -324,15 +316,15 @@ defmodule WardwrightWeb.StreamRuntime do
 
   defp stream_retry_reroute_event(previous_decision, retry_decision, estimated) do
     %{
-      "type" => "attempt.retry_rerouted",
-      "reason" => "retry_prompt_exceeded_selected_context",
-      "from_selected_model" => previous_decision.selected_model,
-      "from_context_window" => previous_decision.selected_context_window,
-      "selected_model" => retry_decision.selected_model,
       "context_window" => retry_decision.selected_context_window,
       "estimated_prompt_tokens" => estimated,
+      "fallback_used" => retry_decision.fallback_used,
+      "from_context_window" => previous_decision.selected_context_window,
+      "from_selected_model" => previous_decision.selected_model,
+      "reason" => "retry_prompt_exceeded_selected_context",
       "route_type" => retry_decision.route_type,
-      "fallback_used" => retry_decision.fallback_used
+      "selected_model" => retry_decision.selected_model,
+      "type" => "attempt.retry_rerouted"
     }
     |> ReceiptBuilder.reject_blank()
   end
@@ -356,8 +348,7 @@ defmodule WardwrightWeb.StreamRuntime do
 
     case mock_chunks do
       chunks when is_list(chunks) and chunks != [] ->
-        Enum.reduce_while(Enum.map(chunks, &RequestContext.metadata_string/1), acc, fn chunk,
-                                                                                       acc ->
+        Enum.reduce_while(Enum.map(chunks, &RequestContext.metadata_string/1), acc, fn chunk, acc ->
           case chunk_fun.(chunk, acc) do
             {:cont, acc} -> {:cont, acc}
             {:halt, acc} -> {:halt, acc}
@@ -365,12 +356,12 @@ defmodule WardwrightWeb.StreamRuntime do
         end)
         |> then(fn acc ->
           {%{
-             content: nil,
-             status: "completed",
-             latency_ms: 0,
-             error: nil,
              called_provider: false,
-             mock: true
+             content: nil,
+             error: nil,
+             latency_ms: 0,
+             mock: true,
+             status: "completed"
            }, acc}
         end)
 
@@ -414,16 +405,16 @@ defmodule WardwrightWeb.StreamRuntime do
       acc = ensure_sse_started(acc)
 
       payload = %{
-        "id" => "chatcmpl_stream_#{acc.receipt_id}",
-        "object" => "chat.completion.chunk",
+        "choices" => [%{"delta" => %{"content" => text}, "index" => 0}],
         "created" => System.system_time(:second),
+        "id" => "chatcmpl_stream_#{acc.receipt_id}",
         "model" => Map.get(acc.request, "model"),
-        "choices" => [%{"index" => 0, "delta" => %{"content" => text}}]
+        "object" => "chat.completion.chunk"
       }
 
       {:ok, conn} = chunk(acc.conn, "data: #{Jason.encode!(payload)}\n\n")
 
-      %{acc | conn: conn, chunks: [text | acc.chunks]}
+      %{acc | chunks: [text | acc.chunks], conn: conn}
     end)
   end
 
@@ -453,9 +444,9 @@ defmodule WardwrightWeb.StreamRuntime do
 
     payload = %{
       "wardwright" => %{
-        "receipt_id" => acc.receipt_id,
-        "event" => policy.status,
         "action" => policy.action,
+        "event" => policy.status,
+        "receipt_id" => acc.receipt_id,
         "released_to_consumer" => policy.released_to_consumer
       }
     }
@@ -467,24 +458,24 @@ defmodule WardwrightWeb.StreamRuntime do
 
   defp stream_attempt(policy, attempt_index, provider) do
     %{
-      "attempt_index" => attempt_index,
-      "status" => policy.status,
       "action" => policy.action,
-      "trigger_count" => policy.trigger_count,
-      "released_to_consumer" => policy.released_to_consumer,
+      "attempt_index" => attempt_index,
+      "blocked_bytes" => policy.blocked_bytes,
       "called_provider" => Map.get(provider, :called_provider, false),
-      "mock" => Map.get(provider, :mock, true),
-      "selected_model" => Map.get(provider, :selected_model),
-      "provider_status" => Map.get(provider, :status),
-      "provider_latency_ms" => Map.get(provider, :latency_ms),
       "generated_bytes" => policy.generated_bytes,
-      "released_bytes" => policy.released_bytes,
       "held_bytes" => policy.held_bytes,
       "max_held_bytes" => Map.get(policy, :max_held_bytes, 0),
       "max_hold_ms" => Map.get(policy, :max_hold_ms),
       "max_observed_hold_ms" => Map.get(policy, :max_observed_hold_ms, 0),
+      "mock" => Map.get(provider, :mock, true),
+      "provider_latency_ms" => Map.get(provider, :latency_ms),
+      "provider_status" => Map.get(provider, :status),
+      "released_bytes" => policy.released_bytes,
+      "released_to_consumer" => policy.released_to_consumer,
       "rewritten_bytes" => policy.rewritten_bytes,
-      "blocked_bytes" => policy.blocked_bytes
+      "selected_model" => Map.get(provider, :selected_model),
+      "status" => policy.status,
+      "trigger_count" => policy.trigger_count
     }
     |> ReceiptBuilder.reject_blank()
   end
@@ -507,9 +498,9 @@ defmodule WardwrightWeb.StreamRuntime do
       {request, false}
     else
       message = %{
-        "role" => "system",
+        "content" => reminder,
         "name" => "wardwright_stream_policy_reminder",
-        "content" => reminder
+        "role" => "system"
       }
 
       request =
@@ -530,35 +521,35 @@ defmodule WardwrightWeb.StreamRuntime do
         [
           %{
             "attempt_index" => length(attempts),
-            "status" => "provider_error",
             "called_provider" => Map.get(provider, :called_provider, true),
             "mock" => Map.get(provider, :mock, false),
-            "provider_status" => Map.get(provider, :status),
+            "provider_error" => Map.get(provider, :error),
             "provider_latency_ms" => Map.get(provider, :latency_ms),
-            "provider_error" => Map.get(provider, :error)
+            "provider_status" => Map.get(provider, :status),
+            "status" => "provider_error"
           }
           |> ReceiptBuilder.reject_blank()
         ]
 
     %{
-      status: "provider_error",
-      trigger_count: 0,
       action: nil,
-      events: [],
-      chunks: [],
-      released_to_consumer: false,
-      retry_count: retry_count,
-      max_retries: max_retries,
       attempts: attempts,
-      generated_bytes: sum_attempt_bytes(attempts, "generated_bytes"),
-      released_bytes: sum_attempt_bytes(attempts, "released_bytes"),
-      held_bytes: sum_attempt_bytes(attempts, "held_bytes"),
-      rewritten_bytes: sum_attempt_bytes(attempts, "rewritten_bytes"),
       blocked_bytes: sum_attempt_bytes(attempts, "blocked_bytes"),
       called_provider: Map.get(provider, :called_provider, true),
+      chunks: [],
+      events: [],
+      generated_bytes: sum_attempt_bytes(attempts, "generated_bytes"),
+      held_bytes: sum_attempt_bytes(attempts, "held_bytes"),
+      max_retries: max_retries,
       mock: Map.get(provider, :mock, false),
+      provider_error: Map.get(provider, :error),
       provider_latency_ms: stream_latency_ms(attempts),
-      provider_error: Map.get(provider, :error)
+      released_bytes: sum_attempt_bytes(attempts, "released_bytes"),
+      released_to_consumer: false,
+      retry_count: retry_count,
+      rewritten_bytes: sum_attempt_bytes(attempts, "rewritten_bytes"),
+      status: "provider_error",
+      trigger_count: 0
     }
   end
 

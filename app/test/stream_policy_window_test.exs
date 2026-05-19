@@ -6,9 +6,9 @@ defmodule Wardwright.StreamPolicyWindowTest do
       unit_policy_config()
       |> Map.put("stream_rules", [
         %{
-          "id" => "deprecated-client",
-          "contains" => "OldClient(",
           "action" => "rewrite_chunk",
+          "contains" => "OldClient(",
+          "id" => "deprecated-client",
           "replacement" => "NewClient("
         }
       ])
@@ -17,10 +17,10 @@ defmodule Wardwright.StreamPolicyWindowTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        stream: true,
+        messages: [%{content: "stream code", role: "user"}],
         metadata: %{"mock_stream_chunks" => ["use OldClient(", "arg) now"]},
-        messages: [%{role: "user", content: "stream code"}]
+        model: "unit-model",
+        stream: true
       })
 
     assert conn.status == 200
@@ -36,9 +36,9 @@ defmodule Wardwright.StreamPolicyWindowTest do
 
     assert [
              %{
-               "rule_id" => "deprecated-client",
                "action" => "rewrite_chunk",
-               "chunk_index" => 0
+               "chunk_index" => 0,
+               "rule_id" => "deprecated-client"
              }
            ] = get_in(receipt, ["final", "stream_policy", "events"])
   end
@@ -48,9 +48,9 @@ defmodule Wardwright.StreamPolicyWindowTest do
       unit_policy_config()
       |> Map.put("stream_rules", [
         %{
+          "action" => "block",
           "id" => "secret-stream",
-          "regex" => "secret-[0-9]+",
-          "action" => "block"
+          "regex" => "secret-[0-9]+"
         }
       ])
 
@@ -58,10 +58,10 @@ defmodule Wardwright.StreamPolicyWindowTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        stream: true,
+        messages: [%{content: "stream code", role: "user"}],
         metadata: %{"mock_stream_chunks" => ["safe prefix ", "secret-123"]},
-        messages: [%{role: "user", content: "stream code"}]
+        model: "unit-model",
+        stream: true
       })
 
     assert conn.status == 422
@@ -90,9 +90,9 @@ defmodule Wardwright.StreamPolicyWindowTest do
       unit_policy_config()
       |> Map.put("stream_rules", [
         %{
+          "action" => "block",
           "id" => "split-secret-stream",
-          "regex" => "secret-[0-9]+",
-          "action" => "block"
+          "regex" => "secret-[0-9]+"
         }
       ])
 
@@ -100,10 +100,10 @@ defmodule Wardwright.StreamPolicyWindowTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        stream: true,
+        messages: [%{content: "stream code", role: "user"}],
         metadata: %{"mock_stream_chunks" => ["safe prefix sec", "ret-123 suffix"]},
-        messages: [%{role: "user", content: "stream code"}]
+        model: "unit-model",
+        stream: true
       })
 
     assert conn.status == 422
@@ -117,10 +117,10 @@ defmodule Wardwright.StreamPolicyWindowTest do
 
     assert [
              %{
-               "rule_id" => "split-secret-stream",
                "action" => "block",
                "chunk_index" => 1,
-               "match_scope" => "stream_window"
+               "match_scope" => "stream_window",
+               "rule_id" => "split-secret-stream"
              }
            ] = get_in(body, ["wardwright", "stream_policy", "events"])
   end
@@ -130,11 +130,11 @@ defmodule Wardwright.StreamPolicyWindowTest do
       unit_policy_config()
       |> Map.put("stream_rules", [
         %{
-          "id" => "split-retry-unreleased",
-          "contains" => "OldClient(",
           "action" => "retry_with_reminder",
-          "reminder" => "Use NewClient instead.",
-          "max_retries" => 0
+          "contains" => "OldClient(",
+          "id" => "split-retry-unreleased",
+          "max_retries" => 0,
+          "reminder" => "Use NewClient instead."
         }
       ])
 
@@ -142,10 +142,10 @@ defmodule Wardwright.StreamPolicyWindowTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        stream: true,
+        messages: [%{content: "stream code", role: "user"}],
         metadata: %{"mock_stream_chunks" => ["safe prefix Old", "Client(arg)"]},
-        messages: [%{role: "user", content: "stream code"}]
+        model: "unit-model",
+        stream: true
       })
 
     assert conn.status == 409
@@ -159,9 +159,9 @@ defmodule Wardwright.StreamPolicyWindowTest do
 
     assert [
              %{
-               "status" => "stream_policy_retry_required",
+               "released_bytes" => 0,
                "released_to_consumer" => false,
-               "released_bytes" => 0
+               "status" => "stream_policy_retry_required"
              }
            ] = stream_policy["attempts"]
   end
@@ -172,10 +172,10 @@ defmodule Wardwright.StreamPolicyWindowTest do
         ["safe prefix that can release ", "Old", "Client(arg) now"],
         [
           %{
-            "id" => "bounded-deprecated-client",
-            "contains" => "OldClient(",
             "action" => "block",
-            "horizon_bytes" => byte_size("OldClient(")
+            "contains" => "OldClient(",
+            "horizon_bytes" => byte_size("OldClient("),
+            "id" => "bounded-deprecated-client"
           }
         ]
       )
@@ -192,9 +192,9 @@ defmodule Wardwright.StreamPolicyWindowTest do
 
     assert [
              %{
-               "rule_id" => "bounded-deprecated-client",
                "action" => "block",
-               "match_scope" => "stream_window"
+               "match_scope" => "stream_window",
+               "rule_id" => "bounded-deprecated-client"
              }
            ] = result.events
   end
@@ -205,10 +205,10 @@ defmodule Wardwright.StreamPolicyWindowTest do
         ["abc Old", "Client("],
         [
           %{
-            "id" => "offset-split-literal",
-            "contains" => "OldClient(",
             "action" => "block",
-            "horizon_bytes" => byte_size("OldClient(")
+            "contains" => "OldClient(",
+            "horizon_bytes" => byte_size("OldClient("),
+            "id" => "offset-split-literal"
           }
         ]
       )
@@ -217,18 +217,18 @@ defmodule Wardwright.StreamPolicyWindowTest do
 
     assert [
              %{
-               "type" => "stream_policy.triggered",
-               "rule_id" => "offset-split-literal",
                "action" => "block",
-               "chunk_index" => 1,
-               "match_scope" => "stream_window",
-               "match_kind" => "literal",
-               "chunk_start_byte" => 7,
                "chunk_end_byte" => 14,
-               "stream_window_start_byte" => 0,
-               "stream_window_end_byte" => 14,
+               "chunk_index" => 1,
+               "chunk_start_byte" => 7,
+               "match_end_byte" => 14,
+               "match_kind" => "literal",
+               "match_scope" => "stream_window",
                "match_start_byte" => 4,
-               "match_end_byte" => 14
+               "rule_id" => "offset-split-literal",
+               "stream_window_end_byte" => 14,
+               "stream_window_start_byte" => 0,
+               "type" => "stream_policy.triggered"
              }
            ] = result.events
   end
@@ -239,10 +239,10 @@ defmodule Wardwright.StreamPolicyWindowTest do
         ["abc Old", "Client("],
         [
           %{
-            "id" => "offset-split-regex",
-            "regex" => "OldClient\\(",
             "action" => "block",
-            "horizon_bytes" => byte_size("OldClient(")
+            "horizon_bytes" => byte_size("OldClient("),
+            "id" => "offset-split-regex",
+            "regex" => "OldClient\\("
           }
         ]
       )
@@ -251,18 +251,18 @@ defmodule Wardwright.StreamPolicyWindowTest do
 
     assert [
              %{
-               "type" => "stream_policy.triggered",
-               "rule_id" => "offset-split-regex",
                "action" => "block",
-               "chunk_index" => 1,
-               "match_scope" => "stream_window",
-               "match_kind" => "regex",
-               "chunk_start_byte" => 7,
                "chunk_end_byte" => 14,
-               "stream_window_start_byte" => 0,
-               "stream_window_end_byte" => 14,
+               "chunk_index" => 1,
+               "chunk_start_byte" => 7,
+               "match_end_byte" => 14,
+               "match_kind" => "regex",
+               "match_scope" => "stream_window",
                "match_start_byte" => 4,
-               "match_end_byte" => 14
+               "rule_id" => "offset-split-regex",
+               "stream_window_end_byte" => 14,
+               "stream_window_start_byte" => 0,
+               "type" => "stream_policy.triggered"
              }
            ] = result.events
   end
@@ -273,15 +273,15 @@ defmodule Wardwright.StreamPolicyWindowTest do
         ["ABC", "TAIL"],
         [
           %{
-            "id" => "length-changing-rewrite",
-            "contains" => "ABC",
             "action" => "rewrite_chunk",
+            "contains" => "ABC",
+            "id" => "length-changing-rewrite",
             "replacement" => "LONGER-REPLACEMENT"
           },
           %{
-            "id" => "post-rewrite-window",
+            "action" => "block",
             "contains" => "REPLACEMENTTAIL",
-            "action" => "block"
+            "id" => "post-rewrite-window"
           }
         ]
       )
@@ -290,20 +290,20 @@ defmodule Wardwright.StreamPolicyWindowTest do
 
     assert [
              %{
-               "rule_id" => "length-changing-rewrite",
+               "match_end_byte" => 3,
                "match_scope" => "chunk",
                "match_start_byte" => 0,
-               "match_end_byte" => 3
+               "rule_id" => "length-changing-rewrite"
              },
              %{
-               "rule_id" => "post-rewrite-window",
-               "match_scope" => "stream_window",
-               "chunk_start_byte" => 18,
                "chunk_end_byte" => 22,
-               "stream_window_start_byte" => 0,
-               "stream_window_end_byte" => 22,
+               "chunk_start_byte" => 18,
+               "match_end_byte" => 22,
+               "match_scope" => "stream_window",
                "match_start_byte" => 7,
-               "match_end_byte" => 22
+               "rule_id" => "post-rewrite-window",
+               "stream_window_end_byte" => 22,
+               "stream_window_start_byte" => 0
              }
            ] = result.events
   end

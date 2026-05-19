@@ -1,28 +1,31 @@
 defmodule Wardwright.StructuredOutputPolicyTest do
   use Wardwright.RouterCase
 
+  alias Wardwright.Policy.StructuredOutput
+  alias Wardwright.Runtime.Events
+
   test "provider runtime enforces target timeouts and publishes attempt visibility" do
     config =
       unit_policy_config()
       |> Map.put("targets", [
         %{
-          "model" => "slow/model",
-          "context_window" => 256,
-          "provider_kind" => "canned_sequence",
-          "canned_outputs" => ["late answer"],
           "canned_delay_ms" => 25,
+          "canned_outputs" => ["late answer"],
+          "context_window" => 256,
+          "model" => "slow/model",
+          "provider_kind" => "canned_sequence",
           "provider_timeout_ms" => 1
         }
       ])
       |> Map.put("governance", [])
 
-    assert :ok = Wardwright.Runtime.Events.subscribe(Wardwright.Runtime.Events.topic(:models))
+    assert :ok = Events.subscribe(Events.topic(:models))
     assert call(:post, "/__test/config", config).status == 200
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        messages: [%{role: "user", content: "hello"}]
+        messages: [%{content: "hello", role: "user"}],
+        model: "unit-model"
       })
 
     assert conn.status == 502
@@ -36,18 +39,18 @@ defmodule Wardwright.StructuredOutputPolicyTest do
 
     assert_receive {:wardwright_runtime_event, "runtime:models",
                     %{
-                      "type" => "provider.attempt.started",
-                      "provider_id" => "slow",
                       "model" => "slow/model",
-                      "timeout_ms" => 1
+                      "provider_id" => "slow",
+                      "timeout_ms" => 1,
+                      "type" => "provider.attempt.started"
                     }}
 
     assert_receive {:wardwright_runtime_event, "runtime:models",
                     %{
-                      "type" => "provider.attempt.finished",
-                      "provider_id" => "slow",
                       "model" => "slow/model",
-                      "status" => "provider_error"
+                      "provider_id" => "slow",
+                      "status" => "provider_error",
+                      "type" => "provider.attempt.finished"
                     }}
   end
 
@@ -66,8 +69,8 @@ defmodule Wardwright.StructuredOutputPolicyTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        messages: [%{role: "user", content: "return structured json"}]
+        messages: [%{content: "return structured json", role: "user"}],
+        model: "unit-model"
       })
 
     assert conn.status == 200
@@ -99,8 +102,8 @@ defmodule Wardwright.StructuredOutputPolicyTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        model: "unit-model",
-        messages: [%{role: "user", content: "return structured json"}]
+        messages: [%{content: "return structured json", role: "user"}],
+        model: "unit-model"
       })
 
     assert conn.status == 422
@@ -133,13 +136,13 @@ defmodule Wardwright.StructuredOutputPolicyTest do
       end)
 
     assert {:error, "semantic_validation", "answer-not-draft"} =
-             Wardwright.Policy.StructuredOutput.validate_output(
+             StructuredOutput.validate_output(
                ~s({"answer":"draft answer","confidence":0.95}),
                config
              )
 
     assert {:ok, "answer_v1", %{"answer" => "final answer", "confidence" => 0.95}} =
-             Wardwright.Policy.StructuredOutput.validate_output(
+             StructuredOutput.validate_output(
                ~s({"answer":"final answer","confidence":0.95}),
                config
              )
@@ -155,7 +158,7 @@ defmodule Wardwright.StructuredOutputPolicyTest do
           ~s({"answer":"bad citation","confidence":0.95,"citations":[123]})
         ] do
       assert {:error, "schema_validation", "structured-json"} =
-               Wardwright.Policy.StructuredOutput.validate_output(
+               StructuredOutput.validate_output(
                  invalid_output,
                  config["structured_output"]
                )
@@ -166,15 +169,15 @@ defmodule Wardwright.StructuredOutputPolicyTest do
       |> get_in(["structured_output"])
       |> put_in(["semantic_rules"], [
         %{
+          "gte" => 0.7,
           "id" => "confidence-pointer-required",
           "kind" => "json_path_number",
-          "path" => "confidence",
-          "gte" => 0.7
+          "path" => "confidence"
         }
       ])
 
     assert {:error, "semantic_validation", "confidence-pointer-required"} =
-             Wardwright.Policy.StructuredOutput.validate_output(
+             StructuredOutput.validate_output(
                ~s({"answer":"valid","confidence":0.95}),
                invalid_path_config
              )
@@ -211,13 +214,13 @@ defmodule Wardwright.StructuredOutputPolicyTest do
     }
 
     assert {:ok, "authoring_tool_plan_v1", _parsed} =
-             Wardwright.Policy.StructuredOutput.validate_output(
+             StructuredOutput.validate_output(
                ~s({"answer":"Drafted.","tool_calls":[{"name":"draft_wardwright_model","arguments":{"model_id":"cow"}}]}),
                config
              )
 
     assert {:error, "schema_validation", "structured-json"} =
-             Wardwright.Policy.StructuredOutput.validate_output(
+             StructuredOutput.validate_output(
                ~s({"answer":"Drafted.","tool_calls":[{"name":"draft_wardwright_model"}]}),
                config
              )
@@ -229,29 +232,29 @@ defmodule Wardwright.StructuredOutputPolicyTest do
       |> get_in(["structured_output"])
       |> put_in(["schemas"], %{
         "nested_answer_v1" => %{
-          "type" => "object",
-          "required" => ["answer"],
+          "additionalProperties" => true,
           "properties" => %{},
-          "additionalProperties" => true
+          "required" => ["answer"],
+          "type" => "object"
         }
       })
       |> put_in(["semantic_rules"], [
         %{
+          "gte" => 0.7,
           "id" => "nested-minimum-confidence",
           "kind" => "json_path_number",
-          "path" => "/answer/confidence",
-          "gte" => 0.7
+          "path" => "/answer/confidence"
         }
       ])
 
     assert {:error, "semantic_validation", "nested-minimum-confidence"} =
-             Wardwright.Policy.StructuredOutput.validate_output(
+             StructuredOutput.validate_output(
                ~s({"answer":{"text":"too uncertain","confidence":0.2}}),
                config
              )
 
     assert {:ok, "nested_answer_v1", _parsed} =
-             Wardwright.Policy.StructuredOutput.validate_output(
+             StructuredOutput.validate_output(
                ~s({"answer":{"text":"confident","confidence":0.91}}),
                config
              )
@@ -265,17 +268,17 @@ defmodule Wardwright.StructuredOutputPolicyTest do
 
     provider = fn _attempt_index ->
       %{
-        content: "{not json",
-        status: "completed",
-        latency_ms: 0,
-        error: nil,
         called_provider: false,
+        content: "{not json",
+        error: nil,
+        latency_ms: 0,
         mock: true,
+        status: "completed",
         structured_output: nil
       }
     end
 
-    result = Wardwright.Policy.StructuredOutput.run(config, provider)
+    result = StructuredOutput.run(config, provider)
     assert result.status == "exhausted_guard_budget"
     assert get_in(result.structured_output, ["attempt_count"]) == 2
     assert length(get_in(result.structured_output, ["guard_events"])) == 2

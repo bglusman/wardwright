@@ -12,10 +12,10 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
     validation = PolicyArtifactValidator.validate(artifact, source: "draft")
 
     %{
-      "artifact" => artifact,
-      "validation" => validation,
       "access" => access_details(artifact, origin),
-      "next_steps" => next_steps(validation)
+      "artifact" => artifact,
+      "next_steps" => next_steps(validation),
+      "validation" => validation
     }
   end
 
@@ -29,10 +29,10 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
         {:ok, config} ->
           {:ok,
            %{
-             "status" => "activated",
+             "access" => access_details(config, origin),
              "artifact" => config,
-             "validation" => PolicyArtifactValidator.validate(config, source: "current_config"),
-             "access" => access_details(config, origin)
+             "status" => "activated",
+             "validation" => PolicyArtifactValidator.validate(config, source: "current_config")
            }}
 
         {:error, message} ->
@@ -54,28 +54,28 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
     case apply_rule_operation(artifact, operation, collection, rule, rule_id) do
       {:ok, proposed_artifact, change} ->
         %{
-          "proposal" => %{
-            "id" => proposal_id(proposed_artifact),
-            "applied" => false,
-            "operation" => operation,
-            "collection" => collection,
-            "rule_id" => rule_id,
-            "change" => change
-          },
           "artifact" => proposed_artifact,
+          "proposal" => %{
+            "applied" => false,
+            "change" => change,
+            "collection" => collection,
+            "id" => proposal_id(proposed_artifact),
+            "operation" => operation,
+            "rule_id" => rule_id
+          },
           "validation" => PolicyArtifactValidator.validate(proposed_artifact, source: "proposal")
         }
 
       {:error, message} ->
         %{
+          "artifact" => artifact,
           "proposal" => %{
             "applied" => false,
-            "operation" => operation,
             "collection" => collection,
-            "rule_id" => rule_id,
-            "error" => message
+            "error" => message,
+            "operation" => operation,
+            "rule_id" => rule_id
           },
-          "artifact" => artifact,
           "validation" => PolicyArtifactValidator.validate(artifact, source: "proposal")
         }
     end
@@ -97,26 +97,20 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
 
     Wardwright.default_config()
     |> Map.merge(%{
-      "model_id" => draft_model_id(body),
-      "version" => draft_version(body),
-      "targets" => draft_targets(body),
-      "route_root" => route["id"],
-      "dispatchers" =>
-        if(route["type"] == "dispatcher", do: [Map.delete(route, "type")], else: []),
-      "cascades" => if(route["type"] == "cascade", do: [Map.delete(route, "type")], else: []),
-      "alloys" => if(route["type"] == "alloy", do: [Map.delete(route, "type")], else: []),
-      "governance" => governance_rules_field(body),
-      "stream_rules" => stream_rules_field(body),
-      "prompt_transforms" =>
-        map_field(body, "prompt_transforms", %{}, ["behavior_primitives", "prompt_transforms"]),
-      "structured_output" =>
-        Map.get(
-          body,
-          "structured_output",
-          get_in(body, ["behavior_primitives", "structured_output"])
-        ),
       "alert_delivery" => map_field(body, "alert_delivery", %{}),
-      "policy_cache" => map_field(body, "policy_cache", %{})
+      "alloys" => if(route["type"] == "alloy", do: [Map.delete(route, "type")], else: []),
+      "cascades" => if(route["type"] == "cascade", do: [Map.delete(route, "type")], else: []),
+      "dispatchers" => if(route["type"] == "dispatcher", do: [Map.delete(route, "type")], else: []),
+      "governance" => governance_rules_field(body),
+      "model_id" => draft_model_id(body),
+      "policy_cache" => map_field(body, "policy_cache", %{}),
+      "prompt_transforms" => map_field(body, "prompt_transforms", %{}, ["behavior_primitives", "prompt_transforms"]),
+      "route_root" => route["id"],
+      "stream_rules" => stream_rules_field(body),
+      "structured_output" =>
+        Map.get(body, "structured_output", get_in(body, ["behavior_primitives", "structured_output"])),
+      "targets" => draft_targets(body),
+      "version" => draft_version(body)
     })
     |> Wardwright.normalize_config()
   end
@@ -163,8 +157,8 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
     models = route_models(route, body, type)
 
     %{
-      "type" => route_type(type),
       "id" => if(id == "", do: default_route_id(type), else: id),
+      "type" => route_type(type),
       model_key(type) => models
     }
     |> maybe_put("name", Map.get(route, "name"))
@@ -207,7 +201,7 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
       "append_rule" ->
         if is_map(rule) do
           {:ok, Map.put(artifact, collection, rules ++ [rule]),
-           %{"summary" => "appended rule", "after_count" => length(rules) + 1}}
+           %{"after_count" => length(rules) + 1, "summary" => "appended rule"}}
         else
           {:error, "rule must be an object for append_rule"}
         end
@@ -242,8 +236,7 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
     if count == 0 do
       {:error, "rule #{inspect(rule_id)} was not found"}
     else
-      {:ok, Map.put(artifact, collection, updated),
-       %{"summary" => "replaced rule", "matched_count" => count}}
+      {:ok, Map.put(artifact, collection, updated), %{"matched_count" => count, "summary" => "replaced rule"}}
     end
   end
 
@@ -253,8 +246,7 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
     if length(updated) == length(rules) do
       {:error, "rule #{inspect(rule_id)} was not found"}
     else
-      {:ok, Map.put(artifact, collection, updated),
-       %{"summary" => "removed rule", "after_count" => length(updated)}}
+      {:ok, Map.put(artifact, collection, updated), %{"after_count" => length(updated), "summary" => "removed rule"}}
     end
   end
 
@@ -262,10 +254,10 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
     model = Map.get(artifact, "model_id")
 
     %{
-      "model_ids" => [model, "wardwright/#{model}"],
-      "openai_base_url" => "#{origin}/v1",
       "chat_completions_url" => "#{origin}/v1/chat/completions",
-      "models_url" => "#{origin}/v1/models"
+      "model_ids" => [model, "wardwright/#{model}"],
+      "models_url" => "#{origin}/v1/models",
+      "openai_base_url" => "#{origin}/v1"
     }
   end
 
@@ -280,8 +272,7 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
   defp next_steps(_validation), do: ["Fix validation errors before activating this model."]
 
   defp default_collection(%{"rule" => %{"action" => action}})
-       when action in ["pass", "block", "rewrite_chunk", "retry_with_reminder"],
-       do: "stream_rules"
+       when action in ["pass", "block", "rewrite_chunk", "retry_with_reminder"], do: "stream_rules"
 
   defp default_collection(_body), do: "governance"
 
@@ -309,8 +300,7 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
     |> Enum.map(fn {rule, index} -> normalize_stream_rule(rule, index) end)
   end
 
-  defp behavior_stream_rules(body),
-    do: list_field(body, "stream_rules", ["behavior_primitives", "stream_rules"])
+  defp behavior_stream_rules(body), do: list_field(body, "stream_rules", ["behavior_primitives", "stream_rules"])
 
   defp request_transform_from_stream_like_rule(rule, index) do
     rule = string_keys(rule)
@@ -320,9 +310,9 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
       Map.get(rule, "reminder", Map.get(rule, "replacement_text", Map.get(rule, "replacement")))
 
     %{
+      "action" => "transform",
       "id" => Map.get(rule, "id", "request-transform-#{index}"),
       "kind" => "request_transform",
-      "action" => "transform",
       "message" => Map.get(rule, "message", "request input matched"),
       "reminder" => reminder
     }
@@ -332,13 +322,17 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
   defp normalize_stream_rule(rule, index) when is_map(rule) do
     rule = string_keys(rule)
     action = normalize_stream_action(Map.get(rule, "action"), rule)
-    pattern = Map.get(rule, "pattern") || trigger_pattern(Map.get(rule, "trigger"))
+    {trigger_match_key, trigger_match_value} = stream_match_from_trigger(Map.get(rule, "trigger"))
+    pattern = Map.get(rule, "pattern")
+    regex = Map.get(rule, "regex")
     replacement = Map.get(rule, "replacement", Map.get(rule, "replacement_text"))
 
     rule
     |> Map.put_new("id", "stream-rule-#{index}")
     |> Map.put("action", action)
     |> maybe_put("pattern", pattern)
+    |> maybe_put("regex", regex || if(trigger_match_key == "regex", do: trigger_match_value))
+    |> maybe_put("contains", if(trigger_match_key == "contains", do: trigger_match_value))
     |> maybe_put("replacement", replacement)
     |> Map.drop(["trigger", "replacement_text"])
   end
@@ -356,14 +350,14 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
     end
   end
 
-  defp trigger_pattern(trigger) when is_binary(trigger) do
+  defp stream_match_from_trigger(trigger) when is_binary(trigger) do
     case trigger_contains_parts(trigger) do
-      {token, _source} -> token_pattern(token)
-      nil -> nil
+      {token, _source} -> {"regex", token_pattern(token)}
+      nil -> {"regex", trigger}
     end
   end
 
-  defp trigger_pattern(_trigger), do: nil
+  defp stream_match_from_trigger(_trigger), do: {nil, nil}
 
   defp request_match_from_trigger(trigger) when is_binary(trigger) do
     case trigger_contains_parts(trigger) do

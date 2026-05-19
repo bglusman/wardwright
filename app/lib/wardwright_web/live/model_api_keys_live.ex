@@ -22,8 +22,7 @@ defmodule WardwrightWeb.ModelApiKeysLive do
         {:noreply, assign_state(socket, selected_model: model, created_key: key)}
 
       _ ->
-        {:noreply,
-         assign_state(socket, selected_model: model, error: "Could not create API key.")}
+        {:noreply, assign_state(socket, selected_model: model, error: "Could not create API key.")}
     end
   end
 
@@ -31,14 +30,12 @@ defmodule WardwrightWeb.ModelApiKeysLive do
   def handle_event("revoke-key", %{"id" => id}, socket) do
     _ = Wardwright.ModelApiKeyStore.revoke(id)
 
-    {:noreply,
-     assign_state(socket, selected_model: socket.assigns.model, status: "API key revoked.")}
+    {:noreply, assign_state(socket, selected_model: socket.assigns.model, status: "API key revoked.")}
   end
 
   @impl true
   def handle_event("select-model", %{"model" => model}, socket) do
-    {:noreply,
-     push_patch(socket, to: "/admin/model-api-keys?model=#{URI.encode_www_form(model)}")}
+    {:noreply, push_patch(socket, to: "/admin/model-api-keys?model=#{URI.encode_www_form(model)}")}
   end
 
   @impl true
@@ -54,8 +51,7 @@ defmodule WardwrightWeb.ModelApiKeysLive do
 
     case Wardwright.put_model_config(updated_config) do
       {:ok, _config} ->
-        {:noreply,
-         assign_state(socket, selected_model: socket.assigns.model, status: "Model access saved.")}
+        {:noreply, assign_state(socket, selected_model: socket.assigns.model, status: "Model access saved.")}
 
       {:error, message} ->
         {:noreply, assign_state(socket, selected_model: socket.assigns.model, error: message)}

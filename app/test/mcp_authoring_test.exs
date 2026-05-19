@@ -1,11 +1,20 @@
 defmodule Wardwright.MCPAuthoringTest do
   use ExUnit.Case, async: false
+
+  import Phoenix.ConnTest
   import Plug.Conn
   import Plug.Test
-  import Phoenix.ConnTest
 
   alias Hermes.Server.Frame
   alias Hermes.Server.Response
+  alias WardwrightWeb.MCP.Tools.DeleteDuneSnippet
+  alias WardwrightWeb.MCP.Tools.DraftWardwrightModel
+  alias WardwrightWeb.MCP.Tools.EvaluateDuneSnippet
+  alias WardwrightWeb.MCP.Tools.ExplainProjection
+  alias WardwrightWeb.MCP.Tools.ListDuneSnippets
+  alias WardwrightWeb.MCP.Tools.ProposeRuleChange
+  alias WardwrightWeb.MCP.Tools.SaveDuneSnippet
+  alias WardwrightWeb.MCP.Tools.ValidatePolicyArtifact
 
   @endpoint WardwrightWeb.Endpoint
 
@@ -58,7 +67,7 @@ defmodule Wardwright.MCPAuthoringTest do
 
   test "projection tool returns deterministic projection payloads" do
     assert {:reply, %Response{} = response, %Frame{}} =
-             WardwrightWeb.MCP.Tools.ExplainProjection.execute(
+             ExplainProjection.execute(
                %{"pattern_id" => "tts-retry"},
                Frame.new()
              )
@@ -69,7 +78,7 @@ defmodule Wardwright.MCPAuthoringTest do
 
   test "projection tool fails closed for unknown policy patterns" do
     assert {:error, error, %Frame{}} =
-             WardwrightWeb.MCP.Tools.ExplainProjection.execute(
+             ExplainProjection.execute(
                %{"pattern_id" => "not-real"},
                Frame.new()
              )
@@ -81,7 +90,7 @@ defmodule Wardwright.MCPAuthoringTest do
 
   test "validation tool reuses the artifact validator contract" do
     assert {:reply, %Response{} = response, %Frame{}} =
-             WardwrightWeb.MCP.Tools.ValidatePolicyArtifact.execute(%{}, Frame.new())
+             ValidatePolicyArtifact.execute(%{}, Frame.new())
 
     assert response.structured_content["schema"] == "wardwright.policy_validation.v1"
     assert response.structured_content["source"] == "current_config"
@@ -98,7 +107,7 @@ defmodule Wardwright.MCPAuthoringTest do
     end)
 
     assert {:reply, %Response{} = list_response, %Frame{}} =
-             WardwrightWeb.MCP.Tools.ListDuneSnippets.execute(%{}, Frame.new())
+             ListDuneSnippets.execute(%{}, Frame.new())
 
     assert Enum.any?(
              list_response.structured_content["data"],
@@ -106,16 +115,16 @@ defmodule Wardwright.MCPAuthoringTest do
            )
 
     assert {:reply, %Response{} = eval_response, %Frame{}} =
-             WardwrightWeb.MCP.Tools.EvaluateDuneSnippet.execute(
+             EvaluateDuneSnippet.execute(
                %{
+                 "input" => %{"risk" => "high"},
                  "source" => """
                  if input["risk"] == "high" do
                    %{"action" => "require_review", "reason" => "high risk"}
                  else
                    %{"action" => "allow", "reason" => "low risk"}
                  end
-                 """,
-                 "input" => %{"risk" => "high"}
+                 """
                },
                Frame.new()
              )
@@ -127,7 +136,7 @@ defmodule Wardwright.MCPAuthoringTest do
            ]) == "require_review"
 
     assert {:reply, %Response{} = save_response, %Frame{}} =
-             WardwrightWeb.MCP.Tools.SaveDuneSnippet.execute(
+             SaveDuneSnippet.execute(
                %{
                  "id" => "workspace.high-risk-review",
                  "source" => """
@@ -145,10 +154,10 @@ defmodule Wardwright.MCPAuthoringTest do
              "workspace.high-risk-review"
 
     assert {:reply, %Response{} = saved_eval_response, %Frame{}} =
-             WardwrightWeb.MCP.Tools.EvaluateDuneSnippet.execute(
+             EvaluateDuneSnippet.execute(
                %{
-                 "snippet_id" => "workspace.high-risk-review",
-                 "input" => %{"risk" => "high"}
+                 "input" => %{"risk" => "high"},
+                 "snippet_id" => "workspace.high-risk-review"
                },
                Frame.new()
              )
@@ -160,7 +169,7 @@ defmodule Wardwright.MCPAuthoringTest do
            ]) == "require_review"
 
     assert {:reply, %Response{} = delete_response, %Frame{}} =
-             WardwrightWeb.MCP.Tools.DeleteDuneSnippet.execute(
+             DeleteDuneSnippet.execute(
                %{"snippet_id" => "workspace.high-risk-review"},
                Frame.new()
              )
@@ -170,18 +179,18 @@ defmodule Wardwright.MCPAuthoringTest do
 
   test "draft Wardwright model tool returns a callable model artifact" do
     assert {:reply, %Response{} = response, %Frame{}} =
-             WardwrightWeb.MCP.Tools.DraftWardwrightModel.execute(
+             DraftWardwrightModel.execute(
                %{
                  "model_id" => "mcp-router",
-                 "targets" => [
-                   %{"model" => "local/small", "context_window" => 1024},
-                   %{"model" => "managed/large", "context_window" => 128_000}
-                 ],
                  "route" => %{
-                   "type" => "dispatcher",
                    "id" => "dispatcher.context-fit",
-                   "models" => ["local/small", "managed/large"]
-                 }
+                   "models" => ["local/small", "managed/large"],
+                   "type" => "dispatcher"
+                 },
+                 "targets" => [
+                   %{"context_window" => 1024, "model" => "local/small"},
+                   %{"context_window" => 128_000, "model" => "managed/large"}
+                 ]
                },
                Frame.new()
              )
@@ -197,14 +206,14 @@ defmodule Wardwright.MCPAuthoringTest do
 
   test "propose rule change tool returns a draft-only proposal" do
     assert {:reply, %Response{} = response, %Frame{}} =
-             WardwrightWeb.MCP.Tools.ProposeRuleChange.execute(
+             ProposeRuleChange.execute(
                %{
-                 "operation" => "append_rule",
                  "collection" => "stream_rules",
+                 "operation" => "append_rule",
                  "rule" => %{
+                   "action" => "retry_with_reminder",
                    "id" => "retry-old-client",
                    "pattern" => "OldClient(",
-                   "action" => "retry_with_reminder",
                    "reminder" => "Use NewClient instead."
                  }
                },
@@ -224,13 +233,13 @@ defmodule Wardwright.MCPAuthoringTest do
       |> post(
         "/mcp",
         Jason.encode!(%{
-          "jsonrpc" => "2.0",
           "id" => 1,
+          "jsonrpc" => "2.0",
           "method" => "initialize",
           "params" => %{
-            "protocolVersion" => "2025-03-26",
             "capabilities" => %{},
-            "clientInfo" => %{"name" => "wardwright-test", "version" => "0"}
+            "clientInfo" => %{"name" => "wardwright-test", "version" => "0"},
+            "protocolVersion" => "2025-03-26"
           }
         })
       )
@@ -266,8 +275,8 @@ defmodule Wardwright.MCPAuthoringTest do
       |> post(
         "/mcp",
         Jason.encode!(%{
-          "jsonrpc" => "2.0",
           "id" => 2,
+          "jsonrpc" => "2.0",
           "method" => "tools/list",
           "params" => %{}
         })

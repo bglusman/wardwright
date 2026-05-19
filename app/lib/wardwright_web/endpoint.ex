@@ -3,7 +3,9 @@ defmodule WardwrightWeb.Endpoint do
 
   use Phoenix.Endpoint, otp_app: :wardwright
 
-  socket("/live", Phoenix.LiveView.Socket)
+  alias Phoenix.LiveView.Socket
+
+  socket("/live", Socket)
 
   plug(Plug.Static,
     at: "/",
@@ -36,6 +38,10 @@ defmodule WardwrightWeb.Endpoint do
     key: "_wardwright_key",
     signing_salt: "policy projection"
   )
+
+  if Code.ensure_loaded?(Tidewave) do
+    plug(Tidewave)
+  end
 
   plug(WardwrightWeb.Router)
 end
