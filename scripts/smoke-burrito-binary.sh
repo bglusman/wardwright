@@ -66,6 +66,7 @@ if [ "$ready" -ne 1 ]; then
 fi
 
 curl -fsS "${BASE_URL}/" >/dev/null
+curl -fsS "${BASE_URL}/admin" | grep -q "lustre-server-component"
 curl -fsS "${BASE_URL}/v1/models" | grep -q "coding-balanced"
 curl -fsS "${BASE_URL}/v1/wardwright/models" | grep -q "coding-balanced"
 curl -fsS "${BASE_URL}/v1/chat/completions" \
@@ -73,7 +74,16 @@ curl -fsS "${BASE_URL}/v1/chat/completions" \
   -d '{"model":"coding-balanced","messages":[{"role":"user","content":"burrito smoke"}]}' |
   grep -q '"status":"completed"'
 
-if grep -q "UndefinedFunctionError" "$LOG_FILE"; then
+for beam in "gleam@erlang@process" "gleam@json" gleam_stdlib glizzy lustre; do
+  if ! find "$INSTALL_DIR/lib" -maxdepth 3 -path "*/ebin/${beam}.beam" -print -quit | grep -q .; then
+    echo "packaged release missing ${beam}.beam in $INSTALL_DIR/lib" >&2
+    find "$INSTALL_DIR/lib" -maxdepth 3 -type f -name "${beam}.beam" -print >&2
+    cat "$LOG_FILE" >&2
+    exit 1
+  fi
+done
+
+if grep -Eq "UndefinedFunctionError|\\{:undef|:undef" "$LOG_FILE"; then
   cat "$LOG_FILE" >&2
   exit 1
 fi

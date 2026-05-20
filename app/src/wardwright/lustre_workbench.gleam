@@ -1560,6 +1560,8 @@ pub fn styles() -> String {
   }
   .editor textarea, textarea, select, input {
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
     border: 1px solid var(--input);
     border-radius: 8px;
     background: #fff;
@@ -1574,6 +1576,8 @@ pub fn styles() -> String {
   }
   select {
     min-height: 42px;
+    overflow: hidden;
+    text-overflow: ellipsis;
     padding: 8px 34px 8px 10px;
   }
   input {
@@ -1704,6 +1708,9 @@ pub fn styles() -> String {
   }
   .policy-table, .state-table {
     grid-column: 1 / -1;
+    width: 100%;
+    max-width: 100%;
+    table-layout: fixed;
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -1716,6 +1723,7 @@ pub fn styles() -> String {
     border-bottom: 1px solid var(--border);
     padding: 10px;
     vertical-align: top;
+    overflow-wrap: anywhere;
   }
   th {
     background: #eef3f5;
@@ -1750,6 +1758,7 @@ pub fn styles() -> String {
     .topbar, .form-header, .trace-header, .turn-grid, .results, .state-edge, .simulator-toolbar, .graph-toolbar, .fixture-save {
       grid-template-columns: 1fr;
       flex-direction: column;
+      min-width: 0;
     }
   }
   "

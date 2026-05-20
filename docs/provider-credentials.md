@@ -7,7 +7,7 @@ description: How Wardwright resolves provider API credentials and the security l
 # Provider Credentials
 
 Wardwright can call local Ollama targets without credentials and
-OpenAI-compatible targets with bearer-token credentials. In `v0.0.9`, credential
+OpenAI-compatible targets with bearer-token credentials. In `v0.0.10`, credential
 configuration is still local-operator oriented, but model calls can now be
 separately protected with Wardwright model API keys. That makes local and
 single-operator remote testing more realistic, but it is not yet a complete
@@ -130,7 +130,7 @@ Internal-only models do not appear in public model discovery and cannot be
 called directly without a future explicit composition path. They are useful for
 building model DAGs without exposing every intermediate model to agents.
 
-For `v0.0.9`:
+For `v0.0.10`:
 
 - keep Wardwright bound to `127.0.0.1` unless it is behind a trusted network or
   application auth boundary;

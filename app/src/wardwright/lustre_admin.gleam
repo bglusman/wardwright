@@ -140,5 +140,10 @@ fn styles() -> String {
     background: var(--background);
     color: var(--foreground);
   }
+  @media (max-width: 860px) {
+    .admin-app {
+      grid-template-columns: 1fr;
+    }
+  }
   "
 }

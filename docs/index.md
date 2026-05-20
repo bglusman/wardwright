@@ -23,10 +23,10 @@ description: LLM model middleware, governance, and receipts for agentic workflow
 
 <div class="notice">
   <strong>Status:</strong> Wardwright is early but installable. The published
-  <code>v0.0.9</code> release ships native macOS and Linux artifacts, a
+  <code>v0.0.10</code> release ships native macOS and Linux artifacts, a
   Homebrew formula, an OpenAI-compatible gateway, a model-aware policy
-  workbench, saved simulator test cases, and an experimental in-page authoring
-  assistant.
+  workbench, saved simulator test cases, and a legacy experimental in-page
+  authoring assistant.
 </div>
 
 ## Install
