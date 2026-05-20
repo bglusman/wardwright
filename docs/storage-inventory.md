@@ -7,7 +7,9 @@ description: Durable and ephemeral Wardwright runtime stores.
 # Storage Inventory
 
 Wardwright currently uses one configurable SQLite store plus a few runtime
-stores with narrower durability contracts.
+stores with narrower durability contracts. SQLite is an operator/admin
+artifact store in this design, not the live coordination plane for active
+agent execution.
 
 ## SQLite Store
 
@@ -25,6 +27,17 @@ Receipts are still held in memory while the process is running for fast replay
 and list filtering, but the source record is inserted into SQLite when the
 store is enabled and loaded back on receipt-store startup or storage
 reconfiguration.
+
+This global receipt table is a v0 debugger convenience. It is appropriate for
+local use, admin review, and low-rate receipt snapshots. It should not become
+the default sink for high-rate live agent transcript data.
+
+Full-session VCR capture should grow toward session-scoped artifacts: one
+serial capture bundle per agent/session, optionally indexed by the admin SQLite
+store for discovery. A session-scoped file keeps the write path naturally
+serialized, makes sensitive captures easier to delete or move as a unit, and
+avoids pretending that one global SQLite database is the right live-data bus for
+parallel agents.
 
 ## Scenario Fixtures
 
@@ -50,7 +63,9 @@ These stores are intentionally ephemeral for now:
 
 Durability for these should be added only when there is a clear replay or
 operator workflow that needs it. They should not move to SQLite just because
-they are process-local.
+they are process-local. If a live workflow needs capture, prefer a
+session-scoped append-only artifact first and import/index it through the admin
+layer after the fact.
 
 ## Gleam Boundary
 
