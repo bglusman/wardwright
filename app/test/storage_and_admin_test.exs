@@ -16,6 +16,7 @@ defmodule Wardwright.StorageAndAdminTest do
              "kind" => "memory",
              "migration_version" => 1,
              "read_health" => "ok",
+             "receipt_count" => 0,
              "write_health" => "ok"
            }
   end
@@ -101,6 +102,7 @@ defmodule Wardwright.StorageAndAdminTest do
     assert body["contract_version"] == "storage-contract-v0"
     assert body["migration_version"] == 1
     assert body["read_health"] == "ok"
+    assert body["capabilities"]["durable"] == false
     assert body["write_health"] == "ok"
   end
 
@@ -185,6 +187,34 @@ defmodule Wardwright.StorageAndAdminTest do
     assert {:ok, [^record]} = Wardwright.SQLiteStore.list_api_keys("coding-balanced")
     assert {:ok, {:ok, 1}} = Wardwright.SQLiteStore.delete_api_key("key_test")
     assert {:ok, []} = Wardwright.SQLiteStore.list_api_keys("coding-balanced")
+  end
+
+  test "sqlite store persists receipts for debugger replay across receipt store reloads" do
+    path = temp_sqlite_path("wardwright-receipts")
+    original_path = Application.get_env(:wardwright, :sqlite_store_path)
+
+    Application.put_env(:wardwright, :sqlite_store_path, path)
+
+    on_exit(fn ->
+      Wardwright.ReceiptStore.configure_storage(:memory)
+      restore_app_env(:sqlite_store_path, original_path)
+      remove_sqlite_store(path)
+    end)
+
+    assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:sqlite)
+    receipt = receipt_fixture("rcpt_sqlite", 1_800_000_123, "agent-sqlite")
+
+    Wardwright.ReceiptStore.insert(receipt)
+    assert Wardwright.ReceiptStore.get("rcpt_sqlite")["receipt_id"] == "rcpt_sqlite"
+    assert Wardwright.ReceiptStore.health()["kind"] == "sqlite"
+    assert Wardwright.ReceiptStore.health()["capabilities"]["durable"] == true
+
+    assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:memory)
+    assert Wardwright.ReceiptStore.get("rcpt_sqlite") == nil
+
+    assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:sqlite)
+    assert Wardwright.ReceiptStore.get("rcpt_sqlite")["receipt_id"] == "rcpt_sqlite"
+    assert Enum.map(Wardwright.ReceiptStore.list(%{}, 10), & &1["receipt_id"]) == ["rcpt_sqlite"]
   end
 
   test "sqlite store rejects configured encryption when SQLCipher is unavailable" do

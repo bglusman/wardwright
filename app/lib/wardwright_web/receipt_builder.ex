@@ -255,6 +255,8 @@ defmodule WardwrightWeb.ReceiptBuilder do
   end
 
   defp policy_vcr(status, request, decision, called_provider, policy, config) do
+    vcr_mode = Wardwright.vcr_mode(config)
+
     %{
       "decision" => %{
         "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
@@ -275,6 +277,7 @@ defmodule WardwrightWeb.ReceiptBuilder do
         "strategy" => decision.combine_strategy
       },
       "final" => %{"status" => status},
+      "mode" => vcr_mode,
       "policy" => %{
         "actions" => policy["actions"],
         "alert_count" => policy["alert_count"],
@@ -287,12 +290,27 @@ defmodule WardwrightWeb.ReceiptBuilder do
       },
       "provider" => %{"called_provider" => called_provider},
       "recorded_at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(),
-      "redaction" => "metadata_only",
+      "redaction" => vcr_redaction(vcr_mode),
       "request" => sanitized_request(request, decision, policy, config),
       "route" => route_vcr(decision),
       "schema" => @vcr_schema
     }
+    |> put_full_session_request(vcr_mode, request)
   end
+
+  defp vcr_redaction("full_session"), do: "full_session"
+  defp vcr_redaction(_mode), do: "metadata_only"
+
+  defp put_full_session_request(vcr, "full_session", request) do
+    Map.put(vcr, "full_session", %{
+      "request" => %{
+        "body" => request,
+        "recorded_at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+      }
+    })
+  end
+
+  defp put_full_session_request(vcr, _mode, _request), do: vcr
 
   defp route_vcr(decision) do
     %{
@@ -369,11 +387,43 @@ defmodule WardwrightWeb.ReceiptBuilder do
         vcr
         |> Map.put("provider", provider_vcr)
         |> put_in(["final", "status"], provider.status)
+        |> put_full_session_response(provider, receipt)
 
       other ->
         other
     end)
   end
+
+  defp put_full_session_response(%{"mode" => "full_session"} = vcr, provider, receipt) do
+    response_content = full_session_response_content(provider, receipt)
+    response_message = Map.get(provider, :response_message) || %{"content" => response_content, "role" => "assistant"}
+
+    response =
+      %{
+        "content" => response_content,
+        "provider_error" => provider.error,
+        "provider_metadata" => Map.get(provider, :provider_metadata),
+        "response_message" => response_message,
+        "status" => provider.status
+      }
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Map.new()
+
+    put_in(vcr, ["full_session", "response"], response)
+  end
+
+  defp put_full_session_response(vcr, _provider, _receipt), do: vcr
+
+  defp full_session_response_content(%{content: content}, _receipt) when is_binary(content), do: content
+
+  defp full_session_response_content(%{mock: true}, receipt) do
+    selected_model = get_in(receipt, ["decision", "selected_model"])
+    estimated_prompt_tokens = get_in(receipt, ["decision", "estimated_prompt_tokens"])
+
+    "Mock Wardwright response routed to #{selected_model}. Estimated prompt tokens: #{estimated_prompt_tokens}."
+  end
+
+  defp full_session_response_content(_provider, _receipt), do: nil
 
   def sink_usage(receipt) do
     %{

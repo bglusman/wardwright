@@ -1116,7 +1116,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       <section class="panel model_access" aria-label="Model and agent access">
         <div class="panel_header">
           <div>
-            <h2>Model Access</h2>
+            <h2>Model Configuration</h2>
             <p>Use these OpenAI-compatible endpoints and model IDs when pointing a local agent at Wardwright.</p>
           </div>
         </div>

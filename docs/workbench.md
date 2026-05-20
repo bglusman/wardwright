@@ -18,11 +18,14 @@ Loopback access is allowed by default. If the workbench is exposed beyond local
 operator access, set `BASIC_AUTH_PASSWORD`; the Basic Auth username is always
 `admin`.
 
-The Model Access view is part of the same protected `/admin` shell. It can
+The Model Configuration view is part of the same protected `/admin` shell. It can
 select any registered model, generate and revoke model-scoped API keys for it,
-and edit whether that model is keyed or unkeyed. Those keys authorize model
-calls only when the model artifact sets `requires_api_key` to `true`; unkeyed
-models remain public or composition-only according to `auth.unkeyed_model_access`.
+edit whether that model is keyed or unkeyed, and choose the model-scoped VCR
+recording mode. Those keys authorize model calls only when the model artifact
+sets `requires_api_key` to `true`; unkeyed models remain public or
+composition-only according to `auth.unkeyed_model_access`. VCR recording is
+metadata-only by default; `vcr.mode: full_session` is an explicit debugging mode
+that stores full request and provider response payloads in receipts.
 
 The deterministic model artifact remains the source of truth. The workbench is
 the review surface for understanding how that artifact compiles into routes,
@@ -53,15 +56,16 @@ The policy projection selector lives with the state-machine graph because it
 controls the projection, possible transitions, trace evidence, and fixture list
 for the selected model.
 
-## Model Access
+## Model Configuration
 
-The Model Access page uses the same operator shell. It is intentionally paired
-with the workbench because it controls whether a registered model can be called
-directly without a model-scoped API key.
+The Model Configuration page uses the same operator shell. It is intentionally
+paired with the workbench because it controls whether a registered model can be
+called directly without a model-scoped API key and whether receipts capture
+metadata-only or full-session VCR payloads.
 
 <figure>
   <img src="assets/workbench/model-access-controls.png" alt="Wardwright model access page showing keyed and unkeyed access controls for a selected model">
-  <figcaption>Model Access separates keyed model calls from unkeyed public or composition-only access, and exposes model-scoped key creation and revocation.</figcaption>
+  <figcaption>Model Configuration separates keyed model calls from unkeyed public or composition-only access, exposes model-scoped key creation and revocation, and makes full-session VCR capture an explicit opt-in.</figcaption>
 </figure>
 
 ## Local Models
@@ -90,7 +94,7 @@ wardwright tools --json
 
 `wardwright admin` opens the workbench and starts a local background service
 first if the configured bind port is not already responding. `wardwright admin
-access` opens Model Access directly. The default workbench includes a Model
+access` opens Model Configuration directly. The default workbench includes a Model
 authoring panel that sends the current model and projection context through the
 same assistant boundary used by the protected policy-authoring API and the MCP
 endpoint mounted at `/mcp`. Point a local agent at the Wardwright service, let

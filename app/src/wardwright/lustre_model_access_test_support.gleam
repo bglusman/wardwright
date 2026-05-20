@@ -66,6 +66,24 @@ pub fn saving_access_updates_mode(
   |> view_contains(expected_text)
 }
 
+pub fn saving_vcr_mode_updates_model(
+  model_id: String,
+  vcr_mode: String,
+  expected_text: String,
+) -> Bool {
+  start()
+  |> change_select("model", model_id)
+  |> simulate.submit(
+    on: query.element(matching: query.id("model-access-form")),
+    fields: [
+      #("requires_api_key", "false"),
+      #("unkeyed_access", "public"),
+      #("vcr_mode", vcr_mode),
+    ],
+  )
+  |> view_contains(expected_text)
+}
+
 pub fn selecting_keyed_mode_hides_unkeyed_options() -> Bool {
   let simulation =
     start()

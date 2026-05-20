@@ -23,6 +23,7 @@ pub type Model {
     model_id: String,
     requires_api_key: Bool,
     unkeyed_access: String,
+    vcr_mode: String,
     keys: List(KeyOption),
     key_label: String,
     created_key: String,
@@ -35,6 +36,7 @@ pub type Msg {
   ModelChanged(String)
   AccessModeChanged(String)
   UnkeyedAccessChanged(String)
+  VcrModeChanged(String)
   KeyLabelChanged(String)
   CreateKey(List(#(String, String)))
   RevokeKey(String)
@@ -48,7 +50,9 @@ fn external_default_model_id() -> String
 fn external_model_options() -> List(ModelOption)
 
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "access_summary")
-fn external_access_summary(model_id: String) -> #(String, Bool, String, Int)
+fn external_access_summary(
+  model_id: String,
+) -> #(String, Bool, String, Int, String)
 
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "key_options")
 fn external_key_options(model_id: String) -> List(KeyOption)
@@ -67,6 +71,7 @@ fn external_save_access(
   model_id: String,
   requires_api_key: Bool,
   unkeyed_access: String,
+  vcr_mode: String,
 ) -> #(Bool, String)
 
 pub fn component() {
@@ -89,6 +94,8 @@ pub fn update(model: Model, msg: Msg) -> Model {
     AccessModeChanged(mode) -> Model(..model, requires_api_key: mode == "true")
 
     UnkeyedAccessChanged(access) -> Model(..model, unkeyed_access: access)
+
+    VcrModeChanged(mode) -> Model(..model, vcr_mode: mode)
 
     KeyLabelChanged(label) -> Model(..model, key_label: label)
 
@@ -123,8 +130,15 @@ pub fn update(model: Model, msg: Msg) -> Model {
       let unkeyed_access =
         field_value(fields, "unkeyed_access", model.unkeyed_access)
 
+      let vcr_mode = field_value(fields, "vcr_mode", model.vcr_mode)
+
       let #(ok, message) =
-        external_save_access(model.model_id, requires_api_key, unkeyed_access)
+        external_save_access(
+          model.model_id,
+          requires_api_key,
+          unkeyed_access,
+          vcr_mode,
+        )
 
       case ok {
         True -> load_model(model.model_id, message, "", "")
@@ -140,13 +154,14 @@ fn load_model(
   error: String,
   created_key: String,
 ) -> Model {
-  let #(model_id, requires_api_key, unkeyed_access, _) =
+  let #(model_id, requires_api_key, unkeyed_access, _, vcr_mode) =
     external_access_summary(requested_model_id)
 
   Model(
     model_id:,
     requires_api_key:,
     unkeyed_access:,
+    vcr_mode:,
     keys: external_key_options(model_id),
     key_label: "",
     created_key:,
@@ -185,11 +200,11 @@ pub fn workspace(model: Model) -> Element(Msg) {
   html.main([class("workspace")], [
     html.header([class("topbar")], [
       html.div([], [
-        html.p([class("eyebrow")], [text("Access control")]),
-        html.h1([], [text("Model Access")]),
+        html.p([class("eyebrow")], [text("Model control")]),
+        html.h1([], [text("Model Configuration")]),
         html.p([], [
           text(
-            "Choose a Wardwright model, then configure API-key requirements and unkeyed access.",
+            "Choose a Wardwright model, then configure access and debugging capture.",
           ),
         ]),
       ]),
@@ -216,6 +231,8 @@ pub fn sidebar_controls(model: Model) -> List(Element(Msg)) {
           False -> model.unkeyed_access
         }),
       ]),
+      html.span([], [text("VCR")]),
+      html.code([], [text(vcr_mode_label(model.vcr_mode))]),
     ]),
   ]
 }
@@ -223,7 +240,7 @@ pub fn sidebar_controls(model: Model) -> List(Element(Msg)) {
 fn sidebar(model: Model) -> Element(Msg) {
   lustre_shell.sidebar(
     lustre_shell.ModelAccess,
-    "Model access",
+    "Model configuration",
     sidebar_controls(model),
   )
 }
@@ -301,6 +318,7 @@ fn model_summary(model: Model) -> Element(Msg) {
         False -> "Unkeyed"
       }),
       metric("Unkeyed access", model.unkeyed_access),
+      metric("VCR", vcr_mode_label(model.vcr_mode)),
       metric("Keys", int.to_string(list.length(model.keys))),
     ]),
   ])
@@ -376,12 +394,42 @@ fn access_policy_editor(model: Model) -> Element(Msg) {
             ]),
           ]),
         ]),
+        debug_recording_options(model),
         button.button([button.variant(button.Default), type_("submit")], [
-          text("Save access policy"),
+          text("Save model configuration"),
         ]),
       ],
     ),
   ])
+}
+
+fn debug_recording_options(model: Model) -> Element(Msg) {
+  html.fieldset([], [
+    html.legend([], [text("Debug recording")]),
+    radio_card(
+      "vcr_mode",
+      "metadata_only",
+      model.vcr_mode == "metadata_only",
+      "Metadata only",
+      "Default receipt VCR. Stores roles, lengths, policy facts, and route facts without prompt or completion text.",
+      VcrModeChanged,
+    ),
+    radio_card(
+      "vcr_mode",
+      "full_session",
+      model.vcr_mode == "full_session",
+      "Full session",
+      "Opt-in capture for replay investigations. Stores full request and provider response payloads in receipts.",
+      VcrModeChanged,
+    ),
+  ])
+}
+
+fn vcr_mode_label(mode: String) -> String {
+  case mode {
+    "full_session" -> "Full session"
+    _ -> "Metadata only"
+  }
 }
 
 fn unkeyed_access_options(model: Model) -> Element(Msg) {

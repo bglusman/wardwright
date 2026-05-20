@@ -382,9 +382,11 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert conn.resp_body =~ "page=model_access"
     refute conn.resp_body =~ "live_socket"
 
-    assert :wardwright@lustre_model_access_test_support.initial_view_contains("Model Access")
+    assert :wardwright@lustre_model_access_test_support.initial_view_contains("Model Configuration")
     assert :wardwright@lustre_model_access_test_support.initial_view_contains("coding-balanced")
     assert :wardwright@lustre_model_access_test_support.initial_view_contains("Access Policy")
+    assert :wardwright@lustre_model_access_test_support.initial_view_contains("Debug recording")
+    assert :wardwright@lustre_model_access_test_support.initial_view_contains("Metadata only")
     assert :wardwright@lustre_model_access_test_support.initial_view_contains("Legacy workbench (deprecated)")
 
     assert :wardwright@lustre_model_access_test_support.initial_view_contains(
@@ -421,7 +423,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
              "coding-balanced",
              "false",
              "internal",
-             "Model access saved."
+             "Model configuration saved."
            )
 
     refute Wardwright.model_requires_api_key?()
@@ -470,7 +472,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
              "alpha-access",
              "true",
              "internal",
-             "Model access saved."
+             "Model configuration saved."
            )
 
     assert {:ok, alpha_config} = Wardwright.model_config("alpha-access")
@@ -480,6 +482,18 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert Wardwright.unkeyed_model_access(alpha_config) == "internal"
     refute Wardwright.model_requires_api_key?(beta_config)
     assert Wardwright.unkeyed_model_access(beta_config) == "public"
+  end
+
+  test "model configuration page opts a model into full-session VCR capture" do
+    assert Wardwright.vcr_mode() == "metadata_only"
+
+    assert :wardwright@lustre_model_access_test_support.saving_vcr_mode_updates_model(
+             "coding-balanced",
+             "full_session",
+             "Full session"
+           )
+
+    assert Wardwright.vcr_mode() == "full_session"
   end
 
   test "LiveView client assets are served without an npm build step" do
@@ -504,7 +518,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "wardwright admin"
     assert html =~ "Registered model workbench"
     assert html =~ "Selecting a model leaves example preview"
-    assert html =~ "Model Access"
+    assert html =~ "Model Configuration"
     assert html =~ "href=\"/admin?view=model_access\""
     assert html =~ "/v1/chat/completions"
     assert html =~ "coding-balanced"

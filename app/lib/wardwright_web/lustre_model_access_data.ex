@@ -23,8 +23,9 @@ defmodule WardwrightWeb.LustreModelAccessData do
     model = config["model_id"] || model_id || default_model_id()
     requires_api_key = Wardwright.model_requires_api_key?(config)
     unkeyed_access = Wardwright.unkeyed_model_access(config)
+    vcr_mode = Wardwright.vcr_mode(config)
 
-    {model, requires_api_key, unkeyed_access, length(Wardwright.ModelApiKeyStore.list(model))}
+    {model, requires_api_key, unkeyed_access, length(Wardwright.ModelApiKeyStore.list(model)), vcr_mode}
   end
 
   def key_options(model_id) do
@@ -61,16 +62,17 @@ defmodule WardwrightWeb.LustreModelAccessData do
     end
   end
 
-  def save_access(model_id, requires_api_key, unkeyed_model_access) do
+  def save_access(model_id, requires_api_key, unkeyed_model_access, vcr_mode) do
     config = selected_config(model_id)
 
     updated_config =
       config
       |> Map.put("requires_api_key", requires_api_key)
       |> Map.put("auth", %{"unkeyed_model_access" => unkeyed_model_access})
+      |> Map.put("vcr", %{"mode" => vcr_mode})
 
     case Wardwright.put_model_config(updated_config) do
-      {:ok, _config} -> {true, "Model access saved."}
+      {:ok, _config} -> {true, "Model configuration saved."}
       {:error, message} -> {false, message}
     end
   end

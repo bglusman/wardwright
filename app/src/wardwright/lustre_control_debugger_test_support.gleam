@@ -33,11 +33,13 @@ pub fn replaying_receipt_shows_facts(
   let simulation =
     start()
     |> input("control_receipt_id_text", receipt_id)
-    |> click_button("Replay receipt")
+    |> click_button("Explain receipt")
 
-  view_contains(simulation, "without calling a provider")
+  view_contains(simulation, "Replay did not call a provider")
   && view_contains(simulation, expected_status)
   && view_contains(simulation, expected_model)
+  && view_contains(simulation, "Replay provider call")
+  && view_contains(simulation, "Original provider")
 }
 
 pub fn receipt_text_input_is_controlled(receipt_id: String) -> Bool {

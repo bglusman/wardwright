@@ -18,6 +18,9 @@ type PatternOption =
 type ReceiptOption =
   #(String, String, String, String)
 
+type ReplayFact =
+  #(String, String)
+
 pub type Model {
   Model(
     receipt_id: String,
@@ -28,9 +31,7 @@ pub type Model {
     imported_fixture_id: String,
     replay_status: String,
     replay_error: String,
-    replay_schema: String,
-    replay_original_status: String,
-    replay_selected_model: String,
+    replay_facts: List(ReplayFact),
   )
 }
 
@@ -64,7 +65,7 @@ fn external_import_receipt_scenario(
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "replay_receipt")
 fn external_replay_receipt(
   receipt_id: String,
-) -> #(Bool, String, String, String, String)
+) -> #(Bool, String, List(ReplayFact))
 
 pub fn component() {
   lustre.simple(init, update, view)
@@ -80,9 +81,7 @@ pub fn init(_flags: Nil) -> Model {
     imported_fixture_id: "",
     replay_status: "",
     replay_error: "",
-    replay_schema: "",
-    replay_original_status: "",
-    replay_selected_model: "",
+    replay_facts: [],
   )
 }
 
@@ -96,6 +95,7 @@ pub fn update(model: Model, msg: Msg) -> Model {
         import_error: "",
         replay_status: "",
         replay_error: "",
+        replay_facts: [],
       )
 
     PatternChanged(pattern_id) ->
@@ -129,8 +129,7 @@ pub fn update(model: Model, msg: Msg) -> Model {
     }
 
     ReplayReceipt -> {
-      let #(ok, message, schema, original_status, selected_model) =
-        external_replay_receipt(model.receipt_id)
+      let #(ok, message, facts) = external_replay_receipt(model.receipt_id)
 
       case ok {
         True ->
@@ -138,11 +137,15 @@ pub fn update(model: Model, msg: Msg) -> Model {
             ..model,
             replay_status: message,
             replay_error: "",
-            replay_schema: schema,
-            replay_original_status: original_status,
-            replay_selected_model: selected_model,
+            replay_facts: facts,
           )
-        False -> Model(..model, replay_status: "", replay_error: message)
+        False ->
+          Model(
+            ..model,
+            replay_status: "",
+            replay_error: message,
+            replay_facts: [],
+          )
       }
     }
   }
@@ -163,7 +166,7 @@ pub fn workspace(model: Model) -> Element(Msg) {
         html.h1([], [text("Control debugger")]),
         html.p([], [
           text(
-            "Turn recorded receipts into replay evidence and deterministic policy replay without resuming provider calls.",
+            "Explain recorded agent calls, fork the useful evidence, and keep replay separate from provider calls.",
           ),
         ]),
       ]),
@@ -189,7 +192,7 @@ fn receipt_picker(model: Model) -> Element(Msg) {
         html.span([], [text("Recorded receipt")]),
         html.strong([], [text(blank_default(model.receipt_id, "none selected"))]),
       ]),
-      badge.badge([badge.variant(badge.Outline)], [text("metadata only")]),
+      badge.badge([badge.variant(badge.Outline)], [text("receipt VCR")]),
     ]),
     labeled_select(
       "Recent receipt",
@@ -259,7 +262,7 @@ fn replay_card(model: Model) -> Element(Msg) {
     html.div([class("panel-heading")], [
       html.div([], [
         html.span([], [text("VCR replay")]),
-        html.strong([], [text("Deterministic metadata replay")]),
+        html.strong([], [text("Explain what happened")]),
       ]),
       badge.badge([badge.variant(badge.Outline)], [text("no provider call")]),
     ]),
@@ -269,11 +272,11 @@ fn replay_card(model: Model) -> Element(Msg) {
         type_("button"),
         event.on_click(ReplayReceipt),
       ],
-      [text("Replay receipt")],
+      [text("Explain receipt")],
     ),
     html.small([class("debugger-note")], [
       text(
-        "Replay v0 checks the recorded policy, route, and final metadata. Live counterfactual replay is a later contract.",
+        "Replay checks stored policy and route facts. Full-session receipts can also carry payloads for later live or simulated replay.",
       ),
     ]),
     status_text(model.replay_status, model.replay_error),
@@ -282,22 +285,15 @@ fn replay_card(model: Model) -> Element(Msg) {
 }
 
 fn replay_facts(model: Model) -> Element(Msg) {
-  case
-    model.replay_schema == ""
-    && model.replay_original_status == ""
-    && model.replay_selected_model == ""
-  {
-    True -> html.div([], [])
-    False ->
-      html.dl([class("debugger-facts")], [
-        fact("Schema", model.replay_schema),
-        fact("Original status", model.replay_original_status),
-        fact("Selected model", model.replay_selected_model),
-      ])
+  case model.replay_facts {
+    [] -> html.div([], [])
+    facts -> html.dl([class("debugger-facts")], list.map(facts, fact))
   }
 }
 
-fn fact(label: String, value_text: String) -> Element(Msg) {
+fn fact(replay_fact: ReplayFact) -> Element(Msg) {
+  let #(label, value_text) = replay_fact
+
   html.div([], [
     html.dt([], [text(label)]),
     html.dd([], [text(blank_default(value_text, "unknown"))]),

@@ -75,6 +75,7 @@ defmodule Wardwright do
         %{"context_window" => @local_context_window, "model" => @local_model},
         %{"context_window" => @managed_context_window, "model" => @managed_model}
       ],
+      "vcr" => %{"mode" => "metadata_only"},
       "version" => @model_version,
       @description_key => @default_description
     }
@@ -210,6 +211,12 @@ defmodule Wardwright do
 
   def unkeyed_model_access(config \\ current_config()), do: get_in(config, ["auth", "unkeyed_model_access"]) || "public"
 
+  def vcr_mode(config \\ current_config()) do
+    get_in(config, ["vcr", "mode"]) || "metadata_only"
+  end
+
+  def full_session_vcr?(config \\ current_config()), do: vcr_mode(config) == "full_session"
+
   def externally_callable?(config \\ current_config()) do
     model_requires_api_key?(config) or unkeyed_model_access(config) == "public"
   end
@@ -304,6 +311,7 @@ defmodule Wardwright do
       "structured_output" => Map.get(config, "structured_output"),
       "traffic_24h" => 0,
       "unkeyed_model_access" => unkeyed_model_access(config),
+      "vcr" => Map.get(config, "vcr", %{"mode" => "metadata_only"}),
       @description_key => model_description(config)
     }
   end
@@ -324,6 +332,7 @@ defmodule Wardwright do
       "requires_api_key" => model_requires_api_key?(config),
       "route_type" => root_route_type(config),
       "status" => "active",
+      "vcr" => Map.get(config, "vcr", %{"mode" => "metadata_only"}),
       @description_key => model_description(config)
     }
   end
@@ -792,6 +801,7 @@ defmodule Wardwright do
 
           normalized_target |> Enum.reject(fn {_key, value} -> value == "" or value == [] end) |> Map.new()
         end),
+      "vcr" => normalize_vcr(Map.get(config, "vcr", %{})),
       "version" =>
         config
         |> Map.get("version", @model_version)
@@ -898,6 +908,18 @@ defmodule Wardwright do
   end
 
   defp normalize_auth(_), do: %{"unkeyed_model_access" => "public"}
+
+  defp normalize_vcr(config) when is_map(config) do
+    mode =
+      case Map.get(config, "mode", "metadata_only") do
+        value when value in ["metadata_only", "full_session"] -> value
+        _ -> "metadata_only"
+      end
+
+    %{"mode" => mode}
+  end
+
+  defp normalize_vcr(_), do: %{"mode" => "metadata_only"}
 
   defp validate_config(%{"model_id" => model_id, "targets" => targets} = config) do
     cond do

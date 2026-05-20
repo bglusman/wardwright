@@ -71,7 +71,7 @@ defmodule Wardwright.CLI do
       WARDWRIGHT_SECRET_KEY_BASE  Stable Phoenix signing secret for services
       WARDWRIGHT_ADMIN_TOKEN      Optional token for protected local APIs
       BASIC_AUTH_PASSWORD         Optional password for protected operator UI/APIs; user is admin
-      WARDWRIGHT_SQLITE_STORE     Optional SQLite path for models and hashed API keys
+      WARDWRIGHT_SQLITE_STORE     Optional SQLite path for models, hashed API keys, and receipts
       WARDWRIGHT_SQLITE_KEY       Optional SQLCipher key for the SQLite store
       WARDWRIGHT_SQLITE_KEY_FNOX  Optional fnox secret name for the SQLite SQLCipher key
       WARDWRIGHT_MODEL_API_KEY_HASH_SECRET  Optional stable secret for model API key hashes

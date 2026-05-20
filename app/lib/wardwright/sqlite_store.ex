@@ -3,7 +3,7 @@ defmodule Wardwright.SQLiteStore do
 
   alias Exqlite.Sqlite3
 
-  @schema_version 1
+  @schema_version 2
 
   def enabled?, do: not is_nil(store_path())
 
@@ -143,6 +143,89 @@ defmodule Wardwright.SQLiteStore do
     end)
   end
 
+  def list_receipts do
+    with_conn(fn conn ->
+      query_all(
+        conn,
+        """
+        SELECT receipt_json
+        FROM receipts
+        ORDER BY created_at DESC, receipt_id DESC
+        """,
+        []
+      )
+      |> Enum.flat_map(&decode_receipt_row/1)
+    end)
+  end
+
+  def get_receipt(receipt_id) do
+    with_conn(fn conn ->
+      case query_one(conn, "SELECT receipt_json FROM receipts WHERE receipt_id = ?", [receipt_id]) do
+        {:row, [receipt_json]} -> decode_receipt(receipt_json)
+        _other -> nil
+      end
+    end)
+  end
+
+  def insert_receipt(receipt) when is_map(receipt) do
+    now = DateTime.utc_now() |> DateTime.to_iso8601()
+
+    with_conn(fn conn ->
+      exec!(
+        conn,
+        """
+        INSERT INTO receipts (
+          receipt_id,
+          receipt_json,
+          created_at,
+          model_id,
+          model_version,
+          run_id,
+          selected_model,
+          selected_provider,
+          session_id,
+          simulation,
+          status,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(receipt_id) DO UPDATE SET
+          receipt_json = excluded.receipt_json,
+          created_at = excluded.created_at,
+          model_id = excluded.model_id,
+          model_version = excluded.model_version,
+          run_id = excluded.run_id,
+          selected_model = excluded.selected_model,
+          selected_provider = excluded.selected_provider,
+          session_id = excluded.session_id,
+          simulation = excluded.simulation,
+          status = excluded.status,
+          updated_at = excluded.updated_at
+        """,
+        [
+          receipt["receipt_id"],
+          Jason.encode!(receipt),
+          receipt["created_at"],
+          receipt["model_id"],
+          receipt["model_version"],
+          sourced_value(receipt, ["caller", "run_id"]) || receipt["run_id"],
+          get_in(receipt, ["decision", "selected_model"]),
+          selected_provider(receipt),
+          sourced_value(receipt, ["caller", "session_id"]),
+          if(receipt["simulation"] || false, do: 1, else: 0),
+          get_in(receipt, ["final", "status"]),
+          now
+        ]
+      )
+    end)
+  end
+
+  def clear_receipts do
+    with_conn(fn conn ->
+      execute!(conn, "DELETE FROM receipts")
+    end)
+  end
+
   defp with_conn(fun) do
     case store_path() do
       nil ->
@@ -195,6 +278,28 @@ defmodule Wardwright.SQLiteStore do
       created_at TEXT NOT NULL
     )
     """)
+
+    execute!(conn, """
+    CREATE TABLE IF NOT EXISTS receipts (
+      receipt_id TEXT PRIMARY KEY,
+      receipt_json TEXT NOT NULL,
+      created_at TEXT,
+      model_id TEXT,
+      model_version TEXT,
+      run_id TEXT,
+      selected_model TEXT,
+      selected_provider TEXT,
+      session_id TEXT,
+      simulation INTEGER NOT NULL DEFAULT 0,
+      status TEXT,
+      updated_at TEXT NOT NULL
+    )
+    """)
+
+    execute!(conn, "CREATE INDEX IF NOT EXISTS receipts_created_at_idx ON receipts (created_at DESC, receipt_id DESC)")
+    execute!(conn, "CREATE INDEX IF NOT EXISTS receipts_session_id_idx ON receipts (session_id)")
+    execute!(conn, "CREATE INDEX IF NOT EXISTS receipts_model_id_idx ON receipts (model_id)")
+    execute!(conn, "CREATE INDEX IF NOT EXISTS receipts_status_idx ON receipts (status)")
 
     exec!(
       conn,
@@ -354,6 +459,38 @@ defmodule Wardwright.SQLiteStore do
       "prefix" => prefix
     }
   end
+
+  defp decode_receipt_row([receipt_json]), do: List.wrap(decode_receipt(receipt_json))
+  defp decode_receipt_row(_row), do: []
+
+  defp decode_receipt(receipt_json) when is_binary(receipt_json) do
+    case Jason.decode(receipt_json) do
+      {:ok, receipt} when is_map(receipt) -> receipt
+      _other -> nil
+    end
+  end
+
+  defp decode_receipt(_receipt_json), do: nil
+
+  defp sourced_value(receipt, path) do
+    receipt
+    |> get_in(path)
+    |> case do
+      %{"value" => value} -> value
+      _ -> nil
+    end
+  end
+
+  defp selected_provider(receipt) do
+    get_in(receipt, ["decision", "selected_provider"]) ||
+      get_in(receipt, ["decision", "selected_model"]) |> provider_from_model()
+  end
+
+  defp provider_from_model(model) when is_binary(model) do
+    model |> String.split("/", parts: 2) |> List.first()
+  end
+
+  defp provider_from_model(_model), do: nil
 
   defp default_store_path do
     Wardwright.Paths.data_path("wardwright.sqlite3")

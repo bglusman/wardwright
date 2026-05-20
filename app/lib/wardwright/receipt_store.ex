@@ -24,11 +24,12 @@ defmodule Wardwright.ReceiptStore do
   @tool_source_key "tool_source"
 
   def start_link(_opts) do
-    Agent.start_link(fn -> %{receipts: %{}} end, name: __MODULE__)
+    Agent.start_link(fn -> initial_state() end, name: __MODULE__)
   end
 
   def insert(receipt) do
     Agent.update(__MODULE__, fn state ->
+      :ok = persist_insert(state, receipt)
       put_in(state, [:receipts, receipt["receipt_id"]], receipt)
     end)
 
@@ -67,29 +68,49 @@ defmodule Wardwright.ReceiptStore do
   end
 
   def clear do
-    Agent.update(__MODULE__, fn _ -> %{receipts: %{}} end)
+    Agent.update(__MODULE__, fn state ->
+      :ok = persist_clear(state)
+      %{state | receipts: %{}}
+    end)
   end
 
   def health do
-    %{
-      "capabilities" => %{
-        "concurrent_writers" => false,
-        "durable" => false,
-        "event_replay" => true,
-        "json_queries" => true,
-        "retention_jobs" => false,
-        "time_range_indexes" => false,
-        "transactional" => true
-      },
-      "contract_version" => @contract_version,
-      "kind" => "memory",
-      "migration_version" => @migration_version,
-      "read_health" => "ok",
-      "write_health" => "ok"
-    }
+    Agent.get(__MODULE__, fn state ->
+      durable = state.storage == :sqlite
+
+      %{
+        "capabilities" => %{
+          "concurrent_writers" => false,
+          "durable" => durable,
+          "event_replay" => true,
+          "json_queries" => true,
+          "retention_jobs" => false,
+          "time_range_indexes" => durable,
+          "transactional" => true
+        },
+        "contract_version" => @contract_version,
+        "kind" => Atom.to_string(state.storage),
+        "migration_version" => @migration_version,
+        "path" => if(durable, do: Wardwright.SQLiteStore.store_path()),
+        "read_health" => "ok",
+        "receipt_count" => map_size(state.receipts),
+        "write_health" => "ok"
+      }
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Map.new()
+    end)
   end
 
   def metadata, do: health()
+
+  def configure_storage(storage) when storage in [:memory, :sqlite] do
+    Agent.get_and_update(__MODULE__, fn state ->
+      case load_state(storage) do
+        {:ok, loaded} -> {{:ok, loaded}, loaded}
+        {:error, reason} -> {{:error, reason}, state}
+      end
+    end)
+  end
 
   def summary(receipt) do
     tool_context = tool_context(receipt)
@@ -241,4 +262,36 @@ defmodule Wardwright.ReceiptStore do
   defp put_if_present(map, _key, nil), do: map
   defp put_if_present(map, _key, ""), do: map
   defp put_if_present(map, key, value), do: Map.put(map, key, value)
+
+  defp initial_state do
+    storage =
+      case Wardwright.SQLiteStore.enabled?() do
+        true -> :sqlite
+        false -> :memory
+      end
+
+    case load_state(storage) do
+      {:ok, state} -> state
+      {:error, reason} -> raise "failed to load receipts from #{storage}: #{inspect(reason)}"
+    end
+  end
+
+  defp load_state(:memory), do: {:ok, %{receipts: %{}, storage: :memory}}
+
+  defp load_state(:sqlite) do
+    case Wardwright.SQLiteStore.list_receipts() do
+      {:ok, receipts} -> {:ok, %{receipts: Map.new(receipts, &{&1["receipt_id"], &1}), storage: :sqlite}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp persist_insert(%{storage: :memory}, _receipt), do: :ok
+  defp persist_insert(%{storage: :sqlite}, receipt), do: sqlite_result(Wardwright.SQLiteStore.insert_receipt(receipt))
+
+  defp persist_clear(%{storage: :memory}), do: :ok
+  defp persist_clear(%{storage: :sqlite}), do: sqlite_result(Wardwright.SQLiteStore.clear_receipts())
+
+  defp sqlite_result({:ok, :ok}), do: :ok
+  defp sqlite_result({:ok, result}), do: result
+  defp sqlite_result({:error, reason}), do: raise("sqlite receipt store failed: #{inspect(reason)}")
 end

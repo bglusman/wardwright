@@ -167,8 +167,9 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert {:push, {:text, json}, _state} =
              WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
 
-    assert json =~ "Model Access"
+    assert json =~ "Model Configuration"
     assert json =~ "Access Policy"
+    assert json =~ "Debug recording"
     assert json =~ "Create Key"
     assert json =~ "Legacy workbench (deprecated)"
     refute json =~ "Lustre Workbench"
@@ -189,7 +190,7 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert json =~ "Control debugger"
     assert json =~ "Fork from receipt"
     assert json =~ "VCR replay"
-    assert json =~ "Replay receipt"
+    assert json =~ "Explain receipt"
     refute json =~ "Phoenix.LiveView"
 
     WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
@@ -564,7 +565,7 @@ defmodule WardwrightWeb.WorkbenchTest do
              "rcpt_control_import",
              "tts-retry",
              "Imported control receipt",
-             "Imported Imported control receipt as replay evidence."
+             "Imported Imported control receipt as saved:"
            )
 
     assert [

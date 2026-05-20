@@ -132,11 +132,19 @@ fields must preserve that distinction.
 
 ### Implementation Notes
 
-New receipts include metadata-only `vcr` data for policy, route, request shape,
-decision, and final status. `Wardwright.PolicyReplay.replay_receipt_id/1`
-returns `wardwright.policy_replay.v0` results without calling a provider, and a
+New receipts include `vcr` data for policy, route, request shape, decision, and
+final status. The default model configuration is `vcr.mode: metadata_only`,
+which records message roles and lengths rather than prompt/completion text.
+Operators can explicitly set `vcr.mode: full_session` on a model when a
+debugging session needs complete request and provider response payloads.
+
+`Wardwright.PolicyReplay.replay_receipt_id/1` returns
+`wardwright.policy_replay.v0` results without calling a provider, and a
 protected authoring endpoint exposes that replay:
 `POST /v1/policy-authoring/replay-receipts/:receipt_id`.
+
+Receipts now use the existing configurable SQLite store when it is enabled, so
+debugger receipts survive process restarts in normal local/package runs.
 
 The authoring tool list advertises the replay tool so MCP clients can discover
 the capability.
@@ -144,10 +152,12 @@ the capability.
 ### Adversarial Implementation And Design Review
 
 Replay v0 is historical replay, not counterfactual execution against a changed
-policy. It intentionally omits raw prompt and completion content; request
-metadata is limited to roles, lengths, model ids, and routing facts. Legacy
-receipts can replay from existing decision metadata with a warning, but only new
-receipts get the explicit VCR schema.
+policy. Metadata-only mode intentionally omits raw prompt and completion
+content; request metadata is limited to roles, lengths, model ids, and routing
+facts. Full-session mode is intentionally explicit because it stores sensitive
+payloads for later time-travel debugging. Legacy receipts can replay from
+existing decision metadata with a warning, but only new receipts get the
+explicit VCR schema.
 
 ### Test Evidence
 
@@ -157,7 +167,8 @@ Focused evidence:
 (cd app && mise exec elixir@1.20.0-rc.5-otp-29 -- mix test --only policy_replay)
 ```
 
-The tests assert VCR redaction, direct replay, and protected API behavior.
+The tests assert default VCR redaction, explicit full-session payload capture,
+direct replay, protected API behavior, and SQLite receipt persistence.
 
 ## Track 4: Fork From Receipt
 
@@ -184,7 +195,10 @@ Added a reusable Lustre control-debugger component in
 - policy projection selection
 - import-as-scenario action backed by
   `PolicyScenarioStore.create_from_receipt/3`
-- metadata-only VCR replay action backed by `Wardwright.PolicyReplay`
+- VCR replay action backed by `Wardwright.PolicyReplay`
+- richer replay facts: recording mode, original provider behavior, replay
+  provider behavior, route, policy actions, request shape, selected model, and
+  warnings
 
 To avoid colliding with the in-flight authoring-agent workbench PR, the
 component is mounted today as a separate admin page at
@@ -195,8 +209,8 @@ workbench or authoring-agent area without moving backend logic.
 ### Adversarial Implementation And Design Review
 
 This is still not a complete time-travel debugger. Importing a receipt creates
-replay evidence and pinned scenario material; replaying a receipt checks stored
-metadata without resuming a provider. The UI copy states that live
+replay evidence and pinned scenario material; replaying a receipt explains
+stored facts without resuming a provider. The UI copy states that live
 counterfactual replay is a later contract.
 
 The component uses a new Elixir data boundary instead of reaching directly into
@@ -214,7 +228,7 @@ Focused evidence:
 
 The workbench tests cover the separate admin route, server-component transport,
 controlled receipt input, receipt import into saved replay evidence, and
-metadata-only replay facts.
+debugger replay facts.
 
 ## Track 5: Distilled Failure Scenarios
 

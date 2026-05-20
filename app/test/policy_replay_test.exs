@@ -37,6 +37,7 @@ defmodule Wardwright.PolicyReplayTest do
     vcr = receipt["vcr"]
 
     assert vcr["schema"] == "wardwright.policy_vcr.v0"
+    assert vcr["mode"] == "metadata_only"
     assert vcr["redaction"] == "metadata_only"
     assert get_in(vcr, ["request", "message_roles"]) == ["user"]
     assert get_in(vcr, ["request", "message_content_lengths"]) == [64]
@@ -47,6 +48,47 @@ defmodule Wardwright.PolicyReplayTest do
     encoded_vcr = Jason.encode!(vcr)
     refute encoded_vcr =~ "Synthetic private prompt"
     refute encoded_vcr =~ "Mock Wardwright response"
+  end
+
+  test "full-session VCR mode records request and response payloads only when explicitly enabled" do
+    config =
+      unit_policy_config()
+      |> Map.put("targets", [
+        %{
+          "canned_outputs" => ["Full-session synthetic completion"],
+          "context_window" => 256,
+          "model" => "canned/model",
+          "provider_kind" => "canned_sequence"
+        }
+      ])
+      |> Map.put("vcr", %{"mode" => "full_session"})
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        "messages" => [
+          %{
+            "content" => "Full-session synthetic prompt that is deliberately opt-in.",
+            "role" => "user"
+          }
+        ],
+        "model" => "unit-model"
+      })
+
+    assert conn.status == 200
+    receipt_id = Jason.decode!(conn.resp_body) |> get_in(["wardwright", "receipt_id"])
+    receipt = Wardwright.ReceiptStore.get(receipt_id)
+    vcr = receipt["vcr"]
+
+    assert vcr["mode"] == "full_session"
+    assert vcr["redaction"] == "full_session"
+
+    assert get_in(vcr, ["full_session", "request", "body", "messages", Access.at(0), "content"]) ==
+             "Full-session synthetic prompt that is deliberately opt-in."
+
+    assert get_in(vcr, ["full_session", "response", "content"]) == "Full-session synthetic completion"
+    assert get_in(vcr, ["request", "message_content_lengths"]) == [58]
   end
 
   test "policy replay returns recorded decisions without creating a provider attempt" do
