@@ -35,11 +35,12 @@ testable contract instead of scattered prompt strings, provider IDs, and retry
 logic inside every agent.
 
 Today, Wardwright can run as a local or remote service, define Wardwright
-models, simulate policy behavior in the `/admin` and `/policies` workbenches,
-record receipts, and exercise early policy examples such as routing decisions,
-stream governance, output checks, retries, and saved simulator test cases. The
-admin surface currently supports basic auth, while individual models can be
-configured for API-key or open access.
+models, simulate policy behavior in the `/admin` workbench, record receipts,
+and exercise early policy examples such as routing decisions, stream governance,
+output checks, retries, and saved simulator test cases. The legacy `/policies`
+workbench is still present during the transition, but new operator workflows
+start from `/admin`. The admin surface currently supports basic auth, while
+individual models can be configured for API-key or open access.
 
 ## Install
 
@@ -126,10 +127,11 @@ credentials on loopback-only instances or behind a trusted auth boundary. See
 
 ## Current Runtime
 
-The active app is a Phoenix service with server-rendered operator workbenches.
-Elixir owns runtime plumbing, provider calls, HTTP/API boundaries, and receipts;
-Gleam is used for correctness-heavy pure policy logic where the boundary is
-stable.
+The active app is a Phoenix service with a Lustre operator workbench. Elixir
+owns Phoenix, HTTP/API boundaries, provider calls, storage drivers, PubSub, and
+top-level supervision; Gleam owns correctness-heavy policy logic and new
+workbench behavior. Runtime state is being evaluated for `gleam_otp` migration
+where typed actors can remove invalid states or clarify concurrency ownership.
 
 Current capabilities include:
 

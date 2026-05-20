@@ -18,11 +18,12 @@ decision happened.
 
 Today, Wardwright can run as a local or remote service, expose
 OpenAI-compatible endpoints, define Wardwright models, simulate policy behavior
-in the `/admin` and `/policies` workbenches, record receipts, and exercise early
-policy examples such as routing decisions, stream governance, output checks,
-retries, and saved simulator test cases. The admin surface currently supports
-basic auth, while individual models can be configured for API-key or open
-access.
+in the `/admin` workbench, record receipts, and exercise early policy examples
+such as routing decisions, stream governance, output checks, retries, and saved
+simulator test cases. The legacy `/policies` workbench is still present during
+the transition, but new operator workflows start from `/admin`. The admin
+surface currently supports basic auth, while individual models can be configured
+for API-key or open access.
 
 ## Install
 
@@ -116,8 +117,7 @@ wardwright tools --json
 Wardwright exposes:
 
 - OpenAI-compatible `/v1/chat/completions` and `/v1/models` endpoints.
-- A registered-model workbench at `/admin`, with the legacy policy
-  projection workbench still available at `/policies`.
+- A registered-model workbench at `/admin`.
 - Protected authoring APIs, plus MCP tools at `/mcp`.
 - Receipts, simulations, model access details, and admin status endpoints.
 
@@ -147,8 +147,8 @@ The installed service includes a registered-model workbench at `/admin`. It
 lets you choose the Wardwright model being simulated, load a fixture, edit caller
 input, backend model output, and retry attempts, then step through routing,
 state transitions, stream retries, rewrites, tool decisions, and receipt events.
-The older `/policies` workbench remains available as a legacy fallback during
-the transition.
+The older `/policies` workbench remains in the service during the transition,
+but new operator workflows should start from `/admin`.
 
 ![Wardwright registered-model workbench showing a retry fixture](docs/assets/workbench/registered-model-workbench.png)
 
@@ -158,10 +158,11 @@ composition shape.
 
 ## Current Runtime
 
-The active app is a Phoenix service with server-rendered operator workbenches.
-Elixir owns runtime plumbing, provider calls, HTTP/API boundaries, and receipts;
-Gleam is used for correctness-heavy pure policy logic where the boundary is
-stable.
+The active app is a Phoenix service with a Lustre operator workbench. Elixir
+owns Phoenix, HTTP/API boundaries, provider calls, storage drivers, PubSub, and
+top-level supervision; Gleam owns correctness-heavy policy logic and new
+workbench behavior. Runtime state is being evaluated for `gleam_otp` migration
+where typed actors can remove invalid states or clarify concurrency ownership.
 
 Current capabilities include:
 

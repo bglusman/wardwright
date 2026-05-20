@@ -172,7 +172,8 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert json =~ "Debug recording"
     assert json =~ "Receipt store"
     assert json =~ "Create Key"
-    assert json =~ "Legacy workbench (deprecated)"
+    refute json =~ "Legacy workbench (deprecated)"
+    refute json =~ ~s(href="/policies")
     refute json =~ "Lustre Workbench"
     refute json =~ "Gleam UI"
 

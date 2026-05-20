@@ -41,7 +41,6 @@ pub fn sidebar(
         "/admin?view=control_debugger",
         active_page == ControlDebugger,
       ),
-      deprecated_rail_link(),
     ]),
     ..children
   ])
@@ -80,7 +79,6 @@ pub fn admin_sidebar(
         active_page == ControlDebugger,
         to_msg(ControlDebugger),
       ),
-      deprecated_rail_link(),
     ]),
     ..children
   ])
@@ -129,13 +127,6 @@ fn rail_button(
       html.span([], [text(description)]),
     ],
   )
-}
-
-fn deprecated_rail_link() -> Element(msg) {
-  element("a", [class("deprecated"), attribute("href", "/policies")], [
-    html.strong([], [text("Legacy workbench (deprecated)")]),
-    html.span([], [text("Previous policy view.")]),
-  ])
 }
 
 pub fn styles() -> String {
@@ -220,19 +211,6 @@ pub fn styles() -> String {
     font-size: 12px;
     font-weight: 700;
     line-height: 1.35;
-  }
-  .rail-nav a.deprecated {
-    margin-top: 4px;
-    padding: 7px 10px;
-    opacity: 0.72;
-  }
-  .rail-nav a.deprecated strong {
-    font-size: 11px;
-    font-weight: 700;
-  }
-  .rail-nav a.deprecated span {
-    font-size: 10px;
-    font-weight: 600;
   }
   .sidebar-footer {
     position: sticky;

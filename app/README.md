@@ -6,11 +6,14 @@ stream policy, receipts, protected authoring APIs, and the LiveView policy
 workbench. Tests still rely heavily on mock providers, but the runtime boundary
 is shaped for real provider adapters and local Ollama/OpenAI-compatible targets.
 
-Gleam is compiled inside the same Mix project for small, correctness-heavy
-policy decisions. Elixir keeps ownership of HTTP, Phoenix, processes, PubSub,
-and mutable state; Gleam modules under `src/wardwright` own pure structured
-output, history-threshold, and alert-queue classifications behind Elixir wrapper
-modules in `lib/wardwright/policy`. Elixir mirrors for the Gleam cores live
+Gleam is compiled inside the same Mix project for correctness-heavy decisions
+and Lustre UI. Elixir keeps ownership of HTTP, Phoenix, PubSub, provider
+boundaries, and the top-level supervision tree; mutable Wardwright runtime state
+is being evaluated for migration into typed Gleam OTP actors where that removes
+invalid states instead of only moving code between languages. Gleam modules
+under `src/wardwright` own pure structured output, history-threshold, and
+alert-queue classifications behind Elixir wrapper modules in
+`lib/wardwright/policy`. Elixir mirrors for the Gleam cores live
 under `src/wardwright/elixir_reference` as one `.exs` reference module per core;
 tests load them as executable documentation, but they are not compiled into
 runtime paths.
@@ -67,7 +70,7 @@ mise exec -- mix test
 - `GET /admin/storage`
 - `GET /admin/runtime`
 - `GET /admin/wardwright-models`
-- `GET /policies`
+- `GET /policies` legacy workbench route retained during the Lustre transition.
 
 The public Wardwright model is available as both `coding-balanced` and
 `wardwright/coding-balanced`. Requests are routed by a simple prompt-length
@@ -117,9 +120,13 @@ portable boundary such as WASM, a sidecar, or a hosted policy service.
 Current pure policy decisions use Gleam where the boundary is stable enough:
 structured-output guard-loop status, recent-history threshold classification,
 alert enqueue/backpressure classification, normalized action/result metadata,
-and route-planner strategy/reason classification. Keep process ownership,
-open config-map parsing, provider boundaries, and side-effecting delivery in
-Elixir unless a later spike proves a better split.
+and route-planner strategy/reason classification. The active admin workbench is
+Lustre, and new workbench behavior should be Gleam-owned by default. For runtime
+processes, use [Gleam OTP Runtime Evaluation](../docs/gleam-otp-runtime-evaluation.md)
+as the migration rule: move state into `gleam_otp` when typed actors remove
+representable bad states or clarify concurrency ownership; keep provider,
+Phoenix, storage-driver, and top-level supervision boundaries in Elixir until a
+specific spike proves a simpler split.
 
 The old Go and Rust backend prototypes remain in git history as bakeoff
 evidence, but they are no longer part of the live tree.
