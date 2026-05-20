@@ -221,6 +221,9 @@ fn external_authoring_status(
 fn external_ask_authoring_agent(
   model_id: String,
   pattern_id: String,
+  user_input: String,
+  model_response: String,
+  retry_responses: List(RetryResponse),
   message: String,
 ) -> #(String, String, String, String, String, String)
 
@@ -549,7 +552,15 @@ fn ask_authoring(model: Model, prompt: String, mode: String) -> Model {
     draft_summary,
     draft_artifact,
     draft_review_note,
-  ) = external_ask_authoring_agent(model.model_id, model.pattern_id, prompt)
+  ) =
+    external_ask_authoring_agent(
+      model.model_id,
+      model.pattern_id,
+      model.user_input,
+      model.model_response,
+      model.retry_responses,
+      prompt,
+    )
   let #(ok, message, validated_model_id) =
     external_validate_authoring_draft(draft_artifact)
   let draft =

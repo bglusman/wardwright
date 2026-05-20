@@ -161,13 +161,15 @@ defmodule WardwrightWeb.WorkbenchTest do
   end
 
   test "transport registration pushes the initial model access DOM payload" do
-    assert {:ok, state} = WardwrightWeb.LustreWorkbenchSocket.init(%{params: %{"page" => "model_access"}})
+    assert {:ok, state} =
+             WardwrightWeb.LustreWorkbenchSocket.init(%{params: %{"page" => "model_access"}})
+
     assert_receive {ref, message} when is_tuple(message), 1_000
 
     assert {:push, {:text, json}, _state} =
              WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
 
-    assert json =~ "Model Configuration"
+    assert json =~ "Model Management"
     assert json =~ "Access Policy"
     assert json =~ "Debug recording"
     assert json =~ "Receipt store"
@@ -327,13 +329,19 @@ defmodule WardwrightWeb.WorkbenchTest do
   end
 
   test "Lustre composed demo models inherit nested retry inputs" do
-    assert WardwrightWeb.LustreWorkbenchData.retry_response_slots("demo-composed-retry-router") == 3
-    assert WardwrightWeb.LustreWorkbenchData.default_model_response("demo-composed-retry-router") =~ "OldClient"
+    assert WardwrightWeb.LustreWorkbenchData.retry_response_slots("demo-composed-retry-router") ==
+             3
+
+    assert WardwrightWeb.LustreWorkbenchData.default_model_response("demo-composed-retry-router") =~
+             "OldClient"
   end
 
   test "Lustre state graph composes across nested Wardwright model targets" do
     {_engine, _artifact, _initial, _default?, transitions} =
-      WardwrightWeb.LustreWorkbenchData.projection_summary("tts-retry", "demo-composed-retry-router")
+      WardwrightWeb.LustreWorkbenchData.projection_summary(
+        "tts-retry",
+        "demo-composed-retry-router"
+      )
 
     assert {"observing", "route.delegate.demo-retry-guard", "demo-retry-guard::observing", "call_wardwright_model",
             "route.demo-retry-guard"} in transitions
@@ -448,6 +456,44 @@ defmodule WardwrightWeb.WorkbenchTest do
              "coding-balanced",
              "Make an admin cow model."
            )
+  end
+
+  test "Lustre authoring boundary includes the simulator turn in the assistant prompt" do
+    original_client = Application.get_env(:wardwright, :authoring_agent_client, :unset)
+    original_enabled = System.get_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED")
+    original_api_key = System.get_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY")
+
+    Application.put_env(
+      :wardwright,
+      :authoring_agent_client,
+      __MODULE__.SimulatorContextAuthoringClient
+    )
+
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
+
+    on_exit(fn ->
+      case original_client do
+        :unset -> Application.delete_env(:wardwright, :authoring_agent_client)
+        client -> Application.put_env(:wardwright, :authoring_agent_client, client)
+      end
+
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", original_enabled)
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", original_api_key)
+    end)
+
+    {status, content, "", "", "", ""} =
+      WardwrightWeb.LustreWorkbenchData.ask_authoring_agent(
+        "coding-balanced",
+        "tts-retry",
+        "please moo",
+        "raw moo output",
+        [{2, "retry moo output"}],
+        "Explain the simulator context."
+      )
+
+    assert status == "completed"
+    assert content =~ "simulator context received"
   end
 
   test "Lustre workbench explains authoring setup instead of showing dead controls when disabled" do
@@ -814,13 +860,33 @@ defmodule WardwrightWeb.WorkbenchTest do
                  }
                ],
                "model_id" => "admin-cow",
-               "route" => %{"id" => "dispatcher.admin-cow", "models" => ["local-ollama"], "type" => "dispatcher"},
+               "route" => %{
+                 "id" => "dispatcher.admin-cow",
+                 "models" => ["local-ollama"],
+                 "type" => "dispatcher"
+               },
                "targets" => [%{"context_window" => 8192, "model" => "local-ollama"}]
              },
              "name" => "draft_wardwright_model"
            }
          ]
        })}
+    end
+  end
+
+  defmodule SimulatorContextAuthoringClient do
+    def generate_text(prompt, _opts) do
+      answer =
+        if prompt =~ ~s(user_input: "please moo") and
+             prompt =~ ~s(raw_model_output_or_stream: "raw moo output") and
+             prompt =~ ~s("model_output":"retry moo output") and
+             prompt =~ "selected_recipe_id: \n" do
+          "simulator context received"
+        else
+          "simulator context missing"
+        end
+
+      {:ok, Jason.encode!(%{"answer" => answer, "tool_calls" => []})}
     end
   end
 end

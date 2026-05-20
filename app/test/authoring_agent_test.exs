@@ -37,7 +37,10 @@ defmodule WardwrightWeb.AuthoringAgentTest do
       WardwrightWeb.AuthoringAgent.prompt("Make the private route gate easier to review.", %{
         model_id: "wardwright/coding-balanced",
         pattern_id: "route-privacy",
-        recipe_id: "private-helpdesk-local-gate"
+        recipe_id: "private-helpdesk-local-gate",
+        simulator_model_response: "raw provider output",
+        simulator_response_attempts: [%{"index" => 2, "model_output" => "retry output"}],
+        simulator_user_input: "operator test input"
       })
 
     assert prompt =~ "Wardwright's in-page model-authoring assistant"
@@ -55,8 +58,13 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert prompt =~ "For regex semantics, use stream_rules[].regex"
     assert prompt =~ "validate it and simulate at least"
     assert prompt =~ "one matching case and one non-matching control case"
+    assert prompt =~ "Do not mention proxy names"
     assert prompt =~ "Report validation warnings, coverage gaps, and simulator limitations"
     assert prompt =~ "A plausible artifact is not enough."
+    assert prompt =~ "Current simulator turn:"
+    assert prompt =~ ~s(user_input: "operator test input")
+    assert prompt =~ ~s(raw_model_output_or_stream: "raw provider output")
+    assert prompt =~ ~s("model_output":"retry output")
     assert prompt =~ "draft_wardwright_model"
     assert prompt =~ "activate_wardwright_model"
     assert prompt =~ "simulate_policy"
@@ -106,7 +114,11 @@ defmodule WardwrightWeb.AuthoringAgentTest do
   end
 
   test "status can load authoring agent settings from a local config file" do
-    path = Path.join(System.tmp_dir!(), "wardwright-authoring-agent-#{System.unique_integer([:positive])}.env")
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "wardwright-authoring-agent-#{System.unique_integer([:positive])}.env"
+      )
 
     File.write!(path, """
     # local operator config
@@ -223,7 +235,8 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
 
-    {:ok, response} = WardwrightWeb.AuthoringAgent.respond("Make a cow model with a moo rewrite rule.")
+    {:ok, response} =
+      WardwrightWeb.AuthoringAgent.respond("Make a cow model with a moo rewrite rule.")
 
     assert response.status == "error"
     assert response.content =~ "No authoring tool was executed"
@@ -241,7 +254,8 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
 
-    {:ok, response} = WardwrightWeb.AuthoringAgent.respond("Make a cow model with a moo rewrite rule.")
+    {:ok, response} =
+      WardwrightWeb.AuthoringAgent.respond("Make a cow model with a moo rewrite rule.")
 
     assert response.status == "completed"
     assert response.content =~ "Retried with a draft tool call."
@@ -613,7 +627,11 @@ defmodule WardwrightWeb.AuthoringAgentTest do
            %{
              "arguments" => %{
                "model_id" => "cow-guard",
-               "route" => %{"id" => "dispatcher.cow", "models" => ["local-ollama"], "type" => "dispatcher"},
+               "route" => %{
+                 "id" => "dispatcher.cow",
+                 "models" => ["local-ollama"],
+                 "type" => "dispatcher"
+               },
                "stream_rules" => [
                  %{
                    "action" => "rewrite_chunk",

@@ -1075,7 +1075,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       <section :if={@model_workbench?} class="panel raw_model_config" aria-label="Selected model raw configuration">
         <div class="panel_header">
           <div>
-            <h2>Selected Model Configuration</h2>
+            <h2>Selected Model Artifact</h2>
             <p>
               Registered artifact for <strong><%= @selected_model_id %></strong>, with
               sensitive values redacted. Use this when the simulator looks surprising: this is
@@ -1108,7 +1108,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           will not enforce additional behavior for this model yet.
         </p>
         <details>
-          <summary>Show redacted model configuration</summary>
+          <summary>Show redacted model artifact</summary>
           <pre><%= @selected_model_config_json %></pre>
         </details>
       </section>
@@ -1116,7 +1116,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       <section class="panel model_access" aria-label="Model and agent access">
         <div class="panel_header">
           <div>
-            <h2>Model Configuration</h2>
+            <h2>Model Management</h2>
             <p>Use these OpenAI-compatible endpoints and model IDs when pointing a local agent at Wardwright.</p>
           </div>
         </div>
@@ -1602,7 +1602,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         <dd><%= @behavior_count %></dd>
       </dl>
       <p>
-        Use the selected model configuration above to review what this model actually enforces.
+        Use the selected model artifact above to review what this model actually enforces.
         Select an example synthetic model from the sidebar to browse demo simulations, or add a
         model-owned scenario before showing playback, state, stream, or receipt evidence here.
       </p>

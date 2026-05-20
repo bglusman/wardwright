@@ -163,6 +163,71 @@ defmodule Wardwright.StorageAndAdminTest do
              Wardwright.model_configs() |> Enum.map(& &1["model_id"]) |> Enum.sort()
   end
 
+  test "model_config returns a readable error for unknown models" do
+    assert {:error, "unknown Wardwright model \"missing-model\""} = Wardwright.model_config("missing-model")
+  end
+
+  test "sqlite model registry archives restores and hard-deletes model definitions" do
+    path = temp_sqlite_path("wardwright-model-archive")
+    original_path = Application.get_env(:wardwright, :sqlite_store_path)
+
+    Application.put_env(:wardwright, :sqlite_store_path, path)
+
+    on_exit(fn ->
+      restore_app_env(:sqlite_store_path, original_path)
+      remove_sqlite_store(path)
+    end)
+
+    alpha = unit_policy_config() |> Map.put("model_id", "persisted-alpha")
+    beta = unit_policy_config() |> Map.put("model_id", "persisted-beta")
+
+    assert {:ok, _alpha} = Wardwright.put_config(alpha)
+    assert {:ok, _beta} = Wardwright.put_model_config(beta)
+
+    assert {:ok, "persisted-beta"} = Wardwright.archive_model_config("persisted-beta")
+    assert {:error, _message} = Wardwright.model_config("persisted-beta")
+    assert [%{"model_id" => "persisted-beta"}] = Wardwright.archived_model_configs()
+
+    :persistent_term.erase({Wardwright, :config})
+    :persistent_term.erase({Wardwright, :configs})
+    :persistent_term.erase({Wardwright, :active_model_id})
+
+    assert {:ok, _loaded} = Wardwright.load_persisted_config()
+
+    assert ["persisted-alpha"] ==
+             Wardwright.model_configs() |> Enum.map(& &1["model_id"]) |> Enum.sort()
+
+    assert {:ok, restored} = Wardwright.restore_archived_model_config("persisted-beta")
+    assert restored["model_id"] == "persisted-beta"
+    assert {:ok, _beta_config} = Wardwright.model_config("persisted-beta")
+
+    assert {:ok, "persisted-beta"} = Wardwright.archive_model_config("persisted-beta")
+    assert {:ok, "persisted-beta"} = Wardwright.delete_archived_model_config("persisted-beta")
+    assert Wardwright.archived_model_configs() == []
+    assert {:error, _message} = Wardwright.restore_archived_model_config("persisted-beta")
+  end
+
+  test "model archiving refuses non-durable storage and the last active model" do
+    original_path = Application.get_env(:wardwright, :sqlite_store_path)
+    Application.put_env(:wardwright, :sqlite_store_path, nil)
+
+    assert {:error, "model archive requires SQLite model registry storage"} =
+             Wardwright.archive_model_config("coding-balanced")
+
+    path = temp_sqlite_path("wardwright-model-last-active")
+    Application.put_env(:wardwright, :sqlite_store_path, path)
+
+    on_exit(fn ->
+      restore_app_env(:sqlite_store_path, original_path)
+      remove_sqlite_store(path)
+    end)
+
+    assert {:ok, _config} = Wardwright.put_config(unit_policy_config())
+
+    assert {:error, message} = Wardwright.archive_model_config("unit-model")
+    assert message =~ "needs at least one active model"
+  end
+
   test "sqlite store persists and deletes model API key hashes" do
     path = temp_sqlite_path("wardwright-model-keys")
     original_path = Application.get_env(:wardwright, :sqlite_store_path)

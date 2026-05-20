@@ -30,7 +30,7 @@ pub fn sidebar(
         active_page == Workbench,
       ),
       rail_link(
-        "Model configuration",
+        "Model management",
         "Configure keys, access, and VCR capture.",
         "/admin?view=model_access",
         active_page == ModelAccess,
@@ -68,7 +68,7 @@ pub fn admin_sidebar(
         to_msg(Workbench),
       ),
       rail_button(
-        "Model configuration",
+        "Model management",
         "Configure keys, access, and VCR capture.",
         active_page == ModelAccess,
         to_msg(ModelAccess),

@@ -42,6 +42,9 @@ pub type Msg {
   CreateKey(List(#(String, String)))
   RevokeKey(String)
   SaveAccess(List(#(String, String)))
+  ArchiveModel
+  RestoreArchivedModel(String)
+  DeleteArchivedModel(String)
 }
 
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "default_model_id")
@@ -49,6 +52,9 @@ fn external_default_model_id() -> String
 
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "model_options")
 fn external_model_options() -> List(ModelOption)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "archived_model_options")
+fn external_archived_model_options() -> List(ModelOption)
 
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "access_summary")
 fn external_access_summary(
@@ -74,6 +80,15 @@ fn external_save_access(
   unkeyed_access: String,
   vcr_mode: String,
 ) -> #(Bool, String)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "archive_model")
+fn external_archive_model(model_id: String) -> #(Bool, String, String)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "restore_archived_model")
+fn external_restore_archived_model(model_id: String) -> #(Bool, String, String)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "delete_archived_model")
+fn external_delete_archived_model(model_id: String) -> #(Bool, String, String)
 
 pub fn component() {
   lustre.simple(init, update, view)
@@ -146,6 +161,35 @@ pub fn update(model: Model, msg: Msg) -> Model {
         False -> load_model(model.model_id, "", message, "")
       }
     }
+
+    ArchiveModel -> {
+      let #(ok, message, next_model_id) = external_archive_model(model.model_id)
+
+      case ok {
+        True -> load_model(next_model_id, message, "", "")
+        False -> load_model(model.model_id, "", message, "")
+      }
+    }
+
+    RestoreArchivedModel(model_id) -> {
+      let #(ok, message, next_model_id) =
+        external_restore_archived_model(model_id)
+
+      case ok {
+        True -> load_model(next_model_id, message, "", "")
+        False -> load_model(model.model_id, "", message, "")
+      }
+    }
+
+    DeleteArchivedModel(model_id) -> {
+      let #(ok, message, next_model_id) =
+        external_delete_archived_model(model_id)
+
+      case ok {
+        True -> load_model(next_model_id, message, "", "")
+        False -> load_model(model.model_id, "", message, "")
+      }
+    }
   }
 }
 
@@ -203,7 +247,7 @@ pub fn workspace(model: Model) -> Element(Msg) {
     html.header([class("topbar")], [
       html.div([], [
         html.p([class("eyebrow")], [text("Model control")]),
-        html.h1([], [text("Model Configuration")]),
+        html.h1([], [text("Model Management")]),
         html.p([], [
           text(
             "Choose a Wardwright model, then configure access and debugging capture.",
@@ -215,8 +259,10 @@ pub fn workspace(model: Model) -> Element(Msg) {
     html.section([class("model-key-grid")], [
       model_summary(model),
       access_policy_editor(model),
+      model_lifecycle_panel(model),
       create_key_panel(model),
       keys_panel(model),
+      archived_models_panel(),
     ]),
   ])
 }
@@ -242,7 +288,7 @@ pub fn sidebar_controls(model: Model) -> List(Element(Msg)) {
 fn sidebar(model: Model) -> Element(Msg) {
   lustre_shell.sidebar(
     lustre_shell.ModelAccess,
-    "Model configuration",
+    "Model management",
     sidebar_controls(model),
   )
 }
@@ -399,11 +445,100 @@ fn access_policy_editor(model: Model) -> Element(Msg) {
         ]),
         debug_recording_options(model),
         button.button([button.variant(button.Default), type_("submit")], [
-          text("Save model configuration"),
+          text("Save model management settings"),
         ]),
       ],
     ),
   ])
+}
+
+fn model_lifecycle_panel(_model: Model) -> Element(Msg) {
+  html.article([class("panel lifecycle-panel")], [
+    html.div([class("panel-header")], [
+      html.div([], [
+        html.h2([], [text("Model Lifecycle")]),
+        html.p([], [
+          text(
+            "Archive a model to remove it from discovery and routing while keeping its stored artifact recoverable.",
+          ),
+        ]),
+      ]),
+    ]),
+    button.button(
+      [
+        button.variant(button.Destructive),
+        type_("button"),
+        event.on_click(ArchiveModel),
+      ],
+      [text("Archive model")],
+    ),
+    html.small([], [
+      text(
+        "Archive requires SQLite model registry storage. Restore or hard-delete archived models below.",
+      ),
+    ]),
+  ])
+}
+
+fn archived_models_panel() -> Element(Msg) {
+  let archived_models = external_archived_model_options()
+
+  html.details([class("panel archived-models-panel")], [
+    html.summary([], [
+      html.span([], [text("Archived Models")]),
+      html.small([], [
+        text(
+          "Hidden by default; restore for review or hard-delete from SQLite.",
+        ),
+      ]),
+    ]),
+    case archived_models {
+      [] ->
+        html.p([], [
+          text("No archived models are stored in the SQLite model registry."),
+        ])
+      _ ->
+        html.table([], [
+          html.thead([], [
+            html.tr([], [
+              html.th([], [text("Model")]),
+              html.th([], [text("Version")]),
+              html.th([], [text("Actions")]),
+            ]),
+          ]),
+          html.tbody([], archived_model_rows(archived_models)),
+        ])
+    },
+  ])
+}
+
+fn archived_model_rows(models: List(ModelOption)) -> List(Element(Msg)) {
+  list.map(models, fn(model) {
+    let #(model_id, _, version, _) = model
+
+    html.tr([], [
+      html.td([], [html.code([], [text(model_id)])]),
+      html.td([], [text(version)]),
+      html.td([class("row-actions")], [
+        button.button(
+          [
+            button.variant(button.Default),
+            type_("button"),
+            event.on_click(RestoreArchivedModel(model_id)),
+          ],
+          [text("Restore")],
+        ),
+        button.button(
+          [
+            button.variant(button.Destructive),
+            type_("button"),
+            event.on_click(DeleteArchivedModel(model_id)),
+          ],
+          [text("Hard delete")],
+        ),
+      ]),
+    ])
+  })
 }
 
 fn debug_recording_options(model: Model) -> Element(Msg) {
@@ -772,6 +907,25 @@ pub fn styles() -> String {
   }
   .keys-panel {
     grid-column: 1 / -1;
+  }
+  .archived-models-panel {
+    grid-column: 1 / -1;
+  }
+  details.panel {
+    display: block;
+  }
+  summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    font-weight: 800;
+  }
+  .row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
   pre {
     overflow: auto;

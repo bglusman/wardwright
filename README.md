@@ -69,10 +69,10 @@ steps, and service details.
 
 Then visit `http://127.0.0.1:8787/admin`. Set `BASIC_AUTH_PASSWORD` before
 exposing the workbench or protected control APIs beyond loopback; the Basic Auth
-username is always `admin`. Model calls remain governed separately by model
-access configuration.
+username is always `admin`. Model calls remain governed separately by Model
+Management.
 
-## Model Access
+## Model Management
 
 Wardwright models are unkeyed by default. Operators can set a model to require a
 model-scoped API key, or set unkeyed models to internal-only composition:
@@ -89,7 +89,9 @@ or revoke keys for that model. Raw keys are shown once; Wardwright
 stores only a hash in the SQLite store at
 `~/.local/share/wardwright/wardwright.sqlite3` unless `XDG_DATA_HOME` or
 `WARDWRIGHT_SQLITE_STORE` points somewhere else. The same store persists
-registered model definitions.
+registered model definitions. Model Management can archive a model so it no
+longer appears in discovery or routing, restore it from the SQLite registry, or
+hard-delete the archived artifact when it should stop being recoverable.
 Keep `WARDWRIGHT_SECRET_KEY_BASE` stable, or set
 `WARDWRIGHT_MODEL_API_KEY_HASH_SECRET` explicitly, so stored keys remain
 verifiable across restarts. To encrypt the SQLite store, provide
@@ -126,7 +128,7 @@ agents should follow before activating a model.
 
 `wardwright admin` opens the workbench in your browser. If nothing is listening
 on the configured `WARDWRIGHT_BIND` port, it starts a local background service
-first. Use `wardwright admin access` to jump directly to model access controls.
+first. Use `wardwright admin access` to jump directly to Model Management.
 
 ## Provider Credentials
 

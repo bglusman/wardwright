@@ -60,7 +60,7 @@ defmodule Wardwright.CLI do
       wardwright                Print this help
       wardwright serve          Start the Wardwright HTTP service
       wardwright admin          Open the operator workbench, starting it if needed
-      wardwright admin access   Open model access controls
+      wardwright admin access   Open Model Management
       wardwright tools          Print policy-authoring MCP/API help for agents
       wardwright tools --json   Print machine-readable authoring tool metadata
       wardwright --version      Print the packaged app version

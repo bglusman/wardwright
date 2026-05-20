@@ -98,12 +98,15 @@ defmodule Wardwright do
   end
 
   def model_config(model) do
-    with {:ok, model_id} <- canonical_model_id(model),
-         {:ok, config} <- Map.fetch(current_configs(), model_id) do
-      {:ok, config}
-    else
-      :error -> {:error, "unknown Wardwright model #{inspect(model)}"}
-      {:error, message} -> {:error, message}
+    case canonical_model_id(model) do
+      {:ok, model_id} ->
+        case Map.fetch(current_configs(), model_id) do
+          {:ok, config} -> {:ok, config}
+          :error -> {:error, "unknown Wardwright model #{inspect(model)}"}
+        end
+
+      {:error, message} ->
+        {:error, message}
     end
   end
 
@@ -158,9 +161,78 @@ defmodule Wardwright do
 
   def put_model_config(_), do: {:error, "request body must be a JSON object"}
 
-  defp install_configs(configs) when is_list(configs) do
+  def archive_model_config(model) do
+    with {:ok, model_id} <- canonical_model_id(model),
+         {:ok, _config} <- model_config(model_id),
+         :ok <- require_model_registry_store(),
+         :ok <- require_archiveable_model(model_id) do
+      remaining_configs = Map.delete(current_configs(), model_id)
+      current_active_model_id = active_model_id()
+      preferred_active_model_id = if current_active_model_id != model_id, do: current_active_model_id
+
+      with {:ok, changed_count} <- model_registry_changed_count(Wardwright.SQLiteStore.archive_model_config(model_id)),
+           true <- changed_count > 0 do
+        install_configs(Map.values(remaining_configs), preferred_active_model_id)
+        configure_runtime(current_config())
+        {:ok, model_id}
+      else
+        false -> {:error, "unknown persisted Wardwright model #{inspect(model_id)}"}
+        {:error, reason} -> {:error, "could not archive #{inspect(model_id)}: #{inspect(reason)}"}
+      end
+    end
+  end
+
+  def restore_archived_model_config(model) do
+    with {:ok, model_id} <- canonical_model_id(model),
+         :ok <- require_model_registry_store(),
+         {:ok, config} <- archived_model_config_from_store(model_id),
+         :ok <- validate_config(config),
+         {:ok, _restored_config} <-
+           model_registry_restored_config(Wardwright.SQLiteStore.restore_model_config(model_id)) do
+      install_model_config(config)
+      configure_runtime(config)
+      {:ok, config}
+    else
+      {:error, :not_found} -> {:error, "unknown archived Wardwright model #{inspect(model)}"}
+      {:error, message} -> {:error, message}
+    end
+  end
+
+  def delete_archived_model_config(model) do
+    with {:ok, model_id} <- canonical_model_id(model),
+         :ok <- require_model_registry_store(),
+         {:ok, _config} <- archived_model_config_from_store(model_id) do
+      with {:ok, changed_count} <-
+             model_registry_changed_count(Wardwright.SQLiteStore.delete_archived_model_config(model_id)),
+           true <- changed_count > 0 do
+        {:ok, model_id}
+      else
+        false -> {:error, "unknown archived Wardwright model #{inspect(model)}"}
+        {:error, reason} -> {:error, "could not delete archived #{inspect(model)}: #{inspect(reason)}"}
+      end
+    else
+      {:error, :not_found} -> {:error, "unknown archived Wardwright model #{inspect(model)}"}
+      {:error, message} -> {:error, message}
+    end
+  end
+
+  def archived_model_configs do
+    {:ok, configs} = Wardwright.SQLiteStore.list_archived_models()
+    configs
+  end
+
+  def archived_model_summaries, do: Enum.map(archived_model_configs(), &model_summary/1)
+
+  defp install_configs(configs, preferred_active_model_id \\ nil) when is_list(configs) do
     configs = Map.new(configs, &{model_id(&1), &1})
-    active_model_id = configs |> Map.keys() |> Enum.sort() |> List.first() || @model_id
+
+    active_model_id =
+      if is_binary(preferred_active_model_id) and Map.has_key?(configs, preferred_active_model_id) do
+        preferred_active_model_id
+      else
+        configs |> Map.keys() |> Enum.sort() |> List.first() || @model_id
+      end
+
     active_config = Map.get(configs, active_model_id, default_config())
     :persistent_term.put({__MODULE__, :config}, active_config)
     :persistent_term.put({__MODULE__, :configs}, configs)
@@ -174,6 +246,43 @@ defmodule Wardwright do
     :persistent_term.put({__MODULE__, :configs}, configs)
     :persistent_term.put({__MODULE__, :active_model_id}, model_id)
   end
+
+  defp require_archiveable_model(model_id) do
+    if map_size(current_configs()) <= 1 do
+      {:error, "cannot archive #{inspect(model_id)} because Wardwright needs at least one active model"}
+    else
+      :ok
+    end
+  end
+
+  defp require_model_registry_store do
+    if Wardwright.SQLiteStore.enabled?() do
+      :ok
+    else
+      {:error, "model archive requires SQLite model registry storage"}
+    end
+  end
+
+  defp archived_model_config_from_store(model_id) do
+    case Wardwright.SQLiteStore.archived_model_config(model_id) do
+      {:ok, config} -> {:ok, config}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp active_model_id do
+    :persistent_term.get({__MODULE__, :active_model_id}, @model_id)
+  end
+
+  defp model_registry_changed_count({:ok, {:ok, count}}) when is_integer(count), do: {:ok, count}
+  defp model_registry_changed_count({:ok, count}) when is_integer(count), do: {:ok, count}
+  defp model_registry_changed_count({:error, reason}), do: {:error, reason}
+  defp model_registry_changed_count(other), do: {:error, other}
+
+  defp model_registry_restored_config({:ok, {:ok, config}}) when is_map(config), do: {:ok, config}
+  defp model_registry_restored_config({:ok, {:error, reason}}), do: {:error, reason}
+  defp model_registry_restored_config({:error, reason}), do: {:error, reason}
+  defp model_registry_restored_config(other), do: {:error, other}
 
   defp configure_runtime(config) do
     if Process.whereis(Wardwright.PolicyCache) do

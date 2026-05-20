@@ -10,7 +10,7 @@ pub fn selecting_model_access_model_syncs_workbench(
   expected_text: String,
 ) -> Bool {
   start()
-  |> click_nav("Model configuration")
+  |> click_nav("Model management")
   |> change_select("model", model_id)
   |> click_nav("Workbench")
   |> view_contains(expected_text)

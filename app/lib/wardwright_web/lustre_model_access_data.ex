@@ -18,6 +18,18 @@ defmodule WardwrightWeb.LustreModelAccessData do
     end)
   end
 
+  def archived_model_options do
+    Wardwright.archived_model_summaries()
+    |> Enum.map(fn model ->
+      {
+        model["id"] || "",
+        model["description"] || "",
+        model["active_version"] || "",
+        "archived"
+      }
+    end)
+  end
+
   def access_summary(model_id) do
     config = selected_config(model_id)
     model = config["model_id"] || model_id || default_model_id()
@@ -78,12 +90,47 @@ defmodule WardwrightWeb.LustreModelAccessData do
     end
   end
 
+  def archive_model(model_id) do
+    model = selected_model_id(model_id)
+
+    case Wardwright.archive_model_config(model) do
+      {:ok, archived_model_id} ->
+        {true,
+         "Archived #{archived_model_id}. It is no longer listed or callable; restore it from Archived models or hard-delete it from SQLite.",
+         default_model_id()}
+
+      {:error, message} ->
+        {false, message, model}
+    end
+  end
+
+  def restore_archived_model(model_id) do
+    case Wardwright.restore_archived_model_config(model_id) do
+      {:ok, config} ->
+        restored_model_id = config["model_id"] || model_id
+        {true, "Restored #{restored_model_id}. It is active again and available in /v1/models.", restored_model_id}
+
+      {:error, message} ->
+        {false, message, default_model_id()}
+    end
+  end
+
+  def delete_archived_model(model_id) do
+    case Wardwright.delete_archived_model_config(model_id) do
+      {:ok, deleted_model_id} ->
+        {true, "Hard-deleted archived model #{deleted_model_id} from SQLite.", default_model_id()}
+
+      {:error, message} ->
+        {false, message, default_model_id()}
+    end
+  end
+
   defp save_message("full_session") do
-    "Model configuration saved. Full-session request and response payloads will be stored with receipts in #{receipt_storage_note()}."
+    "Model management settings saved. Full-session request and response payloads will be stored with receipts in #{receipt_storage_note()}."
   end
 
   defp save_message(_mode) do
-    "Model configuration saved. Receipt VCR is metadata-only; receipt metadata is stored in #{receipt_storage_note()}."
+    "Model management settings saved. Receipt VCR is metadata-only; receipt metadata is stored in #{receipt_storage_note()}."
   end
 
   defp receipt_storage_note do
