@@ -6,10 +6,10 @@ description: Release, native binary, and Homebrew packaging plan for Wardwright.
 
 # Packaging
 
-Status: initial Burrito/Tinfoil packaging path in place. Release `v0.0.9` is
+Status: initial Burrito/Tinfoil packaging path in place. Release `v0.0.10` is
 the latest published usable early release, with the stronger model-aware
-workbench, saved simulator test cases, and an experimental in-page authoring
-assistant.
+workbench, saved simulator test cases, and a legacy experimental in-page
+authoring assistant.
 
 Wardwright is a BEAM application with a Phoenix operator UI, a legacy LiveView
 fallback page, and Gleam decision cores. The packaging goal is a user-facing
@@ -58,7 +58,7 @@ curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/in
 For a pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.9
+curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.10
 ```
 
 The script downloads the matching release archive, requires
@@ -66,10 +66,10 @@ The script downloads the matching release archive, requires
 to `~/.local/bin` by default. A manual install is equivalent:
 
 ```bash
-curl -fLO https://github.com/bglusman/wardwright/releases/download/v0.0.9/wardwright-0.0.9-x86_64-unknown-linux-musl.tar.gz
-curl -fLO https://github.com/bglusman/wardwright/releases/download/v0.0.9/checksums-sha256.txt
+curl -fLO https://github.com/bglusman/wardwright/releases/download/v0.0.10/wardwright-0.0.10-x86_64-unknown-linux-musl.tar.gz
+curl -fLO https://github.com/bglusman/wardwright/releases/download/v0.0.10/checksums-sha256.txt
 sha256sum -c checksums-sha256.txt --ignore-missing
-tar -xzf wardwright-0.0.9-x86_64-unknown-linux-musl.tar.gz
+tar -xzf wardwright-0.0.10-x86_64-unknown-linux-musl.tar.gz
 install -m 0755 wardwright ~/.local/bin/wardwright
 ```
 
@@ -261,13 +261,14 @@ where the policy UI and validation story are useful enough to promote.
   support for local agents and a Homebrew service bind file for port overrides.
 - Release `v0.0.8` adds simulation-target selection, editable retry attempts,
   saved simulator test cases, screenshots/docs for the stronger simulator loop,
-  an experimental in-page authoring assistant, Tidewave-assisted development
-  setup, and Credo/Quokka/browser ratchets.
-- Release `v0.0.9` adds the unified `/admin` workbench shell, model access
-  controls, saved fixture workflow, and model-aware projection visualization.
+  a legacy experimental in-page authoring assistant, Tidewave-assisted
+  development setup, and Credo/Quokka/browser ratchets.
+- Release `v0.0.10` preserves the unified `/admin` workbench shell from
+  `v0.0.9` and fixes packaged releases so the Gleam/Lustre runtime modules are
+  included in the Burrito payload.
 - Fnox-backed provider credentials are runtime-supported but not package-managed;
   fnox installation/profile management and product authorization remain
-  post-`0.0.9` hardening work.
+  post-`0.0.10` hardening work.
 - The first CI run may expose platform-specific Burrito, Zig, or NIF issues.
   macOS builds intentionally install Homebrew `zig@0.15` because upstream Zig
   0.15.2 can fail to link on newer macOS/Xcode combinations.

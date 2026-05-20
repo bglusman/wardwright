@@ -127,6 +127,9 @@ fn deprecated_rail_link() -> Element(msg) {
 
 pub fn styles() -> String {
   "
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
   .rail {
     position: sticky;
     top: 0;

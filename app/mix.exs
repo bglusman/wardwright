@@ -93,10 +93,25 @@ end
 defmodule Wardwright.MixProject do
   use Mix.Project
 
+  @gleam_release_runtime_deps ~w(
+    act
+    gleam_community_colour
+    gleam_erlang
+    gleam_json
+    gleam_otp
+    gleam_stdlib
+    gleam_time
+    glizzy
+    houdini
+    lustre
+    non_empty_list
+    trie_again
+  )
+
   def project do
     [
       app: :wardwright,
-      version: "0.0.9",
+      version: "0.0.10",
       elixir: "~> 1.17",
       compilers: [:gleam_deps, :gleam] ++ Mix.compilers(),
       aliases: ["deps.get": ["deps.get", "gleam.deps.get"]],
@@ -190,7 +205,7 @@ defmodule Wardwright.MixProject do
     [
       wardwright: [
         include_executables_for: [],
-        steps: [:assemble, &Burrito.wrap/1],
+        steps: [:assemble, &include_gleam_runtime_modules/1, &Burrito.wrap/1],
         burrito: [
           targets: [
             darwin_arm64: [os: :darwin, cpu: :aarch64],
@@ -201,5 +216,34 @@ defmodule Wardwright.MixProject do
         ]
       ]
     ]
+  end
+
+  defp include_gleam_runtime_modules(%Mix.Release{} = release) do
+    app_ebin =
+      Path.join([
+        release.path,
+        "lib",
+        "#{release.name}-#{release.version}",
+        "ebin"
+      ])
+
+    build_lib = Path.join(Mix.Project.build_path(), "lib")
+
+    for dep <- @gleam_release_runtime_deps do
+      dep_ebin = Path.join([build_lib, dep, "ebin"])
+
+      if !File.dir?(dep_ebin) do
+        Mix.raise("Gleam runtime dependency #{dep} was not compiled at #{dep_ebin}")
+      end
+
+      dep_ebin
+      |> Path.join("*.beam")
+      |> Path.wildcard()
+      |> Enum.each(fn beam ->
+        File.cp!(beam, Path.join(app_ebin, Path.basename(beam)))
+      end)
+    end
+
+    release
   end
 end

@@ -203,7 +203,7 @@ async function assertNoPageOverflow(viewport, path) {
 
     await cdp.send("Page.navigate", { url: `${appUrl}${path}` });
     await cdp.waitFor("Page.loadEventFired");
-    await waitForEval(cdp, `document.body && document.body.innerText.length > 20`);
+    await waitForEval(cdp, `pageText(document.body).length > 20`);
     await waitForEval(cdp, `!document.documentElement.classList.contains("phx-loading")`);
 
     const result = await evaluate(
@@ -216,9 +216,37 @@ async function assertNoPageOverflow(viewport, path) {
     );
 
     if (result.overflow > 1) {
+      const widest = await evaluate(
+        cdp,
+        `(() => {
+          const elements = [];
+          const collect = (root) => {
+            if (!root?.querySelectorAll) return;
+            for (const element of root.querySelectorAll("*")) {
+              elements.push(element);
+              if (element.shadowRoot) collect(element.shadowRoot);
+            }
+          };
+          collect(document);
+          return elements.map((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+              tag: element.tagName,
+              className: String(element.className || ""),
+              width: Math.round(rect.width),
+              left: Math.round(rect.left),
+              right: Math.round(rect.right),
+              scrollWidth: element.scrollWidth
+            };
+          })
+          .filter((entry) => entry.right > document.documentElement.clientWidth + 1 || entry.width > document.documentElement.clientWidth + 1)
+          .sort((a, b) => b.right - a.right || b.width - a.width)
+          .slice(0, 5);
+        })()`
+      );
       throw new Error(
         `${viewport.name} ${path}: page overflow ${result.overflow}px (` +
-          `scrollWidth ${result.scrollWidth}, clientWidth ${result.clientWidth})`
+          `scrollWidth ${result.scrollWidth}, clientWidth ${result.clientWidth}); widest=${JSON.stringify(widest)}`
       );
     }
 
@@ -380,14 +408,31 @@ async function waitForEval(cdp, expression, timeoutMs = 8_000) {
 
   const status = await evaluate(
     cdp,
-    `document.querySelector(".player_status span")?.textContent || document.body?.innerText.slice(0, 200) || ""`
+    `document.querySelector(".player_status span")?.textContent || pageText(document.body).slice(0, 200) || ""`
   );
   throw new Error(`Timed out waiting for browser condition: ${expression}\nLast status: ${status}`);
 }
 
 async function evaluate(cdp, expression) {
   const response = await cdp.send("Runtime.evaluate", {
-    expression,
+    expression: `(() => {
+      const pageText = (node) => {
+        if (!node) return "";
+        let text = node.innerText || node.textContent || "";
+
+        if (node.querySelectorAll) {
+          for (const element of node.querySelectorAll("*")) {
+            if (element.shadowRoot) {
+              text += "\\n" + pageText(element.shadowRoot);
+            }
+          }
+        }
+
+        return text.trim();
+      };
+
+      return (${expression});
+    })()`,
     returnByValue: true,
     awaitPromise: true
   });
