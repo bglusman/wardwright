@@ -426,6 +426,27 @@ defmodule WardwrightWeb.WorkbenchTest do
 
     assert {:ok, config} = Wardwright.model_config("admin-cow")
     assert Wardwright.model_id(config) == "admin-cow"
+
+    assert :wardwright@lustre_workbench_test_support.edited_authoring_draft_powers_simulation_and_activation(
+             "coding-balanced",
+             "Make an admin cow model.",
+             "please moo for me",
+             "system/wardwright_policy_reminder: Include a small ASCII cow",
+             "Activated edited-admin-cow"
+           )
+
+    assert {:ok, edited_config} = Wardwright.model_config("edited-admin-cow")
+    assert Wardwright.model_id(edited_config) == "edited-admin-cow"
+
+    assert :wardwright@lustre_workbench_test_support.invalid_authoring_draft_blocks_simulation(
+             "coding-balanced",
+             "Make an admin cow model."
+           )
+
+    assert :wardwright@lustre_workbench_test_support.authoring_refinement_prompt_is_available(
+             "coding-balanced",
+             "Make an admin cow model."
+           )
   end
 
   test "Lustre workbench explains authoring setup instead of showing dead controls when disabled" do

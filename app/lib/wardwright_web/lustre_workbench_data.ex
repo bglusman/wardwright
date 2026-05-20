@@ -141,6 +141,26 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     end
   end
 
+  def validate_authoring_draft(artifact_json) do
+    case draft_artifact(artifact_json) do
+      {:ok, artifact} ->
+        result = WardwrightWeb.PolicyAuthoringDrafts.wardwright_model_draft(%{"artifact" => artifact})
+        validation = result["validation"] || %{}
+        errors = validation["errors"] || []
+        warnings = validation["warnings"] || []
+        model_id = get_in(result, ["artifact", "model_id"]) || artifact["model_id"] || "draft"
+
+        if errors == [] do
+          {true, "Draft #{model_id}: 0 validation errors, #{length(warnings)} warnings.", model_id}
+        else
+          {false, "Draft #{model_id}: #{length(errors)} validation errors, #{length(warnings)} warnings.", model_id}
+        end
+
+      {:error, message} ->
+        {false, message, ""}
+    end
+  end
+
   def fixture_options(pattern_id, model_id) do
     config = model_config(model_id)
 
@@ -332,7 +352,18 @@ defmodule WardwrightWeb.LustreWorkbenchData do
 
   def projection_summary(pattern_id, model_id) do
     config = model_config(model_id)
-    config_model_id = config["model_id"] || model_id || ""
+    projection_summary_for_config(pattern_id, config)
+  end
+
+  def projection_summary_for_draft(pattern_id, artifact_json) do
+    case draft_artifact(artifact_json) do
+      {:ok, config} -> projection_summary_for_config(pattern_id, config)
+      {:error, _message} -> :wardwright@projection_core.derive_summary(pattern_id, "invalid draft", "")
+    end
+  end
+
+  defp projection_summary_for_config(pattern_id, config) do
+    config_model_id = config["model_id"] || ""
     config_version = config["version"] || ""
 
     {engine_id, artifact_label, initial_state, default_projection, transitions} =
@@ -355,6 +386,36 @@ defmodule WardwrightWeb.LustreWorkbenchData do
   def run_simulation(pattern_id, model_id, user_input, model_response, response_attempts) do
     config = model_config(model_id)
     response_attempts = normalize_response_attempts(response_attempts)
+
+    run_simulation_with_config(pattern_id, config, user_input, model_response, response_attempts)
+  end
+
+  def run_draft_simulation(pattern_id, artifact_json, user_input, model_response, response_attempts) do
+    response_attempts = normalize_response_attempts(response_attempts)
+
+    case draft_artifact(artifact_json) do
+      {:ok, config} ->
+        run_simulation_with_config(pattern_id, config, user_input, model_response, response_attempts)
+
+      {:error, message} ->
+        {
+          "invalid draft",
+          "draft-invalid",
+          user_input || "",
+          model_response || "",
+          false,
+          false,
+          [],
+          [{"draft", "draft artifact invalid", message, "error", "draft.invalid"}],
+          [],
+          "invalid draft",
+          ""
+        }
+    end
+  end
+
+  defp run_simulation_with_config(pattern_id, config, user_input, model_response, response_attempts) do
+    config = Wardwright.normalize_config(config)
 
     simulation =
       Wardwright.PolicyProjection.simulate_model_turn_with_attempts(
@@ -383,9 +444,22 @@ defmodule WardwrightWeb.LustreWorkbenchData do
       policy_actions,
       trace_events,
       state_events,
-      config["model_id"] || model_id || "",
+      config["model_id"] || "",
       config["version"] || ""
     }
+  end
+
+  defp draft_artifact(artifact_json) do
+    with {:ok, artifact} <- Jason.decode(to_string(artifact_json)),
+         true <- is_map(artifact) do
+      {:ok, Wardwright.normalize_config(artifact)}
+    else
+      {:error, %Jason.DecodeError{} = error} ->
+        {:error, "Draft JSON is invalid: #{Exception.message(error)}"}
+
+      false ->
+        {:error, "Draft JSON must be an object."}
+    end
   end
 
   defp model_config(model_id) when is_binary(model_id) do

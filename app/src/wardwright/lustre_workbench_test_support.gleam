@@ -143,6 +143,80 @@ pub fn authoring_request_can_review_and_activate_draft(
   && view_contains(activated, activated_text)
 }
 
+pub fn edited_authoring_draft_powers_simulation_and_activation(
+  model_id: String,
+  request: String,
+  user_input: String,
+  expected_policy_text: String,
+  activated_text: String,
+) -> Bool {
+  let reviewed =
+    start()
+    |> change_select("model_id", model_id)
+    |> simulate.input(on: by_id("authoring_agent_input"), value: request)
+    |> simulate.submit(on: by_id("authoring_agent_form"), fields: [
+      #("authoring_agent_input", request),
+    ])
+
+  let edited =
+    reviewed
+    |> simulate.input(
+      on: by_id("authoring_draft_artifact"),
+      value: edited_admin_cow_artifact(),
+    )
+
+  let simulated =
+    edited
+    |> simulate.input(on: by_id("user_input"), value: user_input)
+
+  let activated =
+    edited
+    |> simulate.click(on: query.element(
+      matching: query.tag("button")
+      |> query.and(query.text("Approve and activate draft")),
+    ))
+
+  view_contains(edited, "Simulating draft edited-admin-cow")
+  && view_has_control_value(
+    edited,
+    "authoring_draft_artifact",
+    edited_admin_cow_artifact(),
+  )
+  && view_contains(simulated, expected_policy_text)
+  && view_contains(activated, activated_text)
+}
+
+pub fn invalid_authoring_draft_blocks_simulation(
+  model_id: String,
+  request: String,
+) -> Bool {
+  let edited =
+    start()
+    |> change_select("model_id", model_id)
+    |> simulate.input(on: by_id("authoring_agent_input"), value: request)
+    |> simulate.submit(on: by_id("authoring_agent_form"), fields: [
+      #("authoring_agent_input", request),
+    ])
+    |> simulate.input(on: by_id("authoring_draft_artifact"), value: "not json")
+
+  view_contains(edited, "Draft JSON is invalid")
+  && view_contains(edited, "invalid draft")
+  && view_contains(edited, "Simulating active model " <> model_id)
+}
+
+pub fn authoring_refinement_prompt_is_available(
+  model_id: String,
+  request: String,
+) -> Bool {
+  start()
+  |> change_select("model_id", model_id)
+  |> simulate.input(on: by_id("authoring_agent_input"), value: request)
+  |> simulate.submit(on: by_id("authoring_agent_form"), fields: [
+    #("authoring_agent_input", request),
+  ])
+  |> view_has_element_id("authoring_refinement_form")
+}
+
 pub fn selecting_model_updates_authoring_status(
   model_id: String,
   expected_text: String,
@@ -290,6 +364,10 @@ fn view_has_control_value(
     |> query.and(query.attribute("value", expected_value)),
   ))
   |> result.is_ok
+}
+
+fn edited_admin_cow_artifact() -> String {
+  "{\n  \"model_id\": \"edited-admin-cow\",\n  \"version\": \"draft\",\n  \"governance\": [\n    {\n      \"action\": \"transform\",\n      \"contains\": \"moo\",\n      \"id\": \"edited-admin-cow-reminder\",\n      \"kind\": \"request_transform\",\n      \"message\": \"mooing input matched\",\n      \"reminder\": \"Include a small ASCII cow, then answer normally.\"\n    }\n  ],\n  \"targets\": [\n    {\n      \"context_window\": 8192,\n      \"model\": \"local-ollama\"\n    }\n  ],\n  \"dispatchers\": [\n    {\n      \"id\": \"dispatcher.edited-admin-cow\",\n      \"models\": [\"local-ollama\"]\n    }\n  ],\n  \"route_root\": \"dispatcher.edited-admin-cow\"\n}"
 }
 
 fn view_has_element_id(simulation, id: String) -> Bool {
