@@ -10,7 +10,7 @@ defmodule Wardwright.StorageAndAdminTest do
                "json_queries" => true,
                "retention_jobs" => false,
                "time_range_indexes" => false,
-               "transactional" => true
+               "transactional" => false
              },
              "contract_version" => "storage-contract-v0",
              "kind" => "memory",

@@ -91,8 +91,8 @@ defmodule Wardwright.ReceiptStore do
           "event_replay" => true,
           "json_queries" => true,
           "retention_jobs" => false,
-          "time_range_indexes" => durable,
-          "transactional" => true
+          "time_range_indexes" => false,
+          "transactional" => false
         },
         "contract_version" => @contract_version,
         "kind" => Atom.to_string(state.storage),
