@@ -91,6 +91,29 @@ pub fn editing_then_submitting_runs_simulation(
   |> view_contains(expected_text)
 }
 
+pub fn submitting_authoring_request_shows_response(
+  model_id: String,
+  request: String,
+  expected_text: String,
+) -> Bool {
+  start()
+  |> change_select("model_id", model_id)
+  |> simulate.input(on: by_id("authoring_agent_input"), value: request)
+  |> simulate.submit(on: by_id("authoring_agent_form"), fields: [
+    #("authoring_agent_input", request),
+  ])
+  |> view_contains(expected_text)
+}
+
+pub fn selecting_model_updates_authoring_status(
+  model_id: String,
+  expected_text: String,
+) -> Bool {
+  start()
+  |> change_select("model_id", model_id)
+  |> view_contains(expected_text)
+}
+
 pub fn selecting_model_exposes_retry_outputs(
   model_id: String,
   expected_text: String,

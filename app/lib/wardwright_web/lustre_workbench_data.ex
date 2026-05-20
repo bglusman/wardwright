@@ -85,6 +85,38 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     end
   end
 
+  def authoring_status(model_id) do
+    status = WardwrightWeb.AuthoringAgent.status(%{model_id: model_id})
+
+    {
+      !!status.configured,
+      status |> Map.get(:model, "") |> to_string(),
+      status |> Map.get(:route, "") |> to_string(),
+      if(status.configured, do: "live", else: "setup needed")
+    }
+  end
+
+  def ask_authoring_agent(model_id, pattern_id, message) do
+    context = %{
+      model_id: model_id,
+      pattern_id: pattern_id,
+      recipe_id: pattern_id
+    }
+
+    {:ok, response} = WardwrightWeb.AuthoringAgent.respond(to_string(message), context)
+    draft = authoring_draft_summary(response)
+
+    {
+      to_string(Map.get(response, :status, "completed")),
+      to_string(Map.get(response, :content, "")),
+      elem(draft, 0),
+      elem(draft, 1)
+    }
+  rescue
+    _exception ->
+      {"error", "The authoring assistant failed before returning an answer.", "", ""}
+  end
+
   def fixture_options(pattern_id, model_id) do
     config = model_config(model_id)
 
@@ -243,6 +275,32 @@ defmodule WardwrightWeb.LustreWorkbenchData do
   end
 
   defp blank_fallback(_value, fallback), do: fallback
+
+  defp authoring_draft_summary(%{tool_results: tool_results}) when is_list(tool_results) do
+    tool_results
+    |> Enum.find(fn
+      %{"name" => "draft_wardwright_model", "status" => "executed"} -> true
+      _result -> false
+    end)
+    |> case do
+      %{
+        "result" => %{
+          "artifact" => %{"model_id" => model_id},
+          "validation" => %{"errors" => errors, "warnings" => warnings}
+        }
+      }
+      when is_binary(model_id) and is_list(errors) and is_list(warnings) ->
+        {
+          model_id,
+          "Draft #{model_id}: #{length(errors)} validation errors, #{length(warnings)} warnings. Review before activation."
+        }
+
+      _result ->
+        {"", ""}
+    end
+  end
+
+  defp authoring_draft_summary(_response), do: {"", ""}
 
   def projection_summary(pattern_id, model_id) do
     config = model_config(model_id)

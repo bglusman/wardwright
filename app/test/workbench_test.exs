@@ -129,6 +129,7 @@ defmodule WardwrightWeb.WorkbenchTest do
 
     assert json =~ "Wardwright"
     assert json =~ "Selected model turn simulator"
+    assert json =~ "Model authoring"
     assert json =~ "Policy projection"
     assert json =~ "Fixture"
     refute json =~ "topbar-actions"
@@ -346,6 +347,41 @@ defmodule WardwrightWeb.WorkbenchTest do
            )
   end
 
+  test "Lustre workbench submits authoring requests through the existing assistant boundary" do
+    original_client = Application.get_env(:wardwright, :authoring_agent_client, :unset)
+    original_enabled = System.get_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED")
+    original_api_key = System.get_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY")
+    original_route = System.get_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE")
+
+    Application.put_env(:wardwright, :authoring_agent_client, __MODULE__.AdminAuthoringClient)
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
+    System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
+    System.delete_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE")
+
+    on_exit(fn ->
+      case original_client do
+        :unset -> Application.delete_env(:wardwright, :authoring_agent_client)
+        client -> Application.put_env(:wardwright, :authoring_agent_client, client)
+      end
+
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", original_enabled)
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", original_api_key)
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", original_route)
+    end)
+
+    assert :wardwright@lustre_workbench_test_support.submitting_authoring_request_shows_response(
+             "coding-balanced",
+             "Make an admin cow model.",
+             "Drafted admin cow model."
+           )
+
+    assert :wardwright@lustre_workbench_test_support.submitting_authoring_request_shows_response(
+             "coding-balanced",
+             "Make an admin cow model.",
+             "Draft admin-cow: 0 validation errors"
+           )
+  end
+
   test "Lustre simulation reruns after editing and submitting the form" do
     put_cow_transform_model_config()
 
@@ -548,4 +584,38 @@ defmodule WardwrightWeb.WorkbenchTest do
   end
 
   defp basic_auth(username, password), do: "Basic " <> Base.encode64("#{username}:#{password}")
+
+  defp restore_env(key, nil), do: System.delete_env(key)
+  defp restore_env(key, value), do: System.put_env(key, value)
+
+  defmodule AdminAuthoringClient do
+    def generate_text(_prompt, _opts) do
+      {:ok,
+       Jason.encode!(%{
+         "answer" => "Drafted admin cow model.",
+         "next_steps" => ["review the draft before activation"],
+         "tool_calls" => [
+           %{
+             "arguments" => %{
+               "description" => "Adds a small cow reminder for admin authoring review.",
+               "governance" => [
+                 %{
+                   "action" => "transform",
+                   "contains" => "moo",
+                   "id" => "admin-cow-reminder",
+                   "kind" => "request_transform",
+                   "message" => "mooing input matched",
+                   "reminder" => "Include a small ASCII cow, then answer normally."
+                 }
+               ],
+               "model_id" => "admin-cow",
+               "route" => %{"id" => "dispatcher.admin-cow", "models" => ["local-ollama"], "type" => "dispatcher"},
+               "targets" => [%{"context_window" => 8192, "model" => "local-ollama"}]
+             },
+             "name" => "draft_wardwright_model"
+           }
+         ]
+       })}
+    end
+  end
 end
