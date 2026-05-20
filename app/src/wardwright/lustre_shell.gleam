@@ -6,6 +6,7 @@ import lustre/event
 pub type Page {
   Workbench
   ModelAccess
+  ControlDebugger
 }
 
 pub fn sidebar(
@@ -33,6 +34,12 @@ pub fn sidebar(
         "Configure model keys and access.",
         "/admin?view=model_access",
         active_page == ModelAccess,
+      ),
+      rail_link(
+        "Control debugger",
+        "Replay receipts and fork evidence.",
+        "/admin?view=control_debugger",
+        active_page == ControlDebugger,
       ),
       deprecated_rail_link(),
     ]),
@@ -66,6 +73,12 @@ pub fn admin_sidebar(
         "Configure model keys and access.",
         active_page == ModelAccess,
         to_msg(ModelAccess),
+      ),
+      rail_button(
+        "Control debugger",
+        "Replay receipts and fork evidence.",
+        active_page == ControlDebugger,
+        to_msg(ControlDebugger),
       ),
       deprecated_rail_link(),
     ]),

@@ -207,9 +207,18 @@ scenario should include:
 - a trace or receipt preview that explains why the saved case matters
 
 Use `delete_scenario` to remove a stale local case, `import_receipt_scenario` to
-turn a real receipt into pinned replay evidence, `export_regression_pack` to
-share or review pinned scenarios, and `apply_scenario_retention` to prune old
-unpinned exploratory cases.
+turn a real receipt into pinned replay evidence, `replay_receipt_policy` to
+inspect the recorded policy and route decisions without calling a provider,
+`export_regression_pack` to share or review pinned scenarios, and
+`apply_scenario_retention` to prune old unpinned exploratory cases.
+
+## Replay Receipts Before Changing Policy
+
+Use `replay_receipt_policy` when a stored receipt should be inspected as
+metadata-only VCR evidence before a policy edit. Replay returns the recorded
+request metadata, policy actions/events, route decision, final status, and an
+explicit `provider_called: false` marker. It does not regenerate provider output
+or expose raw prompts and completions.
 
 The workbench can save the same shape directly from the editable simulator. That
 is the preferred path when a human is actively reviewing the example because it

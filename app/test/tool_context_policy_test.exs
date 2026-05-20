@@ -396,6 +396,85 @@ defmodule Wardwright.ToolContextPolicyTest do
     assert get_in(allowed_receipt, ["decision", "policy_actions"]) == []
   end
 
+  test "state and phase scoped allowed_tools pass listed tools and block unlisted tools with receipt evidence" do
+    config =
+      unit_policy_config()
+      |> Map.put("policy_cache", %{"max_entries" => 12, "recent_limit" => 12})
+      |> Map.put("targets", [%{"context_window" => 512, "model" => "local/read"}])
+      |> Map.put("governance", [
+        %{
+          "after" => %{"tool" => %{"namespace" => "browser", "phase" => "result_interpretation"}},
+          "cache_scope" => "session_id",
+          "id" => "enter-review-state",
+          "kind" => "tool_sequence",
+          "transition_to" => "reviewing_tool_result"
+        },
+        %{
+          "allowed_tools" => [
+            %{"name" => "approve_tool_result", "namespace" => "review", "risk_class" => "read_only"}
+          ],
+          "cache_scope" => "session_id",
+          "id" => "review-state-tool-surface",
+          "kind" => "allowed_tools",
+          "message" => "review state only allows review approval tools",
+          "phase" => "planning",
+          "state_scope" => "reviewing_tool_result"
+        }
+      ])
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    browser_result =
+      tool_request("allowed-tools-session", "browser", "read_page", "result_interpretation", risk_class: "read_only")
+
+    call(:post, "/v1/wardwright/simulate", %{request: browser_result})
+
+    approve_request =
+      tool_request("allowed-tools-session", "review", "approve_tool_result", "planning", risk_class: "read_only")
+
+    allowed_conn = call(:post, "/v1/wardwright/simulate", %{request: approve_request})
+    allowed_receipt = allowed_conn.resp_body |> Jason.decode!() |> get_in(["receipt"])
+
+    assert get_in(allowed_receipt, ["final", "status"]) == "simulated"
+    assert get_in(allowed_receipt, ["decision", "policy_actions"]) == []
+
+    shell_request =
+      tool_request("allowed-tools-session", "shell", "exec", "planning", risk_class: "irreversible")
+
+    blocked_conn = call(:post, "/v1/wardwright/simulate", %{request: shell_request})
+    blocked_receipt = blocked_conn.resp_body |> Jason.decode!() |> get_in(["receipt"])
+
+    assert get_in(blocked_receipt, ["final", "status"]) == "policy_failed_closed"
+
+    assert [
+             %{
+               "action" => "block",
+               "allowed_tool_phase" => "planning",
+               "blocked_tools" => [%{"name" => "exec", "namespace" => "shell", "risk_class" => "irreversible"}],
+               "kind" => "allowed_tools",
+               "rule_id" => "review-state-tool-surface",
+               "state_scope" => "reviewing_tool_result"
+             }
+           ] = get_in(blocked_receipt, ["decision", "policy_actions"])
+
+    assert get_in(blocked_receipt, [
+             "decision",
+             "policy_actions",
+             Access.at(0),
+             "allowed_tools",
+             Access.at(0)
+           ]) == %{"name" => "approve_tool_result", "namespace" => "review", "risk_class" => "read_only"}
+
+    assert get_in(blocked_receipt, [
+             "decision",
+             "policy_actions",
+             Access.at(0),
+             "tool_context",
+             "primary_tool",
+             "name"
+           ]) == "exec"
+  end
+
   test "tool sequence enforces before-after windows and reset tool events" do
     config =
       unit_policy_config()

@@ -378,6 +378,11 @@ defmodule WardwrightWeb.StreamRuntime do
     end
   end
 
+  defp stream_runtime_chunk(%{wardwright_stream_delta: %{"tool_calls" => calls}} = event, acc)
+       when is_list(calls) and calls != [] do
+    {:cont, release_openai_delta(acc, event)}
+  end
+
   defp stream_runtime_chunk(chunk, acc) do
     case Wardwright.Policy.Stream.consume(acc.policy, chunk) do
       {:cont, policy, released_chunks} ->
@@ -416,6 +421,26 @@ defmodule WardwrightWeb.StreamRuntime do
 
       %{acc | chunks: [text | acc.chunks], conn: conn}
     end)
+  end
+
+  defp release_openai_delta(acc, event) do
+    acc = ensure_sse_started(acc)
+
+    payload = %{
+      "choices" => [
+        %{
+          "delta" => event.wardwright_stream_delta,
+          "index" => Map.get(event, :wardwright_stream_choice_index, 0)
+        }
+      ],
+      "created" => System.system_time(:second),
+      "id" => "chatcmpl_stream_#{acc.receipt_id}",
+      "model" => Map.get(acc.request, "model"),
+      "object" => "chat.completion.chunk"
+    }
+
+    {:ok, conn} = chunk(acc.conn, "data: #{Jason.encode!(payload)}\n\n")
+    %{acc | conn: conn}
   end
 
   defp released_content(acc), do: acc.chunks |> Enum.reverse() |> Enum.join()

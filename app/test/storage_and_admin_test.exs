@@ -76,7 +76,6 @@ defmodule Wardwright.StorageAndAdminTest do
 
     assert get_in(providers, ["openai", "capabilities", "unsupported_stream_delta_fields"]) == [
              "role",
-             "tool_calls",
              "logprobs"
            ]
 

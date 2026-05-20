@@ -27,6 +27,8 @@ defmodule WardwrightWeb.WorkbenchTest do
 
   setup do
     Wardwright.reset_config()
+    Wardwright.ReceiptStore.clear()
+    Wardwright.PolicyScenarioStore.clear()
     :ok
   end
 
@@ -60,6 +62,16 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert conn.resp_body =~ "/admin/socket/websocket"
     assert conn.resp_body =~ "page=model_access"
     assert conn.resp_body =~ "model=coding-balanced"
+    refute conn.resp_body =~ "Phoenix.LiveView"
+  end
+
+  test "admin control debugger view mounts through the shared runtime" do
+    conn = get(build_conn(), "/admin?view=control_debugger")
+
+    assert html_response(conn, 200) =~ "lustre-server-component"
+    assert conn.resp_body =~ "<title>Wardwright Admin</title>"
+    assert conn.resp_body =~ "/admin/socket/websocket"
+    assert conn.resp_body =~ "page=control_debugger"
     refute conn.resp_body =~ "Phoenix.LiveView"
   end
 
@@ -160,6 +172,24 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert json =~ "Legacy workbench (deprecated)"
     refute json =~ "Lustre Workbench"
     refute json =~ "Gleam UI"
+
+    WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
+  end
+
+  test "transport registration pushes the initial control debugger DOM payload" do
+    assert {:ok, state} =
+             WardwrightWeb.LustreWorkbenchSocket.init(%{params: %{"page" => "control_debugger"}})
+
+    assert_receive {ref, message} when is_tuple(message), 1_000
+
+    assert {:push, {:text, json}, _state} =
+             WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
+
+    assert json =~ "Control debugger"
+    assert json =~ "Fork from receipt"
+    assert json =~ "VCR replay"
+    assert json =~ "Replay receipt"
+    refute json =~ "Phoenix.LiveView"
 
     WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
   end
@@ -470,6 +500,44 @@ defmodule WardwrightWeb.WorkbenchTest do
            )
   end
 
+  test "control debugger imports receipts as reusable replay evidence" do
+    Wardwright.ReceiptStore.insert(control_debugger_receipt_fixture("rcpt_control_import"))
+
+    assert :wardwright@lustre_control_debugger_test_support.importing_receipt_shows_status(
+             "rcpt_control_import",
+             "tts-retry",
+             "Imported control receipt",
+             "Imported Imported control receipt as replay evidence."
+           )
+
+    assert [
+             scenario
+           ] = Wardwright.PolicyScenarioStore.list("tts-retry")
+
+    assert scenario.title == "Imported control receipt"
+    assert scenario.source == "live_replay"
+    assert scenario.pinned
+    assert get_in(scenario.receipt_preview, ["receipt_id"]) == "rcpt_control_import"
+  end
+
+  test "control debugger replays receipt metadata without provider calls" do
+    Wardwright.ReceiptStore.insert(control_debugger_receipt_fixture("rcpt_control_replay"))
+
+    assert :wardwright@lustre_control_debugger_test_support.replaying_receipt_shows_facts(
+             "rcpt_control_replay",
+             "completed",
+             "managed/kimi-k2.6"
+           )
+  end
+
+  test "control debugger receipt id text input is controlled" do
+    assert :wardwright@lustre_control_debugger_test_support.receipt_text_input_is_controlled("manual_receipt_id")
+  end
+
+  test "control debugger receipt selector exposes an accessible name" do
+    assert :wardwright@lustre_control_debugger_test_support.receipt_select_has_accessible_name()
+  end
+
   test "Lustre state graph keeps possible paths while replay follows edited model output" do
     put_retry_model_config()
 
@@ -524,6 +592,78 @@ defmodule WardwrightWeb.WorkbenchTest do
       |> Map.put("route_root", "dispatcher.cow")
 
     {:ok, _config} = Wardwright.put_model_config(config)
+  end
+
+  defp control_debugger_receipt_fixture(receipt_id) do
+    %{
+      "created_at" => 1_800_000_456,
+      "decision" => %{
+        "policy_actions" => [],
+        "policy_conflicts" => [],
+        "reason" => "synthetic control debugger fixture",
+        "route_id" => "dispatcher.managed",
+        "route_type" => "dispatcher",
+        "selected_model" => "managed/kimi-k2.6",
+        "selected_provider" => "managed"
+      },
+      "final" => %{
+        "status" => "completed",
+        "stream_policy" => %{
+          "events" => [
+            %{
+              "action" => "retry_with_reminder",
+              "rule_id" => "tts.no-old-client",
+              "type" => "stream_policy.triggered"
+            },
+            %{
+              "retry_count" => 1,
+              "rule_id" => "tts.retry-arbiter",
+              "type" => "attempt.retry_requested"
+            }
+          ],
+          "released_to_consumer" => true,
+          "retry_count" => 1,
+          "status" => "completed"
+        }
+      },
+      "model_id" => "coding-balanced",
+      "model_version" => "2026-05-13.mock",
+      "receipt_id" => receipt_id,
+      "receipt_schema" => "v1",
+      "request" => %{
+        "estimated_prompt_tokens" => 12,
+        "message_count" => 1,
+        "model" => "coding-balanced",
+        "normalized_model" => "coding-balanced"
+      },
+      "vcr" => %{
+        "decision" => %{
+          "reason" => "synthetic control debugger fixture",
+          "route_id" => "dispatcher.managed",
+          "route_type" => "dispatcher",
+          "selected_model" => "managed/kimi-k2.6",
+          "selected_provider" => "managed"
+        },
+        "final" => %{"status" => "completed"},
+        "policy" => %{"actions" => [], "conflicts" => []},
+        "redaction" => "metadata_only",
+        "request" => %{
+          "estimated_prompt_tokens" => 12,
+          "message_content_lengths" => [24],
+          "message_count" => 1,
+          "message_roles" => ["user"],
+          "normalized_model" => "coding-balanced"
+        },
+        "route" => %{
+          "reason" => "synthetic control debugger fixture",
+          "route_id" => "dispatcher.managed",
+          "route_type" => "dispatcher",
+          "selected_model" => "managed/kimi-k2.6",
+          "selected_provider" => "managed"
+        },
+        "schema" => "wardwright.policy_vcr.v0"
+      }
+    }
   end
 
   defp put_retry_model_config do

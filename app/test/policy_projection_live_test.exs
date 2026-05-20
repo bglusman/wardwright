@@ -207,6 +207,12 @@ defmodule Wardwright.PolicyProjectionLiveTest do
                node["writes"] == ["decision.blocked", "final.status"]
            end)
 
+    assert Enum.any?(nodes, fn node ->
+             node["id"] == "tool-policy.review-state-tool-surface" and
+               node["summary"] =~ "allowed=review.approve_tool_result" and
+               node["writes"] == ["decision.blocked", "final.status"]
+           end)
+
     assert Enum.any?(nodes, &(&1["id"] == "tool.receipt-context"))
     assert [%{"class" => "ordered", "node_ids" => node_ids}] = projection["conflicts"]
     assert "tool-policy.github-write-tools" in node_ids
@@ -1539,6 +1545,15 @@ defmodule Wardwright.PolicyProjectionLiveTest do
           "name" => "create_pull_request",
           "namespace" => "mcp.github",
           "threshold" => 3
+        },
+        %{
+          "allowed_tools" => [
+            %{"name" => "approve_tool_result", "namespace" => "review", "risk_class" => "read_only"}
+          ],
+          "id" => "review-state-tool-surface",
+          "kind" => "allowed_tools",
+          "phase" => "planning",
+          "state_scope" => "reviewing_tool_result"
         }
       ])
 

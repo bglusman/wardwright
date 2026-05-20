@@ -18,8 +18,15 @@ defmodule Wardwright.Policy.Plan do
   @actions_key "actions"
   @after_key "after"
   @alert_count_key "alert_count"
+  @allowed_tool_phase_key "allowed_tool_phase"
+  @allowed_tools_key "allowed_tools"
+  @allowed_tools_kind "allowed_tools"
+  @available_tools_key "available_tools"
   @before_key "before"
+  @blocked_tools_key "blocked_tools"
   @cache_scope_key "cache_scope"
+  @default_allowed_tools_message "tool call is outside allowed_tools"
+  @default_allowed_tools_rule_id "allowed-tools"
   @created_at_key "created_at_unix_ms"
   @events_key "events"
   @id_key "id"
@@ -44,6 +51,7 @@ defmodule Wardwright.Policy.Plan do
   @tool_call_kind "tool_call"
   @tool_context_key "tool_context"
   @tool_key "tool"
+  @tool_phases ["planning", "argument_repair", "result_interpretation", "loop_governance", "unknown"]
   @tool_sequence_kind "tool_sequence"
   @transition_to_key "transition_to"
   @until_key "until"
@@ -140,6 +148,9 @@ defmodule Wardwright.Policy.Plan do
 
       kind == "tool_selector" ->
         apply_tool_selector_rule(rule, request, policy, opts)
+
+      kind == @allowed_tools_kind ->
+        apply_allowed_tools_rule(rule, request, policy, opts)
 
       kind == "tool_loop_threshold" ->
         apply_tool_loop_threshold_rule(rule, caller, request, policy, opts)
@@ -582,6 +593,114 @@ defmodule Wardwright.Policy.Plan do
       {request, record_tool_selector(policy, rule, false)}
     end
   end
+
+  defp apply_allowed_tools_rule(rule, request, policy, opts) do
+    tool_context = request_tool_context(request, policy, opts)
+    phase = tool_context_phase(tool_context)
+
+    if allowed_tools_rule_phase_matches?(rule, phase) do
+      requested_tools = requested_tools(tool_context)
+      allowed_tools = allowed_tools(rule)
+      blocked_tools = Enum.reject(requested_tools, &allowed_tool?(&1, phase, allowed_tools))
+
+      cond do
+        requested_tools == [] ->
+          {request, policy}
+
+        blocked_tools == [] ->
+          {request, policy}
+
+        true ->
+          action_record =
+            %{
+              @action_key => @block_action,
+              @allowed_tool_phase_key => phase,
+              @allowed_tools_key => allowed_tools,
+              @blocked_tools_key => blocked_tools,
+              @cache_scope_key => Map.get(rule, @cache_scope_key, @default_cache_scope),
+              @kind_key => @allowed_tools_kind,
+              @matched_key => true,
+              @message_key =>
+                rule |> Map.get(@message_key, @default_allowed_tools_message) |> blank_to_nil() ||
+                  @default_allowed_tools_message,
+              @rule_id_key => Map.get(rule, @id_key, @default_allowed_tools_rule_id),
+              @severity_key =>
+                rule |> Map.get(@severity_key, @default_info_severity) |> blank_to_nil() || @default_info_severity,
+              @state_scope_key => Map.get(rule, @state_scope_key, @active_state),
+              @tool_context_key => tool_context
+            }
+            |> Action.normalize(rule: Map.put_new(rule, @action_key, @block_action))
+
+          apply_block_action(request, policy, action_record)
+      end
+    else
+      {request, policy}
+    end
+  end
+
+  defp allowed_tools_rule_phase_matches?(_rule, nil), do: false
+
+  defp allowed_tools_rule_phase_matches?(rule, phase) do
+    case normalized_tool_phase(Map.get(rule, @phase_key)) do
+      nil -> true
+      rule_phase -> rule_phase == phase
+    end
+  end
+
+  defp requested_tools(%{@available_tools_key => available_tools, @primary_tool_key => primary_tool})
+       when is_map(primary_tool) and is_list(available_tools) do
+    [primary_tool | available_tools]
+    |> Enum.filter(&is_map/1)
+    |> Enum.uniq()
+  end
+
+  defp requested_tools(%{@primary_tool_key => primary_tool}) when is_map(primary_tool), do: [primary_tool]
+
+  defp requested_tools(%{@available_tools_key => available_tools}) when is_list(available_tools),
+    do: Enum.filter(available_tools, &is_map/1)
+
+  defp requested_tools(_tool_context), do: []
+
+  defp allowed_tools(%{@allowed_tools_key => tools}) when is_list(tools), do: Enum.filter(tools, &is_map/1)
+  defp allowed_tools(_rule), do: []
+
+  defp allowed_tool?(tool, phase, allowed_tools) do
+    tool_context =
+      %{
+        @phase_key => phase,
+        @primary_tool_key => tool,
+        @schema_key => @tool_context_schema
+      }
+      |> reject_blank()
+
+    Enum.any?(allowed_tools, fn allowed ->
+      Wardwright.ToolContext.matches?(tool_context, allowed_tool_matcher(allowed, phase))
+    end)
+  end
+
+  defp allowed_tool_matcher(%{@tool_key => %{} = tool} = allowed, phase) do
+    tool
+    |> Map.put(@phase_key, normalized_tool_phase(Map.get(allowed, @phase_key)) || phase)
+    |> reject_blank()
+  end
+
+  defp allowed_tool_matcher(allowed, phase) when is_map(allowed) do
+    allowed
+    |> Map.put(@phase_key, normalized_tool_phase(Map.get(allowed, @phase_key)) || phase)
+    |> reject_blank()
+  end
+
+  defp tool_context_phase(%{@phase_key => phase}), do: normalized_tool_phase(phase)
+  defp tool_context_phase(_tool_context), do: nil
+
+  defp normalized_tool_phase("tool.planning"), do: "planning"
+  defp normalized_tool_phase("tool.using"), do: "planning"
+  defp normalized_tool_phase("tool.result_interpreting"), do: "result_interpretation"
+  defp normalized_tool_phase("tool.loop_governing"), do: "loop_governance"
+
+  defp normalized_tool_phase(phase) when phase in @tool_phases, do: phase
+
+  defp normalized_tool_phase(_phase), do: nil
 
   defp apply_tool_loop_threshold_rule(rule, caller, request, policy, opts) do
     tool_context = request_tool_context(request, policy, opts)

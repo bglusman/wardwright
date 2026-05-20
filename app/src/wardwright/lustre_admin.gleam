@@ -4,6 +4,7 @@ import lustre
 import lustre/attribute.{class}
 import lustre/element.{type Element, map}
 import lustre/element/html
+import wardwright/lustre_control_debugger
 import wardwright/lustre_model_access
 import wardwright/lustre_shell
 import wardwright/lustre_workbench
@@ -13,6 +14,7 @@ pub type Model {
     page: lustre_shell.Page,
     workbench: lustre_workbench.Model,
     model_access: lustre_model_access.Model,
+    control_debugger: lustre_control_debugger.Model,
   )
 }
 
@@ -20,6 +22,7 @@ pub type Msg {
   Navigate(lustre_shell.Page)
   WorkbenchMsg(lustre_workbench.Msg)
   ModelAccessMsg(lustre_model_access.Msg)
+  ControlDebuggerMsg(lustre_control_debugger.Msg)
 }
 
 pub fn component() {
@@ -34,6 +37,7 @@ pub fn init(flags: String) -> Model {
     page: page,
     workbench: lustre_workbench.init(Nil),
     model_access: lustre_model_access.init(selected_model),
+    control_debugger: lustre_control_debugger.init(Nil),
   )
 }
 
@@ -57,6 +61,12 @@ pub fn update(model: Model, msg: Msg) -> Model {
         workbench: sync_workbench(model.workbench, msg),
         model_access: model_access,
       )
+    }
+    ControlDebuggerMsg(msg) -> {
+      let control_debugger =
+        lustre_control_debugger.update(model.control_debugger, msg)
+
+      Model(..model, control_debugger: control_debugger)
     }
   }
 }
@@ -100,6 +110,11 @@ pub fn view(model: Model) -> Element(Msg) {
         map(lustre_workbench.workspace(model.workbench), WorkbenchMsg)
       lustre_shell.ModelAccess ->
         map(lustre_model_access.workspace(model.model_access), ModelAccessMsg)
+      lustre_shell.ControlDebugger ->
+        map(
+          lustre_control_debugger.workspace(model.control_debugger),
+          ControlDebuggerMsg,
+        )
     },
   ])
 }
@@ -114,13 +129,19 @@ fn sidebar_controls(model: Model) -> List(Element(Msg)) {
       model.model_access
       |> lustre_model_access.sidebar_controls
       |> list.map(fn(control) { map(control, ModelAccessMsg) })
+    lustre_shell.ControlDebugger -> []
   }
 }
 
 fn selected_page(flags: String) -> lustre_shell.Page {
-  case string.starts_with(flags, "model_access") {
-    True -> lustre_shell.ModelAccess
-    False -> lustre_shell.Workbench
+  case flags {
+    "control_debugger" -> lustre_shell.ControlDebugger
+    "model_access" -> lustre_shell.ModelAccess
+    _ ->
+      case string.starts_with(flags, "model_access:") {
+        True -> lustre_shell.ModelAccess
+        False -> lustre_shell.Workbench
+      }
   }
 }
 
@@ -132,7 +153,10 @@ fn selected_model(flags: String) -> String {
 }
 
 fn styles() -> String {
-  lustre_workbench.styles() <> lustre_model_access.styles() <> "
+  lustre_workbench.styles()
+  <> lustre_model_access.styles()
+  <> lustre_control_debugger.styles()
+  <> "
   .admin-app {
     min-height: 100vh;
     display: grid;

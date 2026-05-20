@@ -24,6 +24,28 @@ a clear error that names the missing capability.
   state, and the state-machine projection falls back to node membership only
   when that evidence is absent.
 
+## Streaming Tool-Call Passthrough Slice
+
+- Plan: keep this slice at the OpenAI-compatible stream adapter boundary. Parse
+  upstream SSE `delta.tool_calls`, carry those deltas through the existing
+  provider runtime, and write OpenAI-compatible downstream SSE chunks without
+  changing VCR, allowed-tool policy, LiveView replay, or scenario fixtures.
+- Adversarial plan review: the narrow pass-through avoids inventing tool
+  authorization in the stream transport, but it also means stream policy still
+  governs text content only. Tool-call argument validation remains a separate
+  control-layer problem.
+- Implementation notes: tool-call deltas are emitted as internal stream events,
+  downstream chunks preserve the `delta.tool_calls` shape, and receipts record
+  only `preserved_delta_fields: ["tool_calls"]` plus terminal metadata rather
+  than raw tool-call arguments.
+- Adversarial implementation/design review: this is intentionally not a general
+  OpenAI stream mirror. Role, logprobs, and arbitrary provider-specific delta
+  fields remain unsupported, and a tool-call delta starts the downstream SSE
+  response before any later text-policy retry can occur.
+- Test evidence: focused fake-provider coverage asserts that streaming
+  OpenAI-compatible tool-call deltas reach the client as SSE and that receipt
+  metadata records the preserved field without storing the raw arguments.
+
 ## Minimally Real Now
 
 - Provider streaming is not purely mocked. The runtime can stream from
@@ -37,6 +59,9 @@ a clear error that names the missing capability.
   receipts at a minimal allowlisted level. Receipts now expose stream format,
   completion status/reason, and common token/timing fields when providers emit
   them.
+- OpenAI-compatible streaming `delta.tool_calls` are passed through to
+  downstream SSE clients while receipts record only the fact that tool-call
+  deltas were preserved.
 - Provider records expose a versioned capability map for the currently
   supported adapter shapes. The map describes endpoint shape, stream format,
   auth scheme, terminal metadata support, cancellation confidence, unsupported
@@ -109,10 +134,10 @@ a clear error that names the missing capability.
 - Upstream stream metadata is only minimally preserved. OpenAI `finish_reason`,
   usage chunks, refusal fields, and common Ollama terminal timing/count fields
   are allowlisted in receipts and advertised in provider capability records, but
-  role, tool-call, logprob, and arbitrary provider-specific deltas are not
-  preserved.
-- Downstream SSE chunks only emit content deltas and Wardwright terminal events.
-  They do not preserve upstream role, tool-call, logprob, or usage deltas.
+  role, logprob, and arbitrary provider-specific deltas are not preserved.
+- Downstream SSE chunks emit content deltas, OpenAI-compatible tool-call
+  deltas, and Wardwright terminal events. They do not preserve upstream role,
+  logprob, or usage deltas.
 - Provider timeout is enforced by `ProviderRuntime`, but lower-level HTTP stream
   collection still has a hard-coded `180000ms` fallback. The outer timeout is
   the active guard for configured targets; the inner timeout should still be

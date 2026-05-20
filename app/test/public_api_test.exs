@@ -1044,6 +1044,32 @@ defmodule Wardwright.PublicApiTest do
              nested_forced_body["errors"],
              &(&1["path"] == "governance.allowed_targets")
            )
+
+    invalid_allowed_tools =
+      unit_policy_config()
+      |> Map.put("governance", [
+        %{
+          "allowed_tools" => [%{"namespace" => "review"}],
+          "id" => "missing-tool-name",
+          "kind" => "allowed_tools"
+        }
+      ])
+
+    invalid_allowed = call(:post, "/v1/policy-authoring/validate", %{"artifact" => invalid_allowed_tools})
+    assert invalid_allowed.status == 200
+    invalid_allowed_body = Jason.decode!(invalid_allowed.resp_body)
+
+    assert invalid_allowed_body["verdict"] == "invalid"
+
+    assert Enum.any?(
+             invalid_allowed_body["errors"],
+             &(&1["path"] == "governance.phase" and &1["message"] =~ "requires phase")
+           )
+
+    assert Enum.any?(
+             invalid_allowed_body["errors"],
+             &(&1["path"] == "governance.allowed_tools[].name")
+           )
   end
 
   test "chat completion records caller headers and selected model" do

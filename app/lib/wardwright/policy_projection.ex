@@ -12,6 +12,8 @@ defmodule Wardwright.PolicyProjection do
   @alert_key "alert"
   @alert_delivery_key "alert_delivery"
   @actions_key "actions"
+  @allowed_tools_key "allowed_tools"
+  @allowed_tools_kind "allowed_tools"
   @completed_status "completed"
   @content_key "content"
   @conflicts_key "conflicts"
@@ -38,6 +40,7 @@ defmodule Wardwright.PolicyProjection do
   @model_received_input_key "model_received_input"
   @model_response_key "model_response"
   @name_key "name"
+  @namespace_key "namespace"
   @policy_actions_key "policy_actions"
   @policy_conflicts_key "policy_conflicts"
   @postscript_key "postscript"
@@ -77,6 +80,7 @@ defmodule Wardwright.PolicyProjection do
   @default_rule_id "policy"
   @default_request_role "user"
   @default_stream_policy_action "stream-policy"
+  @default_tool_planning_phase "planning"
   @default_transform_action "transform"
   @fail_closed_action "fail_closed"
   @match_scope_key "match_scope"
@@ -1299,6 +1303,7 @@ defmodule Wardwright.PolicyProjection do
       phase = Map.get(rule, "phase")
 
       kind in [
+        "allowed_tools",
         "tool_selector",
         "tool_allowlist",
         "tool_denylist",
@@ -1317,18 +1322,25 @@ defmodule Wardwright.PolicyProjection do
 
   defp tool_planning_rule?(rule) do
     Map.get(rule, "kind") in ["tool_selector", "tool_allowlist", "tool_denylist"] or
-      Map.get(rule, "phase") in ["tool.planning", "tool.using"]
+      normalized_projection_tool_phase(Map.get(rule, "phase")) == "tool.planning"
   end
 
   defp tool_result_rule?(rule) do
     Map.get(rule, "kind") == "tool_result_guard" or
-      Map.get(rule, "phase") == "tool.result_interpreting"
+      normalized_projection_tool_phase(Map.get(rule, "phase")) == "tool.result_interpreting"
   end
 
   defp tool_loop_rule?(rule) do
     Map.get(rule, @kind_key) in [@tool_loop_threshold_kind, @tool_sequence_kind] or
-      Map.get(rule, "phase") == "tool.loop_governing"
+      normalized_projection_tool_phase(Map.get(rule, "phase")) == "tool.loop_governing"
   end
+
+  defp normalized_projection_tool_phase("planning"), do: "tool.planning"
+  defp normalized_projection_tool_phase("argument_repair"), do: "tool.planning"
+  defp normalized_projection_tool_phase("result_interpretation"), do: "tool.result_interpreting"
+  defp normalized_projection_tool_phase("loop_governance"), do: "tool.loop_governing"
+  defp normalized_projection_tool_phase("tool.using"), do: "tool.planning"
+  defp normalized_projection_tool_phase(phase), do: phase
 
   defp route_engine_language([]), do: "structured"
 
@@ -1478,6 +1490,20 @@ defmodule Wardwright.PolicyProjection do
     )
   end
 
+  defp tool_governance_summary(%{@kind_key => @allowed_tools_kind} = rule, action) do
+    allowed =
+      rule
+      |> Map.get(@allowed_tools_key, [])
+      |> Enum.filter(&is_map/1)
+      |> Enum.map_join(", ", fn tool -> "#{Map.get(tool, @namespace_key, "*")}.#{Map.get(tool, @name_key, "*")}" end)
+      |> case do
+        "" -> "none"
+        value -> value
+      end
+
+    "#{action} unlisted tools for phase=#{Map.get(rule, @phase_key, @default_tool_planning_phase)} allowed=#{allowed}"
+  end
+
   defp tool_governance_summary(rule, action) do
     "#{action} when #{tool_match_summary(rule)}"
   end
@@ -1522,6 +1548,7 @@ defmodule Wardwright.PolicyProjection do
 
   defp tool_governance_writes("deny_tool"), do: ["decision.blocked", "tool.allowed"]
   defp tool_governance_writes("fail_closed"), do: ["decision.blocked", "final.status"]
+  defp tool_governance_writes("block"), do: ["decision.blocked", "final.status"]
   defp tool_governance_writes("review_result"), do: ["policy.actions", "receipt.events"]
 
   defp tool_governance_writes(@state_transition_action), do: [@policy_actions_write, @policy_cache_state_read]

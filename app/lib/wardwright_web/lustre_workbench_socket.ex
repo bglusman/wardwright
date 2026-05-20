@@ -40,6 +40,7 @@ defmodule WardwrightWeb.LustreWorkbenchSocket do
     do: "model_access:" <> model
 
   defp initial_flags(%{params: %{"page" => "model_access"}}), do: "model_access"
+  defp initial_flags(%{params: %{"page" => "control_debugger"}}), do: "control_debugger"
 
   defp initial_flags(_state), do: "workbench"
 

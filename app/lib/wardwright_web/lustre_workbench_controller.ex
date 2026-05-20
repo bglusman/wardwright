@@ -79,6 +79,8 @@ defmodule WardwrightWeb.LustreWorkbenchController do
   end
 
   defp page_param(%{"view" => "model_access"}), do: "model_access"
+  defp page_param(%{"view" => "control_debugger"}), do: "control_debugger"
   defp page_param(%{"page" => "model_access"}), do: "model_access"
+  defp page_param(%{"page" => "control_debugger"}), do: "control_debugger"
   defp page_param(_query_params), do: "workbench"
 end

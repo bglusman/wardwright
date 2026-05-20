@@ -24,6 +24,8 @@ defmodule Wardwright do
   @name_key "name"
   @refusal_key "refusal"
   @role_key "role"
+  @delta_key "delta"
+  @preserved_delta_fields_key "preserved_delta_fields"
   @system_fingerprint_key "system_fingerprint"
   @tool_call_id_key "tool_call_id"
   @tool_calls_key "tool_calls"
@@ -1384,13 +1386,14 @@ defmodule Wardwright do
           data, metadata ->
             case Jason.decode(data) do
               {:ok, event} ->
+                choice = openai_choice(event)
                 metadata = openai_stream_metadata(metadata, event)
 
                 content =
-                  event
-                  |> openai_choice()
+                  choice
                   |> openai_choice_content()
 
+                if openai_choice_tool_calls?(choice), do: emit.(openai_tool_call_delta(choice))
                 if content not in [nil, ""], do: emit.(content)
                 metadata
 
@@ -1412,6 +1415,7 @@ defmodule Wardwright do
     |> put_if_present("usage", json_get(event, "usage"))
     |> put_if_present("system_fingerprint", json_get(event, "system_fingerprint"))
     |> put_if_present("refusal", json_get(json_get(choice, "delta"), "refusal"))
+    |> put_preserved_delta_field(choice, @tool_calls_key)
   end
 
   defp stream_metadata(format), do: put_if_present(%{}, "stream_format", format)
@@ -1426,6 +1430,38 @@ defmodule Wardwright do
   defp openai_choice_content(choice) do
     json_get(json_get(choice, "delta"), "content") ||
       json_get(json_get(choice, "message"), "content")
+  end
+
+  defp openai_choice_tool_calls?(choice) do
+    case json_get(json_get(choice, @delta_key), @tool_calls_key) do
+      calls when is_list(calls) -> calls != []
+      _ -> false
+    end
+  end
+
+  defp openai_tool_call_delta(choice) do
+    %{
+      wardwright_stream_choice_index: json_get(choice, "index") || 0,
+      wardwright_stream_delta: %{@tool_calls_key => json_get(json_get(choice, @delta_key), @tool_calls_key)}
+    }
+  end
+
+  defp put_preserved_delta_field(metadata, choice, field) do
+    case json_get(json_get(choice, @delta_key), field) do
+      value when value in [nil, []] ->
+        metadata
+
+      _value ->
+        fields =
+          metadata
+          |> Map.get(@preserved_delta_fields_key, [])
+          |> List.wrap()
+          |> Kernel.++([field])
+          |> Enum.uniq()
+          |> Enum.sort()
+
+        Map.put(metadata, @preserved_delta_fields_key, fields)
+    end
   end
 
   defp json_get(map, key) when is_map(map), do: Map.get(map, key)

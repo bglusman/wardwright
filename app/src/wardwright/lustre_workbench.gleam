@@ -543,6 +543,7 @@ fn labeled_select(
     html.span([], [text(label)]),
     select_ui.select(
       [
+        attribute("aria-label", label),
         id(control_id),
         name(control_id),
         value(selected_id),

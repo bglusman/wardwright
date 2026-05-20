@@ -579,6 +579,22 @@ defmodule Wardwright.Router do
     end
   end
 
+  post "/v1/policy-authoring/replay-receipts/:receipt_id" do
+    with :ok <- require_protected_access(conn),
+         {:ok, replay} <- Wardwright.PolicyReplay.replay_receipt_id(receipt_id) do
+      json(conn, 200, Map.new([{"replay", replay}]))
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, :receipt_not_found} ->
+        error(conn, 404, "receipt not found", "not_found", "receipt_not_found")
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_policy_replay")
+    end
+  end
+
   get "/v1/policy-authoring/scenarios/:pattern_id/regression-export" do
     with :ok <- require_protected_access(conn),
          true <- known_policy_pattern?(pattern_id),
