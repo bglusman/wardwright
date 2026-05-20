@@ -30,14 +30,25 @@ reconfiguration.
 
 This global receipt table is a v0 debugger convenience. It is appropriate for
 local use, admin review, and low-rate receipt snapshots. It should not become
-the default sink for high-rate live agent transcript data.
+the default sink for high-rate live agent transcript data or for active
+multi-agent coordination.
+
+## Session Capture Storage
 
 Full-session VCR capture should grow toward session-scoped artifacts: one
 serial capture bundle per agent/session, optionally indexed by the admin SQLite
-store for discovery. A session-scoped file keeps the write path naturally
-serialized, makes sensitive captures easier to delete or move as a unit, and
-avoids pretending that one global SQLite database is the right live-data bus for
-parallel agents.
+store for discovery. The important constraint is that the live capture path
+should have one writer per session. If SQLite is used for a full transcript
+bundle, prefer a separate SQLite file per session over one shared live database.
+That keeps the write path naturally serialized, makes sensitive captures easier
+to delete or move as a unit, and avoids pretending that one global SQLite
+database is the right live-data bus for parallel agents.
+
+The shared admin SQLite database can still index these captures after the fact:
+receipt id, session id, model id, timestamps, storage path, redaction mode, and
+summary status are good index records. Raw request/response payloads and
+step-by-step tool transcripts should live in the session artifact unless a
+specific operator workflow requires importing them into the admin database.
 
 ## Scenario Fixtures
 

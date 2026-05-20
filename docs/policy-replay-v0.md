@@ -69,6 +69,11 @@ Receipt storage now uses the existing configurable SQLite store when enabled.
 uses Wardwright's XDG data path. Test builds can still disable SQLite and keep
 receipts in memory.
 
+That SQLite store is the admin/debugger index, not the desired live session
+transcript bus. Full-session VCR should move toward one serial artifact per
+agent/session, with the admin store indexing where that artifact lives and what
+receipt/session/model it belongs to.
+
 The replay API returns `wardwright.policy_replay.v0` and does not insert a new
 receipt.
 

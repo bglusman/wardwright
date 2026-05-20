@@ -22,6 +22,10 @@ defmodule Wardwright.ReceiptStore do
   @tool_policy_status_key "tool_policy_status"
   @tool_risk_class_key "tool_risk_class"
   @tool_source_key "tool_source"
+  @vcr_key "vcr"
+  @vcr_mode_key "mode"
+  @vcr_redaction_key "redaction"
+  @vcr_schema_key "schema"
 
   def start_link(_opts) do
     Agent.start_link(fn -> initial_state() end, name: __MODULE__)
@@ -135,6 +139,7 @@ defmodule Wardwright.ReceiptStore do
       "stream_policy_action" => get_in(receipt, ["final", "stream_policy_action"]),
       "tenant_id" => sourced_value(receipt, ["caller", "tenant_id"])
     }
+    |> put_if_present("vcr", vcr_summary(receipt))
     |> put_if_present(@tool_namespace_key, Map.get(primary_tool, @namespace_key))
     |> put_if_present(@tool_name_key, Map.get(primary_tool, @name_key))
     |> put_if_present(@tool_phase_key, Map.get(tool_context, @phase_key))
@@ -262,6 +267,22 @@ defmodule Wardwright.ReceiptStore do
   defp put_if_present(map, _key, nil), do: map
   defp put_if_present(map, _key, ""), do: map
   defp put_if_present(map, key, value), do: Map.put(map, key, value)
+
+  defp vcr_summary(%{@vcr_key => %{} = vcr}) do
+    %{
+      @vcr_mode_key => Map.get(vcr, @vcr_mode_key),
+      @vcr_redaction_key => Map.get(vcr, @vcr_redaction_key),
+      @vcr_schema_key => Map.get(vcr, @vcr_schema_key)
+    }
+    |> Enum.reject(fn {_key, value} -> is_nil(value) or value == "" end)
+    |> Map.new()
+    |> case do
+      empty when map_size(empty) == 0 -> nil
+      summary -> summary
+    end
+  end
+
+  defp vcr_summary(_receipt), do: nil
 
   defp initial_state do
     storage =

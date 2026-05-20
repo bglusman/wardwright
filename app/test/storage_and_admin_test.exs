@@ -537,6 +537,35 @@ defmodule Wardwright.StorageAndAdminTest do
            ]
   end
 
+  test "receipt list includes VCR summary without full-session payloads" do
+    receipt =
+      "rcpt_vcr_summary"
+      |> receipt_fixture(1_800_000_100, "agent-vcr")
+      |> Map.put("vcr", %{
+        "full_session" => %{
+          "request" => %{"body" => %{"messages" => [%{"content" => "sensitive prompt"}]}},
+          "response" => %{"content" => "sensitive response"}
+        },
+        "mode" => "full_session",
+        "redaction" => "full_session",
+        "schema" => "wardwright.policy_vcr.v0"
+      })
+
+    Wardwright.ReceiptStore.insert(receipt)
+
+    assert [summary] = Wardwright.ReceiptStore.list(%{"model_id" => "coding-balanced"}, 1)
+    assert summary["receipt_id"] == "rcpt_vcr_summary"
+
+    assert summary["vcr"] == %{
+             "mode" => "full_session",
+             "redaction" => "full_session",
+             "schema" => "wardwright.policy_vcr.v0"
+           }
+
+    refute Jason.encode!(summary) =~ "sensitive prompt"
+    refute Jason.encode!(summary) =~ "sensitive response"
+  end
+
   test "receipt list supports storage contract filters" do
     live = receipt_fixture("rcpt_live", 1_800_000_000, "agent-a")
     simulated = receipt_fixture("rcpt_sim", 1_800_000_001, "agent-b", status: "simulated")
