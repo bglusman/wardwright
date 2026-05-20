@@ -37,7 +37,7 @@ pub fn sidebar(
       ),
       rail_link(
         "Control debugger",
-        "Replay receipts and fork evidence.",
+        "Explain receipts and save simulator cases.",
         "/admin?view=control_debugger",
         active_page == ControlDebugger,
       ),
@@ -76,7 +76,7 @@ pub fn admin_sidebar(
       ),
       rail_button(
         "Control debugger",
-        "Replay receipts and fork evidence.",
+        "Explain receipts and save simulator cases.",
         active_page == ControlDebugger,
         to_msg(ControlDebugger),
       ),
