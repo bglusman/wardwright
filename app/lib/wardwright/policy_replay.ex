@@ -262,8 +262,6 @@ defmodule Wardwright.PolicyReplay do
     end
   end
 
-  defp nested_get(_map, _parent_key, _child_key), do: nil
-
   defp reject_nil_fields(fields) do
     fields
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
