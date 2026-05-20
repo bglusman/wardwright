@@ -1,14 +1,28 @@
 # Wardwright
 
-Wardwright is middleware for LLM models. Agents call a stable
-OpenAI-compatible model name while Wardwright owns the behavior behind it:
-provider routing, model composition, policy checks, stream retries and rewrites,
-tool controls, caller traceability, simulations, and receipts.
+Wardwright is a governed model gateway for AI agents.
+
+Agents call Wardwright using normal OpenAI-compatible model names. Wardwright
+decides what those names mean: which provider or local model to use, what policy
+rules apply, when to retry, reroute, block, or rewrite output, and what receipt
+should be recorded afterward.
+
+Use Wardwright when you want model behavior to be a reviewed, testable contract
+instead of scattered prompt strings, provider IDs, and retry logic inside every
+agent.
 
 Wardwright models can be simple, such as one local Ollama target, or more
 structured, such as a route graph that delegates to other Wardwright models,
 switches providers by context size, applies stream rules, and records why each
 decision happened.
+
+Today, Wardwright can run as a local or remote service, expose
+OpenAI-compatible endpoints, define Wardwright models, simulate policy behavior
+in the `/admin` and `/policies` workbenches, record receipts, and exercise early
+policy examples such as routing decisions, stream governance, output checks,
+retries, and saved simulator test cases. The admin surface currently supports
+basic auth, while individual models can be configured for API-key or open
+access.
 
 ## Install
 

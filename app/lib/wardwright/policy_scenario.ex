@@ -260,6 +260,10 @@ defmodule Wardwright.PolicyScenario do
   defp receipt_state("tts-retry", "stream_policy.triggered"), do: "guarding"
   defp receipt_state("tts-retry", "attempt.retry_requested"), do: "retrying"
   defp receipt_state("tts-retry", _type), do: "recording"
+  defp receipt_state("stream-rewrite-state", "stream_policy.triggered"), do: "rewriting"
+  defp receipt_state("stream-rewrite-state", "stream_policy.latency_exceeded"), do: "review_required"
+  defp receipt_state("stream-rewrite-state", "attempt.retry_requested"), do: "review_required"
+  defp receipt_state("stream-rewrite-state", _type), do: "recording"
   defp receipt_state(_pattern_id, _type), do: "active"
 
   defp integer_field(map, key) do

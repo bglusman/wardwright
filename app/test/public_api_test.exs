@@ -838,6 +838,39 @@ defmodule Wardwright.PublicApiTest do
     assert missing_receipt.status == 404
   end
 
+  test "protected policy authoring API maps receipt imports to stream rewrite states" do
+    receipt = %{
+      "created_at" => 1_800_000_124,
+      "final" => %{
+        "status" => "completed",
+        "stream_policy" => %{
+          "events" => [],
+          "released_to_consumer" => true,
+          "retry_count" => 0,
+          "status" => "completed"
+        }
+      },
+      "model_id" => "unit-model",
+      "model_version" => "2026-05-13.mock",
+      "receipt_id" => "receipt_import_stream_1"
+    }
+
+    Wardwright.ReceiptStore.insert(receipt)
+
+    imported =
+      call(
+        :post,
+        "/v1/policy-authoring/scenarios/stream-rewrite-state/from-receipt/receipt_import_stream_1",
+        %{"title" => "Imported stream receipt"}
+      )
+
+    assert imported.status == 201
+
+    scenario = Jason.decode!(imported.resp_body)["scenario"]
+    assert scenario["scenario_id"] == "receipt-receipt_import_stream_1"
+    assert Enum.map(scenario["trace"], & &1["state_id"]) == ["recording"]
+  end
+
   test "protected policy authoring API exports pinned scenarios and prunes unpinned records" do
     pinned = scenario_fixture("pinned-regression", true)
     old_unpinned = scenario_fixture("old-unpinned", false, "2026-05-01T00:00:00Z")

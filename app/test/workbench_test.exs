@@ -188,7 +188,8 @@ defmodule WardwrightWeb.WorkbenchTest do
              WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
 
     assert json =~ "Control debugger"
-    assert json =~ "Fork from receipt"
+    assert json =~ "Create simulator case"
+    assert json =~ "Save scenario"
     assert json =~ "VCR replay"
     assert json =~ "Explain receipt"
     refute json =~ "Phoenix.LiveView"
@@ -565,7 +566,7 @@ defmodule WardwrightWeb.WorkbenchTest do
              "rcpt_control_import",
              "tts-retry",
              "Imported control receipt",
-             "Imported Imported control receipt as saved:"
+             "Saved Imported control receipt as saved:"
            )
 
     assert [

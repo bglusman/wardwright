@@ -166,7 +166,7 @@ pub fn workspace(model: Model) -> Element(Msg) {
         html.h1([], [text("Control debugger")]),
         html.p([], [
           text(
-            "Explain recorded agent calls, fork the useful evidence, and keep replay separate from provider calls.",
+            "Inspect recorded agent calls, explain what Wardwright decided, and save useful failures as simulator cases.",
           ),
         ]),
       ]),
@@ -218,13 +218,13 @@ fn import_card(model: Model) -> Element(Msg) {
   html.article([class("panel debugger-card")], [
     html.div([class("panel-heading")], [
       html.div([], [
-        html.span([], [text("Fork from receipt")]),
-        html.strong([], [text("Import replay evidence")]),
+        html.span([], [text("Create simulator case")]),
+        html.strong([], [text("Save receipt evidence")]),
       ]),
       badge.badge([badge.variant(badge.Secondary)], [text("scenario")]),
     ]),
     labeled_select(
-      "Policy projection",
+      "Workbench pattern",
       "control_pattern_id",
       model.pattern_id,
       pattern_options(model.pattern_id),
@@ -246,11 +246,11 @@ fn import_card(model: Model) -> Element(Msg) {
         type_("button"),
         event.on_click(ImportReceipt),
       ],
-      [text("Import receipt")],
+      [text("Save scenario")],
     ),
     html.small([class("debugger-note")], [
       text(
-        "The imported scenario preserves recorded facts. It does not claim the provider would make the same future choices after a policy change.",
+        "This creates a pinned simulator case from recorded trace facts. Choose the workbench pattern whose state graph should receive the trace.",
       ),
     ]),
     status_text(model.import_status, model.import_error),

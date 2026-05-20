@@ -72,7 +72,7 @@ defmodule WardwrightWeb.ControlDebuggerData do
               fixture_id = "saved:#{scenario.id}"
 
               {true,
-               "Imported #{scenario.title} as #{fixture_id}. Open Workbench, choose #{pattern_id}, then choose the saved scenario.",
+               "Saved #{scenario.title} as #{fixture_id}. Open Workbench, choose #{pattern_id}, then choose the saved scenario.",
                fixture_id}
 
             {:error, message} ->

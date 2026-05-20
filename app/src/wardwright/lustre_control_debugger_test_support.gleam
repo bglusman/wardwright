@@ -21,7 +21,7 @@ pub fn importing_receipt_shows_status(
   |> input("control_receipt_id_text", receipt_id)
   |> change_select("control_pattern_id", pattern_id)
   |> input("control_scenario_title", title)
-  |> click_button("Import receipt")
+  |> click_button("Save scenario")
   |> view_contains(expected_text)
 }
 

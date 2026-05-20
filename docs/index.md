@@ -1,16 +1,17 @@
 ---
 layout: default
 title: Wardwright
-description: LLM model middleware, governance, and receipts for agentic workflows.
+description: A governed model gateway for AI agents.
 ---
 
 <section class="hero">
-  <p class="eyebrow">LLM model middleware</p>
+  <p class="eyebrow">Governed model gateway</p>
   <h1>Wardwright</h1>
   <p class="lede">
-    Agents call a stable OpenAI-compatible model name. Wardwright owns the
-    model graph, policy checks, provider routing, stream retries and rewrites,
-    tool controls, simulations, and receipts behind that name.
+    Agents call normal OpenAI-compatible model names. Wardwright decides what
+    those names mean: which provider or local model to use, what policy rules
+    apply, when to retry, reroute, block, or rewrite output, and what receipt
+    should be recorded afterward.
   </p>
   <div class="actions">
     <a class="button" href="#install">Install</a>
@@ -28,6 +29,17 @@ description: LLM model middleware, governance, and receipts for agentic workflow
   workbench, saved simulator test cases, and a legacy experimental in-page
   authoring assistant.
 </div>
+
+Wardwright is for teams and operators who want model behavior to be a reviewed,
+testable contract instead of scattered prompt strings, provider IDs, and retry
+logic inside every agent.
+
+Today, Wardwright can run as a local or remote service, define Wardwright
+models, simulate policy behavior in the `/admin` and `/policies` workbenches,
+record receipts, and exercise early policy examples such as routing decisions,
+stream governance, output checks, retries, and saved simulator test cases. The
+admin surface currently supports basic auth, while individual models can be
+configured for API-key or open access.
 
 ## Install
 
