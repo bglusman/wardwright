@@ -110,11 +110,35 @@ defmodule WardwrightWeb.LustreWorkbenchData do
       to_string(Map.get(response, :status, "completed")),
       to_string(Map.get(response, :content, "")),
       elem(draft, 0),
-      elem(draft, 1)
+      elem(draft, 1),
+      elem(draft, 2),
+      elem(draft, 3)
     }
   rescue
     _exception ->
-      {"error", "The authoring assistant failed before returning an answer.", "", ""}
+      {"error", "The authoring assistant failed before returning an answer.", "", "", "", ""}
+  end
+
+  def activate_authoring_draft(artifact_json) do
+    case Jason.decode(to_string(artifact_json)) do
+      {:ok, artifact} ->
+        case WardwrightWeb.PolicyAuthoringDrafts.activate_wardwright_model(%{"artifact" => artifact}) do
+          {:ok, result} ->
+            model_id = get_in(result, ["artifact", "model_id"]) || "draft"
+
+            {
+              true,
+              "Activated #{model_id}. It now appears in Model Configuration and /v1/models.",
+              model_id
+            }
+
+          {:error, message, _result} ->
+            {false, "Could not activate draft: #{message}", ""}
+        end
+
+      {:error, %Jason.DecodeError{} = error} ->
+        {false, "Could not read draft artifact JSON: #{Exception.message(error)}", ""}
+    end
   end
 
   def fixture_options(pattern_id, model_id) do
@@ -285,22 +309,26 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     |> case do
       %{
         "result" => %{
-          "artifact" => %{"model_id" => model_id},
+          "artifact" => %{"model_id" => model_id} = artifact,
           "validation" => %{"errors" => errors, "warnings" => warnings}
         }
       }
       when is_binary(model_id) and is_list(errors) and is_list(warnings) ->
+        artifact_json = Jason.encode!(artifact, pretty: true)
+
         {
           model_id,
-          "Draft #{model_id}: #{length(errors)} validation errors, #{length(warnings)} warnings. Review before activation."
+          "Draft #{model_id}: #{length(errors)} validation errors, #{length(warnings)} warnings. Review the artifact and simulations before activation.",
+          artifact_json,
+          "Activating registers this model immediately in Model Configuration and /v1/models."
         }
 
       _result ->
-        {"", ""}
+        {"", "", "", ""}
     end
   end
 
-  defp authoring_draft_summary(_response), do: {"", ""}
+  defp authoring_draft_summary(_response), do: {"", "", "", ""}
 
   def projection_summary(pattern_id, model_id) do
     config = model_config(model_id)

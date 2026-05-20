@@ -32,6 +32,7 @@ pub type Model {
     replay_status: String,
     replay_error: String,
     replay_facts: List(ReplayFact),
+    storage_note: String,
   )
 }
 
@@ -67,6 +68,9 @@ fn external_replay_receipt(
   receipt_id: String,
 ) -> #(Bool, String, List(ReplayFact))
 
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "storage_note")
+fn external_storage_note() -> String
+
 pub fn component() {
   lustre.simple(init, update, view)
 }
@@ -82,6 +86,7 @@ pub fn init(_flags: Nil) -> Model {
     replay_status: "",
     replay_error: "",
     replay_facts: [],
+    storage_note: external_storage_note(),
   )
 }
 
@@ -211,6 +216,9 @@ fn receipt_picker(model: Model) -> Element(Msg) {
         event.on_input(ReceiptChanged),
       ]),
     ]),
+    html.small([class("debugger-note")], [
+      text(model.storage_note),
+    ]),
   ])
 }
 
@@ -250,7 +258,7 @@ fn import_card(model: Model) -> Element(Msg) {
     ),
     html.small([class("debugger-note")], [
       text(
-        "This creates a pinned simulator case from recorded trace facts. Choose the workbench pattern whose state graph should receive the trace.",
+        "This creates a pinned simulator case from recorded trace facts. The saved case uses the simulator case store shown above.",
       ),
     ]),
     status_text(model.import_status, model.import_error),
@@ -276,7 +284,7 @@ fn replay_card(model: Model) -> Element(Msg) {
     ),
     html.small([class("debugger-note")], [
       text(
-        "Replay checks stored policy and route facts. Full-session receipts can also carry payloads for later live or simulated replay.",
+        "Replay checks stored policy and route facts. Full-session receipts can also carry payloads for later live or simulated replay; the receipt store above is where those payloads live.",
       ),
     ]),
     status_text(model.replay_status, model.replay_error),

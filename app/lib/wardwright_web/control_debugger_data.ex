@@ -49,6 +49,10 @@ defmodule WardwrightWeb.ControlDebuggerData do
     end
   end
 
+  def storage_note do
+    "Receipts: #{store_location(Wardwright.ReceiptStore.health())}. Simulator cases: #{store_location(Wardwright.PolicyScenarioStore.health())}."
+  end
+
   def import_receipt_scenario(pattern_id, receipt_id, title) do
     pattern_id = blank_fallback(pattern_id, default_pattern_id())
     receipt_id = receipt_id |> to_string() |> String.trim()
@@ -70,9 +74,10 @@ defmodule WardwrightWeb.ControlDebuggerData do
           case Wardwright.PolicyScenarioStore.create_from_receipt(pattern_id, receipt, attrs) do
             {:ok, scenario} ->
               fixture_id = "saved:#{scenario.id}"
+              scenario_store = store_location(Wardwright.PolicyScenarioStore.health())
 
               {true,
-               "Saved #{scenario.title} as #{fixture_id}. Open Workbench, choose #{pattern_id}, then choose the saved scenario.",
+               "Saved #{scenario.title} as #{fixture_id}. Stored in simulator case store: #{scenario_store}. Open Workbench, choose #{pattern_id}, then choose the saved scenario.",
                fixture_id}
 
             {:error, message} ->
@@ -118,6 +123,7 @@ defmodule WardwrightWeb.ControlDebuggerData do
     [
       {"Replay mode", replay["mode"] || "unknown"},
       {"Recording", recording_summary(replay, receipt)},
+      {"Receipt storage", store_location(Wardwright.ReceiptStore.health())},
       {"Original status", get_in(replay, ["final", "original_status"]) || "unknown"},
       {"Replay provider call", replay_provider_summary(replay)},
       {"Original provider", original_provider_summary(receipt)},
@@ -208,6 +214,12 @@ defmodule WardwrightWeb.ControlDebuggerData do
   defp bool_text(true), do: "yes"
   defp bool_text(false), do: "no"
   defp bool_text(_), do: "unknown"
+
+  defp store_location(%{"kind" => "file", "path" => path}) when is_binary(path), do: "file #{path}"
+
+  defp store_location(%{"kind" => "memory"}), do: "memory only; not durable across restart"
+  defp store_location(%{"kind" => kind}), do: kind
+  defp store_location(_health), do: "unknown"
 
   defp blank_fallback(value, fallback) when is_binary(value) do
     case String.trim(value) do

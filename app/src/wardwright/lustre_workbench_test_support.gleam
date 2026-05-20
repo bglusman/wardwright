@@ -115,6 +115,34 @@ pub fn submitting_authoring_request_shows_response(
   |> view_contains(expected_text)
 }
 
+pub fn authoring_request_can_review_and_activate_draft(
+  model_id: String,
+  request: String,
+  draft_text: String,
+  artifact_text: String,
+  activated_text: String,
+) -> Bool {
+  let reviewed =
+    start()
+    |> change_select("model_id", model_id)
+    |> simulate.input(on: by_id("authoring_agent_input"), value: request)
+    |> simulate.submit(on: by_id("authoring_agent_form"), fields: [
+      #("authoring_agent_input", request),
+    ])
+
+  let activated =
+    reviewed
+    |> simulate.click(on: query.element(
+      matching: query.tag("button")
+      |> query.and(query.text("Approve and activate draft")),
+    ))
+
+  view_contains(reviewed, draft_text)
+  && view_contains(reviewed, "Review draft artifact")
+  && view_contains(reviewed, artifact_text)
+  && view_contains(activated, activated_text)
+}
+
 pub fn selecting_model_updates_authoring_status(
   model_id: String,
   expected_text: String,

@@ -170,6 +170,7 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert json =~ "Model Configuration"
     assert json =~ "Access Policy"
     assert json =~ "Debug recording"
+    assert json =~ "Receipt store"
     assert json =~ "Create Key"
     assert json =~ "Legacy workbench (deprecated)"
     refute json =~ "Lustre Workbench"
@@ -190,6 +191,8 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert json =~ "Control debugger"
     assert json =~ "Create simulator case"
     assert json =~ "Save scenario"
+    assert json =~ "Receipts:"
+    assert json =~ "Simulator cases:"
     assert json =~ "VCR replay"
     assert json =~ "Explain receipt"
     refute json =~ "Phoenix.LiveView"
@@ -412,6 +415,17 @@ defmodule WardwrightWeb.WorkbenchTest do
              "Make an admin cow model.",
              "Draft admin-cow: 0 validation errors"
            )
+
+    assert :wardwright@lustre_workbench_test_support.authoring_request_can_review_and_activate_draft(
+             "coding-balanced",
+             "Make an admin cow model.",
+             "Draft admin-cow: 0 validation errors",
+             "dispatcher.admin-cow",
+             "Activated admin-cow"
+           )
+
+    assert {:ok, config} = Wardwright.model_config("admin-cow")
+    assert Wardwright.model_id(config) == "admin-cow"
   end
 
   test "Lustre workbench explains authoring setup instead of showing dead controls when disabled" do
@@ -566,7 +580,7 @@ defmodule WardwrightWeb.WorkbenchTest do
              "rcpt_control_import",
              "tts-retry",
              "Imported control receipt",
-             "Saved Imported control receipt as saved:"
+             "Stored in simulator case store:"
            )
 
     assert [
@@ -585,6 +599,12 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert :wardwright@lustre_control_debugger_test_support.replaying_receipt_shows_facts(
              "rcpt_control_replay",
              "completed",
+             "managed/kimi-k2.6"
+           )
+
+    assert :wardwright@lustre_control_debugger_test_support.replaying_receipt_shows_facts(
+             "rcpt_control_replay",
+             "Receipt storage",
              "managed/kimi-k2.6"
            )
   end

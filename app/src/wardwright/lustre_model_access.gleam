@@ -29,6 +29,7 @@ pub type Model {
     created_key: String,
     status: String,
     error: String,
+    receipt_storage_note: String,
   )
 }
 
@@ -52,7 +53,7 @@ fn external_model_options() -> List(ModelOption)
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "access_summary")
 fn external_access_summary(
   model_id: String,
-) -> #(String, Bool, String, Int, String)
+) -> #(String, Bool, String, Int, String, String)
 
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "key_options")
 fn external_key_options(model_id: String) -> List(KeyOption)
@@ -154,7 +155,7 @@ fn load_model(
   error: String,
   created_key: String,
 ) -> Model {
-  let #(model_id, requires_api_key, unkeyed_access, _, vcr_mode) =
+  let #(model_id, requires_api_key, unkeyed_access, _, vcr_mode, storage_note) =
     external_access_summary(requested_model_id)
 
   Model(
@@ -167,6 +168,7 @@ fn load_model(
     created_key:,
     status:,
     error:,
+    receipt_storage_note: storage_note,
   )
 }
 
@@ -319,6 +321,7 @@ fn model_summary(model: Model) -> Element(Msg) {
       }),
       metric("Unkeyed access", model.unkeyed_access),
       metric("VCR", vcr_mode_label(model.vcr_mode)),
+      metric("Receipt store", model.receipt_storage_note),
       metric("Keys", int.to_string(list.length(model.keys))),
     ]),
   ])
@@ -419,9 +422,12 @@ fn debug_recording_options(model: Model) -> Element(Msg) {
       "full_session",
       model.vcr_mode == "full_session",
       "Full session",
-      "Opt-in capture for replay investigations. Stores full request and provider response payloads in receipts.",
+      "Opt-in capture for replay investigations. Stores full request and provider response payloads in the receipt store.",
       VcrModeChanged,
     ),
+    html.small([class("recording-note")], [
+      text("Current receipt store: " <> model.receipt_storage_note <> "."),
+    ]),
   ])
 }
 
@@ -574,6 +580,10 @@ pub fn styles() -> String {
     font-weight: 700;
     line-height: 1.35;
   }
+  .recording-note {
+    display: block;
+    overflow-wrap: anywhere;
+  }
   .workspace {
     display: flex;
     flex-direction: column;
@@ -646,7 +656,7 @@ pub fn styles() -> String {
   }
   .metrics {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: 8px;
   }
   .metrics div {

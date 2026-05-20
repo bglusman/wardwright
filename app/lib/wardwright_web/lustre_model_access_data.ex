@@ -25,7 +25,8 @@ defmodule WardwrightWeb.LustreModelAccessData do
     unkeyed_access = Wardwright.unkeyed_model_access(config)
     vcr_mode = Wardwright.vcr_mode(config)
 
-    {model, requires_api_key, unkeyed_access, length(Wardwright.ModelApiKeyStore.list(model)), vcr_mode}
+    {model, requires_api_key, unkeyed_access, length(Wardwright.ModelApiKeyStore.list(model)), vcr_mode,
+     receipt_storage_note()}
   end
 
   def key_options(model_id) do
@@ -72,8 +73,25 @@ defmodule WardwrightWeb.LustreModelAccessData do
       |> Map.put("vcr", %{"mode" => vcr_mode})
 
     case Wardwright.put_model_config(updated_config) do
-      {:ok, _config} -> {true, "Model configuration saved."}
+      {:ok, _config} -> {true, save_message(vcr_mode)}
       {:error, message} -> {false, message}
+    end
+  end
+
+  defp save_message("full_session") do
+    "Model configuration saved. Full-session request and response payloads will be stored with receipts in #{receipt_storage_note()}."
+  end
+
+  defp save_message(_mode) do
+    "Model configuration saved. Receipt VCR is metadata-only; receipt metadata is stored in #{receipt_storage_note()}."
+  end
+
+  defp receipt_storage_note do
+    case Wardwright.ReceiptStore.health() do
+      %{"kind" => "file", "path" => path} when is_binary(path) -> "file #{path}"
+      %{"kind" => "memory"} -> "memory only; not durable across restart"
+      %{"kind" => kind} -> kind
+      _health -> "unknown storage"
     end
   end
 
