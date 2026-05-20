@@ -363,25 +363,29 @@ pub fn update(model: Model, msg: Msg) -> Model {
     AuthoringInputChanged(input) -> Model(..model, authoring_input: input)
 
     AskAuthoring | SubmitAuthoring(_) -> {
-      case string.trim(model.authoring_input) {
-        "" -> model
-        prompt -> {
-          let #(status, content, draft_model, draft_summary) =
-            external_ask_authoring_agent(
-              model.model_id,
-              model.pattern_id,
-              prompt,
-            )
+      case model.authoring_configured {
+        False -> model
+        True ->
+          case string.trim(model.authoring_input) {
+            "" -> model
+            prompt -> {
+              let #(status, content, draft_model, draft_summary) =
+                external_ask_authoring_agent(
+                  model.model_id,
+                  model.pattern_id,
+                  prompt,
+                )
 
-          Model(
-            ..model,
-            authoring_input: "",
-            authoring_response_status: status,
-            authoring_response: content,
-            authoring_draft_model: draft_model,
-            authoring_draft_summary: draft_summary,
-          )
-        }
+              Model(
+                ..model,
+                authoring_input: "",
+                authoring_response_status: status,
+                authoring_response: content,
+                authoring_draft_model: draft_model,
+                authoring_draft_summary: draft_summary,
+              )
+            }
+          }
       }
     }
 
@@ -855,48 +859,89 @@ fn authoring_panel(model: Model) -> Element(Msg) {
         ]),
       ]),
     ]),
-    html.form(
-      [
-        id("authoring_agent_form"),
-        class("authoring-form"),
-        event.on_submit(SubmitAuthoring),
-      ],
-      [
-        html.label([class("field editor")], [
-          html.span([], [text("Request")]),
-          html.textarea(
-            [
-              id("authoring_agent_input"),
-              name("authoring_agent_input"),
-              rows(5),
-              placeholder("Ask for a reviewable model draft"),
-              value(model.authoring_input),
-              event.on_input(AuthoringInputChanged),
-            ],
-            model.authoring_input,
-          ),
-        ]),
-        html.div([class("actions")], [
-          button.button(
-            [
-              button.variant(button.Default),
-              type_("submit"),
-              disabled(string.trim(model.authoring_input) == ""),
-            ],
-            [text("Ask agent")],
-          ),
-          button.button(
-            [
-              button.variant(button.Ghost),
-              type_("button"),
-              event.on_click(ClearAuthoring),
-            ],
-            [text("Clear")],
-          ),
-        ]),
-      ],
-    ),
-    authoring_response(model),
+    case model.authoring_configured {
+      False -> authoring_setup_panel()
+      True ->
+        html.div([class("authoring-live")], [
+          authoring_form(model),
+          authoring_response(model),
+        ])
+    },
+  ])
+}
+
+fn authoring_form(model: Model) -> Element(Msg) {
+  html.form(
+    [
+      id("authoring_agent_form"),
+      class("authoring-form"),
+      event.on_submit(SubmitAuthoring),
+    ],
+    [
+      html.label([class("field editor")], [
+        html.span([], [text("Request")]),
+        html.textarea(
+          [
+            id("authoring_agent_input"),
+            name("authoring_agent_input"),
+            rows(5),
+            placeholder("Ask for a reviewable model draft"),
+            value(model.authoring_input),
+            event.on_input(AuthoringInputChanged),
+          ],
+          model.authoring_input,
+        ),
+      ]),
+      html.div([class("actions")], [
+        button.button(
+          [
+            button.variant(button.Default),
+            type_("submit"),
+            disabled(string.trim(model.authoring_input) == ""),
+          ],
+          [text("Ask agent")],
+        ),
+        button.button(
+          [
+            button.variant(button.Ghost),
+            type_("button"),
+            event.on_click(ClearAuthoring),
+          ],
+          [text("Clear")],
+        ),
+      ]),
+    ],
+  )
+}
+
+fn authoring_setup_panel() -> Element(Msg) {
+  html.div([class("authoring-setup")], [
+    html.strong([], [text("In-app authoring agent is not configured")]),
+    html.p([], [
+      text(
+        "Configure the authoring agent environment and restart Wardwright to use the in-app assistant.",
+      ),
+    ]),
+    html.ul([], [
+      html.li([], [
+        text("Enable it with "),
+        html.code([], [text("WARDWRIGHT_AUTHORING_AGENT_ENABLED=1")]),
+        text("."),
+      ]),
+      html.li([], [
+        text(
+          "Set either direct provider credentials or a Wardwright-routed authoring model.",
+        ),
+      ]),
+      html.li([], [
+        text("Restart the server after changing the configuration."),
+      ]),
+    ]),
+    html.p([], [
+      text(
+        "You can also use your own agent against Wardwright through the MCP endpoint or CLI without enabling the in-page assistant.",
+      ),
+    ]),
   ])
 }
 
@@ -1688,6 +1733,7 @@ pub fn styles() -> String {
     display: flex;
     flex-direction: column;
     gap: 18px;
+    min-width: 0;
     padding: 24px;
   }
   .topbar, .form-header, .trace-header, .panel-heading {
@@ -1700,6 +1746,7 @@ pub fn styles() -> String {
     margin: 0;
     font-size: 28px;
     line-height: 1.15;
+    overflow-wrap: anywhere;
   }
   p {
     margin: 0;
@@ -1782,7 +1829,11 @@ pub fn styles() -> String {
     display: grid;
     gap: 10px;
   }
-  .authoring-response, .authoring-empty {
+  .authoring-live {
+    display: grid;
+    gap: 14px;
+  }
+  .authoring-response, .authoring-empty, .authoring-setup {
     display: grid;
     gap: 10px;
     border: 1px solid #dbe5ed;
@@ -1790,10 +1841,26 @@ pub fn styles() -> String {
     background: #f8fbfd;
     padding: 12px;
   }
-  .authoring-empty {
+  .authoring-empty, .authoring-setup {
     color: var(--muted-foreground);
     font-size: 13px;
+    line-height: 1.45;
+  }
+  .authoring-empty {
     font-weight: 700;
+  }
+  .authoring-setup strong {
+    color: var(--foreground);
+  }
+  .authoring-setup p, .authoring-setup ul {
+    margin: 0;
+  }
+  .authoring-setup ul {
+    padding-left: 18px;
+  }
+  .authoring-setup code {
+    color: var(--foreground);
+    font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   .authoring-response pre {
     margin: 0;
@@ -2015,6 +2082,9 @@ pub fn styles() -> String {
   @media (max-width: 860px) {
     .lustre-workbench {
       grid-template-columns: 1fr;
+    }
+    .workspace {
+      padding: 18px;
     }
     .rail {
       border-right: 0;

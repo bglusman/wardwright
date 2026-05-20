@@ -20,6 +20,16 @@ pub fn initial_view_omits(unwanted_text: String) -> Bool {
   |> view_omits(unwanted_text)
 }
 
+pub fn unconfigured_authoring_shows_setup_without_form() -> Bool {
+  let simulation = start()
+
+  view_contains(simulation, "In-app authoring agent is not configured")
+  && view_contains(simulation, "WARDWRIGHT_AUTHORING_AGENT_ENABLED=1")
+  && view_contains(simulation, "MCP endpoint or CLI")
+  && !view_has_element_id(simulation, "authoring_agent_form")
+  && !view_has_element_id(simulation, "authoring_agent_input")
+}
+
 pub fn selecting_policy_slice_exposes_state_graph(
   pattern_id: String,
   expected_transition: String,
@@ -251,5 +261,12 @@ fn view_has_control_value(
     |> query.and(query.id(field_id))
     |> query.and(query.attribute("value", expected_value)),
   ))
+  |> result.is_ok
+}
+
+fn view_has_element_id(simulation, id: String) -> Bool {
+  simulation
+  |> simulate.view
+  |> query.find(matching: query.element(matching: query.id(id)))
   |> result.is_ok
 }

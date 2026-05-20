@@ -382,6 +382,27 @@ defmodule WardwrightWeb.WorkbenchTest do
            )
   end
 
+  test "Lustre workbench explains authoring setup instead of showing dead controls when disabled" do
+    original_enabled = System.get_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED")
+    original_api_key = System.get_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY")
+    original_api_key_file = System.get_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE")
+    original_route = System.get_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE")
+
+    System.delete_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED")
+    System.delete_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY")
+    System.delete_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE")
+    System.delete_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE")
+
+    on_exit(fn ->
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", original_enabled)
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", original_api_key)
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY_FILE", original_api_key_file)
+      restore_env("WARDWRIGHT_AUTHORING_AGENT_ROUTE", original_route)
+    end)
+
+    assert :wardwright@lustre_workbench_test_support.unconfigured_authoring_shows_setup_without_form()
+  end
+
   test "Lustre simulation reruns after editing and submitting the form" do
     put_cow_transform_model_config()
 
