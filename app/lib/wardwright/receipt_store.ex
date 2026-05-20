@@ -32,8 +32,9 @@ defmodule Wardwright.ReceiptStore do
   end
 
   def insert(receipt) do
+    :ok = persist_insert(current_storage(), receipt)
+
     Agent.update(__MODULE__, fn state ->
-      :ok = persist_insert(state, receipt)
       put_in(state, [:receipts, receipt["receipt_id"]], receipt)
     end)
 
@@ -72,19 +73,20 @@ defmodule Wardwright.ReceiptStore do
   end
 
   def clear do
+    :ok = persist_clear(current_storage())
+
     Agent.update(__MODULE__, fn state ->
-      :ok = persist_clear(state)
       %{state | receipts: %{}}
     end)
   end
 
   def health do
     Agent.get(__MODULE__, fn state ->
-      durable = state.storage == :sqlite
+      durable = state.storage == :file
 
       %{
         "capabilities" => %{
-          "concurrent_writers" => false,
+          "concurrent_writers" => durable,
           "durable" => durable,
           "event_replay" => true,
           "json_queries" => true,
@@ -95,7 +97,7 @@ defmodule Wardwright.ReceiptStore do
         "contract_version" => @contract_version,
         "kind" => Atom.to_string(state.storage),
         "migration_version" => @migration_version,
-        "path" => if(durable, do: Wardwright.SQLiteStore.store_path()),
+        "path" => if(durable, do: Wardwright.ReceiptFileStore.store_dir()),
         "read_health" => "ok",
         "receipt_count" => map_size(state.receipts),
         "write_health" => "ok"
@@ -107,12 +109,10 @@ defmodule Wardwright.ReceiptStore do
 
   def metadata, do: health()
 
-  def configure_storage(storage) when storage in [:memory, :sqlite] do
-    Agent.get_and_update(__MODULE__, fn state ->
-      case load_state(storage) do
-        {:ok, loaded} -> {{:ok, loaded}, loaded}
-        {:error, reason} -> {{:error, reason}, state}
-      end
+  def configure_storage(storage) when storage in [:memory, :file] do
+    Agent.get_and_update(__MODULE__, fn _state ->
+      {:ok, loaded} = load_state(storage)
+      {{:ok, loaded}, loaded}
     end)
   end
 
@@ -286,33 +286,33 @@ defmodule Wardwright.ReceiptStore do
 
   defp initial_state do
     storage =
-      case Wardwright.SQLiteStore.enabled?() do
-        true -> :sqlite
+      case Wardwright.ReceiptFileStore.enabled?() do
+        true -> :file
         false -> :memory
       end
 
-    case load_state(storage) do
-      {:ok, state} -> state
-      {:error, reason} -> raise "failed to load receipts from #{storage}: #{inspect(reason)}"
-    end
+    {:ok, state} = load_state(storage)
+    state
   end
 
   defp load_state(:memory), do: {:ok, %{receipts: %{}, storage: :memory}}
 
-  defp load_state(:sqlite) do
-    case Wardwright.SQLiteStore.list_receipts() do
-      {:ok, receipts} -> {:ok, %{receipts: Map.new(receipts, &{&1["receipt_id"], &1}), storage: :sqlite}}
-      {:error, reason} -> {:error, reason}
+  defp load_state(:file) do
+    case Wardwright.ReceiptFileStore.list_receipts() do
+      {:ok, receipts} -> {:ok, %{receipts: Map.new(receipts, &{&1["receipt_id"], &1}), storage: :file}}
     end
   end
 
-  defp persist_insert(%{storage: :memory}, _receipt), do: :ok
-  defp persist_insert(%{storage: :sqlite}, receipt), do: sqlite_result(Wardwright.SQLiteStore.insert_receipt(receipt))
+  defp current_storage do
+    Agent.get(__MODULE__, & &1.storage)
+  end
 
-  defp persist_clear(%{storage: :memory}), do: :ok
-  defp persist_clear(%{storage: :sqlite}), do: sqlite_result(Wardwright.SQLiteStore.clear_receipts())
+  defp persist_insert(:memory, _receipt), do: :ok
+  defp persist_insert(:file, receipt), do: storage_result(Wardwright.ReceiptFileStore.insert_receipt(receipt))
 
-  defp sqlite_result({:ok, :ok}), do: :ok
-  defp sqlite_result({:ok, result}), do: result
-  defp sqlite_result({:error, reason}), do: raise("sqlite receipt store failed: #{inspect(reason)}")
+  defp persist_clear(:memory), do: :ok
+  defp persist_clear(:file), do: storage_result(Wardwright.ReceiptFileStore.clear_receipts())
+
+  defp storage_result({:ok, :ok}), do: :ok
+  defp storage_result({:error, reason}), do: raise("receipt store failed: #{inspect(reason)}")
 end

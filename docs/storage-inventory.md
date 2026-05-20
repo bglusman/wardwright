@@ -6,10 +6,10 @@ description: Durable and ephemeral Wardwright runtime stores.
 
 # Storage Inventory
 
-Wardwright currently uses one configurable SQLite store plus a few runtime
-stores with narrower durability contracts. SQLite is an operator/admin
-artifact store in this design, not the live coordination plane for active
-agent execution.
+Wardwright currently uses one configurable SQLite store, one file-backed receipt
+store, and a few runtime stores with narrower durability contracts. SQLite is
+an operator/admin artifact store in this design, not the live coordination
+plane for active agent execution.
 
 ## SQLite Store
 
@@ -21,17 +21,29 @@ The SQLite store owns:
 
 - registered model definitions
 - hashed model API keys
-- receipts
 
-Receipts are still held in memory while the process is running for fast replay
-and list filtering, but the source record is inserted into SQLite when the
-store is enabled and loaded back on receipt-store startup or storage
-reconfiguration.
+SQLite deliberately does not own receipts while Wardwright's default local
+store is SQLite. Receipt writes can happen in parallel across active agent
+traffic, and making one shared SQLite database the hot receipt sink creates
+avoidable lock and corruption-risk questions before Wardwright has a real
+multi-writer database story.
 
-This global receipt table is a v0 debugger convenience. It is appropriate for
-local use, admin review, and low-rate receipt snapshots. It should not become
-the default sink for high-rate live agent transcript data or for active
-multi-agent coordination.
+## Receipt File Store
+
+`WARDWRIGHT_RECEIPT_STORE_DIR` chooses the receipt directory. If unset,
+package/runtime builds use Wardwright's XDG data path at `receipts/`. Test
+configuration can set `:receipt_store_dir` to `nil` to keep receipts ephemeral.
+
+The file-backed receipt store writes one JSON file per receipt with an atomic
+write-and-rename path. Receipts are still held in memory while the process is
+running for fast replay and list filtering, but durable file IO happens outside
+the in-memory index critical section. The source records are loaded back from
+the receipt directory on receipt-store startup or storage reconfiguration.
+
+This is still a v0 debugger convenience. It is appropriate for local use, admin
+review, and receipt snapshots. It avoids putting parallel receipt writes through
+one global SQLite database, but it is not yet a hosted multi-node receipt store
+or an analytics database.
 
 ## Session Capture Storage
 
@@ -44,11 +56,11 @@ That keeps the write path naturally serialized, makes sensitive captures easier
 to delete or move as a unit, and avoids pretending that one global SQLite
 database is the right live-data bus for parallel agents.
 
-The shared admin SQLite database can still index these captures after the fact:
+A future shared admin database can still index these captures after the fact:
 receipt id, session id, model id, timestamps, storage path, redaction mode, and
 summary status are good index records. Raw request/response payloads and
-step-by-step tool transcripts should live in the session artifact unless a
-specific operator workflow requires importing them into the admin database.
+step-by-step tool transcripts should live in file/session artifacts unless a
+specific operator workflow requires importing them into a database.
 
 ## Scenario Fixtures
 
@@ -58,8 +70,10 @@ portable fixture packs and regression export, but it is now the main remaining
 operator-authored artifact that should probably move behind the SQLite storage
 contract.
 
-Recommended next step: add SQLite-backed scenario CRUD while preserving the
-current JSON fixture import path for public example packs.
+Recommended next step: decide whether reviewed scenarios belong beside receipts
+as files or in SQLite with model configuration. The answer should follow the
+write pattern: operator-authored, low-rate configuration can live in SQLite;
+parallel live traces should stay out of the shared SQLite store.
 
 ## Runtime State
 
@@ -89,15 +103,16 @@ Recommended extraction order:
    storage records, and storage health.
 2. Move receipt/model/key normalization, summary fields, and indexed-column
    extraction into Gleam.
-3. Keep the SQLite driver, app-env lookup, file permissions, and supervision in
-   Elixir unless Wardwright adopts a dedicated Gleam SQLite adapter.
+3. Keep the SQLite/file drivers, app-env lookup, file permissions, and
+   supervision in Elixir unless Wardwright adopts dedicated Gleam storage
+   adapters.
 
 This keeps the storage contract typed without forcing database-driver and OTP
 boundary work into Gleam prematurely.
 
 ## Ecto Decision
 
-Do not add Ecto yet. The current persistence surface is small, SQLite-only, and
-already has an explicit storage boundary. Ecto becomes more attractive when
-Wardwright needs migrations across multiple storage backends, relational
-queries over scenario/receipt joins, or a Postgres deployment target.
+Do not add Ecto yet. The current persistence surface is small and already has
+an explicit storage boundary. Ecto becomes more attractive when Wardwright
+needs migrations across multiple storage backends, relational queries over
+operator artifacts, or a Postgres deployment target.

@@ -13,16 +13,16 @@ JSON/storage boundary modules:
   artifacts are still JSON-compatible maps because they are stored in SQLite,
   served through public model APIs, and edited by the admin UI.
 - `Wardwright.ReceiptStore` remains the receipt JSON boundary. It now switches
-  between memory and SQLite-backed receipt maps and reports storage health.
-- `Wardwright.SQLiteStore` now persists receipts as JSON plus indexed summary
-  columns. That module is the storage adapter, so string-keyed JSON access is
-  expected there.
+  between memory and file-backed receipt maps and reports storage health.
+- `Wardwright.ReceiptFileStore` persists one JSON file per receipt with an
+  atomic write-and-rename path. This keeps receipt writes out of the shared
+  SQLite model/key store and avoids serializing durable receipt IO through the
+  in-memory receipt index.
 
 The review decision is not to introduce Ecto in this PR. The current storage
-surface is small, SQLite-only, and already behind an explicit adapter. Ecto
-should be reconsidered when Wardwright needs relational joins across receipts
-and scenarios, storage migrations across multiple backends, or a Postgres
-deployment target.
+surface is small and already behind explicit adapters. Ecto should be
+reconsidered when Wardwright needs relational joins across operator artifacts,
+storage migrations across multiple backends, or a Postgres deployment target.
 
 The longer-term direction is still to keep pure policy and route logic out of
 string-keyed maps, and to confine JSON-shaped access to file, API, UI, and

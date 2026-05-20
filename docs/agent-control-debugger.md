@@ -143,8 +143,9 @@ debugging session needs complete request and provider response payloads.
 protected authoring endpoint exposes that replay:
 `POST /v1/policy-authoring/replay-receipts/:receipt_id`.
 
-Receipts now use the existing configurable SQLite store when it is enabled, so
-debugger receipts survive process restarts in normal local/package runs.
+Receipts now use the configurable file-backed receipt store when it is enabled,
+so debugger receipts survive process restarts in normal local/package runs
+without making the shared SQLite model/key store the live receipt write path.
 
 The authoring tool list advertises the replay tool so MCP clients can discover
 the capability.
@@ -168,7 +169,7 @@ Focused evidence:
 ```
 
 The tests assert default VCR redaction, explicit full-session payload capture,
-direct replay, protected API behavior, and SQLite receipt persistence.
+direct replay, protected API behavior, and file-backed receipt persistence.
 
 ## Track 4: Fork From Receipt
 

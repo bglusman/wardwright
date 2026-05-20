@@ -189,32 +189,75 @@ defmodule Wardwright.StorageAndAdminTest do
     assert {:ok, []} = Wardwright.SQLiteStore.list_api_keys("coding-balanced")
   end
 
-  test "sqlite store persists receipts for debugger replay across receipt store reloads" do
-    path = temp_sqlite_path("wardwright-receipts")
-    original_path = Application.get_env(:wardwright, :sqlite_store_path)
+  test "file store persists receipts for debugger replay across receipt store reloads" do
+    path = temp_dir_path("wardwright-receipts")
+    original_path = Application.get_env(:wardwright, :receipt_store_dir)
 
-    Application.put_env(:wardwright, :sqlite_store_path, path)
+    Application.put_env(:wardwright, :receipt_store_dir, path)
 
     on_exit(fn ->
       Wardwright.ReceiptStore.configure_storage(:memory)
-      restore_app_env(:sqlite_store_path, original_path)
-      remove_sqlite_store(path)
+      restore_app_env(:receipt_store_dir, original_path)
+      File.rm_rf(path)
     end)
 
-    assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:sqlite)
-    receipt = receipt_fixture("rcpt_sqlite", 1_800_000_123, "agent-sqlite")
+    assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:file)
+    receipt = receipt_fixture("rcpt_file", 1_800_000_123, "agent-file")
 
     Wardwright.ReceiptStore.insert(receipt)
-    assert Wardwright.ReceiptStore.get("rcpt_sqlite")["receipt_id"] == "rcpt_sqlite"
-    assert Wardwright.ReceiptStore.health()["kind"] == "sqlite"
+    assert Wardwright.ReceiptStore.get("rcpt_file")["receipt_id"] == "rcpt_file"
+    assert Wardwright.ReceiptStore.health()["kind"] == "file"
     assert Wardwright.ReceiptStore.health()["capabilities"]["durable"] == true
+    assert [_stored_receipt] = File.ls!(path)
 
     assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:memory)
-    assert Wardwright.ReceiptStore.get("rcpt_sqlite") == nil
+    assert Wardwright.ReceiptStore.get("rcpt_file") == nil
 
-    assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:sqlite)
-    assert Wardwright.ReceiptStore.get("rcpt_sqlite")["receipt_id"] == "rcpt_sqlite"
-    assert Enum.map(Wardwright.ReceiptStore.list(%{}, 10), & &1["receipt_id"]) == ["rcpt_sqlite"]
+    assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:file)
+    assert Wardwright.ReceiptStore.get("rcpt_file")["receipt_id"] == "rcpt_file"
+    assert Enum.map(Wardwright.ReceiptStore.list(%{}, 10), & &1["receipt_id"]) == ["rcpt_file"]
+  end
+
+  test "file store accepts parallel receipt writes as independent files" do
+    path = temp_dir_path("wardwright-parallel-receipts")
+    original_path = Application.get_env(:wardwright, :receipt_store_dir)
+
+    Application.put_env(:wardwright, :receipt_store_dir, path)
+
+    on_exit(fn ->
+      Wardwright.ReceiptStore.configure_storage(:memory)
+      restore_app_env(:receipt_store_dir, original_path)
+      File.rm_rf(path)
+    end)
+
+    assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:file)
+
+    receipt_ids =
+      1..20
+      |> Task.async_stream(
+        fn index ->
+          receipt_id = "rcpt_file_parallel_#{index}"
+          Wardwright.ReceiptStore.insert(receipt_fixture(receipt_id, 1_800_001_000 + index, "agent-file"))
+          receipt_id
+        end,
+        max_concurrency: 20,
+        timeout: 5_000
+      )
+      |> Enum.map(fn {:ok, receipt_id} -> receipt_id end)
+      |> Enum.sort()
+
+    assert File.ls!(path) |> length() == 20
+
+    assert Wardwright.ReceiptStore.list(%{}, 50)
+           |> Enum.map(& &1["receipt_id"])
+           |> Enum.sort() == receipt_ids
+
+    assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:memory)
+    assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:file)
+
+    assert Wardwright.ReceiptStore.list(%{}, 50)
+           |> Enum.map(& &1["receipt_id"])
+           |> Enum.sort() == receipt_ids
   end
 
   test "sqlite store rejects configured encryption when SQLCipher is unavailable" do
@@ -669,6 +712,17 @@ defmodule Wardwright.StorageAndAdminTest do
       )
 
     remove_sqlite_store(path)
+    path
+  end
+
+  defp temp_dir_path(prefix) do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "#{prefix}-#{System.unique_integer([:positive, :monotonic])}"
+      )
+
+    File.rm_rf(path)
     path
   end
 

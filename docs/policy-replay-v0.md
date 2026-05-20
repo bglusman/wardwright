@@ -64,15 +64,15 @@ source material for later "replay the whole session until the bad turn" work.
 It is deliberately not the default because it can include prompt, tool-call,
 and provider response payloads.
 
-Receipt storage now uses the existing configurable SQLite store when enabled.
-`WARDWRIGHT_SQLITE_STORE` chooses the database path; otherwise the packaged app
-uses Wardwright's XDG data path. Test builds can still disable SQLite and keep
-receipts in memory.
+Receipt storage uses a file-backed store when enabled.
+`WARDWRIGHT_RECEIPT_STORE_DIR` chooses the receipt directory; otherwise the
+packaged app uses Wardwright's XDG data path. Test builds can still disable the
+file store and keep receipts in memory.
 
-That SQLite store is the admin/debugger index, not the desired live session
-transcript bus. Full-session VCR should move toward one serial artifact per
-agent/session, with the admin store indexing where that artifact lives and what
-receipt/session/model it belongs to.
+The SQLite store remains for model definitions and API key hashes, not receipt
+writes. Full-session VCR should continue toward one serial artifact per
+agent/session, with a future admin index recording where that artifact lives and
+what receipt/session/model it belongs to.
 
 The replay API returns `wardwright.policy_replay.v0` and does not insert a new
 receipt.
@@ -109,7 +109,7 @@ Behavior tests cover:
   route decisions with provider calls disabled.
 - The protected replay API rejects remote callers, replays local stored
   receipts, and returns `404` for missing receipt ids.
-- SQLite-backed receipt storage persists receipts across receipt-store reloads
+- File-backed receipt storage persists receipts across receipt-store reloads
   while memory mode remains available for tests and ephemeral runs.
 
 Run from `app`:

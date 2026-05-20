@@ -74,12 +74,17 @@ or revoke keys for that model. Raw keys are shown once; Wardwright
 stores only a hash in the SQLite store at
 `~/.local/share/wardwright/wardwright.sqlite3` unless `XDG_DATA_HOME` or
 `WARDWRIGHT_SQLITE_STORE` points somewhere else. The same store persists
-registered model definitions and receipts.
+registered model definitions.
 Keep `WARDWRIGHT_SECRET_KEY_BASE` stable, or set
 `WARDWRIGHT_MODEL_API_KEY_HASH_SECRET` explicitly, so stored keys remain
 verifiable across restarts. To encrypt the SQLite store, provide
 `WARDWRIGHT_SQLITE_KEY` or `WARDWRIGHT_SQLITE_KEY_FNOX`; the exqlite NIF must be
 built against SQLCipher or Wardwright will fail closed at startup.
+
+Receipts are stored separately as one JSON file per receipt under
+`~/.local/share/wardwright/receipts`, unless `WARDWRIGHT_RECEIPT_STORE_DIR`
+points somewhere else. Test builds can disable receipt persistence and keep
+receipts in memory.
 
 ## Use With Agents
 
