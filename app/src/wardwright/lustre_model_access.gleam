@@ -530,6 +530,7 @@ pub fn styles() -> String {
     display: flex;
     flex-direction: column;
     gap: 18px;
+    min-width: 0;
     padding: 24px;
   }
   .topbar {
@@ -547,6 +548,7 @@ pub fn styles() -> String {
   h1 {
     font-size: 30px;
     line-height: 1.15;
+    overflow-wrap: anywhere;
   }
   p {
     color: #46525f;
@@ -724,6 +726,9 @@ pub fn styles() -> String {
   @media (max-width: 860px) {
     .model-access-app, .model-key-grid, .inline-form {
       grid-template-columns: 1fr;
+    }
+    .workspace {
+      padding: 18px;
     }
     .rail {
       border-right: 0;

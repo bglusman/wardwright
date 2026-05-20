@@ -90,9 +90,10 @@ wardwright tools --json
 
 `wardwright admin` opens the workbench and starts a local background service
 first if the configured bind port is not already responding. `wardwright admin
-access` opens Model Access directly. The same registry backs the protected
-policy-authoring API and the MCP endpoint mounted at `/mcp`. Point a local agent
-at the Wardwright service, let it inspect the available tools, and use the
-workbench to review the policy or saved test cases it creates. See the
-[Agent Authoring Guide](agent-authoring.html) for the expected
-inspect-simulate-draft-validate-review-activate loop.
+access` opens Model Access directly. The default workbench includes a Model
+authoring panel that sends the current model and projection context through the
+same assistant boundary used by the protected policy-authoring API and the MCP
+endpoint mounted at `/mcp`. Point a local agent at the Wardwright service, let
+it inspect the available tools, and use the workbench to review the policy or
+saved test cases it creates. See the [Agent Authoring Guide](agent-authoring.html)
+for the expected inspect-simulate-draft-validate-review-activate loop.

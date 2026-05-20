@@ -146,6 +146,7 @@ pub fn styles() -> String {
   .rail {
     position: sticky;
     top: 0;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 18px;
@@ -159,8 +160,10 @@ pub fn styles() -> String {
     display: flex;
     align-items: center;
     gap: 12px;
+    min-width: 0;
   }
   .brand div, .field {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -177,6 +180,7 @@ pub fn styles() -> String {
   }
   .brand strong {
     font-size: 17px;
+    overflow-wrap: anywhere;
   }
   .brand span, .field > span {
     color: var(--muted-foreground);
@@ -200,6 +204,7 @@ pub fn styles() -> String {
     text-align: left;
     text-decoration: none;
     cursor: pointer;
+    min-width: 0;
   }
   .rail-nav a:hover, .rail-nav a.active,
   .rail-nav button:hover, .rail-nav button.active {
@@ -208,6 +213,7 @@ pub fn styles() -> String {
   }
   .rail-nav strong {
     font-size: 13px;
+    overflow-wrap: anywhere;
   }
   .rail-nav span {
     color: var(--muted-foreground);
@@ -238,6 +244,14 @@ pub fn styles() -> String {
     border: 1px solid var(--border);
     border-radius: 8px;
     background: #fff;
+  }
+  @media (max-width: 860px) {
+    .rail {
+      width: 100%;
+      height: auto;
+      max-width: 100vw;
+      padding: 18px;
+    }
   }
   "
 }
