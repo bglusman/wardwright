@@ -96,6 +96,25 @@ pub fn replaying_to_loaded_fork_point_shows_no_provider_call() -> Bool {
   && view_contains(simulation, "no")
 }
 
+pub fn forking_from_loaded_fork_point_shows_comparison() -> Bool {
+  let simulation =
+    start()
+    |> click_button("Run deterministic demo")
+    |> click_button("Load transcript")
+    |> click_button("Fork and continue")
+
+  view_contains(
+    simulation,
+    "Forked from selected point, applied read-before-edit, and continued.",
+  )
+  && view_contains(simulation, "Fork status")
+  && view_contains(simulation, "passed")
+  && view_contains(simulation, "Comparison accepted")
+  && view_contains(simulation, "yes")
+  && view_contains(simulation, "Applied rules")
+  && view_contains(simulation, "read-before-edit")
+}
+
 fn start() {
   simulate.simple(
     init: lustre_control_debugger.init,

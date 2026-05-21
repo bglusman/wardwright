@@ -125,10 +125,11 @@ controllable agent runner. That layer should stay outside the default suite
 because model quality, credentials, and local runtime availability are not
 stable CI inputs.
 
-The Control Debugger page now surfaces transcript-store readiness and keeps the
-interactive fork button disabled until the UI can select cursors, apply policy
-overlays, continue a fork, and show the comparison without relying on the test
-harness.
+The Control Debugger page now surfaces transcript-store readiness, loads
+transcript events for a selected receipt, suggests a fork point, replays to that
+point without a provider call, and can fork/continue with the built-in
+read-before-edit overlay. The UI is still not a full policy workbench: free-form
+policy-overlay editing, live continuation, and artifact diff review are deferred.
 
 ## Known Runtime Limits
 

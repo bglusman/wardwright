@@ -748,6 +748,10 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert :wardwright@lustre_control_debugger_test_support.replaying_to_loaded_fork_point_shows_no_provider_call()
   end
 
+  test "control debugger forks from the selected point and compares the outcome" do
+    assert :wardwright@lustre_control_debugger_test_support.forking_from_loaded_fork_point_shows_comparison()
+  end
+
   test "control debugger receipt id text input is controlled" do
     assert :wardwright@lustre_control_debugger_test_support.receipt_text_input_is_controlled("manual_receipt_id")
   end

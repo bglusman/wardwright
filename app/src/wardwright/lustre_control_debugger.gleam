@@ -43,6 +43,9 @@ pub type Model {
     fork_replay_status: String,
     fork_replay_error: String,
     fork_replay_facts: List(ReplayFact),
+    fork_continue_status: String,
+    fork_continue_error: String,
+    fork_continue_facts: List(ReplayFact),
     counterfactual_status: String,
     counterfactual_error: String,
     counterfactual_facts: List(ReplayFact),
@@ -60,6 +63,7 @@ pub type Msg {
   LoadTranscript
   SelectForkPoint(String)
   ReplayToForkPoint
+  ForkAndContinue
 }
 
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "pattern_options")
@@ -100,6 +104,12 @@ fn external_replay_to_fork_point(
   fork_point: String,
 ) -> #(Bool, String, List(ReplayFact))
 
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "fork_and_continue_from_point")
+fn external_fork_and_continue_from_point(
+  session_id: String,
+  fork_point: String,
+) -> #(Bool, String, List(ReplayFact))
+
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "run_counterfactual_demo")
 fn external_run_counterfactual_demo() -> #(
   Bool,
@@ -134,6 +144,9 @@ pub fn init(_flags: Nil) -> Model {
     fork_replay_status: "",
     fork_replay_error: "",
     fork_replay_facts: [],
+    fork_continue_status: "",
+    fork_continue_error: "",
+    fork_continue_facts: [],
     counterfactual_status: "",
     counterfactual_error: "",
     counterfactual_facts: external_counterfactual_facts(),
@@ -160,6 +173,9 @@ pub fn update(model: Model, msg: Msg) -> Model {
         fork_replay_status: "",
         fork_replay_error: "",
         fork_replay_facts: [],
+        fork_continue_status: "",
+        fork_continue_error: "",
+        fork_continue_facts: [],
         counterfactual_status: "",
         counterfactual_error: "",
         counterfactual_facts: external_counterfactual_facts(),
@@ -232,6 +248,9 @@ pub fn update(model: Model, msg: Msg) -> Model {
             fork_replay_status: "",
             fork_replay_error: "",
             fork_replay_facts: [],
+            fork_continue_status: "",
+            fork_continue_error: "",
+            fork_continue_facts: [],
             counterfactual_status: message,
             counterfactual_error: "",
             counterfactual_facts: facts,
@@ -262,6 +281,9 @@ pub fn update(model: Model, msg: Msg) -> Model {
             fork_replay_status: "",
             fork_replay_error: "",
             fork_replay_facts: [],
+            fork_continue_status: "",
+            fork_continue_error: "",
+            fork_continue_facts: [],
           )
         False ->
           Model(
@@ -274,6 +296,9 @@ pub fn update(model: Model, msg: Msg) -> Model {
             fork_replay_status: "",
             fork_replay_error: "",
             fork_replay_facts: [],
+            fork_continue_status: "",
+            fork_continue_error: "",
+            fork_continue_facts: [],
           )
       }
     }
@@ -285,6 +310,9 @@ pub fn update(model: Model, msg: Msg) -> Model {
         fork_replay_status: "",
         fork_replay_error: "",
         fork_replay_facts: [],
+        fork_continue_status: "",
+        fork_continue_error: "",
+        fork_continue_facts: [],
       )
 
     ReplayToForkPoint -> {
@@ -308,6 +336,31 @@ pub fn update(model: Model, msg: Msg) -> Model {
             fork_replay_status: "",
             fork_replay_error: message,
             fork_replay_facts: [],
+          )
+      }
+    }
+
+    ForkAndContinue -> {
+      let #(ok, message, facts) =
+        external_fork_and_continue_from_point(
+          model.transcript_session_id,
+          model.selected_fork_point,
+        )
+
+      case ok {
+        True ->
+          Model(
+            ..model,
+            fork_continue_status: message,
+            fork_continue_error: "",
+            fork_continue_facts: facts,
+          )
+        False ->
+          Model(
+            ..model,
+            fork_continue_status: "",
+            fork_continue_error: message,
+            fork_continue_facts: [],
           )
       }
     }
@@ -530,12 +583,23 @@ fn transcript_card(model: Model) -> Element(Msg) {
         ],
         [text("Replay to fork point")],
       ),
+      button.button(
+        [
+          button.variant(button.Default),
+          type_("button"),
+          event.on_click(ForkAndContinue),
+          disabled(model.selected_fork_point == ""),
+        ],
+        [text("Fork and continue")],
+      ),
     ]),
     status_text(model.transcript_status, model.transcript_error),
     fork_point_summary(model),
     transcript_events(model),
     status_text(model.fork_replay_status, model.fork_replay_error),
     replay_point_facts(model),
+    status_text(model.fork_continue_status, model.fork_continue_error),
+    fork_continue_facts(model),
   ])
 }
 
@@ -622,6 +686,13 @@ fn replay_facts(model: Model) -> Element(Msg) {
 
 fn replay_point_facts(model: Model) -> Element(Msg) {
   case model.fork_replay_facts {
+    [] -> html.div([], [])
+    facts -> html.dl([class("debugger-facts")], list.map(facts, fact))
+  }
+}
+
+fn fork_continue_facts(model: Model) -> Element(Msg) {
+  case model.fork_continue_facts {
     [] -> html.div([], [])
     facts -> html.dl([class("debugger-facts")], list.map(facts, fact))
   }

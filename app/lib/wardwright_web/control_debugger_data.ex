@@ -82,12 +82,7 @@ defmodule WardwrightWeb.ControlDebuggerData do
          {:ok, fork} <-
            WardwrightWeb.CounterfactualReplay.fork(%{
              "fork_cursor" => fork_cursor,
-             "policy_overlay" => %{
-               "allowed_tools_until_read" => ["list_files", "read_file"],
-               "id" => "read-before-edit",
-               "phase" => "tool.planning",
-               "requires_prior_read_for" => ["edit_file"]
-             },
+             "policy_overlay" => read_before_edit_overlay(),
              "source_session_id" => session_id
            }),
          fork_session_id when is_binary(fork_session_id) <- fork["fork_session_id"],
@@ -104,12 +99,6 @@ defmodule WardwrightWeb.ControlDebuggerData do
           _ -> "missing"
         end
 
-      applied_rules =
-        case get_in(comparison, ["policy_delta", "applied_rule_ids"]) do
-          ids when is_list(ids) -> Enum.join(ids, ", ")
-          _ -> "none"
-        end
-
       {true, "Ran deterministic counterfactual demo.", receipt_id,
        [
          {"Original session", session_id},
@@ -120,7 +109,7 @@ defmodule WardwrightWeb.ControlDebuggerData do
          {"Original status", original["status"] || "unknown"},
          {"Fork status", fixed["status"] || "unknown"},
          {"Comparison accepted", bool_text(comparison["accepted"])},
-         {"Applied rules", applied_rules},
+         {"Applied rules", applied_rule_summary(comparison)},
          {"Transcript store", store_location(storage)}
        ]}
     else
@@ -180,6 +169,45 @@ defmodule WardwrightWeb.ControlDebuggerData do
 
       {:error, message} ->
         {false, "Could not replay to fork point: #{message}", []}
+    end
+  end
+
+  def fork_and_continue_from_point(session_id, fork_point) do
+    session_id = session_id |> to_string() |> String.trim()
+    fork_point = fork_point |> to_string() |> String.trim()
+
+    with {:inputs, false} <- {:inputs, session_id == "" or fork_point == ""},
+         {:ok, fork} <-
+           WardwrightWeb.CounterfactualReplay.fork(%{
+             "fork_cursor" => fork_point,
+             "policy_overlay" => read_before_edit_overlay(),
+             "source_session_id" => session_id
+           }),
+         fork_session_id when is_binary(fork_session_id) <- fork["fork_session_id"],
+         {:ok, fixed} <-
+           WardwrightWeb.CounterfactualReplay.continue(fork_session_id, %{
+             "runner" => "scripted_agent",
+             "script_id" => "read-settings-then-edit"
+           }),
+         {:ok, comparison} <- WardwrightWeb.CounterfactualReplay.compare(session_id, fork_session_id) do
+      {true, "Forked from selected point, applied read-before-edit, and continued.",
+       [
+         {"Original session", session_id},
+         {"Fork point", fork_point},
+         {"Fork session", fork_session_id},
+         {"Fork status", fixed["status"] || "unknown"},
+         {"Comparison accepted", bool_text(comparison["accepted"])},
+         {"Applied rules", applied_rule_summary(comparison)}
+       ]}
+    else
+      {:inputs, true} ->
+        {false, "Load a transcript and choose a fork point first.", []}
+
+      {:error, message} ->
+        {false, "Could not fork from selected point: #{message}", []}
+
+      _other ->
+        {false, "Could not fork from selected point.", []}
     end
   end
 
@@ -344,6 +372,22 @@ defmodule WardwrightWeb.ControlDebuggerData do
   defp bool_text(true), do: "yes"
   defp bool_text(false), do: "no"
   defp bool_text(_), do: "unknown"
+
+  defp applied_rule_summary(comparison) do
+    case get_in(comparison, ["policy_delta", "applied_rule_ids"]) do
+      ids when is_list(ids) -> ids |> Enum.join(", ") |> blank_fallback("none")
+      _ -> "none"
+    end
+  end
+
+  defp read_before_edit_overlay do
+    %{
+      "allowed_tools_until_read" => ["list_files", "read_file"],
+      "id" => "read-before-edit",
+      "phase" => "tool.planning",
+      "requires_prior_read_for" => ["edit_file"]
+    }
+  end
 
   defp find_bad_edit(events) when is_list(events) do
     events
