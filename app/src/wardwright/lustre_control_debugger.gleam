@@ -32,6 +32,7 @@ pub type Model {
     replay_status: String,
     replay_error: String,
     replay_facts: List(ReplayFact),
+    counterfactual_facts: List(ReplayFact),
     storage_note: String,
   )
 }
@@ -68,6 +69,9 @@ fn external_replay_receipt(
   receipt_id: String,
 ) -> #(Bool, String, List(ReplayFact))
 
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "counterfactual_facts")
+fn external_counterfactual_facts() -> List(ReplayFact)
+
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "storage_note")
 fn external_storage_note() -> String
 
@@ -86,6 +90,7 @@ pub fn init(_flags: Nil) -> Model {
     replay_status: "",
     replay_error: "",
     replay_facts: [],
+    counterfactual_facts: external_counterfactual_facts(),
     storage_note: external_storage_note(),
   )
 }
@@ -322,14 +327,22 @@ fn counterfactual_card(model: Model) -> Element(Msg) {
       ],
       [text("Fork from receipt")],
     ),
+    counterfactual_facts(model),
     html.small([class("debugger-note")], [
       text(
-        "Not active yet. This needs opt-in transcript recording, append-only transcript storage, replay-to-cursor, fork, continuation, and comparison APIs. Selected receipt: "
+        "Interactive forking is not wired to this button yet. The backend contract now covers opt-in transcript recording, append-only transcript storage, replay-to-cursor, fork, continuation, and comparison APIs. Selected receipt: "
         <> blank_default(model.receipt_id, "none selected")
         <> ".",
       ),
     ]),
   ])
+}
+
+fn counterfactual_facts(model: Model) -> Element(Msg) {
+  case model.counterfactual_facts {
+    [] -> html.div([], [])
+    facts -> html.dl([class("debugger-facts")], list.map(facts, fact))
+  }
 }
 
 fn replay_facts(model: Model) -> Element(Msg) {

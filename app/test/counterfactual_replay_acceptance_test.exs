@@ -1,9 +1,9 @@
-defmodule Wardwright.CounterfactualReplayAcceptanceTest do
+defmodule WardwrightWeb.CounterfactualReplayAcceptanceTest do
   use Wardwright.RouterCase
 
   @moduletag :counterfactual_replay_acceptance
 
-  @replay_module Wardwright.CounterfactualReplay
+  @replay_module WardwrightWeb.CounterfactualReplay
   @required_runtime_api [
     transcript_store_health: 0,
     run_recorded_session: 1,
@@ -45,6 +45,9 @@ defmodule Wardwright.CounterfactualReplayAcceptanceTest do
     assert storage["capabilities"]["concurrent_writers"] == true
     assert storage["capabilities"]["serialized_global_writer"] == false
     assert storage["default_enabled"] == false
+    assert is_binary(storage["path"])
+    assert storage["read_health"] == "ok"
+    assert storage["write_health"] == "ok"
 
     assert {:ok, original} = apply(@replay_module, :run_recorded_session, [scenario])
     assert original["status"] == "failed"
@@ -84,6 +87,8 @@ defmodule Wardwright.CounterfactualReplayAcceptanceTest do
     assert {:ok, replay} = apply(@replay_module, :replay_until, [session_id, fork_cursor])
     assert replay["provider_called"] == false
     assert replay["next_event_cursor"] == fork_cursor
+    assert {:error, unknown_cursor_message} = apply(@replay_module, :replay_until, [session_id, "missing-cursor"])
+    assert unknown_cursor_message =~ "unknown transcript cursor"
 
     assert {:ok, fork} =
              apply(@replay_module, :fork, [

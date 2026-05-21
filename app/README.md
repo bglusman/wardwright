@@ -53,8 +53,8 @@ mise exec -- gleam format --check src
 mise exec -- mix test
 ```
 
-The counterfactual replay debugger has an opt-in acceptance contract that is
-expected to fail until the replay/fork runtime exists:
+The counterfactual replay debugger has an opt-in acceptance contract for the
+deterministic replay/fork runtime:
 
 ```bash
 mise exec -- mix test --only counterfactual_replay_acceptance

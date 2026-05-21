@@ -12,10 +12,11 @@ Wardwright's debugger should eventually answer a hard question:
 > the same session up to the failure point, fork it, and see whether the new
 > policy would have prevented or repaired the failure?
 
-The current debugger does not yet do that. Metadata-only receipt replay explains
-what a stored receipt says Wardwright decided. Full-session VCR mode records one
-request and response payload inside one receipt when explicitly enabled. Neither
-is the same thing as a replayable, multi-turn agent transcript.
+Metadata-only receipt replay explains what a stored receipt says Wardwright
+decided. Full-session VCR mode records one request and response payload inside
+one receipt when explicitly enabled. The deterministic counterfactual runtime
+now starts the next layer: a replayable, multi-turn agent transcript that can be
+replayed to a cursor, forked with a policy overlay, continued, and compared.
 
 ## Acceptance Scenario
 
@@ -36,7 +37,8 @@ The first contract scenario is intentionally small but agentic:
 
 The opt-in test for this contract lives at
 `app/test/counterfactual_replay_acceptance_test.exs`. It is excluded from the
-default suite as `:counterfactual_replay_acceptance` until the runtime exists.
+default suite as `:counterfactual_replay_acceptance` because it exercises the
+debugger contract and writes transcript artifacts.
 
 Run it explicitly with:
 
@@ -47,8 +49,8 @@ mise exec -- mix test --only counterfactual_replay_acceptance
 
 ## Runtime API Shape
 
-The contract currently expects a `Wardwright.CounterfactualReplay` boundary with
-these operations:
+The contract currently exposes a `WardwrightWeb.CounterfactualReplay` boundary
+with these operations:
 
 - `transcript_store_health/0`: report transcript storage mode, durability,
   default enablement, and whether writes are serialized through a single global
@@ -73,11 +75,11 @@ Elixir while the decision rules move toward Gleam.
 
 ## Plan Review
 
-This should start as a deterministic ExUnit harness, not a Jido, Python, or live
-model dependency. That keeps the acceptance bar reproducible and lets the
-missing runtime API fail loudly without network or credential drift. Jido,
-Ollama, opencode/pi-style agents, or a Gleam agent package can still be added as
-manual or tagged dogfood layers after the deterministic contract is passing.
+The first implementation is a deterministic ExUnit harness, not a Jido, Python,
+or live model dependency. That keeps the acceptance bar reproducible and avoids
+network or credential drift. Jido, Ollama, opencode/pi-style agents, or a Gleam
+agent package can still be added as manual or tagged dogfood layers after the
+deterministic contract is passing.
 
 The main product risk is false confidence. Replaying a receipt is not enough,
 and replaying to a cursor is still not enough unless the fork can continue from
@@ -117,8 +119,31 @@ API becomes stable.
 
 ## Deferred Checks
 
-The current red test is still deterministic. A later tagged dogfood layer should
-run the same fork contract against a local Ollama model, Jido, or another
+The current passing test is still deterministic. A later tagged dogfood layer
+should run the same fork contract against a local Ollama model, Jido, or another
 controllable agent runner. That layer should stay outside the default suite
 because model quality, credentials, and local runtime availability are not
 stable CI inputs.
+
+The Control Debugger page now surfaces transcript-store readiness and keeps the
+interactive fork button disabled until the UI can select cursors, apply policy
+overlays, continue a fork, and show the comparison without relying on the test
+harness.
+
+## Known Runtime Limits
+
+- The deterministic runner currently drives the gateway through the router test
+  boundary. Before this becomes a public API or enabled UI action, replace that
+  with an explicit gateway boundary so production code does not depend on
+  `Plug.Test`.
+- The scripted runner installs a canned Wardwright model through the current
+  model configuration path to force a deterministic provider response. That is
+  acceptable for the opt-in harness, but an interactive debugger should use an
+  isolated model overlay rather than mutating the active model registry.
+- `events.jsonl` is append-only and session-scoped. `metadata.json` and
+  `outcome.json` are atomic sidecar writes, so the current "append-only files"
+  claim applies to the transcript event stream, not every artifact in the
+  session directory.
+- Live-agent dogfood is still missing. The next tagged layer should prove the
+  same replay/fork/continue flow with a real local model or controllable agent
+  after the deterministic contract stays stable.

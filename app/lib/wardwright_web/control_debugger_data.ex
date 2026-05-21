@@ -53,6 +53,23 @@ defmodule WardwrightWeb.ControlDebuggerData do
     "Receipts: #{store_location(Wardwright.ReceiptStore.health())}. Simulator cases: #{store_location(Wardwright.PolicyScenarioStore.health())}."
   end
 
+  def counterfactual_facts do
+    if Code.ensure_loaded?(WardwrightWeb.CounterfactualReplay) and
+         function_exported?(WardwrightWeb.CounterfactualReplay, :transcript_store_health, 0) do
+      {:ok, health} = WardwrightWeb.CounterfactualReplay.transcript_store_health()
+
+      [
+        {"Runtime", "deterministic replay/fork contract available"},
+        {"Transcript store", store_location(health)},
+        {"Default capture", if(health["default_enabled"] == true, do: "enabled", else: "off; opt in per model")},
+        {"Durability", capability_summary(health)},
+        {"Read/write health", "#{health["read_health"] || "unknown"} / #{health["write_health"] || "unknown"}"}
+      ]
+    else
+      [{"Runtime", "contract only; replay/fork runtime not loaded"}]
+    end
+  end
+
   def import_receipt_scenario(pattern_id, receipt_id, title) do
     pattern_id = blank_fallback(pattern_id, default_pattern_id())
     receipt_id = receipt_id |> to_string() |> String.trim()
@@ -217,9 +234,23 @@ defmodule WardwrightWeb.ControlDebuggerData do
 
   defp store_location(%{"kind" => "file", "path" => path}) when is_binary(path), do: "file #{path}"
 
+  defp store_location(%{"kind" => "append_only_files", "path" => path}) when is_binary(path),
+    do: "append-only files #{path}"
+
   defp store_location(%{"kind" => "memory"}), do: "memory only; not durable across restart"
   defp store_location(%{"kind" => kind}), do: kind
   defp store_location(_health), do: "unknown"
+
+  defp capability_summary(%{"capabilities" => capabilities}) when is_map(capabilities) do
+    [
+      "durable=#{bool_text(capabilities["durable"])}",
+      "parallel=#{bool_text(capabilities["concurrent_writers"])}",
+      "global_writer=#{bool_text(capabilities["serialized_global_writer"])}"
+    ]
+    |> Enum.join("; ")
+  end
+
+  defp capability_summary(_health), do: "unknown"
 
   defp blank_fallback(value, fallback) when is_binary(value) do
     case String.trim(value) do

@@ -718,13 +718,19 @@ defmodule WardwrightWeb.WorkbenchTest do
            )
   end
 
-  test "control debugger exposes counterfactual fork workflow before runtime is implemented" do
+  test "control debugger exposes counterfactual fork workflow and runtime readiness" do
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Counterfactual fork")
 
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Replay, change policy, continue")
 
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains(
-             "Not active yet. This needs opt-in transcript recording"
+             "deterministic replay/fork contract available"
+           )
+
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("append-only files")
+
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains(
+             "Interactive forking is not wired to this button yet"
            )
   end
 
