@@ -32,6 +32,7 @@ if echo "$staged_files" | grep -qE '^app/'; then
       ../scripts/check-lustre-controlled-inputs.py src &&
       mise exec -- mix test
   ) || fail "App checks failed"
+  ruby scripts/check-no-jason-usage.rb || fail "Jason usage ratchet failed"
   ok "App checks clean"
 fi
 

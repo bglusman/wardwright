@@ -18,7 +18,10 @@ run = "ruby scripts/check-elixir-map-boundaries.rb"
 
 [tasks."check:style"]
 description = "Run gradual Elixir static-analysis ratchets"
-run = "cd app && mix credo --format=oneline"
+run = [
+  "ruby scripts/check-no-jason-usage.rb",
+  "cd app && mix credo --format=oneline",
+]
 
 [tasks."check:types"]
 description = "Run incremental Dialyzer through Assay"
