@@ -75,6 +75,31 @@ defmodule WardwrightWeb.CounterfactualReplay do
 
   def transcript(_session_id), do: {:error, "session_id is required"}
 
+  def record_gateway_receipt(receipt) when is_map(receipt) do
+    with {:full_session, true} <- {:full_session, full_session_receipt?(receipt)},
+         {:session_id, session_id} when is_binary(session_id) and session_id != "" <-
+           {:session_id, receipt_session_id(receipt)},
+         {:owner, true} <- {:owner, gateway_session_owner?(session_id)} do
+      :ok = prepare_gateway_session(session_id, receipt)
+
+      with {:ok, existing_events} <- read_events(session_id),
+           false <- receipt_already_recorded?(existing_events, receipt),
+           :ok <- append_events(session_id, gateway_receipt_events(session_id, receipt, length(existing_events))),
+           :ok <- write_json(session_id, @outcome_file, gateway_outcome(session_id, receipt)) do
+        {:ok, %{"recorded" => true, "session_id" => session_id}}
+      else
+        true -> {:ok, %{"reason" => "receipt already recorded", "recorded" => false, "session_id" => session_id}}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      {:full_session, false} -> {:ok, %{"reason" => "receipt is not full-session VCR", "recorded" => false}}
+      {:session_id, _} -> {:ok, %{"reason" => "receipt has no session_id or run_id", "recorded" => false}}
+      {:owner, false} -> {:ok, %{"reason" => "session is owned by another transcript recorder", "recorded" => false}}
+    end
+  end
+
+  def record_gateway_receipt(_receipt), do: {:error, "receipt must be a JSON object"}
+
   def replay_until(session_id, cursor) when is_binary(session_id) and is_binary(cursor) do
     with {:ok, events} <- read_events(session_id),
          {:ok, replayed_events} <- events_before_cursor(events, cursor) do
@@ -340,6 +365,53 @@ defmodule WardwrightWeb.CounterfactualReplay do
     ]
   end
 
+  defp gateway_receipt_events(session_id, receipt, existing_event_count) do
+    base_sequence = existing_event_count + 1
+
+    [
+      gateway_event(session_id, base_sequence, 1, "gateway.request", receipt, %{
+        "gateway" => %{"path" => "/v1/chat/completions", "surface" => "openai_compatible_gateway"},
+        "message_count" => get_in(receipt, ["request", "message_count"]),
+        "model_id" => receipt["model_id"],
+        "recording_enabled" => true
+      }),
+      gateway_event(session_id, base_sequence + 1, 2, "route.selected", receipt, %{
+        "estimated_prompt_tokens" => get_in(receipt, ["decision", "estimated_prompt_tokens"]),
+        "route_id" => get_in(receipt, ["decision", "route_id"]),
+        "route_type" => get_in(receipt, ["decision", "route_type"]),
+        "selected_model" => get_in(receipt, ["decision", "selected_model"]),
+        "selected_provider" => get_in(receipt, ["decision", "selected_provider"])
+      }),
+      gateway_event(session_id, base_sequence + 2, 3, "model.response", receipt, %{
+        "content_preview" => content_preview(get_in(receipt, ["vcr", "full_session", "response", "content"])),
+        "fork_point" => true,
+        "provider_called" => get_in(receipt, ["vcr", "provider", "called_provider"]),
+        "status" => get_in(receipt, ["final", "status"])
+      }),
+      gateway_event(session_id, base_sequence + 3, 4, "receipt.finalized", receipt, %{
+        "gateway" => %{"path" => "/v1/chat/completions"},
+        "provider_called" => get_in(receipt, ["vcr", "provider", "called_provider"]),
+        "receipt_id" => receipt["receipt_id"],
+        "status" => get_in(receipt, ["final", "status"])
+      })
+    ]
+    |> Enum.map(&drop_nil_values/1)
+  end
+
+  defp gateway_event(session_id, sequence, receipt_event_index, type, receipt, fields) do
+    receipt_id = receipt["receipt_id"] || "receipt"
+
+    fields
+    |> Map.merge(%{
+      "cursor" => "#{session_id}:#{receipt_id}:#{receipt_event_index}",
+      "receipt_id" => receipt_id,
+      "schema" => @schema,
+      "sequence" => sequence,
+      "session_id" => session_id,
+      "type" => type
+    })
+  end
+
   defp assistant_content(%{"choices" => [choice | _]}) when is_map(choice) do
     case get_in(choice, ["message", "content"]) do
       content when is_binary(content) and content != "" -> content
@@ -596,6 +668,25 @@ defmodule WardwrightWeb.CounterfactualReplay do
     write_json(session_id, @metadata_file, Map.put(metadata, "scenario", scenario))
   end
 
+  defp prepare_gateway_session(session_id, receipt) do
+    dir = session_dir(session_id)
+    events_path = Path.join(dir, @event_file)
+
+    if !File.exists?(events_path) do
+      File.mkdir_p!(dir)
+      File.write!(events_path, "")
+      File.chmod(events_path, 0o600)
+
+      write_json(session_id, @metadata_file, %{
+        "role" => "gateway",
+        "scenario" => gateway_scenario(receipt),
+        "source_session_id" => session_id
+      })
+    end
+
+    :ok
+  end
+
   defp append_events(session_id, events) do
     path = Path.join(session_dir(session_id), @event_file)
     File.mkdir_p!(Path.dirname(path))
@@ -684,4 +775,95 @@ defmodule WardwrightWeb.CounterfactualReplay do
   end
 
   defp safe_id(id), do: Base.url_encode64(id, padding: false)
+
+  defp full_session_receipt?(receipt) do
+    get_in(receipt, ["vcr", "mode"]) == "full_session" and
+      is_map(get_in(receipt, ["vcr", "full_session"]))
+  end
+
+  defp gateway_session_owner?(session_id) do
+    case read_json(session_id, @metadata_file) do
+      {:ok, %{"role" => "gateway"}} -> true
+      {:ok, %{"role" => role}} when is_binary(role) -> false
+      {:ok, _metadata} -> true
+      {:error, _reason} -> true
+    end
+  end
+
+  defp receipt_session_id(receipt) do
+    get_in(receipt, ["caller", "session_id", "value"]) ||
+      get_in(receipt, ["caller", "run_id", "value"]) ||
+      receipt["run_id"] ||
+      get_in(receipt, ["vcr", "full_session", "request", "body", "metadata", "session_id"]) ||
+      get_in(receipt, ["vcr", "full_session", "request", "body", "metadata", "run_id"])
+  end
+
+  defp receipt_already_recorded?(events, receipt) do
+    receipt_id = receipt["receipt_id"]
+
+    Enum.any?(events, fn event ->
+      is_binary(receipt_id) and event["receipt_id"] == receipt_id
+    end)
+  end
+
+  defp gateway_outcome(session_id, receipt) do
+    status = get_in(receipt, ["final", "status"]) || "unknown"
+
+    %{
+      "failure" => %{"class" => gateway_failure_class(status)},
+      "gateway" => %{"path" => "/v1/chat/completions", "receipt_ids" => [receipt["receipt_id"]]},
+      "provider_called" => get_in(receipt, ["vcr", "provider", "called_provider"]) == true,
+      "recording_enabled" => true,
+      "session_id" => session_id,
+      "status" => gateway_outcome_status(status)
+    }
+  end
+
+  defp gateway_failure_class("completed"), do: ""
+  defp gateway_failure_class("completed_after_guard"), do: ""
+  defp gateway_failure_class(status) when is_binary(status), do: status
+  defp gateway_failure_class(_status), do: "unknown"
+
+  defp gateway_outcome_status("completed"), do: "passed"
+  defp gateway_outcome_status("completed_after_guard"), do: "passed"
+  defp gateway_outcome_status(_status), do: "failed"
+
+  defp gateway_scenario(receipt) do
+    request = get_in(receipt, ["vcr", "full_session", "request", "body"]) || %{}
+
+    %{
+      "contract_version" => @schema,
+      "debugger_example_id" => "gateway-full-session",
+      "entrypoint" => %{
+        "path" => "/v1/chat/completions",
+        "surface" => "openai_compatible_gateway"
+      },
+      "model_id" => receipt["model_id"],
+      "model_version" => receipt["model_version"],
+      "task" => request_task(request),
+      "vcr" => %{"mode" => "full_session"},
+      "workspace" => %{}
+    }
+  end
+
+  defp request_task(%{"messages" => messages}) when is_list(messages) do
+    messages
+    |> Enum.reverse()
+    |> Enum.find_value(fn
+      %{"content" => content, "role" => "user"} when is_binary(content) -> content
+      _ -> nil
+    end)
+    |> case do
+      nil -> "Continue the recorded Wardwright session."
+      content -> String.slice(content, 0, 500)
+    end
+  end
+
+  defp request_task(_request), do: "Continue the recorded Wardwright session."
+
+  defp drop_nil_values(map) do
+    map
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.new()
+  end
 end

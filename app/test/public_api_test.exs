@@ -8,6 +8,71 @@ defmodule Wardwright.PublicApiTest do
     assert Enum.map(body["data"], & &1["id"]) == ["coding-balanced", "wardwright/coding-balanced"]
   end
 
+  test "full-session gateway receipts create replayable debugger transcripts" do
+    session_id = "real-debug-session-#{System.unique_integer([:positive])}"
+
+    config =
+      unit_policy_config()
+      |> Map.put("vcr", %{"mode" => "full_session"})
+      |> Map.put("targets", [
+        %{
+          "canned_outputs" => ["Real transcript response."],
+          "context_window" => 256,
+          "model" => "canned/real-debug",
+          "provider_kind" => "canned_sequence"
+        }
+      ])
+      |> Map.put("dispatchers", [
+        %{"id" => "dispatcher.real-debug", "models" => ["canned/real-debug"]}
+      ])
+      |> Map.put("route_root", "dispatcher.real-debug")
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        "messages" => [%{"content" => "record this real gateway session", "role" => "user"}],
+        "metadata" => %{"run_id" => "run-#{session_id}", "session_id" => session_id},
+        "model" => "unit-model"
+      })
+
+    assert conn.status == 200
+    assert [receipt_id] = get_resp_header(conn, "x-wardwright-receipt-id")
+
+    assert {:ok, transcript} = WardwrightWeb.CounterfactualReplay.transcript(session_id)
+    assert transcript["recording_scope"] == "replayable_session"
+
+    assert Enum.map(transcript["events"], & &1["type"]) == [
+             "gateway.request",
+             "route.selected",
+             "model.response",
+             "receipt.finalized"
+           ]
+
+    assert Enum.any?(transcript["events"], fn event ->
+             event["type"] == "model.response" and
+               event["fork_point"] == true and
+               event["content_preview"] == "Real transcript response."
+           end)
+
+    assert Enum.any?(transcript["events"], fn event ->
+             event["type"] == "receipt.finalized" and event["receipt_id"] == receipt_id
+           end)
+
+    assert {true, message, ^session_id, fork_point, events} =
+             WardwrightWeb.ControlDebuggerData.load_transcript_for_receipt(receipt_id)
+
+    assert message =~ "Loaded 4 transcript event(s)"
+    assert fork_point =~ "#{session_id}:#{receipt_id}:3"
+
+    assert Enum.any?(events, fn {_cursor, _sequence, type, label, detail, recommendation} ->
+             type == "model.response" and
+               label == "Model response" and
+               detail =~ "Real transcript response." and
+               recommendation =~ "before the response is validated or repaired"
+           end)
+  end
+
   test "unkeyed internal models are hidden from public model discovery and external chat" do
     config =
       unit_policy_config()

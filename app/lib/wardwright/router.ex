@@ -93,6 +93,7 @@ defmodule Wardwright.Router do
           |> WardwrightWeb.ReceiptBuilder.apply_provider_outcome(provider)
 
         Wardwright.ReceiptStore.insert(receipt)
+        record_counterfactual_transcript(receipt)
 
         record_runtime_event(model, config, caller, "receipt.finalized", %{
           "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0,
@@ -161,6 +162,7 @@ defmodule Wardwright.Router do
         )
 
       Wardwright.ReceiptStore.insert(receipt)
+      record_counterfactual_transcript(receipt)
 
       record_runtime_event(model, config, caller, "receipt.finalized", %{
         "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0,
@@ -957,6 +959,13 @@ defmodule Wardwright.Router do
     ])
 
     :ok
+  end
+
+  defp record_counterfactual_transcript(receipt) do
+    case WardwrightWeb.CounterfactualReplay.record_gateway_receipt(receipt) do
+      {:ok, _result} -> :ok
+      {:error, _reason} -> :ok
+    end
   end
 
   defp test_config_allowed? do

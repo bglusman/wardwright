@@ -587,7 +587,10 @@ fn receipt_picker(model: Model) -> Element(Msg) {
       ]),
     ]),
     html.small([class("debugger-note")], [
-      text(model.storage_note),
+      text(
+        model.storage_note
+        <> " Full-session model traffic is listed here after a request carries session_id or run_id metadata.",
+      ),
     ]),
   ])
 }
@@ -737,6 +740,11 @@ fn transcript_card(model: Model) -> Element(Msg) {
           event.on_click(LoadTranscript),
         ],
         [text("Load transcript")],
+      ),
+    ]),
+    html.small([class("debugger-note")], [
+      text(
+        "Use this for recorded example sessions or real full-session receipts from Wardwright gateway traffic.",
       ),
     ]),
     status_text(model.transcript_status, model.transcript_error),

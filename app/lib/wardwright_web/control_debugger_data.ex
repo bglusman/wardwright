@@ -564,9 +564,9 @@ defmodule WardwrightWeb.ControlDebuggerData do
   defp suggested_fork_event?(_event), do: false
 
   defp receipt_session_id(receipt) do
-    receipt["run_id"] ||
-      get_in(receipt, ["caller", "session_id", "value"]) ||
+    get_in(receipt, ["caller", "session_id", "value"]) ||
       get_in(receipt, ["caller", "run_id", "value"]) ||
+      receipt["run_id"] ||
       get_in(receipt, ["vcr", "full_session", "request", "body", "metadata", "session_id"]) ||
       get_in(receipt, ["vcr", "full_session", "request", "body", "metadata", "run_id"])
   end

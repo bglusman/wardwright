@@ -151,6 +151,14 @@ can run in scripted mode or through a selected live Wardwright model. The UI is
 still not a full policy workbench: semantic policy authoring and artifact diff
 review are deferred.
 
+Real Wardwright gateway traffic also participates in this flow when the selected
+model has `vcr.mode = full_session` and the request includes `session_id` or
+`run_id` metadata. On receipt finalization, Wardwright derives a replayable
+session transcript from the recorded request, route decision, provider response,
+and receipt event. That transcript is stored in the same append-only transcript
+store as scripted examples and can be loaded from the Control Debugger by
+selecting the generated receipt.
+
 ## Known Runtime Limits
 
 - The deterministic runner currently drives the gateway through the router test
