@@ -459,7 +459,7 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
   defp write_user_snippet(snippet) do
     path = user_snippet_path(snippet["id"])
     tmp_path = "#{path}.tmp"
-    body = Jason.encode!(snippet, pretty: true)
+    body = Wardwright.Json.encode_display!(snippet)
 
     with :ok <- File.write(tmp_path, body),
          :ok <- File.rename(tmp_path, path) do
@@ -471,7 +471,7 @@ defmodule Wardwright.PolicySandbox.DuneSnippetRegistry do
 
   defp read_user_snippet(path) do
     with {:ok, body} <- File.read(path),
-         {:ok, decoded} <- Jason.decode(body),
+         {:ok, decoded} <- JSON.decode(body),
          {:ok, snippet} <- user_snippet(decoded) do
       [Map.put(snippet, "origin", "workspace")]
     else

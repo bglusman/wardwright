@@ -237,11 +237,11 @@ defmodule Wardwright.PolicyReplay do
     Enum.reduce(value, 0, fn
       %{@text_key => text}, acc when is_binary(text) -> acc + String.length(text)
       %{@content_key => text}, acc when is_binary(text) -> acc + String.length(text)
-      part, acc -> acc + byte_size(Jason.encode!(part))
+      part, acc -> acc + byte_size(JSON.encode!(part))
     end)
   end
 
-  defp legacy_content_length(value), do: byte_size(Jason.encode!(value))
+  defp legacy_content_length(value), do: byte_size(JSON.encode!(value))
 
   defp replay_warnings(recording) do
     if Map.get(recording, @schema_key) == @vcr_schema do

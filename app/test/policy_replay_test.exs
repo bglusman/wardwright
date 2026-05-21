@@ -33,7 +33,7 @@ defmodule Wardwright.PolicyReplayTest do
       })
 
     assert conn.status == 200
-    receipt = Jason.decode!(conn.resp_body)["receipt"]
+    receipt = JSON.decode!(conn.resp_body)["receipt"]
     vcr = receipt["vcr"]
 
     assert vcr["schema"] == "wardwright.policy_vcr.v0"
@@ -45,7 +45,7 @@ defmodule Wardwright.PolicyReplayTest do
     assert get_in(vcr, ["route", "selected_model"]) == "medium/model"
     assert get_in(vcr, ["decision", "selected_model"]) == "medium/model"
 
-    encoded_vcr = Jason.encode!(vcr)
+    encoded_vcr = JSON.encode!(vcr)
     refute encoded_vcr =~ "Synthetic private prompt"
     refute encoded_vcr =~ "Mock Wardwright response"
     refute Map.has_key?(vcr, "full_session")
@@ -78,7 +78,7 @@ defmodule Wardwright.PolicyReplayTest do
       })
 
     assert conn.status == 200
-    receipt_id = Jason.decode!(conn.resp_body) |> get_in(["wardwright", "receipt_id"])
+    receipt_id = JSON.decode!(conn.resp_body) |> get_in(["wardwright", "receipt_id"])
     receipt = Wardwright.ReceiptStore.get(receipt_id)
     vcr = receipt["vcr"]
 
@@ -128,7 +128,7 @@ defmodule Wardwright.PolicyReplayTest do
     conn = call(:post, "/v1/policy-authoring/replay-receipts/rcpt_replay_1", %{})
     assert conn.status == 200
 
-    replay = Jason.decode!(conn.resp_body)["replay"]
+    replay = JSON.decode!(conn.resp_body)["replay"]
     assert replay["source_receipt_id"] == "rcpt_replay_1"
     assert get_in(replay, ["policy", "events", Access.at(0), "type"]) == "policy.alert"
     assert get_in(replay, ["final", "provider_called"]) == false
@@ -159,7 +159,7 @@ defmodule Wardwright.PolicyReplayTest do
     assert get_in(replay, ["request", "message_roles"]) == ["user"]
     assert get_in(replay, ["request", "message_content_lengths"]) == [57]
 
-    encoded = Jason.encode!(replay)
+    encoded = JSON.encode!(replay)
     refute encoded =~ "Synthetic legacy raw prompt"
   end
 

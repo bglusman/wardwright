@@ -217,7 +217,7 @@ defmodule WardwrightWeb.CounterfactualReplay do
   end
 
   defp call_gateway_request(request, agent_id, model_api_key) do
-    body = Jason.encode!(request)
+    body = JSON.encode!(request)
 
     conn =
       :post
@@ -246,7 +246,7 @@ defmodule WardwrightWeb.CounterfactualReplay do
   defp put_model_api_key(conn, api_key), do: put_req_header(conn, "x-wardwright-model-api-key", api_key)
 
   defp decode_response_body(body) when is_binary(body) do
-    case Jason.decode(body) do
+    case JSON.decode(body) do
       {:ok, decoded} -> decoded
       {:error, _} -> %{"raw" => body}
     end
@@ -330,7 +330,7 @@ defmodule WardwrightWeb.CounterfactualReplay do
         },
         %{
           "content" =>
-            Jason.encode!(%{
+            JSON.encode!(%{
               "fork_cursor" => metadata["fork_cursor"],
               "policy_overlay" => metadata["policy_overlay"],
               "task" => scenario["task"],
@@ -419,7 +419,7 @@ defmodule WardwrightWeb.CounterfactualReplay do
   defp assistant_content(%{"choices" => [choice | _]}) when is_map(choice) do
     case get_in(choice, ["message", "content"]) do
       content when is_binary(content) and content != "" -> content
-      _ -> choice |> get_in(["message"]) |> Jason.encode!()
+      _ -> choice |> get_in(["message"]) |> JSON.encode!()
     end
   end
 
@@ -701,7 +701,7 @@ defmodule WardwrightWeb.CounterfactualReplay do
 
     payload =
       events
-      |> Enum.map_join(&(Jason.encode!(&1) <> "\n"))
+      |> Enum.map_join(&(JSON.encode!(&1) <> "\n"))
 
     File.write!(path, payload, [:append])
     File.chmod(path, 0o600)
@@ -732,7 +732,7 @@ defmodule WardwrightWeb.CounterfactualReplay do
     |> String.split("\n", trim: true)
     |> Enum.with_index(1)
     |> Enum.reduce([], fn {line, line_number}, events ->
-      case Jason.decode(line) do
+      case JSON.decode(line) do
         {:ok, event} when is_map(event) ->
           [event | events]
 
@@ -741,7 +741,12 @@ defmodule WardwrightWeb.CounterfactualReplay do
           events
 
         {:error, reason} ->
-          warn_malformed_event_line(session_id, line_number, Exception.message(reason))
+          warn_malformed_event_line(
+            session_id,
+            line_number,
+            Wardwright.Json.decode_error_message(reason)
+          )
+
           events
       end
     end)
@@ -760,7 +765,7 @@ defmodule WardwrightWeb.CounterfactualReplay do
     path = Path.join(session_dir(session_id), file)
     tmp_path = "#{path}.#{System.unique_integer([:positive])}.tmp"
     File.mkdir_p!(Path.dirname(path))
-    File.write!(tmp_path, Jason.encode!(value))
+    File.write!(tmp_path, JSON.encode!(value))
     File.chmod(tmp_path, 0o600)
     File.rename!(tmp_path, path)
     :ok
@@ -770,7 +775,7 @@ defmodule WardwrightWeb.CounterfactualReplay do
     path = Path.join(session_dir(session_id), file)
 
     with {:ok, content} <- File.read(path),
-         {:ok, value} when is_map(value) <- Jason.decode(content) do
+         {:ok, value} when is_map(value) <- JSON.decode(content) do
       {:ok, value}
     else
       {:error, :enoent} -> {:error, "unknown transcript session #{inspect(session_id)}"}

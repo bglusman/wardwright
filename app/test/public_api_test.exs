@@ -4,7 +4,7 @@ defmodule Wardwright.PublicApiTest do
   test "lists flat and prefixed public models" do
     conn = call(:get, "/v1/models")
     assert conn.status == 200
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     assert Enum.map(body["data"], & &1["id"]) == ["coding-balanced", "wardwright/coding-balanced"]
   end
 
@@ -81,11 +81,11 @@ defmodule Wardwright.PublicApiTest do
 
     assert call(:post, "/__test/config", config).status == 200
 
-    assert [] = call(:get, "/v1/models").resp_body |> Jason.decode!() |> Map.fetch!("data")
+    assert [] = call(:get, "/v1/models").resp_body |> JSON.decode!() |> Map.fetch!("data")
 
     assert [] =
              call(:get, "/v1/wardwright/models").resp_body
-             |> Jason.decode!()
+             |> JSON.decode!()
              |> Map.fetch!("data")
 
     rejected =
@@ -95,8 +95,8 @@ defmodule Wardwright.PublicApiTest do
       })
 
     assert rejected.status == 403
-    assert get_in(Jason.decode!(rejected.resp_body), ["error", "type"]) == "forbidden"
-    assert get_in(Jason.decode!(rejected.resp_body), ["error", "code"]) == "model_internal"
+    assert get_in(JSON.decode!(rejected.resp_body), ["error", "type"]) == "forbidden"
+    assert get_in(JSON.decode!(rejected.resp_body), ["error", "code"]) == "model_internal"
   end
 
   test "keyed models require valid model-scoped API keys" do
@@ -110,8 +110,8 @@ defmodule Wardwright.PublicApiTest do
       })
 
     assert missing.status == 401
-    assert get_in(Jason.decode!(missing.resp_body), ["error", "type"]) == "unauthorized"
-    assert get_in(Jason.decode!(missing.resp_body), ["error", "code"]) == "model_api_key_required"
+    assert get_in(JSON.decode!(missing.resp_body), ["error", "type"]) == "unauthorized"
+    assert get_in(JSON.decode!(missing.resp_body), ["error", "code"]) == "model_api_key_required"
 
     {:ok, created} = Wardwright.ModelApiKeyStore.create("unit-model", "test-client")
 
@@ -189,7 +189,7 @@ defmodule Wardwright.PublicApiTest do
     conn = call(:get, "/v1/wardwright/models")
     assert conn.status == 200
 
-    [model] = Jason.decode!(conn.resp_body)["data"]
+    [model] = JSON.decode!(conn.resp_body)["data"]
     assert model["id"] == "unit-model"
     assert model["active_version"] == "unit-version"
     assert model["route_type"] == "dispatcher"
@@ -207,7 +207,7 @@ defmodule Wardwright.PublicApiTest do
     conn = call(:get, "/v1/wardwright/models")
     assert conn.status == 200
 
-    [model] = Jason.decode!(conn.resp_body)["data"]
+    [model] = JSON.decode!(conn.resp_body)["data"]
     assert model["id"] == "unit-model"
     assert model["model_id"] == "unit-model"
     assert model["public_model_id"] == "unit-model"
@@ -226,7 +226,7 @@ defmodule Wardwright.PublicApiTest do
     local = call(:get, "/admin/wardwright-models")
     assert local.status == 200
 
-    [model] = Jason.decode!(local.resp_body)["data"]
+    [model] = JSON.decode!(local.resp_body)["data"]
     assert model["prompt_transforms"] == %{"preamble" => "private operator prompt"}
     assert model["model_definition_version"] == 1
     assert is_list(model["governance"])
@@ -235,7 +235,7 @@ defmodule Wardwright.PublicApiTest do
     wardwright_models = call(:get, "/admin/wardwright-models")
     assert wardwright_models.status == 200
 
-    assert get_in(Jason.decode!(wardwright_models.resp_body), ["data", Access.at(0), "id"]) ==
+    assert get_in(JSON.decode!(wardwright_models.resp_body), ["data", Access.at(0), "id"]) ==
              model["id"]
   end
 
@@ -264,7 +264,7 @@ defmodule Wardwright.PublicApiTest do
     local = call(:get, "/admin/model-access")
     assert local.status == 200
 
-    body = Jason.decode!(local.resp_body)
+    body = JSON.decode!(local.resp_body)
 
     assert body["service"]["openai_base_url"] =~ "/v1"
     assert body["service"]["chat_completions_url"] =~ "/v1/chat/completions"
@@ -299,7 +299,7 @@ defmodule Wardwright.PublicApiTest do
     assert tools.status == 200
 
     tool_names =
-      tools.resp_body |> Jason.decode!() |> Map.fetch!("data") |> Enum.map(& &1["name"])
+      tools.resp_body |> JSON.decode!() |> Map.fetch!("data") |> Enum.map(& &1["name"])
 
     assert "explain_projection" in tool_names
     assert "simulate_policy" in tool_names
@@ -320,14 +320,14 @@ defmodule Wardwright.PublicApiTest do
     projection = call(:get, "/v1/policy-authoring/projections/tts-retry")
     assert projection.status == 200
 
-    body = Jason.decode!(projection.resp_body)
+    body = JSON.decode!(projection.resp_body)
     assert get_in(body, ["projection", "state_machine", "initial_state"]) == "observing"
 
     simulations = call(:get, "/v1/policy-authoring/simulations/tts-retry")
     assert simulations.status == 200
 
     assert [%{"artifact_hash" => "sha256:" <> _hash}] =
-             Jason.decode!(simulations.resp_body)["data"]
+             JSON.decode!(simulations.resp_body)["data"]
 
     missing = call(:get, "/v1/policy-authoring/projections/not-real")
     assert missing.status == 404
@@ -353,7 +353,7 @@ defmodule Wardwright.PublicApiTest do
     listed = call(:get, "/v1/policy-authoring/dune-snippets")
     assert listed.status == 200
 
-    snippets = Jason.decode!(listed.resp_body)["data"]
+    snippets = JSON.decode!(listed.resp_body)["data"]
     assert Enum.any?(snippets, &(&1["id"] == "tool.browser-before-shell"))
 
     registry_eval =
@@ -363,7 +363,7 @@ defmodule Wardwright.PublicApiTest do
       })
 
     assert registry_eval.status == 200
-    registry_body = Jason.decode!(registry_eval.resp_body)
+    registry_body = JSON.decode!(registry_eval.resp_body)
     assert get_in(registry_body, ["result", "policy_status"]) == "ok"
     assert get_in(registry_body, ["result", "policy_result", "action"]) == "allow_tool"
 
@@ -377,7 +377,7 @@ defmodule Wardwright.PublicApiTest do
 
     assert ad_hoc_eval.status == 200
 
-    assert get_in(Jason.decode!(ad_hoc_eval.resp_body), ["result", "policy_result", "reason"]) ==
+    assert get_in(JSON.decode!(ad_hoc_eval.resp_body), ["result", "policy_result", "reason"]) ==
              "operator test"
 
     session_id = "api-session-#{System.unique_integer([:positive])}"
@@ -399,7 +399,7 @@ defmodule Wardwright.PublicApiTest do
       })
 
     assert first_session_eval.status == 200
-    first_session_body = Jason.decode!(first_session_eval.resp_body)
+    first_session_body = JSON.decode!(first_session_eval.resp_body)
     assert first_session_body["session"]["status"] == "new"
     assert get_in(first_session_body, ["result", "policy_result", "count"]) == 1
 
@@ -414,7 +414,7 @@ defmodule Wardwright.PublicApiTest do
       })
 
     assert second_session_eval.status == 200
-    second_session_body = Jason.decode!(second_session_eval.resp_body)
+    second_session_body = JSON.decode!(second_session_eval.resp_body)
     assert second_session_body["session"]["status"] == "reused"
     assert get_in(second_session_body, ["result", "policy_result", "count"]) == 2
 
@@ -435,11 +435,11 @@ defmodule Wardwright.PublicApiTest do
       })
 
     assert saved.status == 201
-    assert get_in(Jason.decode!(saved.resp_body), ["snippet", "origin"]) == "workspace"
+    assert get_in(JSON.decode!(saved.resp_body), ["snippet", "origin"]) == "workspace"
 
     relisted = call(:get, "/v1/policy-authoring/dune-snippets")
 
-    assert Enum.any?(Jason.decode!(relisted.resp_body)["data"], fn snippet ->
+    assert Enum.any?(JSON.decode!(relisted.resp_body)["data"], fn snippet ->
              snippet["id"] == "workspace.block-risk" and snippet["origin"] == "workspace"
            end)
 
@@ -451,12 +451,12 @@ defmodule Wardwright.PublicApiTest do
 
     assert saved_eval.status == 200
 
-    assert get_in(Jason.decode!(saved_eval.resp_body), ["result", "policy_result", "action"]) ==
+    assert get_in(JSON.decode!(saved_eval.resp_body), ["result", "policy_result", "action"]) ==
              "block"
 
     delete_saved = call(:delete, "/v1/policy-authoring/dune-snippets/workspace.block-risk")
     assert delete_saved.status == 200
-    assert Jason.decode!(delete_saved.resp_body)["deleted"] == true
+    assert JSON.decode!(delete_saved.resp_body)["deleted"] == true
 
     missing = call(:post, "/v1/policy-authoring/dune-snippets/evaluate", %{})
     assert missing.status == 400
@@ -499,7 +499,7 @@ defmodule Wardwright.PublicApiTest do
     draft = call(:post, "/v1/policy-authoring/wardwright-models/draft", draft_body)
     assert draft.status == 200
 
-    draft_payload = Jason.decode!(draft.resp_body)
+    draft_payload = JSON.decode!(draft.resp_body)
     assert get_in(draft_payload, ["artifact", "model_id"]) == "support-router"
     assert get_in(draft_payload, ["artifact", "route_root"]) == "dispatcher.context-fit"
 
@@ -517,7 +517,7 @@ defmodule Wardwright.PublicApiTest do
       :get
       |> call("/v1/models")
       |> Map.fetch!(:resp_body)
-      |> Jason.decode!()
+      |> JSON.decode!()
       |> Map.fetch!("data")
       |> Enum.map(& &1["id"])
 
@@ -552,7 +552,7 @@ defmodule Wardwright.PublicApiTest do
       :get
       |> call("/v1/models")
       |> Map.fetch!(:resp_body)
-      |> Jason.decode!()
+      |> JSON.decode!()
       |> Map.fetch!("data")
       |> Enum.map(& &1["id"])
 
@@ -584,7 +584,7 @@ defmodule Wardwright.PublicApiTest do
       :get
       |> call("/admin/runtime")
       |> Map.fetch!(:resp_body)
-      |> Jason.decode!()
+      |> JSON.decode!()
 
     assert Enum.any?(
              status["models"],
@@ -636,7 +636,7 @@ defmodule Wardwright.PublicApiTest do
     proposal = call(:post, "/v1/policy-authoring/propose-rule-change", body)
     assert proposal.status == 200
 
-    payload = Jason.decode!(proposal.resp_body)
+    payload = JSON.decode!(proposal.resp_body)
     assert get_in(payload, ["proposal", "applied"]) == false
     assert get_in(payload, ["proposal", "operation"]) == "append_rule"
     assert get_in(payload, ["proposal", "rule_id"]) == "block-unreviewed-prod"
@@ -687,7 +687,7 @@ defmodule Wardwright.PublicApiTest do
       })
 
     assert replace.status == 200
-    replaced = Jason.decode!(replace.resp_body)
+    replaced = JSON.decode!(replace.resp_body)
     assert get_in(replaced, ["proposal", "change", "matched_count"]) == 1
     assert get_in(replaced, ["proposal", "applied"]) == false
 
@@ -707,7 +707,7 @@ defmodule Wardwright.PublicApiTest do
       })
 
     assert remove.status == 200
-    removed = Jason.decode!(remove.resp_body)
+    removed = JSON.decode!(remove.resp_body)
     assert get_in(removed, ["proposal", "change", "after_count"]) == 1
     assert get_in(removed, ["proposal", "applied"]) == false
     refute Enum.any?(removed["artifact"]["governance"], &(&1["id"] == "ambiguous-success"))
@@ -761,7 +761,7 @@ defmodule Wardwright.PublicApiTest do
     created = call(:post, "/v1/policy-authoring/scenarios/tts-retry", %{"scenario" => scenario})
     assert created.status == 201
 
-    created_body = Jason.decode!(created.resp_body)
+    created_body = JSON.decode!(created.resp_body)
     assert get_in(created_body, ["scenario", "scenario_id"]) == "api-reviewed-trigger"
     assert get_in(created_body, ["scenario", "scenario_source"]) == "persisted"
     assert get_in(created_body, ["scenario", "model_id"]) == "coding-balanced"
@@ -781,17 +781,17 @@ defmodule Wardwright.PublicApiTest do
                "scenario_id" => "api-reviewed-trigger",
                "turn" => %{"user_input" => "Show the migration note."}
              }
-           ] = Jason.decode!(listed.resp_body)["data"]
+           ] = JSON.decode!(listed.resp_body)["data"]
 
     deleted = call(:delete, "/v1/policy-authoring/scenarios/tts-retry/api-reviewed-trigger")
     assert deleted.status == 200
 
-    assert get_in(Jason.decode!(deleted.resp_body), ["scenario", "scenario_id"]) ==
+    assert get_in(JSON.decode!(deleted.resp_body), ["scenario", "scenario_id"]) ==
              "api-reviewed-trigger"
 
     assert %{"data" => []} =
              call(:get, "/v1/policy-authoring/scenarios/tts-retry").resp_body
-             |> Jason.decode!()
+             |> JSON.decode!()
 
     assert call(:post, "/v1/policy-authoring/scenarios/tts-retry", %{"scenario" => scenario}).status ==
              201
@@ -805,7 +805,7 @@ defmodule Wardwright.PublicApiTest do
                "scenario_id" => "api-reviewed-trigger",
                "scenario_source" => "persisted"
              }
-           ] = Jason.decode!(simulations.resp_body)["data"]
+           ] = JSON.decode!(simulations.resp_body)["data"]
 
     malformed = call(:post, "/v1/policy-authoring/scenarios/tts-retry", %{"trace" => []})
     assert malformed.status == 400
@@ -817,7 +817,7 @@ defmodule Wardwright.PublicApiTest do
       call(:post, "/v1/policy-authoring/scenarios/tts-retry", %{"scenario" => invalid_state})
 
     assert invalid_state_conn.status == 400
-    assert get_in(Jason.decode!(invalid_state_conn.resp_body), ["error", "message"]) =~ "state_id"
+    assert get_in(JSON.decode!(invalid_state_conn.resp_body), ["error", "message"]) =~ "state_id"
 
     invalid_trace =
       put_in(scenario, ["trace", Access.at(0), "label"], "")
@@ -827,7 +827,7 @@ defmodule Wardwright.PublicApiTest do
 
     assert invalid_trace_conn.status == 400
 
-    assert get_in(Jason.decode!(invalid_trace_conn.resp_body), ["error", "message"]) =~
+    assert get_in(JSON.decode!(invalid_trace_conn.resp_body), ["error", "message"]) =~
              "trace event"
 
     invalid_source =
@@ -838,7 +838,7 @@ defmodule Wardwright.PublicApiTest do
 
     assert invalid_source_conn.status == 400
 
-    assert get_in(Jason.decode!(invalid_source_conn.resp_body), ["error", "message"]) =~
+    assert get_in(JSON.decode!(invalid_source_conn.resp_body), ["error", "message"]) =~
              "source"
 
     missing = call(:post, "/v1/policy-authoring/scenarios/not-real", %{"scenario" => scenario})
@@ -886,7 +886,7 @@ defmodule Wardwright.PublicApiTest do
 
     assert imported.status == 201
 
-    scenario = Jason.decode!(imported.resp_body)["scenario"]
+    scenario = JSON.decode!(imported.resp_body)["scenario"]
     assert scenario["scenario_id"] == "receipt-receipt_import_1"
     assert scenario["source"] == "live_replay"
     assert scenario["pinned"] == true
@@ -931,7 +931,7 @@ defmodule Wardwright.PublicApiTest do
 
     assert imported.status == 201
 
-    scenario = Jason.decode!(imported.resp_body)["scenario"]
+    scenario = JSON.decode!(imported.resp_body)["scenario"]
     assert scenario["scenario_id"] == "receipt-receipt_import_stream_1"
     assert Enum.map(scenario["trace"], & &1["state_id"]) == ["recording"]
   end
@@ -964,7 +964,7 @@ defmodule Wardwright.PublicApiTest do
     export = call(:get, "/v1/policy-authoring/scenarios/tts-retry/regression-export")
     assert export.status == 200
 
-    export_body = Jason.decode!(export.resp_body)
+    export_body = JSON.decode!(export.resp_body)
     assert export_body["schema"] == "wardwright.policy_regression_pack.v1"
     assert export_body["scenario_count"] == 1
     assert [%{"pinned" => true, "scenario_id" => "pinned-regression"}] = export_body["scenarios"]
@@ -985,7 +985,7 @@ defmodule Wardwright.PublicApiTest do
 
     assert unsupported_export.status == 400
 
-    assert get_in(Jason.decode!(unsupported_export.resp_body), ["error", "code"]) ==
+    assert get_in(JSON.decode!(unsupported_export.resp_body), ["error", "code"]) ==
              "invalid_regression_export_format"
 
     retention =
@@ -995,7 +995,7 @@ defmodule Wardwright.PublicApiTest do
 
     assert retention.status == 200
 
-    retention_body = Jason.decode!(retention.resp_body)
+    retention_body = JSON.decode!(retention.resp_body)
     assert retention_body["schema"] == "wardwright.policy_scenario_retention.v1"
     assert retention_body["pruned_count"] == 1
     assert retention_body["remaining_unpinned_count"] == 1
@@ -1006,7 +1006,7 @@ defmodule Wardwright.PublicApiTest do
 
     scenario_ids =
       listed.resp_body
-      |> Jason.decode!()
+      |> JSON.decode!()
       |> Map.fetch!("data")
       |> Enum.map(& &1["scenario_id"])
 
@@ -1029,7 +1029,7 @@ defmodule Wardwright.PublicApiTest do
     current = call(:post, "/v1/policy-authoring/validate", %{})
     assert current.status == 200
 
-    current_body = Jason.decode!(current.resp_body)
+    current_body = JSON.decode!(current.resp_body)
     assert current_body["schema"] == "wardwright.policy_validation.v1"
     assert current_body["source"] == "current_config"
     assert current_body["verdict"] in ["valid", "needs_review"]
@@ -1047,7 +1047,7 @@ defmodule Wardwright.PublicApiTest do
     invalid = call(:post, "/v1/policy-authoring/validate", %{"artifact" => invalid_artifact})
     assert invalid.status == 200
 
-    body = Jason.decode!(invalid.resp_body)
+    body = JSON.decode!(invalid.resp_body)
     assert body["source"] == "submitted"
     assert body["verdict"] == "invalid"
     assert Enum.any?(body["errors"], &(&1["message"] =~ "duplicate target tiny/model"))
@@ -1060,7 +1060,7 @@ defmodule Wardwright.PublicApiTest do
     malformed = call(:post, "/v1/policy-authoring/validate", %{"artifact" => malformed_selector})
     assert malformed.status == 200
 
-    malformed_body = Jason.decode!(malformed.resp_body)
+    malformed_body = JSON.decode!(malformed.resp_body)
     assert malformed_body["verdict"] == "invalid"
     assert Enum.any?(malformed_body["errors"], &(&1["path"] == "dispatchers"))
 
@@ -1088,7 +1088,7 @@ defmodule Wardwright.PublicApiTest do
     nested = call(:post, "/v1/policy-authoring/validate", %{"artifact" => nested_bad_route})
     assert nested.status == 200
 
-    nested_body = Jason.decode!(nested.resp_body)
+    nested_body = JSON.decode!(nested.resp_body)
     assert nested_body["verdict"] == "invalid"
 
     assert Enum.any?(
@@ -1136,7 +1136,7 @@ defmodule Wardwright.PublicApiTest do
       call(:post, "/v1/policy-authoring/validate", %{"artifact" => nested_forced_provider})
 
     assert nested_forced.status == 200
-    nested_forced_body = Jason.decode!(nested_forced.resp_body)
+    nested_forced_body = JSON.decode!(nested_forced.resp_body)
 
     refute Enum.any?(
              nested_forced_body["errors"],
@@ -1155,7 +1155,7 @@ defmodule Wardwright.PublicApiTest do
 
     invalid_allowed = call(:post, "/v1/policy-authoring/validate", %{"artifact" => invalid_allowed_tools})
     assert invalid_allowed.status == 200
-    invalid_allowed_body = Jason.decode!(invalid_allowed.resp_body)
+    invalid_allowed_body = JSON.decode!(invalid_allowed.resp_body)
 
     assert invalid_allowed_body["verdict"] == "invalid"
 
@@ -1204,7 +1204,7 @@ defmodule Wardwright.PublicApiTest do
     conn = call(:post, "/v1/wardwright/simulate", request)
     assert conn.status == 200
 
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     assert get_in(body, ["receipt", "decision", "selected_model"]) == "managed/kimi-k2.6"
   end
 

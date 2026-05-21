@@ -1486,7 +1486,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           </div>
           <details class="receipt_details">
             <summary>Show raw receipt data</summary>
-            <pre><%= Jason.encode!(@selected_simulation["receipt_preview"], pretty: true) %></pre>
+            <pre><%= Wardwright.Json.encode_display!(@selected_simulation["receipt_preview"]) %></pre>
           </details>
         </div>
       </section>
@@ -2664,13 +2664,13 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       "messages" => [%{"content" => "Say hello from Wardwright.", "role" => "user"}],
       "model" => model_id
     }
-    |> Jason.encode!(pretty: true)
+    |> Wardwright.Json.encode_display!()
   end
 
   defp selected_model_config_json(config) do
     config
     |> redact_config_for_display()
-    |> Jason.encode!(pretty: true)
+    |> Wardwright.Json.encode_display!()
   end
 
   defp redact_config_for_display(config) when is_map(config) do

@@ -18,7 +18,7 @@ defmodule Wardwright.Router do
   plug(Plug.Parsers,
     parsers: [:json],
     pass: ["application/json"],
-    json_decoder: Jason,
+    json_decoder: JSON,
     length: 1_048_576
   )
 
@@ -976,7 +976,7 @@ defmodule Wardwright.Router do
   defp json(conn, status, payload) do
     conn
     |> put_resp_content_type("application/json")
-    |> send_resp(status, Jason.encode!(payload))
+    |> send_resp(status, JSON.encode!(payload))
   end
 
   defp text(conn, status, body) do

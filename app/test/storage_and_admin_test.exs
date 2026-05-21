@@ -96,7 +96,7 @@ defmodule Wardwright.StorageAndAdminTest do
   test "admin storage endpoint exposes receipt store health" do
     conn = call(:get, "/admin/storage")
     assert conn.status == 200
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     assert body["kind"] == "memory"
     assert body["contract_version"] == "storage-contract-v0"
@@ -469,7 +469,7 @@ defmodule Wardwright.StorageAndAdminTest do
         ] do
       conn = call(method, path, body, [], remote_ip)
       assert conn.status == 403
-      assert %{"error" => %{"code" => "protected_endpoint"}} = Jason.decode!(conn.resp_body)
+      assert %{"error" => %{"code" => "protected_endpoint"}} = JSON.decode!(conn.resp_body)
     end
   end
 
@@ -496,7 +496,7 @@ defmodule Wardwright.StorageAndAdminTest do
       )
 
     assert conn.status == 200
-    assert Jason.decode!(conn.resp_body)["kind"] == "memory"
+    assert JSON.decode!(conn.resp_body)["kind"] == "memory"
   end
 
   test "protected prototype endpoints require basic auth when a basic auth password is configured" do
@@ -532,7 +532,7 @@ defmodule Wardwright.StorageAndAdminTest do
       )
 
     assert conn.status == 200
-    assert Jason.decode!(conn.resp_body)["kind"] == "memory"
+    assert JSON.decode!(conn.resp_body)["kind"] == "memory"
   end
 
   test "protected admin API creates lists and revokes model API keys without exposing hashes" do
@@ -543,7 +543,7 @@ defmodule Wardwright.StorageAndAdminTest do
       })
 
     assert created.status == 201
-    body = Jason.decode!(created.resp_body)
+    body = JSON.decode!(created.resp_body)
     key = body["api_key"]
     assert key["key"] =~ "wwk_"
     assert key["label"] == "gateway-prod"
@@ -551,7 +551,7 @@ defmodule Wardwright.StorageAndAdminTest do
 
     listed = call(:get, "/admin/model-api-keys?model=coding-balanced")
     assert listed.status == 200
-    assert [listed_key] = Jason.decode!(listed.resp_body)["data"]
+    assert [listed_key] = JSON.decode!(listed.resp_body)["data"]
     assert listed_key["id"] == key["id"]
     assert listed_key["prefix"] == key["prefix"]
     refute Map.has_key?(listed_key, "key")
@@ -559,14 +559,14 @@ defmodule Wardwright.StorageAndAdminTest do
 
     prefixed = call(:get, "/admin/model-api-keys?model=wardwright/coding-balanced")
     assert prefixed.status == 200
-    assert [prefixed_key] = Jason.decode!(prefixed.resp_body)["data"]
+    assert [prefixed_key] = JSON.decode!(prefixed.resp_body)["data"]
     assert prefixed_key["id"] == key["id"]
 
     deleted = call(:delete, "/admin/model-api-keys/#{key["id"]}")
     assert deleted.status == 200
 
     relisted = call(:get, "/admin/model-api-keys?model=coding-balanced")
-    assert Jason.decode!(relisted.resp_body)["data"] == []
+    assert JSON.decode!(relisted.resp_body)["data"] == []
   end
 
   test "protected APIs do not emit wildcard CORS headers" do
@@ -670,8 +670,8 @@ defmodule Wardwright.StorageAndAdminTest do
              "schema" => "wardwright.policy_vcr.v0"
            }
 
-    refute Jason.encode!(summary) =~ "sensitive prompt"
-    refute Jason.encode!(summary) =~ "sensitive response"
+    refute JSON.encode!(summary) =~ "sensitive prompt"
+    refute JSON.encode!(summary) =~ "sensitive response"
   end
 
   test "receipt list supports storage contract filters" do

@@ -129,7 +129,7 @@ defmodule WardwrightWeb.LustreWorkbenchData do
   end
 
   def activate_authoring_draft(artifact_json) do
-    case Jason.decode(to_string(artifact_json)) do
+    case JSON.decode(to_string(artifact_json)) do
       {:ok, artifact} ->
         case WardwrightWeb.PolicyAuthoringDrafts.activate_wardwright_model(%{
                "artifact" => artifact
@@ -147,8 +147,8 @@ defmodule WardwrightWeb.LustreWorkbenchData do
             {false, "Could not activate draft: #{message}", ""}
         end
 
-      {:error, %Jason.DecodeError{} = error} ->
-        {false, "Could not read draft artifact JSON: #{Exception.message(error)}", ""}
+      {:error, reason} ->
+        {false, "Could not read draft artifact JSON: #{Wardwright.Json.decode_error_message(reason)}", ""}
     end
   end
 
@@ -348,7 +348,7 @@ defmodule WardwrightWeb.LustreWorkbenchData do
         }
       }
       when is_binary(model_id) and is_list(errors) and is_list(warnings) ->
-        artifact_json = Jason.encode!(artifact, pretty: true)
+        artifact_json = Wardwright.Json.encode_display!(artifact)
 
         {
           model_id,
@@ -487,12 +487,12 @@ defmodule WardwrightWeb.LustreWorkbenchData do
   end
 
   defp draft_artifact(artifact_json) do
-    with {:ok, artifact} <- Jason.decode(to_string(artifact_json)),
+    with {:ok, artifact} <- JSON.decode(to_string(artifact_json)),
          true <- is_map(artifact) do
       {:ok, Wardwright.normalize_config(artifact)}
     else
-      {:error, %Jason.DecodeError{} = error} ->
-        {:error, "Draft JSON is invalid: #{Exception.message(error)}"}
+      {:error, reason} ->
+        {:error, "Draft JSON is invalid: #{Wardwright.Json.decode_error_message(reason)}"}
 
       false ->
         {:error, "Draft JSON must be an object."}

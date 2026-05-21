@@ -418,7 +418,7 @@ defmodule WardwrightWeb.StreamRuntime do
         "object" => "chat.completion.chunk"
       }
 
-      {:ok, conn} = chunk(acc.conn, "data: #{Jason.encode!(payload)}\n\n")
+      {:ok, conn} = chunk(acc.conn, "data: #{JSON.encode!(payload)}\n\n")
 
       %{acc | chunks: [text | acc.chunks], conn: conn}
     end)
@@ -440,7 +440,7 @@ defmodule WardwrightWeb.StreamRuntime do
       "object" => "chat.completion.chunk"
     }
 
-    {:ok, conn} = chunk(acc.conn, "data: #{Jason.encode!(payload)}\n\n")
+    {:ok, conn} = chunk(acc.conn, "data: #{JSON.encode!(payload)}\n\n")
     %{acc | conn: conn}
   end
 
@@ -477,7 +477,7 @@ defmodule WardwrightWeb.StreamRuntime do
       }
     }
 
-    {:ok, conn} = chunk(acc.conn, "data: #{Jason.encode!(payload)}\n\n")
+    {:ok, conn} = chunk(acc.conn, "data: #{JSON.encode!(payload)}\n\n")
     {:ok, conn} = chunk(conn, "data: [DONE]\n\n")
     %{acc | conn: conn}
   end
@@ -620,6 +620,6 @@ defmodule WardwrightWeb.StreamRuntime do
   defp json(conn, status, payload) do
     conn
     |> put_resp_content_type("application/json")
-    |> send_resp(status, Jason.encode!(payload))
+    |> send_resp(status, JSON.encode!(payload))
   end
 end

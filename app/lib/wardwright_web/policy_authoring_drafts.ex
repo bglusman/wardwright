@@ -411,7 +411,7 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp proposal_id(artifact) do
-    encoded = Jason.encode!(artifact)
+    encoded = JSON.encode!(artifact)
     digest = Base.encode16(:crypto.hash(:sha256, encoded), case: :lower)
     "proposal_" <> binary_part(digest, 0, 16)
   end

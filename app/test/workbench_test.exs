@@ -981,7 +981,7 @@ defmodule WardwrightWeb.WorkbenchTest do
   defmodule AdminAuthoringClient do
     def generate_text(_prompt, _opts) do
       {:ok,
-       Jason.encode!(%{
+       JSON.encode!(%{
          "answer" => "Drafted admin cow model.",
          "next_steps" => ["review the draft before activation"],
          "tool_calls" => [
@@ -1025,7 +1025,7 @@ defmodule WardwrightWeb.WorkbenchTest do
           "simulator context missing"
         end
 
-      {:ok, Jason.encode!(%{"answer" => answer, "tool_calls" => []})}
+      {:ok, JSON.encode!(%{"answer" => answer, "tool_calls" => []})}
     end
   end
 end

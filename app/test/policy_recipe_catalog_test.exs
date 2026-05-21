@@ -85,7 +85,7 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
     File.mkdir_p!(user_recipe_dir)
 
     user_recipe_json =
-      Jason.encode!(%{
+      JSON.encode!(%{
         "recipes" => [
           %{
             "category" => "route.selecting",
@@ -130,7 +130,7 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
       "test workspace already initialized\n"
     )
 
-    File.write!(Path.join(workspace_dir, "valid.json"), Jason.encode!(valid))
+    File.write!(Path.join(workspace_dir, "valid.json"), JSON.encode!(valid))
     File.write!(Path.join(workspace_dir, "invalid.json"), "{")
     Application.put_env(:wardwright, :policy_recipe_workspace_dir, workspace_dir)
 
@@ -196,7 +196,7 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
     )
 
     body =
-      Jason.encode!(%{
+      JSON.encode!(%{
         "recipes" => [
           %{
             "category" => "tool.using",
@@ -234,7 +234,7 @@ defmodule Wardwright.PolicyRecipeCatalogTest do
     fixture_path = Path.expand("../../docs/recipes/index.json", __DIR__)
 
     assert {:ok, body} = File.read(fixture_path)
-    assert {:ok, decoded} = Jason.decode(body)
+    assert {:ok, decoded} = JSON.decode(body)
     assert is_list(decoded["recipes"])
     assert Enum.any?(decoded["recipes"], &(&1["id"] == "community-basic-stream-retry"))
     assert Enum.any?(decoded["recipes"], &(&1["id"] == "community-review-model-escalation"))

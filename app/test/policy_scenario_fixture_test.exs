@@ -32,7 +32,7 @@ defmodule Wardwright.PolicyScenarioFixtureTest do
     assert Enum.all?(scenarios, &(&1.source == "fixture"))
     assert Enum.all?(scenarios, & &1.pinned)
 
-    fixture_text = Jason.encode!(Enum.map(scenarios, &Wardwright.PolicyScenario.to_map/1))
+    fixture_text = JSON.encode!(Enum.map(scenarios, &Wardwright.PolicyScenario.to_map/1))
     refute fixture_text =~ "Bearer "
     refute fixture_text =~ "sk-"
     refute fixture_text =~ "192.168."

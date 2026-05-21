@@ -260,11 +260,11 @@ defmodule Wardwright.PolicyScenarioStore do
   defp load_scenarios(path) do
     if File.exists?(path) do
       with {:ok, body} <- File.read(path),
-           {:ok, decoded} <- Jason.decode(body),
+           {:json, {:ok, decoded}} <- {:json, JSON.decode(body)},
            {:ok, scenarios} <- parse_scenarios(decoded) do
         {:ok, scenarios}
       else
-        {:error, %Jason.DecodeError{} = error} -> {:error, Exception.message(error)}
+        {:json, {:error, reason}} -> {:error, Wardwright.Json.decode_error_message(reason)}
         {:error, reason} when is_atom(reason) -> {:error, :file.format_error(reason)}
         {:error, message} when is_binary(message) -> {:error, message}
         _other -> {:error, "scenario store file must contain a JSON array"}
@@ -303,14 +303,20 @@ defmodule Wardwright.PolicyScenarioStore do
     tmp_path = "#{path}.tmp"
 
     with :ok <- File.mkdir_p(Path.dirname(path)),
-         {:ok, body} <- Jason.encode(records),
+         {:ok, body} <- encode_json(records),
          :ok <- File.write(tmp_path, body),
          :ok <- File.rename(tmp_path, path) do
       :ok
     else
       {:error, reason} when is_atom(reason) -> {:error, :file.format_error(reason)}
-      {:error, %Jason.EncodeError{} = error} -> {:error, Exception.message(error)}
+      {:error, message} when is_binary(message) -> {:error, message}
     end
+  end
+
+  defp encode_json(value) do
+    {:ok, JSON.encode!(value)}
+  rescue
+    error in Protocol.UndefinedError -> {:error, Exception.message(error)}
   end
 
   defp prune_unpinned(scenarios, pattern_id, max_unpinned) do

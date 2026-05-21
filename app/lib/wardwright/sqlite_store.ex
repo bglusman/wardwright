@@ -41,7 +41,7 @@ defmodule Wardwright.SQLiteStore do
        configs
        |> Enum.flat_map(fn
          [config_json] ->
-           case Jason.decode(config_json) do
+           case JSON.decode(config_json) do
              {:ok, config} -> [Wardwright.normalize_config(config)]
              _ -> []
            end
@@ -117,7 +117,7 @@ defmodule Wardwright.SQLiteStore do
             active = 1,
             updated_at = excluded.updated_at
           """,
-          [config["model_id"], Jason.encode!(config), now, now]
+          [config["model_id"], JSON.encode!(config), now, now]
         )
       end)
     end)
@@ -158,7 +158,7 @@ defmodule Wardwright.SQLiteStore do
           end
 
         with true <- is_binary(config_json),
-             {:ok, config} <- Jason.decode(config_json) do
+             {:ok, config} <- JSON.decode(config_json) do
           exec!(
             conn,
             """
@@ -475,7 +475,7 @@ defmodule Wardwright.SQLiteStore do
     rows
     |> Enum.flat_map(fn
       [config_json] ->
-        case Jason.decode(config_json) do
+        case JSON.decode(config_json) do
           {:ok, config} -> [Wardwright.normalize_config(config)]
           _ -> []
         end

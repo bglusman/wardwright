@@ -29,7 +29,7 @@ defmodule Wardwright.StructuredOutputPolicyTest do
       })
 
     assert conn.status == 502
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     assert get_in(body, ["wardwright", "status"]) == "provider_error"
     assert get_in(body, ["wardwright", "provider_error"]) =~ "provider timed out after 1ms"
 
@@ -74,7 +74,7 @@ defmodule Wardwright.StructuredOutputPolicyTest do
       })
 
     assert conn.status == 200
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     structured = get_in(body, ["wardwright", "structured_output"])
     assert structured["final_status"] == "completed_after_guard"
@@ -113,7 +113,7 @@ defmodule Wardwright.StructuredOutputPolicyTest do
       })
 
     assert conn.status == 200
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     assert get_in(body, ["choices", Access.at(0), "message", "content"]) ==
              ~s({"answer":"repaired after feedback","confidence":0.91})
@@ -143,7 +143,7 @@ defmodule Wardwright.StructuredOutputPolicyTest do
       })
 
     assert conn.status == 422
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     structured = get_in(body, ["wardwright", "structured_output"])
     assert structured["final_status"] == "exhausted_rule_budget"

@@ -122,7 +122,7 @@ defmodule WardwrightWeb.LustreWorkbenchSocket do
 
   defp parse_runtime_message(json) do
     {_, transformer} = :lustre@server_component.runtime_message_decoder()
-    {data, errors} = transformer.(Jason.decode!(json))
+    {data, errors} = transformer.(JSON.decode!(json))
 
     case errors do
       [] -> {:ok, data}

@@ -152,7 +152,7 @@ defmodule Wardwright.CLITest do
     tools =
       collector
       |> collected()
-      |> Jason.decode!()
+      |> JSON.decode!()
 
     names =
       tools

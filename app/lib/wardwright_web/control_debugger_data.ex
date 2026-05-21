@@ -87,7 +87,7 @@ defmodule WardwrightWeb.ControlDebuggerData do
     example_id
     |> counterfactual_example()
     |> Map.get("policy_overlay")
-    |> Jason.encode!(pretty: true)
+    |> Wardwright.Json.encode_display!()
   end
 
   def model_options do
@@ -503,15 +503,15 @@ defmodule WardwrightWeb.ControlDebuggerData do
         {:error, "Policy overlay must not be empty."}
 
       _ ->
-        with {:ok, overlay} when is_map(overlay) <- Jason.decode(json),
+        with {:json, {:ok, overlay}} when is_map(overlay) <- {:json, JSON.decode(json)},
              :ok <- validate_policy_overlay(overlay) do
           {:ok, overlay}
         else
-          {:ok, _not_map} ->
+          {:json, {:ok, _not_map}} ->
             {:error, "Policy overlay must be a JSON object."}
 
-          {:error, %Jason.DecodeError{} = error} ->
-            {:error, "Policy overlay JSON is invalid: #{Exception.message(error)}"}
+          {:json, {:error, reason}} ->
+            {:error, "Policy overlay JSON is invalid: #{Wardwright.Json.decode_error_message(reason)}"}
 
           {:error, message} when is_binary(message) ->
             {:error, message}
@@ -688,7 +688,7 @@ defmodule WardwrightWeb.ControlDebuggerData do
 
   defp compact_json(value) do
     value
-    |> Jason.encode!()
+    |> JSON.encode!()
     |> String.slice(0, 180)
   end
 
