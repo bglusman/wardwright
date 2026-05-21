@@ -32,6 +32,8 @@ pub type Model {
     replay_status: String,
     replay_error: String,
     replay_facts: List(ReplayFact),
+    counterfactual_status: String,
+    counterfactual_error: String,
     counterfactual_facts: List(ReplayFact),
     storage_note: String,
   )
@@ -43,6 +45,7 @@ pub type Msg {
   ScenarioTitleChanged(String)
   ImportReceipt
   ReplayReceipt
+  RunCounterfactualDemo
 }
 
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "pattern_options")
@@ -72,6 +75,14 @@ fn external_replay_receipt(
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "counterfactual_facts")
 fn external_counterfactual_facts() -> List(ReplayFact)
 
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "run_counterfactual_demo")
+fn external_run_counterfactual_demo() -> #(
+  Bool,
+  String,
+  String,
+  List(ReplayFact),
+)
+
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "storage_note")
 fn external_storage_note() -> String
 
@@ -90,6 +101,8 @@ pub fn init(_flags: Nil) -> Model {
     replay_status: "",
     replay_error: "",
     replay_facts: [],
+    counterfactual_status: "",
+    counterfactual_error: "",
     counterfactual_facts: external_counterfactual_facts(),
     storage_note: external_storage_note(),
   )
@@ -106,6 +119,9 @@ pub fn update(model: Model, msg: Msg) -> Model {
         replay_status: "",
         replay_error: "",
         replay_facts: [],
+        counterfactual_status: "",
+        counterfactual_error: "",
+        counterfactual_facts: external_counterfactual_facts(),
       )
 
     PatternChanged(pattern_id) ->
@@ -155,6 +171,28 @@ pub fn update(model: Model, msg: Msg) -> Model {
             replay_status: "",
             replay_error: message,
             replay_facts: [],
+          )
+      }
+    }
+
+    RunCounterfactualDemo -> {
+      let #(ok, message, receipt_id, facts) = external_run_counterfactual_demo()
+
+      case ok {
+        True ->
+          Model(
+            ..model,
+            receipt_id: receipt_id,
+            counterfactual_status: message,
+            counterfactual_error: "",
+            counterfactual_facts: facts,
+          )
+        False ->
+          Model(
+            ..model,
+            counterfactual_status: "",
+            counterfactual_error: message,
+            counterfactual_facts: external_counterfactual_facts(),
           )
       }
     }
@@ -319,18 +357,29 @@ fn counterfactual_card(model: Model) -> Element(Msg) {
         text("Compare original and forked outcomes with receipt evidence."),
       ]),
     ]),
-    button.button(
-      [
-        button.variant(button.Ghost),
-        type_("button"),
-        disabled(True),
-      ],
-      [text("Fork from receipt")],
-    ),
+    html.div([class("button-row")], [
+      button.button(
+        [
+          button.variant(button.Default),
+          type_("button"),
+          event.on_click(RunCounterfactualDemo),
+        ],
+        [text("Run deterministic demo")],
+      ),
+      button.button(
+        [
+          button.variant(button.Ghost),
+          type_("button"),
+          disabled(True),
+        ],
+        [text("Fork from receipt")],
+      ),
+    ]),
+    status_text(model.counterfactual_status, model.counterfactual_error),
     counterfactual_facts(model),
     html.small([class("debugger-note")], [
       text(
-        "Interactive forking is not wired to this button yet. The backend contract now covers opt-in transcript recording, append-only transcript storage, replay-to-cursor, fork, continuation, and comparison APIs. Selected receipt: "
+        "The demo runs a scripted failed agent session through Wardwright, records a transcript, replays to the unsafe edit cursor, forks with a read-before-edit policy overlay, and continues deterministically. Free-form cursor selection and policy editing are still not wired. Selected receipt: "
         <> blank_default(model.receipt_id, "none selected")
         <> ".",
       ),
@@ -456,6 +505,19 @@ pub fn styles() -> String {
     display: grid;
     gap: 12px;
   }
+  .debugger-card .panel-heading {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .debugger-card .panel-heading > div {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .debugger-card .panel-heading strong {
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+  }
   .debugger-note {
     color: var(--muted-foreground);
     font-size: 12px;
@@ -464,7 +526,7 @@ pub fn styles() -> String {
   }
   .debugger-facts {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
     gap: 8px;
     margin: 0;
   }
@@ -485,6 +547,7 @@ pub fn styles() -> String {
   .debugger-facts dd {
     margin: 0;
     font-weight: 800;
+    overflow-wrap: anywhere;
   }
   .debugger-steps {
     display: grid;

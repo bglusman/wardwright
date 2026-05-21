@@ -53,6 +53,20 @@ pub fn receipt_select_has_accessible_name() -> Bool {
   |> view_has_select_accessible_name("control_receipt_id", "Recent receipt")
 }
 
+pub fn running_counterfactual_demo_shows_outcome() -> Bool {
+  let simulation =
+    start()
+    |> click_button("Run deterministic demo")
+
+  view_contains(simulation, "Ran deterministic counterfactual demo.")
+  && view_contains(simulation, "Original session")
+  && view_contains(simulation, "Fork cursor")
+  && view_contains(simulation, "Replay provider call")
+  && view_contains(simulation, "Comparison accepted")
+  && view_contains(simulation, "read-before-edit")
+  && view_contains(simulation, "Selected receipt: rcpt_")
+}
+
 fn start() {
   simulate.simple(
     init: lustre_control_debugger.init,

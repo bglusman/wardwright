@@ -729,9 +729,15 @@ defmodule WardwrightWeb.WorkbenchTest do
 
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("append-only files")
 
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Run deterministic demo")
+
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains(
-             "Interactive forking is not wired to this button yet"
+             "Free-form cursor selection and policy editing are still not wired"
            )
+  end
+
+  test "control debugger runs the deterministic counterfactual demo from the UI" do
+    assert :wardwright@lustre_control_debugger_test_support.running_counterfactual_demo_shows_outcome()
   end
 
   test "control debugger receipt id text input is controlled" do
