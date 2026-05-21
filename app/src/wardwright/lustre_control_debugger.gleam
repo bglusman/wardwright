@@ -197,6 +197,7 @@ pub fn init(_flags: Nil) -> Model {
     counterfactual_facts: external_counterfactual_facts(),
     storage_note: external_storage_note(),
   )
+  |> reset_transcript_fork_and_counterfactual
 }
 
 pub fn update(model: Model, msg: Msg) -> Model {
@@ -210,27 +211,8 @@ pub fn update(model: Model, msg: Msg) -> Model {
         replay_status: "",
         replay_error: "",
         replay_facts: [],
-        transcript_session_id: "",
-        transcript_status: "",
-        transcript_error: "",
-        selected_fork_point: "",
-        policy_overlay_json: external_default_policy_overlay_json_for_example(
-          model.example_id,
-        ),
-        continuation_mode: "scripted_agent",
-        continuation_model_id: external_default_live_model_id(),
-        continuation_model_api_key: "",
-        transcript_events: [],
-        fork_replay_status: "",
-        fork_replay_error: "",
-        fork_replay_facts: [],
-        fork_continue_status: "",
-        fork_continue_error: "",
-        fork_continue_facts: [],
-        counterfactual_status: "",
-        counterfactual_error: "",
-        counterfactual_facts: external_counterfactual_facts(),
       )
+      |> reset_transcript_fork_and_counterfactual
 
     PatternChanged(pattern_id) ->
       Model(
@@ -284,26 +266,8 @@ pub fn update(model: Model, msg: Msg) -> Model {
     }
 
     ExampleChanged(example_id) ->
-      Model(
-        ..model,
-        example_id: example_id,
-        policy_overlay_json: external_default_policy_overlay_json_for_example(
-          example_id,
-        ),
-        counterfactual_status: "",
-        counterfactual_error: "",
-        transcript_session_id: "",
-        transcript_status: "",
-        transcript_error: "",
-        selected_fork_point: "",
-        transcript_events: [],
-        fork_replay_status: "",
-        fork_replay_error: "",
-        fork_replay_facts: [],
-        fork_continue_status: "",
-        fork_continue_error: "",
-        fork_continue_facts: [],
-      )
+      Model(..model, example_id: example_id)
+      |> reset_transcript_fork_and_counterfactual
 
     RecordExampleSession -> {
       let #(ok, message, receipt_id, facts) =
@@ -317,50 +281,22 @@ pub fn update(model: Model, msg: Msg) -> Model {
           case loaded {
             True ->
               Model(
-                ..model,
+                ..reset_transcript_fork_and_counterfactual(model),
                 receipt_id: receipt_id,
                 transcript_session_id: session_id,
                 transcript_status: load_message,
                 transcript_error: "",
                 selected_fork_point: fork_point,
-                policy_overlay_json: external_default_policy_overlay_json_for_example(
-                  model.example_id,
-                ),
-                continuation_mode: "scripted_agent",
-                continuation_model_id: external_default_live_model_id(),
-                continuation_model_api_key: "",
                 transcript_events: events,
-                fork_replay_status: "",
-                fork_replay_error: "",
-                fork_replay_facts: [],
-                fork_continue_status: "",
-                fork_continue_error: "",
-                fork_continue_facts: [],
                 counterfactual_status: message,
                 counterfactual_error: "",
                 counterfactual_facts: facts,
               )
             False ->
               Model(
-                ..model,
+                ..reset_transcript_fork_and_counterfactual(model),
                 receipt_id: receipt_id,
-                transcript_session_id: "",
-                transcript_status: "",
                 transcript_error: load_message,
-                selected_fork_point: "",
-                policy_overlay_json: external_default_policy_overlay_json_for_example(
-                  model.example_id,
-                ),
-                continuation_mode: "scripted_agent",
-                continuation_model_id: external_default_live_model_id(),
-                continuation_model_api_key: "",
-                transcript_events: [],
-                fork_replay_status: "",
-                fork_replay_error: "",
-                fork_replay_facts: [],
-                fork_continue_status: "",
-                fork_continue_error: "",
-                fork_continue_facts: [],
                 counterfactual_status: message,
                 counterfactual_error: "",
                 counterfactual_facts: facts,
@@ -369,10 +305,8 @@ pub fn update(model: Model, msg: Msg) -> Model {
         }
         False ->
           Model(
-            ..model,
-            counterfactual_status: "",
+            ..reset_transcript_fork_and_counterfactual(model),
             counterfactual_error: message,
-            counterfactual_facts: external_counterfactual_facts(),
           )
       }
     }
@@ -384,89 +318,43 @@ pub fn update(model: Model, msg: Msg) -> Model {
       case ok {
         True ->
           Model(
-            ..model,
+            ..reset_fork_results(model),
             transcript_session_id: session_id,
             transcript_status: message,
             transcript_error: "",
             selected_fork_point: fork_point,
             transcript_events: events,
-            fork_replay_status: "",
-            fork_replay_error: "",
-            fork_replay_facts: [],
-            fork_continue_status: "",
-            fork_continue_error: "",
-            fork_continue_facts: [],
           )
         False ->
           Model(
-            ..model,
-            transcript_session_id: "",
-            transcript_status: "",
+            ..reset_transcript_fork_and_counterfactual(model),
             transcript_error: message,
-            selected_fork_point: "",
-            policy_overlay_json: external_default_policy_overlay_json_for_example(
-              model.example_id,
-            ),
-            continuation_mode: "scripted_agent",
-            continuation_model_id: external_default_live_model_id(),
-            continuation_model_api_key: "",
-            transcript_events: [],
-            fork_replay_status: "",
-            fork_replay_error: "",
-            fork_replay_facts: [],
-            fork_continue_status: "",
-            fork_continue_error: "",
-            fork_continue_facts: [],
           )
       }
     }
 
     SelectForkPoint(fork_point) ->
-      Model(
-        ..model,
-        selected_fork_point: fork_point,
-        fork_replay_status: "",
-        fork_replay_error: "",
-        fork_replay_facts: [],
-        fork_continue_status: "",
-        fork_continue_error: "",
-        fork_continue_facts: [],
-      )
+      Model(..reset_fork_results(model), selected_fork_point: fork_point)
 
     PolicyOverlayChanged(policy_overlay_json) ->
       Model(
-        ..model,
+        ..reset_continue_results(model),
         policy_overlay_json: policy_overlay_json,
-        fork_continue_status: "",
-        fork_continue_error: "",
-        fork_continue_facts: [],
       )
 
     ContinuationModeChanged(continuation_mode) ->
       Model(
-        ..model,
+        ..reset_continue_results(model),
         continuation_mode: continuation_mode,
-        fork_continue_status: "",
-        fork_continue_error: "",
-        fork_continue_facts: [],
       )
 
     ContinuationModelChanged(model_id) ->
-      Model(
-        ..model,
-        continuation_model_id: model_id,
-        fork_continue_status: "",
-        fork_continue_error: "",
-        fork_continue_facts: [],
-      )
+      Model(..reset_continue_results(model), continuation_model_id: model_id)
 
     ContinuationModelApiKeyChanged(api_key) ->
       Model(
-        ..model,
+        ..reset_continue_results(model),
         continuation_model_api_key: api_key,
-        fork_continue_status: "",
-        fork_continue_error: "",
-        fork_continue_facts: [],
       )
 
     ReplayToForkPoint -> {
@@ -523,6 +411,53 @@ pub fn update(model: Model, msg: Msg) -> Model {
       }
     }
   }
+}
+
+fn reset_transcript_fork_and_counterfactual(model: Model) -> Model {
+  Model(
+    ..model,
+    transcript_session_id: "",
+    transcript_status: "",
+    transcript_error: "",
+    selected_fork_point: "",
+    policy_overlay_json: external_default_policy_overlay_json_for_example(
+      model.example_id,
+    ),
+    continuation_mode: "scripted_agent",
+    continuation_model_id: external_default_live_model_id(),
+    continuation_model_api_key: "",
+    transcript_events: [],
+    fork_replay_status: "",
+    fork_replay_error: "",
+    fork_replay_facts: [],
+    fork_continue_status: "",
+    fork_continue_error: "",
+    fork_continue_facts: [],
+    counterfactual_status: "",
+    counterfactual_error: "",
+    counterfactual_facts: external_counterfactual_facts(),
+  )
+}
+
+fn reset_fork_results(model: Model) -> Model {
+  Model(
+    ..model,
+    fork_replay_status: "",
+    fork_replay_error: "",
+    fork_replay_facts: [],
+    fork_continue_status: "",
+    fork_continue_error: "",
+    fork_continue_facts: [],
+  )
+}
+
+fn reset_continue_results(model: Model) -> Model {
+  Model(
+    ..model,
+    fork_continue_status: "",
+    fork_continue_error: "",
+    fork_continue_facts: [],
+  )
 }
 
 pub fn view(model: Model) -> Element(Msg) {

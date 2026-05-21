@@ -188,6 +188,17 @@ pub fn invalid_policy_overlay_blocks_fork() -> Bool {
   view_contains(simulation, "Policy overlay JSON is invalid")
 }
 
+pub fn blank_policy_overlay_blocks_fork() -> Bool {
+  let simulation =
+    start()
+    |> click_button("Record example session")
+    |> click_button("Load transcript")
+    |> input("control_policy_overlay_json", "")
+    |> click_button("Fork and continue")
+
+  view_contains(simulation, "Policy overlay must not be empty")
+}
+
 pub fn generic_policy_overlay_can_fork() -> Bool {
   let simulation =
     start()

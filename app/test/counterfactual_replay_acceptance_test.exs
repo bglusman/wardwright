@@ -44,6 +44,7 @@ defmodule WardwrightWeb.CounterfactualReplayAcceptanceTest do
     assert storage["capabilities"]["durable"] == true
     assert storage["capabilities"]["concurrent_writers"] == true
     assert storage["capabilities"]["serialized_global_writer"] == false
+    assert storage["capabilities"]["serialized_session_writer"] == true
     assert storage["default_enabled"] == false
     assert is_binary(storage["path"])
     assert storage["read_health"] == "ok"
@@ -229,6 +230,83 @@ defmodule WardwrightWeb.CounterfactualReplayAcceptanceTest do
     assert comparison["policy_delta"]["applied_rule_ids"] == ["result-json-contract"]
   end
 
+  test "malformed transcript event lines are skipped instead of invalidating the session" do
+    store_dir = Path.join(System.tmp_dir!(), "wardwright-corrupt-transcript-#{System.unique_integer([:positive])}")
+    original_store_dir = Application.get_env(:wardwright, :counterfactual_transcript_store_dir)
+
+    Application.put_env(:wardwright, :counterfactual_transcript_store_dir, store_dir)
+
+    on_exit(fn ->
+      restore_env(:counterfactual_transcript_store_dir, original_store_dir)
+      File.rm_rf!(store_dir)
+    end)
+
+    assert {:ok, original} = apply(@replay_module, :run_recorded_session, [read_before_edit_scenario()])
+    session_id = original["session_id"]
+
+    assert {:ok, transcript_before} = apply(@replay_module, :transcript, [session_id])
+    event_count = length(transcript_before["events"])
+
+    events_path =
+      Path.join([
+        store_dir,
+        Base.url_encode64(session_id, padding: false),
+        "events.jsonl"
+      ])
+
+    File.write!(events_path, ~s({"type":\n), [:append])
+
+    assert {:ok, transcript_after} = apply(@replay_module, :transcript, [session_id])
+    assert length(transcript_after["events"]) == event_count
+    assert Enum.all?(transcript_after["events"], &is_map/1)
+  end
+
+  test "gateway receipt recording serializes writers per transcript session" do
+    store_dir = Path.join(System.tmp_dir!(), "wardwright-concurrent-transcript-#{System.unique_integer([:positive])}")
+    original_store_dir = Application.get_env(:wardwright, :counterfactual_transcript_store_dir)
+    session_id = "concurrent-gateway-session-#{System.unique_integer([:positive])}"
+    receipt_count = 16
+
+    Application.put_env(:wardwright, :counterfactual_transcript_store_dir, store_dir)
+
+    on_exit(fn ->
+      restore_env(:counterfactual_transcript_store_dir, original_store_dir)
+      File.rm_rf!(store_dir)
+    end)
+
+    results =
+      1..receipt_count
+      |> Task.async_stream(
+        fn receipt_index ->
+          apply(@replay_module, :record_gateway_receipt, [gateway_receipt(session_id, receipt_index)])
+        end,
+        max_concurrency: 8,
+        ordered: false,
+        timeout: 5_000
+      )
+      |> Enum.to_list()
+
+    assert Enum.all?(results, fn
+             {:ok, {:ok, %{"recorded" => true, "session_id" => ^session_id}}} -> true
+             _other -> false
+           end)
+
+    assert {:ok, transcript} = apply(@replay_module, :transcript, [session_id])
+    assert length(transcript["events"]) == receipt_count * 4
+    assert Enum.map(transcript["events"], & &1["sequence"]) == Enum.to_list(1..(receipt_count * 4))
+
+    finalized_receipt_ids =
+      transcript["events"]
+      |> Enum.filter(&(&1["type"] == "receipt.finalized"))
+      |> Enum.map(& &1["receipt_id"])
+      |> Enum.sort()
+
+    assert finalized_receipt_ids ==
+             1..receipt_count
+             |> Enum.map(&"receipt-concurrent-#{&1}")
+             |> Enum.sort()
+  end
+
   defp missing_runtime_api do
     @required_runtime_api
     |> Enum.reject(fn {function, arity} ->
@@ -334,4 +412,46 @@ defmodule WardwrightWeb.CounterfactualReplayAcceptanceTest do
 
     {:ok, _config} = Wardwright.put_model_config(config)
   end
+
+  defp gateway_receipt(session_id, receipt_index) do
+    receipt_id = "receipt-concurrent-#{receipt_index}"
+
+    %{
+      "caller" => %{
+        "run_id" => %{"source" => "metadata", "value" => "run-#{session_id}"},
+        "session_id" => %{"source" => "metadata", "value" => session_id}
+      },
+      "decision" => %{
+        "estimated_prompt_tokens" => 12,
+        "route_id" => "dispatcher.concurrent",
+        "route_type" => "dispatcher",
+        "selected_model" => "canned/concurrent",
+        "selected_provider" => "canned_sequence"
+      },
+      "final" => %{"status" => "completed"},
+      "model_id" => "counterfactual-concurrent",
+      "model_version" => "acceptance-v0",
+      "receipt_id" => receipt_id,
+      "request" => %{"message_count" => 1},
+      "vcr" => %{
+        "full_session" => %{
+          "request" => %{
+            "body" => %{
+              "messages" => [
+                %{"content" => "record concurrent receipt #{receipt_index}", "role" => "user"}
+              ],
+              "metadata" => %{"run_id" => "run-#{session_id}", "session_id" => session_id},
+              "model" => "counterfactual-concurrent"
+            }
+          },
+          "response" => %{"content" => "Concurrent response #{receipt_index}"}
+        },
+        "mode" => "full_session",
+        "provider" => %{"called_provider" => true}
+      }
+    }
+  end
+
+  defp restore_env(key, nil), do: Application.delete_env(:wardwright, key)
+  defp restore_env(key, value), do: Application.put_env(:wardwright, key, value)
 end

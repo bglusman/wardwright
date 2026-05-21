@@ -175,6 +175,9 @@ selecting the generated receipt.
   `outcome.json` are atomic sidecar writes, so the current "append-only files"
   claim applies to the transcript event stream, not every artifact in the
   session directory.
+- Transcript event appends are serialized per session, not through a global
+  writer. Different sessions can continue writing independently, while repeated
+  appends to the same session are ordered before the JSONL batch is written.
 - Live-agent dogfood is still missing. The next tagged layer should prove the
   same replay/fork/continue flow with a real local model or controllable agent,
   not only a configured Wardwright model returning a canned response.

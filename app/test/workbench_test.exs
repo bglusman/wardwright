@@ -772,6 +772,10 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert :wardwright@lustre_control_debugger_test_support.invalid_policy_overlay_blocks_fork()
   end
 
+  test "control debugger rejects blank policy overlays instead of applying a default" do
+    assert :wardwright@lustre_control_debugger_test_support.blank_policy_overlay_blocks_fork()
+  end
+
   test "control debugger accepts generic editable policy overlays before forking" do
     assert :wardwright@lustre_control_debugger_test_support.generic_policy_overlay_can_fork()
   end

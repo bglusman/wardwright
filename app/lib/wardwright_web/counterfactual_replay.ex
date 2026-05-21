@@ -25,7 +25,8 @@ defmodule WardwrightWeb.CounterfactualReplay do
        "capabilities" => %{
          "concurrent_writers" => true,
          "durable" => true,
-         "serialized_global_writer" => false
+         "serialized_global_writer" => false,
+         "serialized_session_writer" => true
        },
        "contract_version" => @schema,
        "default_enabled" => false,
@@ -80,17 +81,20 @@ defmodule WardwrightWeb.CounterfactualReplay do
          {:session_id, session_id} when is_binary(session_id) and session_id != "" <-
            {:session_id, receipt_session_id(receipt)},
          {:owner, true} <- {:owner, gateway_session_owner?(session_id)} do
-      :ok = prepare_gateway_session(session_id, receipt)
+      with_session_write_lock(session_id, fn ->
+        :ok = prepare_gateway_session(session_id, receipt)
 
-      with {:ok, existing_events} <- read_events(session_id),
-           false <- receipt_already_recorded?(existing_events, receipt),
-           :ok <- append_events(session_id, gateway_receipt_events(session_id, receipt, length(existing_events))),
-           :ok <- write_json(session_id, @outcome_file, gateway_outcome(session_id, receipt)) do
-        {:ok, %{"recorded" => true, "session_id" => session_id}}
-      else
-        true -> {:ok, %{"reason" => "receipt already recorded", "recorded" => false, "session_id" => session_id}}
-        {:error, reason} -> {:error, reason}
-      end
+        with {:ok, existing_events} <- read_events(session_id),
+             false <- receipt_already_recorded?(existing_events, receipt),
+             :ok <-
+               append_events_unlocked(session_id, gateway_receipt_events(session_id, receipt, length(existing_events))),
+             :ok <- write_json(session_id, @outcome_file, gateway_outcome(session_id, receipt)) do
+          {:ok, %{"recorded" => true, "session_id" => session_id}}
+        else
+          true -> {:ok, %{"reason" => "receipt already recorded", "recorded" => false, "session_id" => session_id}}
+          {:error, reason} -> {:error, reason}
+        end
+      end)
     else
       {:full_session, false} -> {:ok, %{"reason" => "receipt is not full-session VCR", "recorded" => false}}
       {:session_id, _} -> {:ok, %{"reason" => "receipt has no session_id or run_id", "recorded" => false}}
@@ -688,6 +692,10 @@ defmodule WardwrightWeb.CounterfactualReplay do
   end
 
   defp append_events(session_id, events) do
+    with_session_write_lock(session_id, fn -> append_events_unlocked(session_id, events) end)
+  end
+
+  defp append_events_unlocked(session_id, events) do
     path = Path.join(session_dir(session_id), @event_file)
     File.mkdir_p!(Path.dirname(path))
 
@@ -700,17 +708,16 @@ defmodule WardwrightWeb.CounterfactualReplay do
     :ok
   end
 
+  defp with_session_write_lock(session_id, fun) do
+    :global.trans({{__MODULE__, :session_write, safe_id(session_id)}, self()}, fun)
+  end
+
   defp read_events(session_id) do
     path = Path.join(session_dir(session_id), @event_file)
 
     case File.read(path) do
       {:ok, content} ->
-        events =
-          content
-          |> String.split("\n", trim: true)
-          |> Enum.map(&Jason.decode!/1)
-
-        {:ok, events}
+        {:ok, decode_event_lines(content, session_id)}
 
       {:error, :enoent} ->
         {:error, "unknown transcript session #{inspect(session_id)}"}
@@ -718,6 +725,35 @@ defmodule WardwrightWeb.CounterfactualReplay do
       {:error, reason} ->
         {:error, inspect(reason)}
     end
+  end
+
+  defp decode_event_lines(content, session_id) do
+    content
+    |> String.split("\n", trim: true)
+    |> Enum.with_index(1)
+    |> Enum.reduce([], fn {line, line_number}, events ->
+      case Jason.decode(line) do
+        {:ok, event} when is_map(event) ->
+          [event | events]
+
+        {:ok, _not_event} ->
+          warn_malformed_event_line(session_id, line_number, "decoded JSON was not an object")
+          events
+
+        {:error, reason} ->
+          warn_malformed_event_line(session_id, line_number, Exception.message(reason))
+          events
+      end
+    end)
+    |> Enum.reverse()
+  end
+
+  defp warn_malformed_event_line(session_id, line_number, reason) do
+    require Logger
+
+    Logger.warning(
+      "Skipping malformed counterfactual transcript event session=#{inspect(session_id)} line=#{line_number} reason=#{reason}"
+    )
   end
 
   defp write_json(session_id, file, value) do

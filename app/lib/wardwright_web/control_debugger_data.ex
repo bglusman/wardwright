@@ -496,15 +496,26 @@ defmodule WardwrightWeb.ControlDebuggerData do
   end
 
   defp decode_policy_overlay(json) do
-    json = json |> to_string() |> String.trim() |> blank_fallback(default_policy_overlay_json())
+    json = json |> to_string() |> String.trim()
 
-    with {:ok, overlay} when is_map(overlay) <- Jason.decode(json),
-         :ok <- validate_policy_overlay(overlay) do
-      {:ok, overlay}
-    else
-      {:ok, _not_map} -> {:error, "Policy overlay must be a JSON object."}
-      {:error, %Jason.DecodeError{} = error} -> {:error, "Policy overlay JSON is invalid: #{Exception.message(error)}"}
-      {:error, message} when is_binary(message) -> {:error, message}
+    case json do
+      "" ->
+        {:error, "Policy overlay must not be empty."}
+
+      _ ->
+        with {:ok, overlay} when is_map(overlay) <- Jason.decode(json),
+             :ok <- validate_policy_overlay(overlay) do
+          {:ok, overlay}
+        else
+          {:ok, _not_map} ->
+            {:error, "Policy overlay must be a JSON object."}
+
+          {:error, %Jason.DecodeError{} = error} ->
+            {:error, "Policy overlay JSON is invalid: #{Exception.message(error)}"}
+
+          {:error, message} when is_binary(message) ->
+            {:error, message}
+        end
     end
   end
 
