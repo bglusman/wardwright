@@ -22,6 +22,9 @@ type ReceiptOption =
 type ModelOption =
   #(String, String)
 
+type ExampleOption =
+  #(String, String, String)
+
 type ReplayFact =
   #(String, String)
 
@@ -39,6 +42,7 @@ pub type Model {
     replay_status: String,
     replay_error: String,
     replay_facts: List(ReplayFact),
+    example_id: String,
     transcript_session_id: String,
     transcript_status: String,
     transcript_error: String,
@@ -67,7 +71,8 @@ pub type Msg {
   ScenarioTitleChanged(String)
   ImportReceipt
   ReplayReceipt
-  RunCounterfactualDemo
+  ExampleChanged(String)
+  RecordExampleSession
   LoadTranscript
   SelectForkPoint(String)
   PolicyOverlayChanged(String)
@@ -105,14 +110,22 @@ fn external_replay_receipt(
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "counterfactual_facts")
 fn external_counterfactual_facts() -> List(ReplayFact)
 
-@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "default_policy_overlay_json")
-fn external_default_policy_overlay_json() -> String
-
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "model_options")
 fn external_model_options() -> List(ModelOption)
 
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "default_live_model_id")
 fn external_default_live_model_id() -> String
+
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "counterfactual_example_options")
+fn external_counterfactual_example_options() -> List(ExampleOption)
+
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "default_counterfactual_example_id")
+fn external_default_counterfactual_example_id() -> String
+
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "default_policy_overlay_json_for_example")
+fn external_default_policy_overlay_json_for_example(
+  example_id: String,
+) -> String
 
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "load_transcript_for_receipt")
 fn external_load_transcript_for_receipt(
@@ -135,13 +148,10 @@ fn external_fork_and_continue_from_point(
   model_api_key: String,
 ) -> #(Bool, String, List(ReplayFact))
 
-@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "run_counterfactual_demo")
-fn external_run_counterfactual_demo() -> #(
-  Bool,
-  String,
-  String,
-  List(ReplayFact),
-)
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "run_counterfactual_example")
+fn external_run_counterfactual_example(
+  example_id: String,
+) -> #(Bool, String, String, List(ReplayFact))
 
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "storage_note")
 fn external_storage_note() -> String
@@ -151,6 +161,8 @@ pub fn component() {
 }
 
 pub fn init(_flags: Nil) -> Model {
+  let example_id = external_default_counterfactual_example_id()
+
   Model(
     receipt_id: external_default_receipt_id(),
     pattern_id: external_default_pattern_id(),
@@ -161,11 +173,14 @@ pub fn init(_flags: Nil) -> Model {
     replay_status: "",
     replay_error: "",
     replay_facts: [],
+    example_id: example_id,
     transcript_session_id: "",
     transcript_status: "",
     transcript_error: "",
     selected_fork_point: "",
-    policy_overlay_json: external_default_policy_overlay_json(),
+    policy_overlay_json: external_default_policy_overlay_json_for_example(
+      example_id,
+    ),
     continuation_mode: "scripted_agent",
     continuation_model_id: external_default_live_model_id(),
     continuation_model_api_key: "",
@@ -198,7 +213,9 @@ pub fn update(model: Model, msg: Msg) -> Model {
         transcript_status: "",
         transcript_error: "",
         selected_fork_point: "",
-        policy_overlay_json: external_default_policy_overlay_json(),
+        policy_overlay_json: external_default_policy_overlay_json_for_example(
+          model.example_id,
+        ),
         continuation_mode: "scripted_agent",
         continuation_model_id: external_default_live_model_id(),
         continuation_model_api_key: "",
@@ -265,8 +282,31 @@ pub fn update(model: Model, msg: Msg) -> Model {
       }
     }
 
-    RunCounterfactualDemo -> {
-      let #(ok, message, receipt_id, facts) = external_run_counterfactual_demo()
+    ExampleChanged(example_id) ->
+      Model(
+        ..model,
+        example_id: example_id,
+        policy_overlay_json: external_default_policy_overlay_json_for_example(
+          example_id,
+        ),
+        counterfactual_status: "",
+        counterfactual_error: "",
+        transcript_session_id: "",
+        transcript_status: "",
+        transcript_error: "",
+        selected_fork_point: "",
+        transcript_events: [],
+        fork_replay_status: "",
+        fork_replay_error: "",
+        fork_replay_facts: [],
+        fork_continue_status: "",
+        fork_continue_error: "",
+        fork_continue_facts: [],
+      )
+
+    RecordExampleSession -> {
+      let #(ok, message, receipt_id, facts) =
+        external_run_counterfactual_example(model.example_id)
 
       case ok {
         True -> {
@@ -282,7 +322,9 @@ pub fn update(model: Model, msg: Msg) -> Model {
                 transcript_status: load_message,
                 transcript_error: "",
                 selected_fork_point: fork_point,
-                policy_overlay_json: external_default_policy_overlay_json(),
+                policy_overlay_json: external_default_policy_overlay_json_for_example(
+                  model.example_id,
+                ),
                 continuation_mode: "scripted_agent",
                 continuation_model_id: external_default_live_model_id(),
                 continuation_model_api_key: "",
@@ -305,7 +347,9 @@ pub fn update(model: Model, msg: Msg) -> Model {
                 transcript_status: "",
                 transcript_error: load_message,
                 selected_fork_point: "",
-                policy_overlay_json: external_default_policy_overlay_json(),
+                policy_overlay_json: external_default_policy_overlay_json_for_example(
+                  model.example_id,
+                ),
                 continuation_mode: "scripted_agent",
                 continuation_model_id: external_default_live_model_id(),
                 continuation_model_api_key: "",
@@ -359,7 +403,9 @@ pub fn update(model: Model, msg: Msg) -> Model {
             transcript_status: "",
             transcript_error: message,
             selected_fork_point: "",
-            policy_overlay_json: external_default_policy_overlay_json(),
+            policy_overlay_json: external_default_policy_overlay_json_for_example(
+              model.example_id,
+            ),
             continuation_mode: "scripted_agent",
             continuation_model_id: external_default_live_model_id(),
             continuation_model_api_key: "",
@@ -493,7 +539,7 @@ pub fn workspace(model: Model) -> Element(Msg) {
         html.h1([], [text("Control debugger")]),
         html.p([], [
           text(
-            "Inspect recorded agent calls, explain what Wardwright decided, and save useful failures as simulator cases.",
+            "Inspect recorded model sessions, explain what Wardwright decided, and save useful failures as simulator cases.",
           ),
         ]),
       ]),
@@ -630,21 +676,28 @@ fn counterfactual_card(model: Model) -> Element(Msg) {
         text("Load a full-session transcript for the selected receipt."),
       ]),
       html.li([], [
-        text("Pick a fork point before the unsafe tool call."),
+        text("Pick a fork point before the behavior you want to change."),
       ]),
       html.li([], [text("Apply a policy overlay, then continue the fork.")]),
       html.li([], [
         text("Compare original and forked outcomes with receipt evidence."),
       ]),
     ]),
+    labeled_select(
+      "Example session",
+      "control_counterfactual_example",
+      model.example_id,
+      counterfactual_example_options(model.example_id),
+      ExampleChanged,
+    ),
     html.div([class("button-row")], [
       button.button(
         [
           button.variant(button.Default),
           type_("button"),
-          event.on_click(RunCounterfactualDemo),
+          event.on_click(RecordExampleSession),
         ],
-        [text("Run deterministic demo")],
+        [text("Record example session")],
       ),
       button.button(
         [
@@ -659,7 +712,7 @@ fn counterfactual_card(model: Model) -> Element(Msg) {
     counterfactual_facts(model),
     html.small([class("debugger-note")], [
       text(
-        "The demo runs a scripted failed agent session through Wardwright, records a transcript, replays to the unsafe edit cursor, forks with a read-before-edit policy overlay, and continues deterministically. The transcript inspector below can also continue the fork through a selected Wardwright model. Selected receipt: "
+        "Examples run scripted failed sessions through Wardwright, record transcripts, replay to a selected behavior cursor, fork with an editable policy overlay, and continue deterministically. The transcript inspector below can also continue the fork through a selected Wardwright model. Selected receipt: "
         <> blank_default(model.receipt_id, "none selected")
         <> ".",
       ),
@@ -791,7 +844,7 @@ fn transcript_empty_message(model: Model) -> String {
     "" ->
       case model.transcript_status {
         "" ->
-          "No transcript loaded yet. Run the deterministic demo or choose a full-session receipt, then load its transcript."
+          "No transcript loaded yet. Record an example session or choose a full-session receipt, then load its transcript."
         _ -> "Transcript loaded, but it did not contain any events."
       }
     _ ->
@@ -984,6 +1037,18 @@ fn receipt_options(selected_id: String) -> List(Element(Msg)) {
     ]
     _ -> options
   }
+}
+
+fn counterfactual_example_options(selected_id: String) -> List(Element(Msg)) {
+  external_counterfactual_example_options()
+  |> list.map(fn(option) {
+    let #(example_id, label, detail) = option
+    select_ui.option(
+      [selected(example_id == selected_id)],
+      label <> " - " <> detail,
+      example_id,
+    )
+  })
 }
 
 fn continuation_mode_options(selected_id: String) -> List(Element(Msg)) {

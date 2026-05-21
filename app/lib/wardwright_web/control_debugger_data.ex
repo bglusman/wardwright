@@ -70,8 +70,23 @@ defmodule WardwrightWeb.ControlDebuggerData do
     end
   end
 
+  def counterfactual_example_options do
+    [
+      {"read-before-edit", "Read before edit", "tool-order failure"},
+      {"output-contract", "Output contract", "malformed response repair"}
+    ]
+  end
+
+  def default_counterfactual_example_id, do: "read-before-edit"
+
   def default_policy_overlay_json do
-    read_before_edit_overlay()
+    default_policy_overlay_json_for_example(default_counterfactual_example_id())
+  end
+
+  def default_policy_overlay_json_for_example(example_id) do
+    example_id
+    |> counterfactual_example()
+    |> Map.get("policy_overlay")
     |> Jason.encode!(pretty: true)
   end
 
@@ -99,25 +114,29 @@ defmodule WardwrightWeb.ControlDebuggerData do
   end
 
   def run_counterfactual_demo do
-    scenario = counterfactual_demo_scenario()
+    run_counterfactual_example(default_counterfactual_example_id())
+  end
+
+  def run_counterfactual_example(example_id) do
+    scenario = counterfactual_example(example_id)
 
     with {:ok, original} <- WardwrightWeb.CounterfactualReplay.run_recorded_session(scenario),
          session_id when is_binary(session_id) <- original["session_id"],
          {:ok, transcript} <- WardwrightWeb.CounterfactualReplay.transcript(session_id),
-         {:ok, bad_edit} <- find_bad_edit(transcript["events"]),
-         fork_cursor when is_binary(fork_cursor) <- bad_edit["cursor"],
+         {:ok, fork_event} <- find_suggested_fork_event(transcript["events"]),
+         fork_cursor when is_binary(fork_cursor) <- fork_event["cursor"],
          {:ok, replay} <- WardwrightWeb.CounterfactualReplay.replay_until(session_id, fork_cursor),
          {:ok, fork} <-
            WardwrightWeb.CounterfactualReplay.fork(%{
              "fork_cursor" => fork_cursor,
-             "policy_overlay" => read_before_edit_overlay(),
+             "policy_overlay" => scenario["policy_overlay"] || %{},
              "source_session_id" => session_id
            }),
          fork_session_id when is_binary(fork_session_id) <- fork["fork_session_id"],
          {:ok, fixed} <-
            WardwrightWeb.CounterfactualReplay.continue(fork_session_id, %{
              "runner" => "scripted_agent",
-             "script_id" => "read-settings-then-edit"
+             "script_id" => get_in(scenario, ["fork_runner", "script_id"]) || scenario["debugger_example_id"]
            }),
          {:ok, comparison} <- WardwrightWeb.CounterfactualReplay.compare(session_id, fork_session_id),
          {:ok, storage} <- WardwrightWeb.CounterfactualReplay.transcript_store_health() do
@@ -127,8 +146,9 @@ defmodule WardwrightWeb.ControlDebuggerData do
           _ -> "missing"
         end
 
-      {true, "Ran deterministic counterfactual demo.", receipt_id,
+      {true, "Recorded scripted example session.", receipt_id,
        [
+         {"Example", scenario["title"] || scenario["debugger_example_id"] || "unknown"},
          {"Original session", session_id},
          {"Receipt", receipt_id},
          {"Fork cursor", fork_cursor},
@@ -141,9 +161,9 @@ defmodule WardwrightWeb.ControlDebuggerData do
          {"Transcript store", store_location(storage)}
        ]}
     else
-      {:error, message} -> {false, "Could not run counterfactual demo: #{message}", "", []}
-      nil -> {false, "Could not run counterfactual demo: missing transcript field.", "", []}
-      _other -> {false, "Could not run counterfactual demo.", "", []}
+      {:error, message} -> {false, "Could not record example session: #{message}", "", []}
+      nil -> {false, "Could not record example session: missing transcript field.", "", []}
+      _other -> {false, "Could not record example session.", "", []}
     end
   end
 
@@ -463,6 +483,18 @@ defmodule WardwrightWeb.ControlDebuggerData do
     }
   end
 
+  defp output_contract_overlay do
+    %{
+      "id" => "result-json-contract",
+      "output_contract" => %{
+        "format" => "json_object",
+        "on_violation" => "retry",
+        "required_keys" => ["answer", "confidence"]
+      },
+      "phase" => "response.validation"
+    }
+  end
+
   defp decode_policy_overlay(json) do
     json = json |> to_string() |> String.trim() |> blank_fallback(default_policy_overlay_json())
 
@@ -481,11 +513,15 @@ defmodule WardwrightWeb.ControlDebuggerData do
       not valid_nonempty_string?(overlay["id"]) ->
         {:error, "Policy overlay must include a non-empty string id."}
 
-      not valid_nonempty_string_list?(overlay["requires_prior_read_for"]) ->
-        {:error, "Policy overlay must include requires_prior_read_for as a non-empty string list."}
+      Map.has_key?(overlay, "requires_prior_read_for") and
+          not valid_nonempty_string_list?(overlay["requires_prior_read_for"]) ->
+        {:error, "Policy overlay requires_prior_read_for must be a non-empty string list when present."}
 
       not valid_optional_string_list?(overlay["allowed_tools_until_read"]) ->
         {:error, "Policy overlay allowed_tools_until_read must be a string list when present."}
+
+      Map.has_key?(overlay, "output_contract") and not is_map(overlay["output_contract"]) ->
+        {:error, "Policy overlay output_contract must be an object when present."}
 
       true ->
         :ok
@@ -505,20 +541,27 @@ defmodule WardwrightWeb.ControlDebuggerData do
   defp valid_optional_string_list?(nil), do: true
   defp valid_optional_string_list?(value), do: valid_string_list?(value)
 
-  defp find_bad_edit(events) when is_list(events) do
+  defp find_suggested_fork_event(events) when is_list(events) do
     events
-    |> Enum.find(fn event ->
-      event["type"] == "tool.call" and
-        get_in(event, ["tool", "name"]) == "edit_file" and
-        get_in(event, ["tool", "args", "path"]) == "app.txt"
-    end)
+    |> Enum.find(&suggested_fork_event?/1)
     |> case do
-      nil -> {:error, "demo transcript did not include the unsafe edit"}
+      nil -> {:error, "example transcript did not include a suggested fork point"}
       event -> {:ok, event}
     end
   end
 
-  defp find_bad_edit(_events), do: {:error, "demo transcript did not include events"}
+  defp find_suggested_fork_event(_events), do: {:error, "example transcript did not include events"}
+
+  defp suggested_fork_event?(%{"fork_point" => true}), do: true
+
+  defp suggested_fork_event?(%{"type" => "tool.call"} = event) do
+    get_in(event, ["tool", "name"]) == "edit_file"
+  end
+
+  defp suggested_fork_event?(%{"failure_class" => failure_class}) when is_binary(failure_class) and failure_class != "",
+    do: true
+
+  defp suggested_fork_event?(_event), do: false
 
   defp receipt_session_id(receipt) do
     receipt["run_id"] ||
@@ -530,10 +573,7 @@ defmodule WardwrightWeb.ControlDebuggerData do
 
   defp suggested_fork_point(events) do
     events
-    |> Enum.find(fn event ->
-      event["type"] == "tool.call" and
-        get_in(event, ["tool", "name"]) == "edit_file"
-    end)
+    |> Enum.find(&suggested_fork_event?/1)
     |> case do
       %{"cursor" => cursor} when is_binary(cursor) -> cursor
       _ -> ""
@@ -562,6 +602,8 @@ defmodule WardwrightWeb.ControlDebuggerData do
   end
 
   defp event_label(%{"type" => "gateway.request"}), do: "Gateway request"
+  defp event_label(%{"type" => "model.response"}), do: "Model response"
+  defp event_label(%{"type" => "policy.decision"}), do: "Policy decision"
   defp event_label(%{"type" => "receipt.finalized"}), do: "Receipt finalized"
   defp event_label(%{"type" => "session.started"}), do: "Session started"
   defp event_label(%{"type" => "session.forked"}), do: "Session forked"
@@ -592,6 +634,14 @@ defmodule WardwrightWeb.ControlDebuggerData do
     "path: #{get_in(event, ["gateway", "path"]) || "unknown"}"
   end
 
+  defp event_detail(%{"type" => "model.response"} = event) do
+    "response: #{event["content_preview"] || event["content"] || "recorded"}"
+  end
+
+  defp event_detail(%{"type" => "policy.decision"} = event) do
+    "decision: #{event["status"] || "unknown"} / #{event["failure_class"] || "no failure class"}"
+  end
+
   defp event_detail(%{"type" => "receipt.finalized"} = event) do
     "status: #{event["status"] || "unknown"}"
   end
@@ -613,6 +663,13 @@ defmodule WardwrightWeb.ControlDebuggerData do
     end
   end
 
+  defp fork_point_recommendation(%{"fork_point" => true, "type" => "model.response"}),
+    do: "Suggested fork point: before the response is validated or repaired."
+
+  defp fork_point_recommendation(%{"failure_class" => failure_class, "type" => "policy.decision"})
+       when is_binary(failure_class) and failure_class != "",
+       do: "Evidence event; usually fork before the response or action that triggered it."
+
   defp fork_point_recommendation(%{"type" => "tool.result"}),
     do: "Evidence event; usually fork before the matching call."
 
@@ -624,16 +681,49 @@ defmodule WardwrightWeb.ControlDebuggerData do
     |> String.slice(0, 180)
   end
 
-  defp counterfactual_demo_scenario do
+  defp counterfactual_example("output-contract") do
     %{
       "contract_version" => :wardwright@counterfactual_contract.api_contract_version(),
+      "debugger_example_id" => "output-contract",
       "entrypoint" => %{
         "path" => "/v1/chat/completions",
         "surface" => "openai_compatible_gateway"
       },
+      "expected" => %{
+        "failure_class" => "output_contract_violation",
+        "fork_status" => "passed",
+        "original_status" => "failed"
+      },
+      "fork_runner" => %{"script_id" => "valid-json-response"},
+      "model_id" => "counterfactual-output-contract",
+      "model_version" => "acceptance-v0",
+      "policy_overlay" => output_contract_overlay(),
+      "task" => "Answer the search request as JSON with answer and confidence fields.",
+      "title" => "Output contract repair",
+      "vcr" => %{"mode" => "full_session"},
+      "workspace" => %{}
+    }
+  end
+
+  defp counterfactual_example(_example_id) do
+    %{
+      "contract_version" => :wardwright@counterfactual_contract.api_contract_version(),
+      "debugger_example_id" => "read-before-edit",
+      "entrypoint" => %{
+        "path" => "/v1/chat/completions",
+        "surface" => "openai_compatible_gateway"
+      },
+      "expected" => %{
+        "failure_class" => "read_before_edit_violation",
+        "fork_status" => "passed",
+        "original_status" => "failed"
+      },
+      "fork_runner" => %{"script_id" => "read-settings-then-edit"},
       "model_id" => "counterfactual-ui-demo",
       "model_version" => "acceptance-v0",
+      "policy_overlay" => read_before_edit_overlay(),
       "task" => "Enable the feature flag. Read the relevant file before editing.",
+      "title" => "Read before edit",
       "vcr" => %{"mode" => "full_session"},
       "workspace" => %{
         "README.md" => "Change the feature flag described in settings.json.",

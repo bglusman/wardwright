@@ -1,6 +1,6 @@
 defmodule WardwrightWeb.CounterfactualReplay do
   @moduledoc """
-  Deterministic counterfactual replay runtime for debugger acceptance tests.
+  Counterfactual replay runtime for debugger acceptance tests.
 
   This module intentionally starts with a scripted runner. It exercises the
   Wardwright gateway and receipt path, then records a replayable transcript that
@@ -47,7 +47,7 @@ defmodule WardwrightWeb.CounterfactualReplay do
     :ok = append_events(session_id, events)
 
     outcome = %{
-      "failure" => %{"class" => "read_before_edit_violation"},
+      "failure" => %{"class" => original_failure_class(scenario)},
       "gateway" => %{"path" => "/v1/chat/completions", "receipt_ids" => [receipt_id]},
       "recording_enabled" => true,
       "session_id" => session_id,
@@ -232,7 +232,7 @@ defmodule WardwrightWeb.CounterfactualReplay do
     :ok = append_events(fork_session_id, events)
 
     outcome = %{
-      "artifacts" => %{"settings.json" => ~s({"feature_enabled": true})},
+      "artifacts" => fork_artifacts(scenario),
       "failure" => %{"class" => ""},
       "runner" => %{"kind" => "scripted_agent"},
       "session_id" => fork_session_id,
@@ -364,6 +364,9 @@ defmodule WardwrightWeb.CounterfactualReplay do
       String.contains?(normalized, "feature_enabled") and String.contains?(normalized, "pass") ->
         {"passed", "", "passed"}
 
+      String.contains?(normalized, "confidence") and String.contains?(normalized, "answer") ->
+        {"passed", "", "passed"}
+
       true ->
         {"continued_live", "unverified_live_continuation", "unknown"}
     end
@@ -434,6 +437,13 @@ defmodule WardwrightWeb.CounterfactualReplay do
   end
 
   defp original_events(scenario, model_id, version, session_id, receipt_id) do
+    case scenario["debugger_example_id"] do
+      "output-contract" -> output_contract_original_events(scenario, model_id, version, session_id, receipt_id)
+      _ -> read_before_edit_original_events(scenario, model_id, version, session_id, receipt_id)
+    end
+  end
+
+  defp read_before_edit_original_events(scenario, model_id, version, session_id, receipt_id) do
     [
       event(session_id, 1, "session.started", %{"model_id" => model_id, "version" => version}),
       event(session_id, 2, "gateway.request", %{
@@ -452,6 +462,7 @@ defmodule WardwrightWeb.CounterfactualReplay do
         5,
         "tool.call",
         tool_call("edit_file", %{"patch" => "feature_enabled=true", "path" => "app.txt"})
+        |> Map.put("fork_point", true)
       ),
       event(session_id, 6, "tool.result", tool_result("edit_file", %{"status" => "applied"})),
       event(session_id, 7, "tool.call", tool_call("run_tests", %{})),
@@ -469,6 +480,31 @@ defmodule WardwrightWeb.CounterfactualReplay do
     ]
   end
 
+  defp output_contract_original_events(_scenario, model_id, version, session_id, receipt_id) do
+    [
+      event(session_id, 1, "session.started", %{"model_id" => model_id, "version" => version}),
+      event(session_id, 2, "gateway.request", %{
+        "gateway" => %{"path" => "/v1/chat/completions", "surface" => "openai_compatible_gateway"},
+        "recording_enabled" => true
+      }),
+      event(session_id, 3, "model.response", %{
+        "content_preview" => "Probably no results, but try again later.",
+        "fork_point" => true,
+        "status" => "completed"
+      }),
+      event(session_id, 4, "policy.decision", %{
+        "failure_class" => "output_contract_violation",
+        "rule_id" => "result-json-contract",
+        "status" => "failed"
+      }),
+      event(session_id, 5, "receipt.finalized", %{
+        "gateway" => %{"path" => "/v1/chat/completions"},
+        "receipt_id" => receipt_id,
+        "status" => "failed"
+      })
+    ]
+  end
+
   defp fork_event(fork_session_id, source_session_id, cursor, opts) do
     event(fork_session_id, 100, "session.forked", %{
       "fork_cursor" => cursor,
@@ -478,6 +514,13 @@ defmodule WardwrightWeb.CounterfactualReplay do
   end
 
   defp fork_continuation_events(scenario, session_id) do
+    case scenario["debugger_example_id"] do
+      "output-contract" -> output_contract_fork_continuation_events(session_id)
+      _ -> read_before_edit_fork_continuation_events(scenario, session_id)
+    end
+  end
+
+  defp read_before_edit_fork_continuation_events(scenario, session_id) do
     [
       event(session_id, 101, "tool.call", tool_call("read_file", %{"path" => "settings.json"})),
       event(
@@ -497,6 +540,29 @@ defmodule WardwrightWeb.CounterfactualReplay do
       event(session_id, 106, "tool.result", tool_result("run_tests", %{"status" => "passed"}))
     ]
   end
+
+  defp output_contract_fork_continuation_events(session_id) do
+    [
+      event(session_id, 101, "model.continuation.response", %{
+        "content_preview" => ~s({"answer":"No matching records were found.","confidence":0.91}),
+        "status" => "passed"
+      }),
+      event(session_id, 102, "policy.decision", %{
+        "rule_id" => "result-json-contract",
+        "status" => "passed"
+      })
+    ]
+  end
+
+  defp original_failure_class(scenario) do
+    get_in(scenario, ["expected", "failure_class"]) || "read_before_edit_violation"
+  end
+
+  defp fork_artifacts(%{"debugger_example_id" => "output-contract"}) do
+    %{"response.json" => ~s({"answer":"No matching records were found.","confidence":0.91})}
+  end
+
+  defp fork_artifacts(_scenario), do: %{"settings.json" => ~s({"feature_enabled": true})}
 
   defp tool_call(name, args), do: %{"tool" => %{"args" => args, "name" => name}}
   defp tool_result(name, result), do: %{"tool" => %{"name" => name, "result" => result}}

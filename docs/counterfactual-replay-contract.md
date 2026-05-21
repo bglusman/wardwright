@@ -14,12 +14,12 @@ Wardwright's debugger should eventually answer a hard question:
 
 Metadata-only receipt replay explains what a stored receipt says Wardwright
 decided. Full-session VCR mode records one request and response payload inside
-one receipt when explicitly enabled. The deterministic counterfactual runtime
-now starts the next layer: a replayable, multi-turn agent transcript that can be
-replayed to a cursor, forked with a policy overlay, continued either
-deterministically or through a configured Wardwright model, and compared.
+one receipt when explicitly enabled. The counterfactual runtime now starts the
+next layer: a replayable session transcript that can be replayed to a cursor,
+forked with a policy overlay, continued either deterministically or through a
+configured Wardwright model, and compared.
 
-## Acceptance Scenario
+## Acceptance Scenarios
 
 The first contract scenario is intentionally small but agentic:
 
@@ -29,12 +29,23 @@ The first contract scenario is intentionally small but agentic:
    `settings.json`; the final tests fail.
 4. Wardwright records the complete session, including model messages, tool
    calls, tool results, policy decisions, receipts, and event cursors.
-5. A debugger replays the session to the unsafe `edit_file` call without
+5. A debugger replays the session to the `edit_file` call without
    contacting a provider.
 6. The operator forks from that cursor with a read-before-edit policy overlay.
 7. The fork continues through a live or deterministic agent/model runner.
 8. The fork reads the relevant file, edits the right artifact, passes tests, and
    produces a comparison showing the behavior changed for the intended reason.
+
+The same machinery is not specific to unsafe tool calls. The Control Debugger
+also includes an output-contract example:
+
+1. A model returns a natural-language answer where the caller requires JSON.
+2. Wardwright records the response, validation decision, receipt, and cursor.
+3. The operator forks before the response is validated or repaired.
+4. The fork applies an output-contract overlay and continues to a valid JSON
+   response.
+5. The comparison records the original output-contract failure and the passing
+   fork.
 
 The opt-in test for this contract lives at
 `app/test/counterfactual_replay_acceptance_test.exs`. It is excluded from the
@@ -79,11 +90,12 @@ Elixir while the decision rules move toward Gleam.
 
 ## Plan Review
 
-The first implementation is a deterministic ExUnit harness, not a Jido, Python,
-or live model dependency. That keeps the acceptance bar reproducible and avoids
-network or credential drift. Jido, Ollama, opencode/pi-style agents, or a Gleam
-agent package can still be added as manual or tagged dogfood layers after the
-deterministic contract is passing.
+The default implementation uses scripted examples plus a configurable
+Wardwright-model continuation path, not a Jido, Python, or live model dependency.
+That keeps the acceptance bar reproducible and avoids network or credential
+drift. Jido, Ollama, opencode/pi-style agents, or a Gleam agent package can
+still be added as manual or tagged dogfood layers after the scripted contract is
+passing.
 
 The main product risk is false confidence. Replaying a receipt is not enough,
 and replaying to a cursor is still not enough unless the fork can continue from
@@ -130,14 +142,14 @@ Ollama model, Jido, or another controllable agent runner. That layer should stay
 outside the default suite because model quality, credentials, and local runtime
 availability are not stable CI inputs.
 
-The Control Debugger page now surfaces transcript-store readiness, loads
-transcript events for a selected receipt, suggests a fork point, replays to that
-point without a provider call, and can fork/continue with the built-in
-read-before-edit overlay. The overlay is visible and editable as JSON, with
-basic shape validation before fork/continue. Continuation can run in the
-deterministic scripted mode or through a selected live Wardwright model. The UI
-is still not a full policy workbench: semantic policy authoring and artifact
-diff review are deferred.
+The Control Debugger page now surfaces transcript-store readiness, records
+scripted example sessions, loads transcript events for a selected receipt,
+suggests a fork point, replays to that point without a provider call, and can
+fork/continue with an editable policy overlay. Current examples cover both
+read-before-edit tool ordering and malformed output-contract repair. Continuation
+can run in scripted mode or through a selected live Wardwright model. The UI is
+still not a full policy workbench: semantic policy authoring and artifact diff
+review are deferred.
 
 ## Known Runtime Limits
 

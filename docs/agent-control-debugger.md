@@ -238,10 +238,12 @@ Focused evidence:
 The workbench tests cover the separate admin route, server-component transport,
 controlled receipt input, receipt import into saved replay evidence, and
 debugger replay facts. The current focused suite also covers the
-counterfactual debugger path: run deterministic demo, load transcript, replay
-to fork point with no provider call, fork/continue deterministically, validate
-overlay JSON, and continue a fork through a configured Wardwright model with a
-new provider receipt.
+counterfactual debugger path: record a scripted example session, load
+transcript, replay to fork point with no provider call, fork/continue
+deterministically, validate overlay JSON, and continue a fork through a
+configured Wardwright model with a new provider receipt. The examples cover both
+read-before-edit tool ordering and output-contract repair so the debugger is not
+coupled to one unsafe-tool-call case.
 
 ## Track 5: Distilled Failure Scenarios
 

@@ -729,15 +729,19 @@ defmodule WardwrightWeb.WorkbenchTest do
 
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("append-only files")
 
-    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Run deterministic demo")
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Record example session")
 
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains(
              "can also continue the fork through a selected Wardwright model"
            )
   end
 
-  test "control debugger runs the deterministic counterfactual demo from the UI" do
+  test "control debugger records the default counterfactual example from the UI" do
     assert :wardwright@lustre_control_debugger_test_support.running_counterfactual_demo_shows_outcome()
+  end
+
+  test "control debugger records a non-tool output contract example from the UI" do
+    assert :wardwright@lustre_control_debugger_test_support.output_contract_example_shows_non_tool_fork_point()
   end
 
   test "control debugger loads transcript fork points from the demo receipt" do
@@ -764,8 +768,8 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert :wardwright@lustre_control_debugger_test_support.invalid_policy_overlay_blocks_fork()
   end
 
-  test "control debugger validates editable policy overlay shape before forking" do
-    assert :wardwright@lustre_control_debugger_test_support.invalid_policy_overlay_shape_blocks_fork()
+  test "control debugger accepts generic editable policy overlays before forking" do
+    assert :wardwright@lustre_control_debugger_test_support.generic_policy_overlay_can_fork()
   end
 
   test "control debugger applies a valid edited policy overlay when forking" do

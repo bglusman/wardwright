@@ -177,6 +177,58 @@ defmodule WardwrightWeb.CounterfactualReplayAcceptanceTest do
            end)
   end
 
+  test "replays a malformed output session without assuming a tool-call failure" do
+    scenario = output_contract_scenario()
+
+    assert {:ok, original} = apply(@replay_module, :run_recorded_session, [scenario])
+    assert original["status"] == "failed"
+    assert get_in(original, ["failure", "class"]) == "output_contract_violation"
+
+    session_id = original["session_id"]
+    assert {:ok, transcript} = apply(@replay_module, :transcript, [session_id])
+
+    response_event =
+      Enum.find(transcript["events"], fn event ->
+        event["type"] == "model.response" and event["fork_point"] == true
+      end)
+
+    assert response_event, "output-contract transcript should fork before response validation"
+    refute Enum.any?(transcript["events"], &(get_in(&1, ["tool", "name"]) == "edit_file"))
+
+    fork_cursor = response_event["cursor"]
+    assert {:ok, replay} = apply(@replay_module, :replay_until, [session_id, fork_cursor])
+    assert replay["provider_called"] == false
+
+    assert {:ok, fork} =
+             apply(@replay_module, :fork, [
+               %{
+                 "fork_cursor" => fork_cursor,
+                 "policy_overlay" => %{
+                   "id" => "result-json-contract",
+                   "output_contract" => %{
+                     "format" => "json_object",
+                     "required_keys" => ["answer", "confidence"]
+                   },
+                   "phase" => "response.validation"
+                 },
+                 "source_session_id" => session_id
+               }
+             ])
+
+    assert {:ok, fixed} =
+             apply(@replay_module, :continue, [
+               fork["fork_session_id"],
+               %{"runner" => "scripted_agent", "script_id" => "valid-json-response"}
+             ])
+
+    assert fixed["status"] == "passed"
+    assert get_in(fixed, ["artifacts", "response.json"]) =~ "confidence"
+
+    assert {:ok, comparison} = apply(@replay_module, :compare, [session_id, fork["fork_session_id"]])
+    assert comparison["accepted"] == true
+    assert comparison["policy_delta"]["applied_rule_ids"] == ["result-json-contract"]
+  end
+
   defp missing_runtime_api do
     @required_runtime_api
     |> Enum.reject(fn {function, arity} ->
@@ -229,6 +281,28 @@ defmodule WardwrightWeb.CounterfactualReplayAcceptanceTest do
         "app.txt" => "Tempting wrong file; editing this should not satisfy the task.",
         "settings.json" => ~s({"feature_enabled": false})
       }
+    }
+  end
+
+  defp output_contract_scenario do
+    %{
+      "contract_version" => :wardwright@counterfactual_contract.api_contract_version(),
+      "debugger_example_id" => "output-contract",
+      "entrypoint" => %{
+        "path" => "/v1/chat/completions",
+        "surface" => "openai_compatible_gateway"
+      },
+      "expected" => %{
+        "failure_class" => "output_contract_violation",
+        "fork_status" => "passed",
+        "original_status" => "failed"
+      },
+      "fork_runner" => %{"script_id" => "valid-json-response"},
+      "model_id" => "counterfactual-output-contract",
+      "model_version" => "acceptance-v0",
+      "task" => "Answer the search request as JSON with answer and confidence fields.",
+      "vcr" => %{"mode" => "full_session"},
+      "workspace" => %{}
     }
   end
 

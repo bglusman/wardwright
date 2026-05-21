@@ -56,9 +56,9 @@ pub fn receipt_select_has_accessible_name() -> Bool {
 pub fn running_counterfactual_demo_shows_outcome() -> Bool {
   let simulation =
     start()
-    |> click_button("Run deterministic demo")
+    |> click_button("Record example session")
 
-  view_contains(simulation, "Ran deterministic counterfactual demo.")
+  view_contains(simulation, "Recorded scripted example session.")
   && view_contains(simulation, "Original session")
   && view_contains(simulation, "Fork cursor")
   && view_contains(simulation, "Replay provider call")
@@ -77,10 +77,29 @@ pub fn running_counterfactual_demo_shows_outcome() -> Bool {
   && !view_contains(simulation, "No transcript loaded yet")
 }
 
+pub fn output_contract_example_shows_non_tool_fork_point() -> Bool {
+  let simulation =
+    start()
+    |> change_select("control_counterfactual_example", "output-contract")
+    |> click_button("Record example session")
+
+  view_contains(simulation, "Recorded scripted example session.")
+  && view_contains(simulation, "Output contract repair")
+  && view_contains(simulation, "result-json-contract")
+  && view_contains(simulation, "Loaded 5 transcript event(s)")
+  && view_contains(simulation, "Model response")
+  && view_contains(
+    simulation,
+    "Suggested fork point: before the response is validated or repaired.",
+  )
+  && view_contains(simulation, "Policy decision")
+  && !view_contains(simulation, "unsafe")
+}
+
 pub fn loading_transcript_from_demo_receipt_shows_fork_points() -> Bool {
   let simulation =
     start()
-    |> click_button("Run deterministic demo")
+    |> click_button("Record example session")
     |> click_button("Load transcript")
 
   view_contains(simulation, "Loaded 9 transcript event(s)")
@@ -93,7 +112,7 @@ pub fn loading_transcript_from_demo_receipt_shows_fork_points() -> Bool {
 pub fn replaying_to_loaded_fork_point_shows_no_provider_call() -> Bool {
   let simulation =
     start()
-    |> click_button("Run deterministic demo")
+    |> click_button("Record example session")
     |> click_button("Load transcript")
     |> click_button("Replay to fork point")
 
@@ -109,7 +128,7 @@ pub fn replaying_to_loaded_fork_point_shows_no_provider_call() -> Bool {
 pub fn forking_from_loaded_fork_point_shows_comparison() -> Bool {
   let simulation =
     start()
-    |> click_button("Run deterministic demo")
+    |> click_button("Record example session")
     |> click_button("Load transcript")
     |> click_button("Fork and continue")
 
@@ -128,7 +147,7 @@ pub fn forking_from_loaded_fork_point_shows_comparison() -> Bool {
 pub fn live_model_continuation_shows_provider_call(model_id: String) -> Bool {
   let simulation =
     start()
-    |> click_button("Run deterministic demo")
+    |> click_button("Record example session")
     |> click_button("Load transcript")
     |> change_select("control_continuation_mode", "wardwright_model")
     |> change_select("control_live_model_id", model_id)
@@ -146,7 +165,7 @@ pub fn live_model_continuation_shows_provider_call(model_id: String) -> Bool {
 pub fn invalid_policy_overlay_blocks_fork() -> Bool {
   let simulation =
     start()
-    |> click_button("Run deterministic demo")
+    |> click_button("Record example session")
     |> click_button("Load transcript")
     |> input("control_policy_overlay_json", "{")
     |> click_button("Fork and continue")
@@ -154,24 +173,25 @@ pub fn invalid_policy_overlay_blocks_fork() -> Bool {
   view_contains(simulation, "Policy overlay JSON is invalid")
 }
 
-pub fn invalid_policy_overlay_shape_blocks_fork() -> Bool {
+pub fn generic_policy_overlay_can_fork() -> Bool {
   let simulation =
     start()
-    |> click_button("Run deterministic demo")
+    |> click_button("Record example session")
     |> click_button("Load transcript")
     |> input("control_policy_overlay_json", "{\"id\":\"custom\"}")
     |> click_button("Fork and continue")
 
   view_contains(
     simulation,
-    "Policy overlay must include requires_prior_read_for as a non-empty string list.",
+    "Forked from selected point, applied policy overlay, and continued.",
   )
+  && view_contains(simulation, "custom")
 }
 
 pub fn custom_policy_overlay_changes_applied_rule() -> Bool {
   let simulation =
     start()
-    |> click_button("Run deterministic demo")
+    |> click_button("Record example session")
     |> click_button("Load transcript")
     |> input(
       "control_policy_overlay_json",
