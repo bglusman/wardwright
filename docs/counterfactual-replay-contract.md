@@ -128,8 +128,10 @@ stable CI inputs.
 The Control Debugger page now surfaces transcript-store readiness, loads
 transcript events for a selected receipt, suggests a fork point, replays to that
 point without a provider call, and can fork/continue with the built-in
-read-before-edit overlay. The UI is still not a full policy workbench: free-form
-policy-overlay editing, live continuation, and artifact diff review are deferred.
+read-before-edit overlay. The overlay is visible and editable as JSON, with
+basic shape validation before fork/continue. The UI is still not a full policy
+workbench: semantic policy authoring, live continuation, and artifact diff
+review are deferred.
 
 ## Known Runtime Limits
 

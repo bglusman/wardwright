@@ -2,7 +2,8 @@ import gleam/list
 import gleam/string
 import lustre
 import lustre/attribute.{
-  attribute, class, disabled, id, name, placeholder, selected, type_, value,
+  attribute, class, disabled, id, name, placeholder, rows, selected, type_,
+  value,
 }
 import lustre/element.{type Element, text}
 import lustre/element/html
@@ -39,6 +40,7 @@ pub type Model {
     transcript_status: String,
     transcript_error: String,
     selected_fork_point: String,
+    policy_overlay_json: String,
     transcript_events: List(TranscriptEvent),
     fork_replay_status: String,
     fork_replay_error: String,
@@ -62,6 +64,7 @@ pub type Msg {
   RunCounterfactualDemo
   LoadTranscript
   SelectForkPoint(String)
+  PolicyOverlayChanged(String)
   ReplayToForkPoint
   ForkAndContinue
 }
@@ -93,6 +96,9 @@ fn external_replay_receipt(
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "counterfactual_facts")
 fn external_counterfactual_facts() -> List(ReplayFact)
 
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "default_policy_overlay_json")
+fn external_default_policy_overlay_json() -> String
+
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "load_transcript_for_receipt")
 fn external_load_transcript_for_receipt(
   receipt_id: String,
@@ -108,6 +114,7 @@ fn external_replay_to_fork_point(
 fn external_fork_and_continue_from_point(
   session_id: String,
   fork_point: String,
+  policy_overlay_json: String,
 ) -> #(Bool, String, List(ReplayFact))
 
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "run_counterfactual_demo")
@@ -140,6 +147,7 @@ pub fn init(_flags: Nil) -> Model {
     transcript_status: "",
     transcript_error: "",
     selected_fork_point: "",
+    policy_overlay_json: external_default_policy_overlay_json(),
     transcript_events: [],
     fork_replay_status: "",
     fork_replay_error: "",
@@ -169,6 +177,7 @@ pub fn update(model: Model, msg: Msg) -> Model {
         transcript_status: "",
         transcript_error: "",
         selected_fork_point: "",
+        policy_overlay_json: external_default_policy_overlay_json(),
         transcript_events: [],
         fork_replay_status: "",
         fork_replay_error: "",
@@ -244,6 +253,7 @@ pub fn update(model: Model, msg: Msg) -> Model {
             transcript_status: "",
             transcript_error: "",
             selected_fork_point: "",
+            policy_overlay_json: external_default_policy_overlay_json(),
             transcript_events: [],
             fork_replay_status: "",
             fork_replay_error: "",
@@ -292,6 +302,7 @@ pub fn update(model: Model, msg: Msg) -> Model {
             transcript_status: "",
             transcript_error: message,
             selected_fork_point: "",
+            policy_overlay_json: external_default_policy_overlay_json(),
             transcript_events: [],
             fork_replay_status: "",
             fork_replay_error: "",
@@ -310,6 +321,15 @@ pub fn update(model: Model, msg: Msg) -> Model {
         fork_replay_status: "",
         fork_replay_error: "",
         fork_replay_facts: [],
+        fork_continue_status: "",
+        fork_continue_error: "",
+        fork_continue_facts: [],
+      )
+
+    PolicyOverlayChanged(policy_overlay_json) ->
+      Model(
+        ..model,
+        policy_overlay_json: policy_overlay_json,
         fork_continue_status: "",
         fork_continue_error: "",
         fork_continue_facts: [],
@@ -345,6 +365,7 @@ pub fn update(model: Model, msg: Msg) -> Model {
         external_fork_and_continue_from_point(
           model.transcript_session_id,
           model.selected_fork_point,
+          model.policy_overlay_json,
         )
 
       case ok {
@@ -596,6 +617,7 @@ fn transcript_card(model: Model) -> Element(Msg) {
     status_text(model.transcript_status, model.transcript_error),
     fork_point_summary(model),
     transcript_events(model),
+    policy_overlay_editor(model),
     status_text(model.fork_replay_status, model.fork_replay_error),
     replay_point_facts(model),
     status_text(model.fork_continue_status, model.fork_continue_error),
@@ -682,6 +704,27 @@ fn replay_facts(model: Model) -> Element(Msg) {
     [] -> html.div([], [])
     facts -> html.dl([class("debugger-facts")], list.map(facts, fact))
   }
+}
+
+fn policy_overlay_editor(model: Model) -> Element(Msg) {
+  html.label([class("field policy-overlay-field")], [
+    html.span([], [text("Policy overlay JSON")]),
+    html.textarea(
+      [
+        id("control_policy_overlay_json"),
+        name("control_policy_overlay_json"),
+        rows(8),
+        value(model.policy_overlay_json),
+        event.on_input(PolicyOverlayChanged),
+      ],
+      model.policy_overlay_json,
+    ),
+    html.small([class("debugger-note")], [
+      text(
+        "Fork and continue validates this overlay before applying it to the selected transcript point.",
+      ),
+    ]),
+  ])
 }
 
 fn replay_point_facts(model: Model) -> Element(Msg) {
@@ -872,6 +915,13 @@ pub fn styles() -> String {
   .transcript-events {
     display: grid;
     gap: 8px;
+  }
+  .policy-overlay-field textarea {
+    min-height: 150px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", monospace;
+    font-size: 12px;
+    line-height: 1.45;
+    resize: vertical;
   }
   .transcript-event {
     width: 100%;

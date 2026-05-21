@@ -70,6 +70,11 @@ defmodule WardwrightWeb.ControlDebuggerData do
     end
   end
 
+  def default_policy_overlay_json do
+    read_before_edit_overlay()
+    |> Jason.encode!(pretty: true)
+  end
+
   def run_counterfactual_demo do
     scenario = counterfactual_demo_scenario()
 
@@ -172,15 +177,16 @@ defmodule WardwrightWeb.ControlDebuggerData do
     end
   end
 
-  def fork_and_continue_from_point(session_id, fork_point) do
+  def fork_and_continue_from_point(session_id, fork_point, overlay_json) do
     session_id = session_id |> to_string() |> String.trim()
     fork_point = fork_point |> to_string() |> String.trim()
 
     with {:inputs, false} <- {:inputs, session_id == "" or fork_point == ""},
+         {:ok, overlay} <- decode_policy_overlay(overlay_json),
          {:ok, fork} <-
            WardwrightWeb.CounterfactualReplay.fork(%{
              "fork_cursor" => fork_point,
-             "policy_overlay" => read_before_edit_overlay(),
+             "policy_overlay" => overlay,
              "source_session_id" => session_id
            }),
          fork_session_id when is_binary(fork_session_id) <- fork["fork_session_id"],
@@ -190,7 +196,7 @@ defmodule WardwrightWeb.ControlDebuggerData do
              "script_id" => "read-settings-then-edit"
            }),
          {:ok, comparison} <- WardwrightWeb.CounterfactualReplay.compare(session_id, fork_session_id) do
-      {true, "Forked from selected point, applied read-before-edit, and continued.",
+      {true, "Forked from selected point, applied policy overlay, and continued.",
        [
          {"Original session", session_id},
          {"Fork point", fork_point},
@@ -388,6 +394,48 @@ defmodule WardwrightWeb.ControlDebuggerData do
       "requires_prior_read_for" => ["edit_file"]
     }
   end
+
+  defp decode_policy_overlay(json) do
+    json = json |> to_string() |> String.trim() |> blank_fallback(default_policy_overlay_json())
+
+    with {:ok, overlay} when is_map(overlay) <- Jason.decode(json),
+         :ok <- validate_policy_overlay(overlay) do
+      {:ok, overlay}
+    else
+      {:ok, _not_map} -> {:error, "Policy overlay must be a JSON object."}
+      {:error, %Jason.DecodeError{} = error} -> {:error, "Policy overlay JSON is invalid: #{Exception.message(error)}"}
+      {:error, message} when is_binary(message) -> {:error, message}
+    end
+  end
+
+  defp validate_policy_overlay(overlay) do
+    cond do
+      not valid_nonempty_string?(overlay["id"]) ->
+        {:error, "Policy overlay must include a non-empty string id."}
+
+      not valid_nonempty_string_list?(overlay["requires_prior_read_for"]) ->
+        {:error, "Policy overlay must include requires_prior_read_for as a non-empty string list."}
+
+      not valid_optional_string_list?(overlay["allowed_tools_until_read"]) ->
+        {:error, "Policy overlay allowed_tools_until_read must be a string list when present."}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp valid_nonempty_string?(value), do: is_binary(value) and String.trim(value) != ""
+
+  defp valid_nonempty_string_list?(value) when is_list(value) and value != [],
+    do: Enum.all?(value, &valid_nonempty_string?/1)
+
+  defp valid_nonempty_string_list?(_value), do: false
+
+  defp valid_string_list?(value) when is_list(value), do: Enum.all?(value, &valid_nonempty_string?/1)
+  defp valid_string_list?(_value), do: false
+
+  defp valid_optional_string_list?(nil), do: true
+  defp valid_optional_string_list?(value), do: valid_string_list?(value)
 
   defp find_bad_edit(events) when is_list(events) do
     events

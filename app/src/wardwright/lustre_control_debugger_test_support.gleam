@@ -105,7 +105,7 @@ pub fn forking_from_loaded_fork_point_shows_comparison() -> Bool {
 
   view_contains(
     simulation,
-    "Forked from selected point, applied read-before-edit, and continued.",
+    "Forked from selected point, applied policy overlay, and continued.",
   )
   && view_contains(simulation, "Fork status")
   && view_contains(simulation, "passed")
@@ -113,6 +113,56 @@ pub fn forking_from_loaded_fork_point_shows_comparison() -> Bool {
   && view_contains(simulation, "yes")
   && view_contains(simulation, "Applied rules")
   && view_contains(simulation, "read-before-edit")
+}
+
+pub fn invalid_policy_overlay_blocks_fork() -> Bool {
+  let simulation =
+    start()
+    |> click_button("Run deterministic demo")
+    |> click_button("Load transcript")
+    |> input("control_policy_overlay_json", "{")
+    |> click_button("Fork and continue")
+
+  view_contains(simulation, "Policy overlay JSON is invalid")
+}
+
+pub fn invalid_policy_overlay_shape_blocks_fork() -> Bool {
+  let simulation =
+    start()
+    |> click_button("Run deterministic demo")
+    |> click_button("Load transcript")
+    |> input("control_policy_overlay_json", "{\"id\":\"custom\"}")
+    |> click_button("Fork and continue")
+
+  view_contains(
+    simulation,
+    "Policy overlay must include requires_prior_read_for as a non-empty string list.",
+  )
+}
+
+pub fn custom_policy_overlay_changes_applied_rule() -> Bool {
+  let simulation =
+    start()
+    |> click_button("Run deterministic demo")
+    |> click_button("Load transcript")
+    |> input(
+      "control_policy_overlay_json",
+      "{\"id\":\"custom-read-gate\",\"requires_prior_read_for\":[\"edit_file\"]}",
+    )
+    |> click_button("Fork and continue")
+
+  view_contains(
+    simulation,
+    "Forked from selected point, applied policy overlay, and continued.",
+  )
+  && view_contains(simulation, "Applied rules")
+  && view_contains(simulation, "custom-read-gate")
+}
+
+pub fn policy_overlay_textarea_is_controlled(overlay_json: String) -> Bool {
+  start()
+  |> input("control_policy_overlay_json", overlay_json)
+  |> view_has_textarea_value("control_policy_overlay_json", overlay_json)
 }
 
 fn start() {
@@ -167,6 +217,21 @@ fn view_has_control_value(
   |> simulate.view
   |> query.find(matching: query.element(
     matching: query.tag("input")
+    |> query.and(query.id(field_id))
+    |> query.and(query.attribute("value", expected_value)),
+  ))
+  |> result.is_ok
+}
+
+fn view_has_textarea_value(
+  simulation,
+  field_id: String,
+  expected_value: String,
+) -> Bool {
+  simulation
+  |> simulate.view
+  |> query.find(matching: query.element(
+    matching: query.tag("textarea")
     |> query.and(query.id(field_id))
     |> query.and(query.attribute("value", expected_value)),
   ))

@@ -752,6 +752,24 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert :wardwright@lustre_control_debugger_test_support.forking_from_loaded_fork_point_shows_comparison()
   end
 
+  test "control debugger validates editable policy overlays before forking" do
+    assert :wardwright@lustre_control_debugger_test_support.invalid_policy_overlay_blocks_fork()
+  end
+
+  test "control debugger validates editable policy overlay shape before forking" do
+    assert :wardwright@lustre_control_debugger_test_support.invalid_policy_overlay_shape_blocks_fork()
+  end
+
+  test "control debugger applies a valid edited policy overlay when forking" do
+    assert :wardwright@lustre_control_debugger_test_support.custom_policy_overlay_changes_applied_rule()
+  end
+
+  test "control debugger policy overlay text area is controlled" do
+    assert :wardwright@lustre_control_debugger_test_support.policy_overlay_textarea_is_controlled(
+             ~s({"id":"custom","requires_prior_read_for":["edit_file"]})
+           )
+  end
+
   test "control debugger receipt id text input is controlled" do
     assert :wardwright@lustre_control_debugger_test_support.receipt_text_input_is_controlled("manual_receipt_id")
   end
