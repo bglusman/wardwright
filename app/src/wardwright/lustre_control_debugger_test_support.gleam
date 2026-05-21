@@ -66,6 +66,13 @@ pub fn running_counterfactual_demo_shows_outcome() -> Bool {
   && view_contains(simulation, "read-before-edit")
   && view_contains(simulation, "Selected receipt: rcpt_")
   && view_contains(simulation, "Loaded 9 transcript event(s)")
+  && view_contains(simulation, "Selected fork point")
+  && view_contains(simulation, "Replay selected point")
+  && view_contains(simulation, "Continue from selected point")
+  && view_contains(
+    simulation,
+    "Continuation mode only changes Fork and continue.",
+  )
   && view_contains(simulation, "Tool call: edit_file")
   && !view_contains(simulation, "No transcript loaded yet")
 }

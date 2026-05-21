@@ -685,34 +685,10 @@ fn transcript_card(model: Model) -> Element(Msg) {
         ],
         [text("Load transcript")],
       ),
-      button.button(
-        [
-          button.variant(button.Ghost),
-          type_("button"),
-          event.on_click(ReplayToForkPoint),
-          disabled(model.selected_fork_point == ""),
-        ],
-        [text("Replay to fork point")],
-      ),
-      button.button(
-        [
-          button.variant(button.Default),
-          type_("button"),
-          event.on_click(ForkAndContinue),
-          disabled(model.selected_fork_point == ""),
-        ],
-        [text("Fork and continue")],
-      ),
     ]),
     status_text(model.transcript_status, model.transcript_error),
-    fork_point_summary(model),
+    selected_fork_workbench(model),
     transcript_events(model),
-    continuation_controls(model),
-    policy_overlay_editor(model),
-    status_text(model.fork_replay_status, model.fork_replay_error),
-    replay_point_facts(model),
-    status_text(model.fork_continue_status, model.fork_continue_error),
-    fork_continue_facts(model),
   ])
 }
 
@@ -736,6 +712,64 @@ fn fork_point_summary(model: Model) -> Element(Msg) {
         text("Selected fork point: before event " <> fork_point <> "."),
       ])
   }
+}
+
+fn selected_fork_workbench(model: Model) -> Element(Msg) {
+  html.section([class("fork-workbench")], [
+    html.div([class("fork-workbench-heading")], [
+      html.div([], [
+        html.span([], [text("Selected fork point")]),
+        html.strong([], [text(blank_default(model.selected_fork_point, "none"))]),
+      ]),
+      fork_point_summary(model),
+    ]),
+    html.div([class("fork-action-grid")], [
+      replay_action_panel(model),
+      continue_action_panel(model),
+    ]),
+  ])
+}
+
+fn replay_action_panel(model: Model) -> Element(Msg) {
+  html.div([class("fork-action-card")], [
+    html.div([class("fork-action-heading")], [
+      html.strong([], [text("Replay selected point")]),
+      html.small([], [text("No provider call")]),
+    ]),
+    button.button(
+      [
+        button.variant(button.Ghost),
+        type_("button"),
+        event.on_click(ReplayToForkPoint),
+        disabled(model.selected_fork_point == ""),
+      ],
+      [text("Replay to fork point")],
+    ),
+    status_text(model.fork_replay_status, model.fork_replay_error),
+    replay_point_facts(model),
+  ])
+}
+
+fn continue_action_panel(model: Model) -> Element(Msg) {
+  html.div([class("fork-action-card continue-card")], [
+    html.div([class("fork-action-heading")], [
+      html.strong([], [text("Continue from selected point")]),
+      html.small([], [text("Uses continuation mode")]),
+    ]),
+    continuation_controls(model),
+    policy_overlay_editor(model),
+    button.button(
+      [
+        button.variant(button.Default),
+        type_("button"),
+        event.on_click(ForkAndContinue),
+        disabled(model.selected_fork_point == ""),
+      ],
+      [text("Fork and continue")],
+    ),
+    status_text(model.fork_continue_status, model.fork_continue_error),
+    fork_continue_facts(model),
+  ])
 }
 
 fn transcript_events(model: Model) -> Element(Msg) {
@@ -860,7 +894,7 @@ fn continuation_controls(model: Model) -> Element(Msg) {
     ]),
     html.small([class("debugger-note continuation-note")], [
       text(
-        "Replay to fork point never calls a provider. Fork and continue uses deterministic replay unless live model continuation is selected. The model API key field is used for this continuation request and is not saved by the debugger.",
+        "Continuation mode only changes Fork and continue. Replay selected point never calls a provider. The model API key is used for this continuation request and is not saved.",
       ),
     ]),
   ])
@@ -1082,6 +1116,57 @@ pub fn styles() -> String {
     font-size: 13px;
     font-weight: 700;
   }
+  .fork-workbench {
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #f7fbfa;
+  }
+  .fork-workbench-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 1.4fr);
+    gap: 12px;
+    align-items: start;
+  }
+  .fork-workbench-heading > div {
+    display: grid;
+    gap: 4px;
+  }
+  .fork-workbench-heading span,
+  .fork-action-heading small {
+    color: var(--muted-foreground);
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .fork-workbench-heading strong {
+    overflow-wrap: anywhere;
+  }
+  .fork-action-grid {
+    display: grid;
+    grid-template-columns: minmax(220px, 0.82fr) minmax(0, 1.18fr);
+    gap: 12px;
+    align-items: start;
+  }
+  .fork-action-card {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+  }
+  .fork-action-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: baseline;
+  }
+  .continue-card .policy-overlay-field textarea {
+    min-height: 120px;
+  }
   .transcript-events {
     display: grid;
     gap: 8px;
@@ -1153,7 +1238,11 @@ pub fn styles() -> String {
     font-size: 13px;
   }
   @media (max-width: 860px) {
-    .control-debugger-app, .debugger-actions, .continuation-controls {
+    .control-debugger-app,
+    .debugger-actions,
+    .continuation-controls,
+    .fork-action-grid,
+    .fork-workbench-heading {
       grid-template-columns: 1fr;
     }
     .transcript-event {
