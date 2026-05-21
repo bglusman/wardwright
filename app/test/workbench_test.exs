@@ -734,6 +734,8 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains(
              "can also continue the fork through a selected Wardwright model"
            )
+
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("tool calls/results")
   end
 
   test "control debugger records the default counterfactual example from the UI" do

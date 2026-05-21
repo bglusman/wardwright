@@ -65,8 +65,11 @@ pub fn running_counterfactual_demo_shows_outcome() -> Bool {
   && view_contains(simulation, "Comparison accepted")
   && view_contains(simulation, "read-before-edit")
   && view_contains(simulation, "Selected receipt: rcpt_")
-  && view_contains(simulation, "Loaded 9 transcript event(s)")
+  && view_contains(simulation, "Loaded 9 trace event(s)")
   && view_contains(simulation, "Actions for selected event")
+  && view_contains(simulation, "Selected trace event")
+  && view_contains(simulation, "Recorded evidence")
+  && view_contains(simulation, "What changes")
   && view_contains(simulation, "Replay selected point")
   && view_contains(simulation, "Continue from selected point")
   && view_contains(
@@ -74,7 +77,7 @@ pub fn running_counterfactual_demo_shows_outcome() -> Bool {
     "Continuation mode only changes Fork and continue.",
   )
   && view_contains(simulation, "Tool call: edit_file")
-  && !view_contains(simulation, "No transcript loaded yet")
+  && !view_contains(simulation, "No session trace loaded yet")
 }
 
 pub fn fork_actions_are_contextual_to_loaded_event() -> Bool {
@@ -88,6 +91,7 @@ pub fn fork_actions_are_contextual_to_loaded_event() -> Bool {
   && !view_contains(initial, "Continue from selected point")
   && view_contains(loaded, "Actions for selected event")
   && view_contains(loaded, "Click a timeline event to move the replay cursor")
+  && view_contains(loaded, "Replay uses recorded evidence only")
   && view_contains(loaded, "Replay selected point")
   && view_contains(loaded, "Continue from selected point")
 }
@@ -101,7 +105,7 @@ pub fn output_contract_example_shows_non_tool_fork_point() -> Bool {
   view_contains(simulation, "Recorded scripted example session.")
   && view_contains(simulation, "Output contract repair")
   && view_contains(simulation, "result-json-contract")
-  && view_contains(simulation, "Loaded 5 transcript event(s)")
+  && view_contains(simulation, "Loaded 5 trace event(s)")
   && view_contains(simulation, "Model response")
   && view_contains(
     simulation,
@@ -115,10 +119,10 @@ pub fn loading_transcript_from_demo_receipt_shows_fork_points() -> Bool {
   let simulation =
     start()
     |> click_button("Record example session")
-    |> click_button("Load transcript")
+    |> click_button("Load trace")
 
-  view_contains(simulation, "Loaded 9 transcript event(s)")
-  && view_contains(simulation, "Transcript inspector")
+  view_contains(simulation, "Loaded 9 trace event(s)")
+  && view_contains(simulation, "Session trace inspector")
   && view_contains(simulation, "Tool call: edit_file")
   && view_contains(simulation, "Suggested fork point")
   && view_contains(simulation, "before mutating app.txt")
@@ -128,7 +132,7 @@ pub fn replaying_to_loaded_fork_point_shows_no_provider_call() -> Bool {
   let simulation =
     start()
     |> click_button("Record example session")
-    |> click_button("Load transcript")
+    |> click_button("Load trace")
     |> click_button("Replay to fork point")
 
   view_contains(
@@ -144,7 +148,7 @@ pub fn forking_from_loaded_fork_point_shows_comparison() -> Bool {
   let simulation =
     start()
     |> click_button("Record example session")
-    |> click_button("Load transcript")
+    |> click_button("Load trace")
     |> click_button("Fork and continue")
 
   view_contains(
@@ -163,7 +167,7 @@ pub fn live_model_continuation_shows_provider_call(model_id: String) -> Bool {
   let simulation =
     start()
     |> click_button("Record example session")
-    |> click_button("Load transcript")
+    |> click_button("Load trace")
     |> change_select("control_continuation_mode", "wardwright_model")
     |> change_select("control_live_model_id", model_id)
     |> click_button("Fork and continue")
@@ -181,7 +185,7 @@ pub fn invalid_policy_overlay_blocks_fork() -> Bool {
   let simulation =
     start()
     |> click_button("Record example session")
-    |> click_button("Load transcript")
+    |> click_button("Load trace")
     |> input("control_policy_overlay_json", "{")
     |> click_button("Fork and continue")
 
@@ -192,7 +196,7 @@ pub fn blank_policy_overlay_blocks_fork() -> Bool {
   let simulation =
     start()
     |> click_button("Record example session")
-    |> click_button("Load transcript")
+    |> click_button("Load trace")
     |> input("control_policy_overlay_json", "")
     |> click_button("Fork and continue")
 
@@ -203,7 +207,7 @@ pub fn generic_policy_overlay_can_fork() -> Bool {
   let simulation =
     start()
     |> click_button("Record example session")
-    |> click_button("Load transcript")
+    |> click_button("Load trace")
     |> input("control_policy_overlay_json", "{\"id\":\"custom\"}")
     |> click_button("Fork and continue")
 
@@ -218,7 +222,7 @@ pub fn custom_policy_overlay_changes_applied_rule() -> Bool {
   let simulation =
     start()
     |> click_button("Record example session")
-    |> click_button("Load transcript")
+    |> click_button("Load trace")
     |> input(
       "control_policy_overlay_json",
       "{\"id\":\"custom-read-gate\",\"requires_prior_read_for\":[\"edit_file\"]}",

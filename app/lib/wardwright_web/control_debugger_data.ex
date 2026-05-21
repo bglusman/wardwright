@@ -178,7 +178,7 @@ defmodule WardwrightWeb.ControlDebuggerData do
          events when is_list(events) <- transcript["events"] do
       fork_point = suggested_fork_point(events)
 
-      {true, "Loaded #{length(events)} transcript event(s) for #{receipt_id}.", session_id, fork_point,
+      {true, "Loaded #{length(events)} trace event(s) for #{receipt_id}.", session_id, fork_point,
        Enum.map(events, &transcript_event_summary/1)}
     else
       {:receipt_id, true} ->

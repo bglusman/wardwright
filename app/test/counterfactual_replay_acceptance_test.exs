@@ -164,12 +164,40 @@ defmodule WardwrightWeb.CounterfactualReplayAcceptanceTest do
     assert is_binary(live_receipt_id)
     live_receipt = Wardwright.ReceiptStore.get(live_receipt_id)
 
-    assert live_receipt
-           |> get_in(["vcr", "full_session", "request", "body", "messages"])
-           |> Enum.any?(fn message ->
+    live_messages = get_in(live_receipt, ["vcr", "full_session", "request", "body", "messages"])
+
+    assert Enum.any?(live_messages, fn message ->
              message["role"] == "user" and
-               message["content"] =~ "transcript_before_continuation" and
+               message["content"] =~ "session_trace_before_continuation" and
                message["content"] =~ "edit_file"
+           end)
+
+    assert Enum.any?(live_messages, fn message ->
+             case message do
+               %{
+                 "role" => "assistant",
+                 "tool_calls" => [
+                   %{"function" => %{"arguments" => "{}", "name" => "list_files"}, "id" => call_id}
+                 ]
+               } ->
+                 is_binary(call_id)
+
+               _ ->
+                 false
+             end
+           end)
+
+    assert Enum.any?(live_messages, fn message ->
+             message["role"] == "tool" and
+               message["name"] == "list_files" and
+               message["content"] =~ "settings.json" and
+               is_binary(message["tool_call_id"])
+           end)
+
+    assert live_receipt
+           |> get_in(["vcr", "full_session", "request", "body", "tools"])
+           |> Enum.any?(fn tool ->
+             get_in(tool, ["function", "name"]) == "read_file"
            end)
 
     assert {:ok, live_transcript} = apply(@replay_module, :transcript, [live_fork["fork_session_id"]])
@@ -230,6 +258,59 @@ defmodule WardwrightWeb.CounterfactualReplayAcceptanceTest do
     assert {:ok, comparison} = apply(@replay_module, :compare, [session_id, fork["fork_session_id"]])
     assert comparison["accepted"] == true
     assert comparison["policy_delta"]["applied_rule_ids"] == ["result-json-contract"]
+  end
+
+  test "live continuation groups consecutive tool calls into valid native chat history" do
+    store_dir = Path.join(System.tmp_dir!(), "wardwright-native-trace-#{System.unique_integer([:positive])}")
+    original_store_dir = Application.get_env(:wardwright, :counterfactual_transcript_store_dir)
+    fork_session_id = "native-history-fork-#{System.unique_integer([:positive])}"
+
+    Application.put_env(:wardwright, :counterfactual_transcript_store_dir, store_dir)
+
+    on_exit(fn ->
+      restore_env(:counterfactual_transcript_store_dir, original_store_dir)
+      File.rm_rf!(store_dir)
+    end)
+
+    put_live_continuation_model_config()
+
+    write_transcript_file!(store_dir, fork_session_id, "metadata.json", %{
+      "fork_cursor" => "#{fork_session_id}:edit",
+      "policy_overlay" => %{"id" => "read-before-edit"},
+      "role" => "fork",
+      "scenario" => read_before_edit_scenario(),
+      "source_session_id" => "source-session"
+    })
+
+    write_events_file!(store_dir, fork_session_id, [
+      event(fork_session_id, 1, "tool.call", tool_call("list_files", %{})),
+      event(fork_session_id, 2, "tool.call", tool_call("read_file", %{"path" => "settings.json"})),
+      event(fork_session_id, 3, "tool.result", tool_result("list_files", %{"files" => ["settings.json"]})),
+      event(fork_session_id, 4, "tool.result", tool_result("read_file", %{"status" => "ok"}))
+    ])
+
+    assert {:ok, fixed} =
+             apply(@replay_module, :continue, [
+               fork_session_id,
+               %{"model_id" => "counterfactual-live-acceptance", "runner" => "wardwright_model"}
+             ])
+
+    assert [receipt_id | _] = get_in(fixed, ["gateway", "receipt_ids"])
+    receipt = Wardwright.ReceiptStore.get(receipt_id)
+    messages = get_in(receipt, ["vcr", "full_session", "request", "body", "messages"])
+
+    assert Enum.any?(messages, fn message ->
+             case message do
+               %{"role" => "assistant", "tool_calls" => [list_call, read_call]} ->
+                 get_in(list_call, ["function", "name"]) == "list_files" and
+                   get_in(read_call, ["function", "name"]) == "read_file"
+
+               _ ->
+                 false
+             end
+           end)
+
+    assert Enum.count(messages, &(&1["role"] == "tool")) == 2
   end
 
   test "malformed transcript event lines are skipped instead of invalidating the session" do
@@ -453,6 +534,31 @@ defmodule WardwrightWeb.CounterfactualReplayAcceptanceTest do
       }
     }
   end
+
+  defp write_transcript_file!(store_dir, session_id, file_name, value) do
+    session_dir = Path.join(store_dir, Base.url_encode64(session_id, padding: false))
+    File.mkdir_p!(session_dir)
+    File.write!(Path.join(session_dir, file_name), JSON.encode!(value))
+  end
+
+  defp write_events_file!(store_dir, session_id, events) do
+    session_dir = Path.join(store_dir, Base.url_encode64(session_id, padding: false))
+    File.mkdir_p!(session_dir)
+    File.write!(Path.join(session_dir, "events.jsonl"), Enum.map_join(events, "\n", &JSON.encode!/1) <> "\n")
+  end
+
+  defp event(session_id, sequence, type, fields) do
+    Map.merge(fields, %{
+      "cursor" => "#{session_id}:#{sequence}",
+      "schema" => :wardwright@counterfactual_contract.api_contract_version(),
+      "sequence" => sequence,
+      "session_id" => session_id,
+      "type" => type
+    })
+  end
+
+  defp tool_call(name, args), do: %{"tool" => %{"args" => args, "name" => name}}
+  defp tool_result(name, result), do: %{"tool" => %{"name" => name, "result" => result}}
 
   defp restore_env(key, nil), do: Application.delete_env(:wardwright, key)
   defp restore_env(key, value), do: Application.put_env(:wardwright, key, value)

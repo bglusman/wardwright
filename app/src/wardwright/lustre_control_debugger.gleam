@@ -612,7 +612,7 @@ fn counterfactual_card(model: Model) -> Element(Msg) {
     ]),
     html.ol([class("debugger-steps")], [
       html.li([], [
-        text("Load a full-session transcript for the selected receipt."),
+        text("Load a full-session trace for the selected receipt."),
       ]),
       html.li([], [
         text("Pick a fork point before the behavior you want to change."),
@@ -644,14 +644,14 @@ fn counterfactual_card(model: Model) -> Element(Msg) {
           type_("button"),
           event.on_click(LoadTranscript),
         ],
-        [text("Load transcript for selected receipt")],
+        [text("Load trace for selected receipt")],
       ),
     ]),
     status_text(model.counterfactual_status, model.counterfactual_error),
     counterfactual_facts(model),
     html.small([class("debugger-note")], [
       text(
-        "Examples run scripted failed sessions through Wardwright, record transcripts, replay to a selected behavior cursor, fork with an editable policy overlay, and continue deterministically. The transcript inspector below can also continue the fork through a selected Wardwright model. Selected receipt: "
+        "Examples run scripted failed sessions through Wardwright, record session traces with tool calls/results, replay to a selected behavior cursor, fork with an editable policy overlay, and continue deterministically. The trace inspector below can also continue the fork through a selected Wardwright model. Selected receipt: "
         <> blank_default(model.receipt_id, "none selected")
         <> ".",
       ),
@@ -663,7 +663,7 @@ fn transcript_card(model: Model) -> Element(Msg) {
   html.article([class("panel transcript-card")], [
     html.div([class("panel-heading")], [
       html.div([], [
-        html.span([], [text("Transcript inspector")]),
+        html.span([], [text("Session trace inspector")]),
         html.strong([], [text(transcript_heading(model))]),
       ]),
       badge.badge([badge.variant(badge.Outline)], [text("fork points")]),
@@ -675,12 +675,12 @@ fn transcript_card(model: Model) -> Element(Msg) {
           type_("button"),
           event.on_click(LoadTranscript),
         ],
-        [text("Load transcript")],
+        [text("Load trace")],
       ),
     ]),
     html.small([class("debugger-note")], [
       text(
-        "Use this for recorded example sessions or real full-session receipts from Wardwright gateway traffic.",
+        "Use this for recorded example sessions or real full-session receipts from Wardwright gateway traffic. A trace can include model messages, tool calls, tool results, policy decisions, and receipts.",
       ),
     ]),
     status_text(model.transcript_status, model.transcript_error),
@@ -701,7 +701,7 @@ fn fork_point_summary(model: Model) -> Element(Msg) {
     "" ->
       html.small([class("debugger-note")], [
         text(
-          "No event selected yet. Load a transcript and choose where replay should stop.",
+          "No event selected yet. Load a session trace and choose where replay should stop.",
         ),
       ])
     fork_point ->
@@ -724,11 +724,44 @@ fn selected_fork_workbench(model: Model) -> Element(Msg) {
       ]),
       fork_point_summary(model),
     ]),
+    selected_event_context(model),
     html.div([class("fork-action-grid")], [
       replay_action_panel(model),
       continue_action_panel(model),
     ]),
   ])
+}
+
+fn selected_event_context(model: Model) -> Element(Msg) {
+  case selected_event(model.transcript_events, model.selected_fork_point) {
+    Ok(event_row) -> {
+      let #(fork_point, sequence, event_type, label, detail, recommendation) =
+        event_row
+
+      html.div([class("selected-event-context")], [
+        html.div([], [
+          html.span([], [text("Selected trace event")]),
+          html.strong([], [text("#" <> sequence <> " " <> label)]),
+          html.small([], [text(event_type <> " at " <> fork_point)]),
+        ]),
+        html.div([], [
+          html.span([], [text("Recorded evidence")]),
+          html.strong([], [text(detail)]),
+          html.small([], [text(recommendation)]),
+        ]),
+        html.div([], [
+          html.span([], [text("What changes")]),
+          html.strong([], [text(continuation_scope(model.continuation_mode))]),
+          html.small([], [
+            text(
+              "Replay uses recorded evidence only; fork and continue may call the selected runner.",
+            ),
+          ]),
+        ]),
+      ])
+    }
+    Error(_) -> html.div([], [])
+  }
 }
 
 fn replay_action_panel(model: Model) -> Element(Msg) {
@@ -804,12 +837,7 @@ fn selected_event_heading(
   case selected_fork_point {
     "" -> "none"
     cursor ->
-      case
-        list.find(events, fn(event_row) {
-          let #(fork_point, _, _, _, _, _) = event_row
-          fork_point == cursor
-        })
-      {
+      case selected_event(events, cursor) {
         Ok(event_row) -> {
           let #(_, sequence, _, label, _, _) = event_row
           "#" <> sequence <> " " <> label
@@ -817,6 +845,16 @@ fn selected_event_heading(
         Error(_) -> "cursor not in transcript"
       }
   }
+}
+
+fn selected_event(
+  events: List(TranscriptEvent),
+  selected_fork_point: String,
+) -> Result(TranscriptEvent, Nil) {
+  list.find(events, fn(event_row) {
+    let #(fork_point, _, _, _, _, _) = event_row
+    fork_point == selected_fork_point
+  })
 }
 
 fn transcript_events(model: Model) -> Element(Msg) {
@@ -838,11 +876,11 @@ fn transcript_empty_message(model: Model) -> String {
     "" ->
       case model.transcript_status {
         "" ->
-          "No transcript loaded yet. Record an example session or choose a full-session receipt, then load its transcript."
-        _ -> "Transcript loaded, but it did not contain any events."
+          "No session trace loaded yet. Record an example session or choose a full-session receipt, then load its trace."
+        _ -> "Trace loaded, but it did not contain any events."
       }
     _ ->
-      "Transcript did not load. Check the message above and choose a receipt with full-session recording."
+      "Trace did not load. Check the message above and choose a receipt with full-session recording."
   }
 }
 
@@ -912,7 +950,7 @@ fn policy_overlay_editor(model: Model) -> Element(Msg) {
     ),
     html.small([class("debugger-note")], [
       text(
-        "Fork and continue validates this overlay before applying it to the selected transcript point.",
+        "Fork and continue validates this overlay before applying it to the selected trace point.",
       ),
     ]),
   ])
@@ -1064,6 +1102,13 @@ fn continuation_mode_options(selected_id: String) -> List(Element(Msg)) {
       "wardwright_model",
     ),
   ]
+}
+
+fn continuation_scope(continuation_mode: String) -> String {
+  case continuation_mode {
+    "wardwright_model" -> "continues through a Wardwright model"
+    _ -> "continues with deterministic scripted steps"
+  }
 }
 
 fn live_model_options(selected_id: String) -> List(Element(Msg)) {
@@ -1232,6 +1277,36 @@ pub fn styles() -> String {
   .fork-workbench-heading strong {
     overflow-wrap: anywhere;
   }
+  .selected-event-context {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+  }
+  .selected-event-context > div {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+  .selected-event-context span {
+    color: var(--muted-foreground);
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .selected-event-context strong,
+  .selected-event-context small {
+    overflow-wrap: anywhere;
+  }
+  .selected-event-context small {
+    color: var(--muted-foreground);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+  }
   .fork-action-grid {
     display: grid;
     grid-template-columns: minmax(220px, 0.82fr) minmax(0, 1.18fr);
@@ -1338,6 +1413,7 @@ pub fn styles() -> String {
     .continuation-controls,
     .fork-action-grid,
     .fork-workbench-heading,
+    .selected-event-context,
     .transcript-overview {
       grid-template-columns: 1fr;
     }

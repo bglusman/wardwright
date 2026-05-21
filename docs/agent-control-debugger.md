@@ -200,12 +200,14 @@ Added a reusable Lustre control-debugger component in
 - richer replay facts: recording mode, original provider behavior, replay
   provider behavior, route, policy actions, request shape, selected model, and
   warnings
-- transcript loading for full-session receipts, including event cursors,
-  suggested fork points, and replay-to-cursor without a provider call
+- session-trace loading for full-session receipts, including event cursors,
+  suggested fork points, recorded tool calls/results, and replay-to-cursor
+  without a provider call
 - fork/continue controls with editable policy overlay JSON
 - an explicit continuation mode: deterministic scripted continuation for CI
-  evidence, or live Wardwright-model continuation through `/v1/chat/completions`
-  with the new receipt recorded into the fork transcript
+  evidence, or Wardwright-model continuation through `/v1/chat/completions`
+  with native OpenAI-style tool-call history where the recorded trace can be
+  represented that way, and with the new receipt recorded into the fork trace
 
 To avoid colliding with the in-flight authoring-agent workbench PR, the
 component is mounted today as a separate admin page at
@@ -239,11 +241,13 @@ The workbench tests cover the separate admin route, server-component transport,
 controlled receipt input, receipt import into saved replay evidence, and
 debugger replay facts. The current focused suite also covers the
 counterfactual debugger path: record a scripted example session, load
-transcript, replay to fork point with no provider call, fork/continue
+the session trace, replay to fork point with no provider call, fork/continue
 deterministically, validate overlay JSON, and continue a fork through a
-configured Wardwright model with a new provider receipt. The examples cover both
-read-before-edit tool ordering and output-contract repair so the debugger is not
-coupled to one unsafe-tool-call case.
+configured Wardwright model with a new provider receipt. The configured model in
+the default suite is canned, so this proves gateway plumbing and structured
+history shape rather than real-provider behavioral equivalence. The examples
+cover both read-before-edit tool ordering and output-contract repair so the
+debugger is not coupled to one unsafe-tool-call case.
 
 ## Track 5: Distilled Failure Scenarios
 

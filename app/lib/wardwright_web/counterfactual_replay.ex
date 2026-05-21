@@ -337,25 +337,33 @@ defmodule WardwrightWeb.CounterfactualReplay do
 
   defp live_continuation_request(model_id, fork_session_id, scenario, metadata, fork_events) do
     %{
-      "messages" => [
-        %{
-          "content" =>
-            "You are continuing a forked Wardwright agent session from recorded transcript evidence. " <>
-              "Use the policy overlay as the new control contract and explain the next safe action.",
-          "role" => "system"
-        },
-        %{
-          "content" =>
-            JSON.encode!(%{
-              "fork_cursor" => metadata["fork_cursor"],
-              "policy_overlay" => metadata["policy_overlay"],
-              "task" => scenario["task"],
-              "transcript_before_continuation" => transcript_summary(fork_events),
-              "workspace_files" => workspace_files(scenario)
-            }),
-          "role" => "user"
-        }
-      ],
+      "messages" =>
+        [
+          %{
+            "content" =>
+              "You are continuing a forked Wardwright agent session from recorded trace evidence. " <>
+                "Use the policy overlay as the new control contract and explain the next safe action.",
+            "role" => "system"
+          },
+          %{
+            "content" => scenario["task"] || "Continue the recorded Wardwright agent session.",
+            "role" => "user"
+          }
+        ] ++
+          native_trace_messages(fork_events) ++
+          [
+            %{
+              "content" =>
+                JSON.encode!(%{
+                  "fork_cursor" => metadata["fork_cursor"],
+                  "policy_overlay" => metadata["policy_overlay"],
+                  "session_trace_before_continuation" => trace_summary(fork_events),
+                  "transcript_before_continuation" => trace_summary(fork_events),
+                  "workspace_files" => workspace_files(scenario)
+                }),
+              "role" => "user"
+            }
+          ],
       "metadata" => %{
         "counterfactual_continuation" => true,
         "run_id" => fork_session_id,
@@ -363,6 +371,7 @@ defmodule WardwrightWeb.CounterfactualReplay do
       },
       "model" => model_id
     }
+    |> put_tools_if_present(scenario)
   end
 
   defp live_continuation_events(fork_session_id, model_id, request, receipt_id, receipt, content, status) do
@@ -478,7 +487,7 @@ defmodule WardwrightWeb.CounterfactualReplay do
   defp workspace_files(%{"workspace" => workspace}) when is_map(workspace), do: Map.keys(workspace)
   defp workspace_files(_scenario), do: []
 
-  defp transcript_summary(events) when is_list(events) do
+  defp trace_summary(events) when is_list(events) do
     Enum.map(events, fn event ->
       %{
         "cursor" => event["cursor"],
@@ -492,6 +501,101 @@ defmodule WardwrightWeb.CounterfactualReplay do
       |> Map.new()
     end)
   end
+
+  defp native_trace_messages(events) when is_list(events) do
+    events
+    |> Enum.reduce({[], [], %{}}, fn event, {messages, pending_tool_calls, call_ids_by_tool} ->
+      case {event["type"], get_in(event, ["tool", "name"])} do
+        {"tool.call", name} when is_binary(name) ->
+          call_id = native_tool_call_id(event)
+          args = get_in(event, ["tool", "args"]) || %{}
+
+          tool_call = %{
+            "function" => %{
+              "arguments" => JSON.encode!(args),
+              "name" => name
+            },
+            "id" => call_id,
+            "type" => "function"
+          }
+
+          {messages, pending_tool_calls ++ [tool_call],
+           Map.update(call_ids_by_tool, name, [call_id], &(&1 ++ [call_id]))}
+
+        {"tool.result", name} when is_binary(name) ->
+          case pop_tool_call_id(call_ids_by_tool, name) do
+            {:ok, call_id, next_call_ids_by_tool} ->
+              messages = flush_pending_tool_calls(messages, pending_tool_calls)
+              result = get_in(event, ["tool", "result"]) || %{}
+
+              message = %{
+                "content" => JSON.encode!(result),
+                "name" => name,
+                "role" => "tool",
+                "tool_call_id" => call_id
+              }
+
+              {messages ++ [message], [], next_call_ids_by_tool}
+
+            :error ->
+              {messages, pending_tool_calls, call_ids_by_tool}
+          end
+
+        _ ->
+          {messages, pending_tool_calls, call_ids_by_tool}
+      end
+    end)
+    |> then(fn {messages, _pending_tool_calls, _call_ids_by_tool} -> messages end)
+  end
+
+  defp flush_pending_tool_calls(messages, []), do: messages
+
+  defp flush_pending_tool_calls(messages, pending_tool_calls) do
+    messages ++ [%{"role" => "assistant", "tool_calls" => pending_tool_calls}]
+  end
+
+  defp pop_tool_call_id(call_ids_by_tool, name) do
+    case Map.get(call_ids_by_tool, name, []) do
+      [call_id | rest] -> {:ok, call_id, Map.put(call_ids_by_tool, name, rest)}
+      [] -> :error
+    end
+  end
+
+  defp native_tool_call_id(event) do
+    suffix =
+      (event["sequence"] || event["cursor"] || System.unique_integer([:positive]))
+      |> to_string()
+      |> String.replace(~r/[^A-Za-z0-9_-]/, "_")
+
+    "call_" <> suffix
+  end
+
+  defp put_tools_if_present(request, %{"tools" => tools}) when is_list(tools) and tools != [] do
+    native_tools =
+      tools
+      |> Enum.map(&native_tool_definition/1)
+      |> Enum.reject(&is_nil/1)
+
+    case native_tools do
+      [] -> request
+      _ -> Map.put(request, "tools", native_tools)
+    end
+  end
+
+  defp put_tools_if_present(request, _scenario), do: request
+
+  defp native_tool_definition(%{"name" => name}) when is_binary(name) do
+    %{
+      "function" => %{
+        "description" => "Recorded agent tool available during counterfactual continuation.",
+        "name" => name,
+        "parameters" => %{"additionalProperties" => true, "type" => "object"}
+      },
+      "type" => "function"
+    }
+  end
+
+  defp native_tool_definition(_tool), do: nil
 
   defp compact_tool_result(result) when is_map(result) do
     result

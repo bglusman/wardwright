@@ -62,7 +62,7 @@ defmodule Wardwright.PublicApiTest do
     assert {true, message, ^session_id, fork_point, events} =
              WardwrightWeb.ControlDebuggerData.load_transcript_for_receipt(receipt_id)
 
-    assert message =~ "Loaded 4 transcript event(s)"
+    assert message =~ "Loaded 4 trace event(s)"
     assert fork_point =~ "#{session_id}:#{receipt_id}:3"
 
     assert Enum.any?(events, fn {_cursor, _sequence, type, label, detail, recommendation} ->

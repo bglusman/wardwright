@@ -62,6 +62,10 @@ run = [
   "cd app && mix clean",
 ]
 
+[tasks."mutation:counterfactual"]
+description = "Run focused Muex checks for the counterfactual replay runtime; do not run concurrently with mix test"
+run = "cd app && MIX_ENV=test mix muex --files 'lib/wardwright_web/counterfactual_replay.ex' --test-paths 'test/counterfactual_replay_acceptance_test.exs,test/counterfactual_replay_property_test.exs,test/workbench_test.exs' --max-mutations 40 --fail-at 80 && mix clean"
+
 [tasks."run:app"]
 description = "Run app on 127.0.0.1:8791"
 env = { WARDWRIGHT_BIND = "127.0.0.1:8791", WARDWRIGHT_ALLOW_TEST_CREDENTIALS = "1" }
