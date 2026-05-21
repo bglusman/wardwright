@@ -42,6 +42,7 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert conn.resp_body =~ "/assets/wardwright_state_graph.js"
     assert conn.resp_body =~ "/admin/socket/websocket"
     assert conn.resp_body =~ "page=workbench"
+    assert Plug.Conn.get_resp_header(conn, "cache-control") == ["no-store"]
     refute conn.resp_body =~ "Wardwright Lustre Workbench Spike"
   end
 
@@ -144,6 +145,9 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert json =~ "Model authoring"
     assert json =~ "Policy projection"
     assert json =~ "Fixture"
+    assert json =~ "/admin"
+    assert json =~ "/admin?view=model_access"
+    assert json =~ "/admin?view=control_debugger"
     refute json =~ "topbar-actions"
 
     for implementation_label <- [
@@ -174,6 +178,8 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert json =~ "Debug recording"
     assert json =~ "Receipt store"
     assert json =~ "Create Key"
+    assert json =~ "/admin?model=coding-balanced"
+    assert json =~ "/admin?view=control_debugger&model=coding-balanced"
     refute json =~ "Legacy workbench (deprecated)"
     refute json =~ ~s(href="/policies")
     refute json =~ "Lustre Workbench"
@@ -198,6 +204,8 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert json =~ "Simulator cases:"
     assert json =~ "VCR replay"
     assert json =~ "Explain receipt"
+    assert json =~ "/admin"
+    assert json =~ "/admin?view=model_access"
     refute json =~ "Phoenix.LiveView"
 
     WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
@@ -222,6 +230,35 @@ defmodule WardwrightWeb.WorkbenchTest do
              WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
 
     assert json =~ "query-selected-model"
+    assert json =~ "/admin?model=query-selected-model"
+    assert json =~ "/admin?view=model_access&model=query-selected-model"
+    assert json =~ "/admin?view=control_debugger&model=query-selected-model"
+
+    WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
+  end
+
+  test "admin transport preserves selected model on debugger fallback links" do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "debugger-selected-model")
+
+    assert {:ok, _config} = Wardwright.put_model_config(config)
+
+    assert {:ok, state} =
+             WardwrightWeb.LustreWorkbenchSocket.init(%{
+               connect_info: %{session: %{}},
+               params: %{"model" => "debugger-selected-model", "page" => "control_debugger"}
+             })
+
+    assert_receive {ref, message} when is_tuple(message), 1_000
+
+    assert {:push, {:text, json}, _state} =
+             WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
+
+    assert json =~ "Control debugger"
+    assert json =~ "/admin?model=debugger-selected-model"
+    assert json =~ "/admin?view=model_access&model=debugger-selected-model"
+    assert json =~ "/admin?view=control_debugger&model=debugger-selected-model"
 
     WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
   end
@@ -382,10 +419,14 @@ defmodule WardwrightWeb.WorkbenchTest do
            )
   end
 
-  test "admin shell keeps selected model synced between access and workbench pages" do
+  test "admin shell preserves selected model in workbench fallback link" do
     put_cow_transform_model_config()
 
-    assert :wardwright@lustre_admin_test_support.selecting_model_access_model_syncs_workbench(
+    assert :wardwright@lustre_admin_test_support.selecting_model_access_model_updates_workbench_href(
+             "cow-transform-workbench"
+           )
+
+    assert :wardwright@lustre_admin_test_support.workbench_deep_link_uses_selected_model(
              "cow-transform-workbench",
              "system/wardwright_policy_reminder: Include a small ASCII cow"
            )
@@ -677,6 +718,16 @@ defmodule WardwrightWeb.WorkbenchTest do
            )
   end
 
+  test "control debugger exposes counterfactual fork workflow before runtime is implemented" do
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Counterfactual fork")
+
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Replay, change policy, continue")
+
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains(
+             "Not active yet. This needs opt-in transcript recording"
+           )
+  end
+
   test "control debugger receipt id text input is controlled" do
     assert :wardwright@lustre_control_debugger_test_support.receipt_text_input_is_controlled("manual_receipt_id")
   end
@@ -713,7 +764,7 @@ defmodule WardwrightWeb.WorkbenchTest do
   test "Gleam component starts as a real Lustre server component" do
     assert {:ok, component} =
              :wardwright@lustre_workbench.component()
-             |> :lustre.start_server_component(nil)
+             |> :lustre.start_server_component("")
 
     :lustre.send(component, :lustre.shutdown())
   end

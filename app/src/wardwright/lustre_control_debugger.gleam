@@ -2,7 +2,7 @@ import gleam/list
 import gleam/string
 import lustre
 import lustre/attribute.{
-  attribute, class, id, name, placeholder, selected, type_, value,
+  attribute, class, disabled, id, name, placeholder, selected, type_, value,
 }
 import lustre/element.{type Element, text}
 import lustre/element/html
@@ -186,6 +186,7 @@ pub fn panel(model: Model) -> Element(Msg) {
     html.div([class("debugger-actions")], [
       import_card(model),
       replay_card(model),
+      counterfactual_card(model),
     ]),
   ])
 }
@@ -289,6 +290,45 @@ fn replay_card(model: Model) -> Element(Msg) {
     ]),
     status_text(model.replay_status, model.replay_error),
     replay_facts(model),
+  ])
+}
+
+fn counterfactual_card(model: Model) -> Element(Msg) {
+  html.article([class("panel debugger-card counterfactual-card")], [
+    html.div([class("panel-heading")], [
+      html.div([], [
+        html.span([], [text("Counterfactual fork")]),
+        html.strong([], [text("Replay, change policy, continue")]),
+      ]),
+      badge.badge([badge.variant(badge.Secondary)], [text("contract")]),
+    ]),
+    html.ol([class("debugger-steps")], [
+      html.li([], [
+        text("Load a full-session transcript for the selected receipt."),
+      ]),
+      html.li([], [
+        text("Pick the failed event cursor before the unsafe tool call."),
+      ]),
+      html.li([], [text("Apply a policy overlay, then continue the fork.")]),
+      html.li([], [
+        text("Compare original and forked outcomes with receipt evidence."),
+      ]),
+    ]),
+    button.button(
+      [
+        button.variant(button.Ghost),
+        type_("button"),
+        disabled(True),
+      ],
+      [text("Fork from receipt")],
+    ),
+    html.small([class("debugger-note")], [
+      text(
+        "Not active yet. This needs opt-in transcript recording, append-only transcript storage, replay-to-cursor, fork, continuation, and comparison APIs. Selected receipt: "
+        <> blank_default(model.receipt_id, "none selected")
+        <> ".",
+      ),
+    ]),
   ])
 }
 
@@ -396,7 +436,7 @@ pub fn styles() -> String {
   }
   .debugger-actions {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 14px;
   }
   .debugger-card {
@@ -432,6 +472,16 @@ pub fn styles() -> String {
   .debugger-facts dd {
     margin: 0;
     font-weight: 800;
+  }
+  .debugger-steps {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding-left: 18px;
+    color: var(--muted-foreground);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.35;
   }
   .fixture-status {
     color: #16605a;

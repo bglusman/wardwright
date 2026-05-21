@@ -312,7 +312,7 @@ fn start() {
     update: lustre_workbench.update,
     view: lustre_workbench.view,
   )
-  |> simulate.start(Nil)
+  |> simulate.start("")
 }
 
 fn change_select(simulation, control_id: String, selected_id: String) {

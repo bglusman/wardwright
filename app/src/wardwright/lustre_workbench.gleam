@@ -241,8 +241,11 @@ pub fn component() {
   lustre.simple(init, update, view)
 }
 
-pub fn init(_flags: Nil) -> Model {
-  let model_id = external_default_model_id()
+pub fn init(selected_model_id: String) -> Model {
+  let model_id = case selected_model_id {
+    "" -> external_default_model_id()
+    _ -> selected_model_id
+  }
   let pattern_id = external_default_pattern_id(model_id)
   let fixture_id = default_fixture_id(pattern_id, model_id)
   let #(user_input, model_response, retry_responses) =

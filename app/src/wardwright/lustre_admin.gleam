@@ -19,7 +19,6 @@ pub type Model {
 }
 
 pub type Msg {
-  Navigate(lustre_shell.Page)
   WorkbenchMsg(lustre_workbench.Msg)
   ModelAccessMsg(lustre_model_access.Msg)
   ControlDebuggerMsg(lustre_control_debugger.Msg)
@@ -35,7 +34,7 @@ pub fn init(flags: String) -> Model {
 
   Model(
     page: page,
-    workbench: lustre_workbench.init(Nil),
+    workbench: lustre_workbench.init(selected_model),
     model_access: lustre_model_access.init(selected_model),
     control_debugger: lustre_control_debugger.init(Nil),
   )
@@ -43,7 +42,6 @@ pub fn init(flags: String) -> Model {
 
 pub fn update(model: Model, msg: Msg) -> Model {
   case msg {
-    Navigate(page) -> Model(..model, page: page)
     WorkbenchMsg(msg) -> {
       let workbench = lustre_workbench.update(model.workbench, msg)
 
@@ -101,9 +99,9 @@ pub fn view(model: Model) -> Element(Msg) {
     html.style([], styles()),
     lustre_shell.admin_sidebar(
       model.page,
+      current_model_id(model),
       "Admin",
       sidebar_controls(model),
-      Navigate,
     ),
     case model.page {
       lustre_shell.Workbench ->
@@ -133,14 +131,23 @@ fn sidebar_controls(model: Model) -> List(Element(Msg)) {
   }
 }
 
+fn current_model_id(model: Model) -> String {
+  case model.page {
+    lustre_shell.Workbench -> model.workbench.model_id
+    lustre_shell.ModelAccess -> model.model_access.model_id
+    lustre_shell.ControlDebugger -> model.workbench.model_id
+  }
+}
+
 fn selected_page(flags: String) -> lustre_shell.Page {
   case flags {
     "control_debugger" -> lustre_shell.ControlDebugger
     "model_access" -> lustre_shell.ModelAccess
     _ ->
-      case string.starts_with(flags, "model_access:") {
-        True -> lustre_shell.ModelAccess
-        False -> lustre_shell.Workbench
+      case string.split(flags, ":") {
+        ["model_access", _model_id] -> lustre_shell.ModelAccess
+        ["control_debugger", _model_id] -> lustre_shell.ControlDebugger
+        _ -> lustre_shell.Workbench
       }
   }
 }
@@ -148,6 +155,8 @@ fn selected_page(flags: String) -> lustre_shell.Page {
 fn selected_model(flags: String) -> String {
   case string.split(flags, ":") {
     ["model_access", model_id] -> model_id
+    ["control_debugger", model_id] -> model_id
+    ["workbench", model_id] -> model_id
     _ -> ""
   }
 }

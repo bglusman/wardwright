@@ -48,6 +48,7 @@ defmodule Wardwright.PolicyReplayTest do
     encoded_vcr = Jason.encode!(vcr)
     refute encoded_vcr =~ "Synthetic private prompt"
     refute encoded_vcr =~ "Mock Wardwright response"
+    refute Map.has_key?(vcr, "full_session")
   end
 
   test "full-session VCR mode records request and response payloads only when explicitly enabled" do

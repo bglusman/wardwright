@@ -39,6 +39,12 @@ defmodule WardwrightWeb.LustreWorkbenchSocket do
   defp initial_flags(%{params: %{"model" => model, "page" => "model_access"}}) when is_binary(model),
     do: "model_access:" <> model
 
+  defp initial_flags(%{params: %{"model" => model, "page" => "control_debugger"}}) when is_binary(model),
+    do: "control_debugger:" <> model
+
+  defp initial_flags(%{params: %{"model" => model, "page" => "workbench"}}) when is_binary(model),
+    do: "workbench:" <> model
+
   defp initial_flags(%{params: %{"page" => "model_access"}}), do: "model_access"
   defp initial_flags(%{params: %{"page" => "control_debugger"}}), do: "control_debugger"
 

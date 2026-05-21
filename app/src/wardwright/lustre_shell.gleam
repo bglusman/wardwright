@@ -1,7 +1,6 @@
 import lustre/attribute.{attribute, class}
 import lustre/element.{type Element, element, text}
 import lustre/element/html
-import lustre/event
 
 pub type Page {
   Workbench
@@ -48,9 +47,9 @@ pub fn sidebar(
 
 pub fn admin_sidebar(
   active_page: Page,
+  selected_model: String,
   subtitle: String,
   children: List(Element(msg)),
-  to_msg: fn(Page) -> msg,
 ) -> Element(msg) {
   html.aside([class("rail")], [
     html.div([class("brand")], [
@@ -61,23 +60,23 @@ pub fn admin_sidebar(
       ]),
     ]),
     element("nav", [class("rail-nav")], [
-      rail_button(
+      rail_admin_link(
         "Workbench",
         "Run and inspect registered models.",
+        admin_href(Workbench, selected_model),
         active_page == Workbench,
-        to_msg(Workbench),
       ),
-      rail_button(
+      rail_admin_link(
         "Model management",
         "Configure keys, access, and VCR capture.",
+        admin_href(ModelAccess, selected_model),
         active_page == ModelAccess,
-        to_msg(ModelAccess),
       ),
-      rail_button(
+      rail_admin_link(
         "Control debugger",
         "Explain receipts and save simulator cases.",
+        admin_href(ControlDebugger, selected_model),
         active_page == ControlDebugger,
-        to_msg(ControlDebugger),
       ),
     ]),
     ..children
@@ -106,27 +105,43 @@ fn rail_link(
   )
 }
 
-fn rail_button(
+fn rail_admin_link(
   label: String,
   description: String,
+  href: String,
   active: Bool,
-  msg: msg,
 ) -> Element(msg) {
   element(
-    "button",
+    "a",
     [
       class(case active {
         True -> "active"
         False -> ""
       }),
-      attribute("type", "button"),
-      event.on_click(msg),
+      attribute("href", href),
     ],
     [
       html.strong([], [text(label)]),
       html.span([], [text(description)]),
     ],
   )
+}
+
+fn admin_href(page: Page, selected_model: String) -> String {
+  let model_query = case selected_model {
+    "" -> ""
+    _ -> "&model=" <> selected_model
+  }
+
+  case page {
+    Workbench ->
+      case selected_model {
+        "" -> "/admin"
+        _ -> "/admin?model=" <> selected_model
+      }
+    ModelAccess -> "/admin?view=model_access" <> model_query
+    ControlDebugger -> "/admin?view=control_debugger" <> model_query
+  }
 }
 
 pub fn styles() -> String {

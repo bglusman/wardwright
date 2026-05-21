@@ -7,6 +7,9 @@ defmodule WardwrightWeb.LustreWorkbenchController do
     conn = fetch_query_params(conn)
 
     conn
+    |> put_resp_header("cache-control", "no-store")
+    |> put_resp_header("pragma", "no-cache")
+    |> put_resp_header("expires", "0")
     |> put_resp_content_type("text/html")
     |> html(
       page_html(
