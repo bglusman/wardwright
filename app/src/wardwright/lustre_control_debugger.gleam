@@ -21,6 +21,9 @@ type ReceiptOption =
 type ReplayFact =
   #(String, String)
 
+type TranscriptEvent =
+  #(String, String, String, String, String, String)
+
 pub type Model {
   Model(
     receipt_id: String,
@@ -32,6 +35,14 @@ pub type Model {
     replay_status: String,
     replay_error: String,
     replay_facts: List(ReplayFact),
+    transcript_session_id: String,
+    transcript_status: String,
+    transcript_error: String,
+    selected_fork_point: String,
+    transcript_events: List(TranscriptEvent),
+    fork_replay_status: String,
+    fork_replay_error: String,
+    fork_replay_facts: List(ReplayFact),
     counterfactual_status: String,
     counterfactual_error: String,
     counterfactual_facts: List(ReplayFact),
@@ -46,6 +57,9 @@ pub type Msg {
   ImportReceipt
   ReplayReceipt
   RunCounterfactualDemo
+  LoadTranscript
+  SelectForkPoint(String)
+  ReplayToForkPoint
 }
 
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "pattern_options")
@@ -75,6 +89,17 @@ fn external_replay_receipt(
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "counterfactual_facts")
 fn external_counterfactual_facts() -> List(ReplayFact)
 
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "load_transcript_for_receipt")
+fn external_load_transcript_for_receipt(
+  receipt_id: String,
+) -> #(Bool, String, String, String, List(TranscriptEvent))
+
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "replay_to_fork_point")
+fn external_replay_to_fork_point(
+  session_id: String,
+  fork_point: String,
+) -> #(Bool, String, List(ReplayFact))
+
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "run_counterfactual_demo")
 fn external_run_counterfactual_demo() -> #(
   Bool,
@@ -101,6 +126,14 @@ pub fn init(_flags: Nil) -> Model {
     replay_status: "",
     replay_error: "",
     replay_facts: [],
+    transcript_session_id: "",
+    transcript_status: "",
+    transcript_error: "",
+    selected_fork_point: "",
+    transcript_events: [],
+    fork_replay_status: "",
+    fork_replay_error: "",
+    fork_replay_facts: [],
     counterfactual_status: "",
     counterfactual_error: "",
     counterfactual_facts: external_counterfactual_facts(),
@@ -119,6 +152,14 @@ pub fn update(model: Model, msg: Msg) -> Model {
         replay_status: "",
         replay_error: "",
         replay_facts: [],
+        transcript_session_id: "",
+        transcript_status: "",
+        transcript_error: "",
+        selected_fork_point: "",
+        transcript_events: [],
+        fork_replay_status: "",
+        fork_replay_error: "",
+        fork_replay_facts: [],
         counterfactual_status: "",
         counterfactual_error: "",
         counterfactual_facts: external_counterfactual_facts(),
@@ -183,6 +224,14 @@ pub fn update(model: Model, msg: Msg) -> Model {
           Model(
             ..model,
             receipt_id: receipt_id,
+            transcript_session_id: "",
+            transcript_status: "",
+            transcript_error: "",
+            selected_fork_point: "",
+            transcript_events: [],
+            fork_replay_status: "",
+            fork_replay_error: "",
+            fork_replay_facts: [],
             counterfactual_status: message,
             counterfactual_error: "",
             counterfactual_facts: facts,
@@ -193,6 +242,72 @@ pub fn update(model: Model, msg: Msg) -> Model {
             counterfactual_status: "",
             counterfactual_error: message,
             counterfactual_facts: external_counterfactual_facts(),
+          )
+      }
+    }
+
+    LoadTranscript -> {
+      let #(ok, message, session_id, fork_point, events) =
+        external_load_transcript_for_receipt(model.receipt_id)
+
+      case ok {
+        True ->
+          Model(
+            ..model,
+            transcript_session_id: session_id,
+            transcript_status: message,
+            transcript_error: "",
+            selected_fork_point: fork_point,
+            transcript_events: events,
+            fork_replay_status: "",
+            fork_replay_error: "",
+            fork_replay_facts: [],
+          )
+        False ->
+          Model(
+            ..model,
+            transcript_session_id: "",
+            transcript_status: "",
+            transcript_error: message,
+            selected_fork_point: "",
+            transcript_events: [],
+            fork_replay_status: "",
+            fork_replay_error: "",
+            fork_replay_facts: [],
+          )
+      }
+    }
+
+    SelectForkPoint(fork_point) ->
+      Model(
+        ..model,
+        selected_fork_point: fork_point,
+        fork_replay_status: "",
+        fork_replay_error: "",
+        fork_replay_facts: [],
+      )
+
+    ReplayToForkPoint -> {
+      let #(ok, message, facts) =
+        external_replay_to_fork_point(
+          model.transcript_session_id,
+          model.selected_fork_point,
+        )
+
+      case ok {
+        True ->
+          Model(
+            ..model,
+            fork_replay_status: message,
+            fork_replay_error: "",
+            fork_replay_facts: facts,
+          )
+        False ->
+          Model(
+            ..model,
+            fork_replay_status: "",
+            fork_replay_error: message,
+            fork_replay_facts: [],
           )
       }
     }
@@ -231,6 +346,7 @@ pub fn panel(model: Model) -> Element(Msg) {
       replay_card(model),
       counterfactual_card(model),
     ]),
+    transcript_card(model),
   ])
 }
 
@@ -350,7 +466,7 @@ fn counterfactual_card(model: Model) -> Element(Msg) {
         text("Load a full-session transcript for the selected receipt."),
       ]),
       html.li([], [
-        text("Pick the failed event cursor before the unsafe tool call."),
+        text("Pick a fork point before the unsafe tool call."),
       ]),
       html.li([], [text("Apply a policy overlay, then continue the fork.")]),
       html.li([], [
@@ -370,9 +486,9 @@ fn counterfactual_card(model: Model) -> Element(Msg) {
         [
           button.variant(button.Ghost),
           type_("button"),
-          disabled(True),
+          event.on_click(LoadTranscript),
         ],
-        [text("Fork from receipt")],
+        [text("Load selected receipt")],
       ),
     ]),
     status_text(model.counterfactual_status, model.counterfactual_error),
@@ -387,6 +503,109 @@ fn counterfactual_card(model: Model) -> Element(Msg) {
   ])
 }
 
+fn transcript_card(model: Model) -> Element(Msg) {
+  html.article([class("panel transcript-card")], [
+    html.div([class("panel-heading")], [
+      html.div([], [
+        html.span([], [text("Transcript inspector")]),
+        html.strong([], [text(transcript_heading(model))]),
+      ]),
+      badge.badge([badge.variant(badge.Outline)], [text("fork points")]),
+    ]),
+    html.div([class("button-row")], [
+      button.button(
+        [
+          button.variant(button.Default),
+          type_("button"),
+          event.on_click(LoadTranscript),
+        ],
+        [text("Load transcript")],
+      ),
+      button.button(
+        [
+          button.variant(button.Ghost),
+          type_("button"),
+          event.on_click(ReplayToForkPoint),
+          disabled(model.selected_fork_point == ""),
+        ],
+        [text("Replay to fork point")],
+      ),
+    ]),
+    status_text(model.transcript_status, model.transcript_error),
+    fork_point_summary(model),
+    transcript_events(model),
+    status_text(model.fork_replay_status, model.fork_replay_error),
+    replay_point_facts(model),
+  ])
+}
+
+fn transcript_heading(model: Model) -> String {
+  case model.transcript_session_id {
+    "" -> "Choose a receipt, then load its session"
+    session_id -> session_id
+  }
+}
+
+fn fork_point_summary(model: Model) -> Element(Msg) {
+  case model.selected_fork_point {
+    "" ->
+      html.small([class("debugger-note")], [
+        text(
+          "No fork point selected yet. Load a transcript to choose where replay should stop.",
+        ),
+      ])
+    fork_point ->
+      html.small([class("debugger-note")], [
+        text("Selected fork point: before event " <> fork_point <> "."),
+      ])
+  }
+}
+
+fn transcript_events(model: Model) -> Element(Msg) {
+  case model.transcript_events {
+    [] ->
+      html.div([class("transcript-empty")], [
+        text("No transcript loaded."),
+      ])
+    events ->
+      html.div(
+        [class("transcript-events")],
+        list.map(events, transcript_event(model.selected_fork_point)),
+      )
+  }
+}
+
+fn transcript_event(selected_fork_point: String) {
+  fn(event_row: TranscriptEvent) -> Element(Msg) {
+    let #(fork_point, sequence, event_type, label, detail, recommendation) =
+      event_row
+
+    html.button(
+      [
+        type_("button"),
+        class(case selected_fork_point == fork_point {
+          True -> "transcript-event selected"
+          False -> "transcript-event"
+        }),
+        event.on_click(SelectForkPoint(fork_point)),
+      ],
+      [
+        html.span([class("transcript-event-sequence")], [
+          text("#" <> sequence),
+        ]),
+        html.span([class("transcript-event-main")], [
+          html.strong([], [text(label)]),
+          html.small([], [text(detail)]),
+          html.small([class("transcript-event-recommendation")], [
+            text(recommendation),
+          ]),
+        ]),
+        html.span([class("transcript-event-type")], [text(event_type)]),
+      ],
+    )
+  }
+}
+
 fn counterfactual_facts(model: Model) -> Element(Msg) {
   case model.counterfactual_facts {
     [] -> html.div([], [])
@@ -396,6 +615,13 @@ fn counterfactual_facts(model: Model) -> Element(Msg) {
 
 fn replay_facts(model: Model) -> Element(Msg) {
   case model.replay_facts {
+    [] -> html.div([], [])
+    facts -> html.dl([class("debugger-facts")], list.map(facts, fact))
+  }
+}
+
+fn replay_point_facts(model: Model) -> Element(Msg) {
+  case model.fork_replay_facts {
     [] -> html.div([], [])
     facts -> html.dl([class("debugger-facts")], list.map(facts, fact))
   }
@@ -505,16 +731,21 @@ pub fn styles() -> String {
     display: grid;
     gap: 12px;
   }
-  .debugger-card .panel-heading {
+  .transcript-card {
+    display: grid;
+    gap: 14px;
+  }
+  .control-debugger-workspace .panel-heading {
     flex-wrap: wrap;
     gap: 8px;
   }
-  .debugger-card .panel-heading > div {
+  .control-debugger-workspace .panel-heading > div {
     display: grid;
-    gap: 2px;
+    gap: 4px;
     min-width: 0;
   }
-  .debugger-card .panel-heading strong {
+  .control-debugger-workspace .panel-heading strong {
+    display: block;
     line-height: 1.1;
     overflow-wrap: anywhere;
   }
@@ -559,6 +790,60 @@ pub fn styles() -> String {
     font-weight: 700;
     line-height: 1.35;
   }
+  .transcript-empty {
+    padding: 14px;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    color: var(--muted-foreground);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .transcript-events {
+    display: grid;
+    gap: 8px;
+  }
+  .transcript-event {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) minmax(110px, max-content);
+    gap: 12px;
+    align-items: start;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--foreground);
+    text-align: left;
+    cursor: pointer;
+  }
+  .transcript-event.selected {
+    border-color: #16605a;
+    box-shadow: 0 0 0 2px rgba(22, 96, 90, 0.14);
+  }
+  .transcript-event-sequence {
+    color: var(--muted-foreground);
+    font-weight: 800;
+  }
+  .transcript-event-main {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+  .transcript-event-main small {
+    color: var(--muted-foreground);
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+  .transcript-event-recommendation {
+    color: #16605a !important;
+  }
+  .transcript-event-type {
+    color: var(--muted-foreground);
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    overflow-wrap: anywhere;
+  }
   .fixture-status {
     color: #16605a;
     font-size: 13px;
@@ -569,6 +854,9 @@ pub fn styles() -> String {
   }
   @media (max-width: 860px) {
     .control-debugger-app, .debugger-actions {
+      grid-template-columns: 1fr;
+    }
+    .transcript-event {
       grid-template-columns: 1fr;
     }
   }

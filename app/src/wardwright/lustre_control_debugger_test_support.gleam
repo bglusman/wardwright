@@ -67,6 +67,35 @@ pub fn running_counterfactual_demo_shows_outcome() -> Bool {
   && view_contains(simulation, "Selected receipt: rcpt_")
 }
 
+pub fn loading_transcript_from_demo_receipt_shows_fork_points() -> Bool {
+  let simulation =
+    start()
+    |> click_button("Run deterministic demo")
+    |> click_button("Load transcript")
+
+  view_contains(simulation, "Loaded 9 transcript event(s)")
+  && view_contains(simulation, "Transcript inspector")
+  && view_contains(simulation, "Tool call: edit_file")
+  && view_contains(simulation, "Suggested fork point")
+  && view_contains(simulation, "before mutating app.txt")
+}
+
+pub fn replaying_to_loaded_fork_point_shows_no_provider_call() -> Bool {
+  let simulation =
+    start()
+    |> click_button("Run deterministic demo")
+    |> click_button("Load transcript")
+    |> click_button("Replay to fork point")
+
+  view_contains(
+    simulation,
+    "Replayed to selected fork point without calling a provider",
+  )
+  && view_contains(simulation, "Events replayed")
+  && view_contains(simulation, "Provider called")
+  && view_contains(simulation, "no")
+}
+
 fn start() {
   simulate.simple(
     init: lustre_control_debugger.init,

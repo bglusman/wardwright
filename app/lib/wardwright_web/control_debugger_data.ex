@@ -130,6 +130,59 @@ defmodule WardwrightWeb.ControlDebuggerData do
     end
   end
 
+  def load_transcript_for_receipt(receipt_id) do
+    receipt_id = receipt_id |> to_string() |> String.trim()
+
+    with {:receipt_id, false} <- {:receipt_id, receipt_id == ""},
+         {:receipt, receipt} when is_map(receipt) <- {:receipt, Wardwright.ReceiptStore.get(receipt_id)},
+         {:session_id, session_id} when is_binary(session_id) and session_id != "" <-
+           {:session_id, receipt_session_id(receipt)},
+         {:ok, transcript} <- WardwrightWeb.CounterfactualReplay.transcript(session_id),
+         events when is_list(events) <- transcript["events"] do
+      fork_point = suggested_fork_point(events)
+
+      {true, "Loaded #{length(events)} transcript event(s) for #{receipt_id}.", session_id, fork_point,
+       Enum.map(events, &transcript_event_summary/1)}
+    else
+      {:receipt_id, true} ->
+        {false, "Choose a receipt with a full-session transcript.", "", "", []}
+
+      {:receipt, _} ->
+        {false, "Could not find receipt #{receipt_id}.", "", "", []}
+
+      {:session_id, _} ->
+        {false, "Receipt #{receipt_id} does not point to a transcript session.", "", "", []}
+
+      {:error, message} ->
+        {false, "Could not load transcript: #{message}", "", "", []}
+
+      _other ->
+        {false, "Could not load transcript for #{receipt_id}.", "", "", []}
+    end
+  end
+
+  def replay_to_fork_point(session_id, fork_point) do
+    session_id = session_id |> to_string() |> String.trim()
+    fork_point = fork_point |> to_string() |> String.trim()
+
+    with {:inputs, false} <- {:inputs, session_id == "" or fork_point == ""},
+         {:ok, replay} <- WardwrightWeb.CounterfactualReplay.replay_until(session_id, fork_point) do
+      {true, "Replayed to selected fork point without calling a provider.",
+       [
+         {"Session", replay["session_id"] || session_id},
+         {"Fork point", replay["next_event_cursor"] || fork_point},
+         {"Events replayed", replay |> Map.get("events", []) |> length() |> to_string()},
+         {"Provider called", bool_text(replay["provider_called"])}
+       ]}
+    else
+      {:inputs, true} ->
+        {false, "Load a transcript and choose a fork point first.", []}
+
+      {:error, message} ->
+        {false, "Could not replay to fork point: #{message}", []}
+    end
+  end
+
   def import_receipt_scenario(pattern_id, receipt_id, title) do
     pattern_id = blank_fallback(pattern_id, default_pattern_id())
     receipt_id = receipt_id |> to_string() |> String.trim()
@@ -306,6 +359,110 @@ defmodule WardwrightWeb.ControlDebuggerData do
   end
 
   defp find_bad_edit(_events), do: {:error, "demo transcript did not include events"}
+
+  defp receipt_session_id(receipt) do
+    receipt["run_id"] ||
+      get_in(receipt, ["caller", "session_id", "value"]) ||
+      get_in(receipt, ["caller", "run_id", "value"]) ||
+      get_in(receipt, ["vcr", "full_session", "request", "body", "metadata", "session_id"]) ||
+      get_in(receipt, ["vcr", "full_session", "request", "body", "metadata", "run_id"])
+  end
+
+  defp suggested_fork_point(events) do
+    events
+    |> Enum.find(fn event ->
+      event["type"] == "tool.call" and
+        get_in(event, ["tool", "name"]) == "edit_file"
+    end)
+    |> case do
+      %{"cursor" => cursor} when is_binary(cursor) -> cursor
+      _ -> ""
+    end
+  end
+
+  defp transcript_event_summary(event) when is_map(event) do
+    cursor = event["cursor"] || ""
+    sequence = event["sequence"] |> to_string()
+    type = event["type"] || "event"
+    label = event_label(event)
+    detail = event_detail(event)
+    recommendation = fork_point_recommendation(event)
+
+    {cursor, sequence, type, label, detail, recommendation}
+  end
+
+  defp event_label(%{"type" => "tool.call"} = event) do
+    tool_name = get_in(event, ["tool", "name"]) || "tool"
+    "Tool call: #{tool_name}"
+  end
+
+  defp event_label(%{"type" => "tool.result"} = event) do
+    tool_name = get_in(event, ["tool", "name"]) || "tool"
+    "Tool result: #{tool_name}"
+  end
+
+  defp event_label(%{"type" => "gateway.request"}), do: "Gateway request"
+  defp event_label(%{"type" => "receipt.finalized"}), do: "Receipt finalized"
+  defp event_label(%{"type" => "session.started"}), do: "Session started"
+  defp event_label(%{"type" => "session.forked"}), do: "Session forked"
+  defp event_label(%{"type" => type}) when is_binary(type), do: type
+  defp event_label(_event), do: "Transcript event"
+
+  defp event_detail(%{"type" => "tool.call"} = event) do
+    args = get_in(event, ["tool", "args"]) || %{}
+    path = args["path"]
+
+    case path do
+      path when is_binary(path) and path != "" -> "args: path=#{path}"
+      _ -> "args: #{compact_json(args)}"
+    end
+  end
+
+  defp event_detail(%{"type" => "tool.result"} = event) do
+    result = get_in(event, ["tool", "result"]) || %{}
+    status = result["status"] || result["failure_class"]
+
+    case status do
+      status when is_binary(status) and status != "" -> "result: #{status}"
+      _ -> "result: #{compact_json(result)}"
+    end
+  end
+
+  defp event_detail(%{"type" => "gateway.request"} = event) do
+    "path: #{get_in(event, ["gateway", "path"]) || "unknown"}"
+  end
+
+  defp event_detail(%{"type" => "receipt.finalized"} = event) do
+    "status: #{event["status"] || "unknown"}"
+  end
+
+  defp event_detail(%{"model_id" => model_id, "version" => version}) do
+    "model: #{model_id || "unknown"} / #{version || "unknown"}"
+  end
+
+  defp event_detail(event), do: compact_json(Map.drop(event, ["schema", "cursor", "sequence", "session_id", "type"]))
+
+  defp fork_point_recommendation(%{"type" => "tool.call"} = event) do
+    tool_name = get_in(event, ["tool", "name"]) || ""
+    args = get_in(event, ["tool", "args"]) || %{}
+
+    cond do
+      tool_name == "edit_file" -> "Suggested fork point: before mutating #{args["path"] || "a file"}."
+      tool_name == "run_tests" -> "Possible fork point: before validation."
+      true -> "Can fork before this tool call."
+    end
+  end
+
+  defp fork_point_recommendation(%{"type" => "tool.result"}),
+    do: "Evidence event; usually fork before the matching call."
+
+  defp fork_point_recommendation(_event), do: "Context event."
+
+  defp compact_json(value) do
+    value
+    |> Jason.encode!()
+    |> String.slice(0, 180)
+  end
 
   defp counterfactual_demo_scenario do
     %{

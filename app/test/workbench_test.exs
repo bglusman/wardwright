@@ -740,6 +740,14 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert :wardwright@lustre_control_debugger_test_support.running_counterfactual_demo_shows_outcome()
   end
 
+  test "control debugger loads transcript fork points from the demo receipt" do
+    assert :wardwright@lustre_control_debugger_test_support.loading_transcript_from_demo_receipt_shows_fork_points()
+  end
+
+  test "control debugger replays to the selected fork point without a provider call" do
+    assert :wardwright@lustre_control_debugger_test_support.replaying_to_loaded_fork_point_shows_no_provider_call()
+  end
+
   test "control debugger receipt id text input is controlled" do
     assert :wardwright@lustre_control_debugger_test_support.receipt_text_input_is_controlled("manual_receipt_id")
   end
