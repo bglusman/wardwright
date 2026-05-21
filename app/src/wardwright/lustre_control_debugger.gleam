@@ -269,29 +269,59 @@ pub fn update(model: Model, msg: Msg) -> Model {
       let #(ok, message, receipt_id, facts) = external_run_counterfactual_demo()
 
       case ok {
-        True ->
-          Model(
-            ..model,
-            receipt_id: receipt_id,
-            transcript_session_id: "",
-            transcript_status: "",
-            transcript_error: "",
-            selected_fork_point: "",
-            policy_overlay_json: external_default_policy_overlay_json(),
-            continuation_mode: "scripted_agent",
-            continuation_model_id: external_default_live_model_id(),
-            continuation_model_api_key: "",
-            transcript_events: [],
-            fork_replay_status: "",
-            fork_replay_error: "",
-            fork_replay_facts: [],
-            fork_continue_status: "",
-            fork_continue_error: "",
-            fork_continue_facts: [],
-            counterfactual_status: message,
-            counterfactual_error: "",
-            counterfactual_facts: facts,
-          )
+        True -> {
+          let #(loaded, load_message, session_id, fork_point, events) =
+            external_load_transcript_for_receipt(receipt_id)
+
+          case loaded {
+            True ->
+              Model(
+                ..model,
+                receipt_id: receipt_id,
+                transcript_session_id: session_id,
+                transcript_status: load_message,
+                transcript_error: "",
+                selected_fork_point: fork_point,
+                policy_overlay_json: external_default_policy_overlay_json(),
+                continuation_mode: "scripted_agent",
+                continuation_model_id: external_default_live_model_id(),
+                continuation_model_api_key: "",
+                transcript_events: events,
+                fork_replay_status: "",
+                fork_replay_error: "",
+                fork_replay_facts: [],
+                fork_continue_status: "",
+                fork_continue_error: "",
+                fork_continue_facts: [],
+                counterfactual_status: message,
+                counterfactual_error: "",
+                counterfactual_facts: facts,
+              )
+            False ->
+              Model(
+                ..model,
+                receipt_id: receipt_id,
+                transcript_session_id: "",
+                transcript_status: "",
+                transcript_error: load_message,
+                selected_fork_point: "",
+                policy_overlay_json: external_default_policy_overlay_json(),
+                continuation_mode: "scripted_agent",
+                continuation_model_id: external_default_live_model_id(),
+                continuation_model_api_key: "",
+                transcript_events: [],
+                fork_replay_status: "",
+                fork_replay_error: "",
+                fork_replay_facts: [],
+                fork_continue_status: "",
+                fork_continue_error: "",
+                fork_continue_facts: [],
+                counterfactual_status: message,
+                counterfactual_error: "",
+                counterfactual_facts: facts,
+              )
+          }
+        }
         False ->
           Model(
             ..model,
@@ -622,7 +652,7 @@ fn counterfactual_card(model: Model) -> Element(Msg) {
           type_("button"),
           event.on_click(LoadTranscript),
         ],
-        [text("Load selected receipt")],
+        [text("Load transcript for selected receipt")],
       ),
     ]),
     status_text(model.counterfactual_status, model.counterfactual_error),
@@ -712,13 +742,26 @@ fn transcript_events(model: Model) -> Element(Msg) {
   case model.transcript_events {
     [] ->
       html.div([class("transcript-empty")], [
-        text("No transcript loaded."),
+        text(transcript_empty_message(model)),
       ])
     events ->
       html.div(
         [class("transcript-events")],
         list.map(events, transcript_event(model.selected_fork_point)),
       )
+  }
+}
+
+fn transcript_empty_message(model: Model) -> String {
+  case model.transcript_error {
+    "" ->
+      case model.transcript_status {
+        "" ->
+          "No transcript loaded yet. Run the deterministic demo or choose a full-session receipt, then load its transcript."
+        _ -> "Transcript loaded, but it did not contain any events."
+      }
+    _ ->
+      "Transcript did not load. Check the message above and choose a receipt with full-session recording."
   }
 }
 

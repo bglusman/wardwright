@@ -65,6 +65,9 @@ pub fn running_counterfactual_demo_shows_outcome() -> Bool {
   && view_contains(simulation, "Comparison accepted")
   && view_contains(simulation, "read-before-edit")
   && view_contains(simulation, "Selected receipt: rcpt_")
+  && view_contains(simulation, "Loaded 9 transcript event(s)")
+  && view_contains(simulation, "Tool call: edit_file")
+  && !view_contains(simulation, "No transcript loaded yet")
 }
 
 pub fn loading_transcript_from_demo_receipt_shows_fork_points() -> Bool {
