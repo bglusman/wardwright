@@ -165,7 +165,7 @@ explicit VCR schema.
 Focused evidence:
 
 ```text
-(cd app && mise exec elixir@1.20.0-rc.5-otp-29 -- mix test --only policy_replay)
+(cd app && mise exec elixir@1.20.0-rc.6-otp-29 -- mix test --only policy_replay)
 ```
 
 The tests assert default VCR redaction, explicit full-session payload capture,
