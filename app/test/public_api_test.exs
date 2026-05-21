@@ -73,6 +73,49 @@ defmodule Wardwright.PublicApiTest do
            end)
   end
 
+  test "full-session transcript store failures do not fail gateway requests" do
+    session_id = "unwritable-debug-session-#{System.unique_integer([:positive])}"
+    blocked_store_path = temp_workspace_dir("wardwright-blocked-transcript-store")
+    previous_store_dir = Application.get_env(:wardwright, :counterfactual_transcript_store_dir)
+
+    File.write!(blocked_store_path, "not a directory")
+    Application.put_env(:wardwright, :counterfactual_transcript_store_dir, blocked_store_path)
+
+    on_exit(fn ->
+      restore_env(:counterfactual_transcript_store_dir, previous_store_dir)
+      File.rm_rf!(blocked_store_path)
+    end)
+
+    config =
+      unit_policy_config()
+      |> Map.put("vcr", %{"mode" => "full_session"})
+      |> Map.put("targets", [
+        %{
+          "canned_outputs" => ["Transcript store is unavailable, but the gateway should answer."],
+          "context_window" => 256,
+          "model" => "canned/unwritable-debug",
+          "provider_kind" => "canned_sequence"
+        }
+      ])
+      |> Map.put("dispatchers", [
+        %{"id" => "dispatcher.unwritable-debug", "models" => ["canned/unwritable-debug"]}
+      ])
+      |> Map.put("route_root", "dispatcher.unwritable-debug")
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        "messages" => [%{"content" => "record even when transcript storage is down", "role" => "user"}],
+        "metadata" => %{"run_id" => "run-#{session_id}", "session_id" => session_id},
+        "model" => "unit-model"
+      })
+
+    assert conn.status == 200
+    assert [_receipt_id] = get_resp_header(conn, "x-wardwright-receipt-id")
+    assert {:error, _reason} = WardwrightWeb.CounterfactualReplay.transcript(session_id)
+  end
+
   test "unkeyed internal models are hidden from public model discovery and external chat" do
     config =
       unit_policy_config()
@@ -1239,4 +1282,7 @@ defmodule Wardwright.PublicApiTest do
   defp temp_workspace_dir(prefix) do
     Path.join(System.tmp_dir!(), "#{prefix}-#{System.unique_integer([:positive])}")
   end
+
+  defp restore_env(key, nil), do: Application.delete_env(:wardwright, key)
+  defp restore_env(key, value), do: Application.put_env(:wardwright, key, value)
 end

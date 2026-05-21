@@ -23,10 +23,12 @@ defmodule WardwrightWeb.CounterfactualReplay do
     {:ok,
      %{
        "capabilities" => %{
-         "concurrent_writers" => true,
+         "concurrent_sessions" => true,
+         "concurrent_writers" => false,
          "durable" => true,
          "serialized_global_writer" => false,
-         "serialized_session_writer" => true
+         "serialized_session_writer" => true,
+         "writer_coordination" => "beam_per_session"
        },
        "contract_version" => @schema,
        "default_enabled" => false,
@@ -77,6 +79,12 @@ defmodule WardwrightWeb.CounterfactualReplay do
   def transcript(_session_id), do: {:error, "session_id is required"}
 
   def record_gateway_receipt(receipt) when is_map(receipt) do
+    safely_record_gateway_receipt(fn -> do_record_gateway_receipt(receipt) end)
+  end
+
+  def record_gateway_receipt(_receipt), do: {:error, "receipt must be a JSON object"}
+
+  defp do_record_gateway_receipt(receipt) do
     with {:full_session, true} <- {:full_session, full_session_receipt?(receipt)},
          {:session_id, session_id} when is_binary(session_id) and session_id != "" <-
            {:session_id, receipt_session_id(receipt)},
@@ -102,7 +110,15 @@ defmodule WardwrightWeb.CounterfactualReplay do
     end
   end
 
-  def record_gateway_receipt(_receipt), do: {:error, "receipt must be a JSON object"}
+  defp safely_record_gateway_receipt(fun) do
+    fun.()
+  rescue
+    error ->
+      {:error, "counterfactual transcript recording failed: #{Exception.message(error)}"}
+  catch
+    kind, reason ->
+      {:error, "counterfactual transcript recording failed: #{kind}: #{inspect(reason)}"}
+  end
 
   def replay_until(session_id, cursor) when is_binary(session_id) and is_binary(cursor) do
     with {:ok, events} <- read_events(session_id),

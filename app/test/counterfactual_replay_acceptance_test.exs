@@ -42,9 +42,11 @@ defmodule WardwrightWeb.CounterfactualReplayAcceptanceTest do
     assert {:ok, storage} = apply(@replay_module, :transcript_store_health, [])
     assert storage["kind"] == "append_only_files"
     assert storage["capabilities"]["durable"] == true
-    assert storage["capabilities"]["concurrent_writers"] == true
+    assert storage["capabilities"]["concurrent_sessions"] == true
+    assert storage["capabilities"]["concurrent_writers"] == false
     assert storage["capabilities"]["serialized_global_writer"] == false
     assert storage["capabilities"]["serialized_session_writer"] == true
+    assert storage["capabilities"]["writer_coordination"] == "beam_per_session"
     assert storage["default_enabled"] == false
     assert is_binary(storage["path"])
     assert storage["read_health"] == "ok"
