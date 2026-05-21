@@ -740,6 +740,10 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert :wardwright@lustre_control_debugger_test_support.running_counterfactual_demo_shows_outcome()
   end
 
+  test "control debugger keeps fork actions attached to a loaded transcript event" do
+    assert :wardwright@lustre_control_debugger_test_support.fork_actions_are_contextual_to_loaded_event()
+  end
+
   test "control debugger records a non-tool output contract example from the UI" do
     assert :wardwright@lustre_control_debugger_test_support.output_contract_example_shows_non_tool_fork_point()
   end

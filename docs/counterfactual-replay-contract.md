@@ -144,12 +144,14 @@ availability are not stable CI inputs.
 
 The Control Debugger page now surfaces transcript-store readiness, records
 scripted example sessions, loads transcript events for a selected receipt,
-suggests a fork point, replays to that point without a provider call, and can
-fork/continue with an editable policy overlay. Current examples cover both
-read-before-edit tool ordering and malformed output-contract repair. Continuation
-can run in scripted mode or through a selected live Wardwright model. The UI is
-still not a full policy workbench: semantic policy authoring and artifact diff
-review are deferred.
+suggests a fork point, and opens replay/fork controls directly under the
+selected timeline event. Replaying to that point never calls a provider;
+fork/continue can use an editable policy overlay. Current examples cover both
+read-before-edit tool ordering and malformed output-contract repair, but the
+timeline/fork contract is not tied to unsafe tools. Continuation can run in
+scripted mode or through a selected live Wardwright model. The UI is still not a
+full policy workbench: semantic policy authoring and artifact diff review are
+deferred.
 
 Real Wardwright gateway traffic also participates in this flow when the selected
 model has `vcr.mode = full_session` and the request includes `session_id` or

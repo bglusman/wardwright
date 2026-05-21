@@ -66,7 +66,7 @@ pub fn running_counterfactual_demo_shows_outcome() -> Bool {
   && view_contains(simulation, "read-before-edit")
   && view_contains(simulation, "Selected receipt: rcpt_")
   && view_contains(simulation, "Loaded 9 transcript event(s)")
-  && view_contains(simulation, "Selected fork point")
+  && view_contains(simulation, "Actions for selected event")
   && view_contains(simulation, "Replay selected point")
   && view_contains(simulation, "Continue from selected point")
   && view_contains(
@@ -75,6 +75,21 @@ pub fn running_counterfactual_demo_shows_outcome() -> Bool {
   )
   && view_contains(simulation, "Tool call: edit_file")
   && !view_contains(simulation, "No transcript loaded yet")
+}
+
+pub fn fork_actions_are_contextual_to_loaded_event() -> Bool {
+  let initial = start()
+
+  let loaded =
+    start()
+    |> click_button("Record example session")
+
+  !view_contains(initial, "Replay selected point")
+  && !view_contains(initial, "Continue from selected point")
+  && view_contains(loaded, "Actions for selected event")
+  && view_contains(loaded, "Click a timeline event to move the replay cursor")
+  && view_contains(loaded, "Replay selected point")
+  && view_contains(loaded, "Continue from selected point")
 }
 
 pub fn output_contract_example_shows_non_tool_fork_point() -> Bool {
@@ -209,6 +224,7 @@ pub fn custom_policy_overlay_changes_applied_rule() -> Bool {
 
 pub fn policy_overlay_textarea_is_controlled(overlay_json: String) -> Bool {
   start()
+  |> click_button("Record example session")
   |> input("control_policy_overlay_json", overlay_json)
   |> view_has_textarea_value("control_policy_overlay_json", overlay_json)
 }

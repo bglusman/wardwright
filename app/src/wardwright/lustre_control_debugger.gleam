@@ -1,3 +1,4 @@
+import gleam/int
 import gleam/list
 import gleam/string
 import lustre
@@ -748,7 +749,7 @@ fn transcript_card(model: Model) -> Element(Msg) {
       ),
     ]),
     status_text(model.transcript_status, model.transcript_error),
-    selected_fork_workbench(model),
+    transcript_overview(model),
     transcript_events(model),
   ])
 }
@@ -765,12 +766,16 @@ fn fork_point_summary(model: Model) -> Element(Msg) {
     "" ->
       html.small([class("debugger-note")], [
         text(
-          "No fork point selected yet. Load a transcript to choose where replay should stop.",
+          "No event selected yet. Load a transcript and choose where replay should stop.",
         ),
       ])
     fork_point ->
       html.small([class("debugger-note")], [
-        text("Selected fork point: before event " <> fork_point <> "."),
+        text(
+          "Replay stops before this event; fork and continue starts from the same cursor: "
+          <> fork_point
+          <> ".",
+        ),
       ])
   }
 }
@@ -779,7 +784,7 @@ fn selected_fork_workbench(model: Model) -> Element(Msg) {
   html.section([class("fork-workbench")], [
     html.div([class("fork-workbench-heading")], [
       html.div([], [
-        html.span([], [text("Selected fork point")]),
+        html.span([], [text("Actions for selected event")]),
         html.strong([], [text(blank_default(model.selected_fork_point, "none"))]),
       ]),
       fork_point_summary(model),
@@ -833,6 +838,52 @@ fn continue_action_panel(model: Model) -> Element(Msg) {
   ])
 }
 
+fn transcript_overview(model: Model) -> Element(Msg) {
+  case model.transcript_events {
+    [] -> html.div([], [])
+    events ->
+      html.div([class("transcript-overview")], [
+        html.div([], [
+          html.span([], [text("Events")]),
+          html.strong([], [text(int.to_string(list.length(events)))]),
+        ]),
+        html.div([], [
+          html.span([], [text("Selected")]),
+          html.strong([], [
+            text(selected_event_heading(events, model.selected_fork_point)),
+          ]),
+        ]),
+        html.small([class("debugger-note")], [
+          text(
+            "Click a timeline event to move the replay cursor. The replay and continuation controls open directly under the selected event.",
+          ),
+        ]),
+      ])
+  }
+}
+
+fn selected_event_heading(
+  events: List(TranscriptEvent),
+  selected_fork_point: String,
+) -> String {
+  case selected_fork_point {
+    "" -> "none"
+    cursor ->
+      case
+        list.find(events, fn(event_row) {
+          let #(fork_point, _, _, _, _, _) = event_row
+          fork_point == cursor
+        })
+      {
+        Ok(event_row) -> {
+          let #(_, sequence, _, label, _, _) = event_row
+          "#" <> sequence <> " " <> label
+        }
+        Error(_) -> "cursor not in transcript"
+      }
+  }
+}
+
 fn transcript_events(model: Model) -> Element(Msg) {
   case model.transcript_events {
     [] ->
@@ -842,7 +893,7 @@ fn transcript_events(model: Model) -> Element(Msg) {
     events ->
       html.div(
         [class("transcript-events")],
-        list.map(events, transcript_event(model.selected_fork_point)),
+        list.map(events, transcript_event(model)),
       )
   }
 }
@@ -860,34 +911,40 @@ fn transcript_empty_message(model: Model) -> String {
   }
 }
 
-fn transcript_event(selected_fork_point: String) {
+fn transcript_event(model: Model) {
   fn(event_row: TranscriptEvent) -> Element(Msg) {
     let #(fork_point, sequence, event_type, label, detail, recommendation) =
       event_row
 
-    html.button(
-      [
-        type_("button"),
-        class(case selected_fork_point == fork_point {
-          True -> "transcript-event selected"
-          False -> "transcript-event"
-        }),
-        event.on_click(SelectForkPoint(fork_point)),
-      ],
-      [
-        html.span([class("transcript-event-sequence")], [
-          text("#" <> sequence),
-        ]),
-        html.span([class("transcript-event-main")], [
-          html.strong([], [text(label)]),
-          html.small([], [text(detail)]),
-          html.small([class("transcript-event-recommendation")], [
-            text(recommendation),
+    html.div([class("transcript-event-shell")], [
+      html.button(
+        [
+          type_("button"),
+          class(case model.selected_fork_point == fork_point {
+            True -> "transcript-event selected"
+            False -> "transcript-event"
+          }),
+          event.on_click(SelectForkPoint(fork_point)),
+        ],
+        [
+          html.span([class("transcript-event-sequence")], [
+            text("#" <> sequence),
           ]),
-        ]),
-        html.span([class("transcript-event-type")], [text(event_type)]),
-      ],
-    )
+          html.span([class("transcript-event-main")], [
+            html.strong([], [text(label)]),
+            html.small([], [text(detail)]),
+            html.small([class("transcript-event-recommendation")], [
+              text(recommendation),
+            ]),
+          ]),
+          html.span([class("transcript-event-type")], [text(event_type)]),
+        ],
+      ),
+      case model.selected_fork_point == fork_point {
+        True -> selected_fork_workbench(model)
+        False -> html.div([], [])
+      },
+    ])
   }
 }
 
@@ -1189,6 +1246,29 @@ pub fn styles() -> String {
     font-size: 13px;
     font-weight: 700;
   }
+  .transcript-overview {
+    display: grid;
+    grid-template-columns: minmax(110px, max-content) minmax(180px, max-content) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #f8faf9;
+  }
+  .transcript-overview > div {
+    display: grid;
+    gap: 3px;
+  }
+  .transcript-overview span {
+    color: var(--muted-foreground);
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .transcript-overview strong {
+    overflow-wrap: anywhere;
+  }
   .fork-workbench {
     display: grid;
     gap: 12px;
@@ -1243,6 +1323,13 @@ pub fn styles() -> String {
   .transcript-events {
     display: grid;
     gap: 8px;
+  }
+  .transcript-event-shell {
+    display: grid;
+    gap: 8px;
+  }
+  .transcript-event-shell .fork-workbench {
+    margin-left: 60px;
   }
   .policy-overlay-field textarea {
     min-height: 150px;
@@ -1315,11 +1402,15 @@ pub fn styles() -> String {
     .debugger-actions,
     .continuation-controls,
     .fork-action-grid,
-    .fork-workbench-heading {
+    .fork-workbench-heading,
+    .transcript-overview {
       grid-template-columns: 1fr;
     }
     .transcript-event {
       grid-template-columns: 1fr;
+    }
+    .transcript-event-shell .fork-workbench {
+      margin-left: 0;
     }
   }
   "
