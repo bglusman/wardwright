@@ -200,6 +200,12 @@ Added a reusable Lustre control-debugger component in
 - richer replay facts: recording mode, original provider behavior, replay
   provider behavior, route, policy actions, request shape, selected model, and
   warnings
+- transcript loading for full-session receipts, including event cursors,
+  suggested fork points, and replay-to-cursor without a provider call
+- fork/continue controls with editable policy overlay JSON
+- an explicit continuation mode: deterministic scripted continuation for CI
+  evidence, or live Wardwright-model continuation through `/v1/chat/completions`
+  with the new receipt recorded into the fork transcript
 
 To avoid colliding with the in-flight authoring-agent workbench PR, the
 component is mounted today as a separate admin page at
@@ -211,8 +217,10 @@ workbench or authoring-agent area without moving backend logic.
 
 This is still not a complete time-travel debugger. Importing a receipt creates
 replay evidence and pinned scenario material; replaying a receipt explains
-stored facts without resuming a provider. The UI copy states that live
-counterfactual replay is a later contract.
+stored facts without resuming a provider. Fork continuation can now call a
+configured Wardwright model, but that only proves the gateway continuation
+contract. It does not yet reconnect a real external agent process with all of
+its tool state.
 
 The component uses a new Elixir data boundary instead of reaching directly into
 stores from arbitrary UI code. That makes the component movable, but it also
@@ -229,7 +237,11 @@ Focused evidence:
 
 The workbench tests cover the separate admin route, server-component transport,
 controlled receipt input, receipt import into saved replay evidence, and
-debugger replay facts.
+debugger replay facts. The current focused suite also covers the
+counterfactual debugger path: run deterministic demo, load transcript, replay
+to fork point with no provider call, fork/continue deterministically, validate
+overlay JSON, and continue a fork through a configured Wardwright model with a
+new provider receipt.
 
 ## Track 5: Distilled Failure Scenarios
 

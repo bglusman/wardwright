@@ -16,7 +16,8 @@ Metadata-only receipt replay explains what a stored receipt says Wardwright
 decided. Full-session VCR mode records one request and response payload inside
 one receipt when explicitly enabled. The deterministic counterfactual runtime
 now starts the next layer: a replayable, multi-turn agent transcript that can be
-replayed to a cursor, forked with a policy overlay, continued, and compared.
+replayed to a cursor, forked with a policy overlay, continued either
+deterministically or through a configured Wardwright model, and compared.
 
 ## Acceptance Scenario
 
@@ -63,7 +64,10 @@ with these operations:
   provider.
 - `fork/1`: create an isolated fork from a source session cursor and policy
   overlay.
-- `continue/2`: continue the fork with a live or deterministic runner.
+- `continue/2`: continue the fork with `runner: "scripted_agent"` for
+  deterministic CI evidence or `runner: "wardwright_model"` to call the normal
+  `/v1/chat/completions` gateway for a configured Wardwright model and record
+  the resulting receipt in the fork transcript.
 - `compare/2`: compare the original and forked sessions at the level an operator
   cares about: final status, failure class, artifacts, tests, provider calls,
   tool calls, policy rule ids, and receipt evidence.
@@ -96,8 +100,8 @@ to the cursor and continuation after the fork.
 3. Implement metadata replay to a cursor without provider calls.
 4. Add fork creation with a policy/model overlay and isolated session id.
 5. Add deterministic continuation with a scripted runner for CI.
-6. Add live continuation behind a tagged profile for real local models or
-   dogfood agents.
+6. Add live Wardwright-model continuation that resumes from the fork point
+   through the normal gateway and records a new receipt.
 7. Surface the transcript, fork point, applied policy delta, and comparison in
    the control debugger UI.
 
@@ -119,19 +123,21 @@ API becomes stable.
 
 ## Deferred Checks
 
-The current passing test is still deterministic. A later tagged dogfood layer
-should run the same fork contract against a local Ollama model, Jido, or another
-controllable agent runner. That layer should stay outside the default suite
-because model quality, credentials, and local runtime availability are not
-stable CI inputs.
+The default tests prove live continuation with a configured canned Wardwright
+model, which exercises the gateway and receipt path without network drift. A
+later tagged dogfood layer should run the same fork contract against a local
+Ollama model, Jido, or another controllable agent runner. That layer should stay
+outside the default suite because model quality, credentials, and local runtime
+availability are not stable CI inputs.
 
 The Control Debugger page now surfaces transcript-store readiness, loads
 transcript events for a selected receipt, suggests a fork point, replays to that
 point without a provider call, and can fork/continue with the built-in
 read-before-edit overlay. The overlay is visible and editable as JSON, with
-basic shape validation before fork/continue. The UI is still not a full policy
-workbench: semantic policy authoring, live continuation, and artifact diff
-review are deferred.
+basic shape validation before fork/continue. Continuation can run in the
+deterministic scripted mode or through a selected live Wardwright model. The UI
+is still not a full policy workbench: semantic policy authoring and artifact
+diff review are deferred.
 
 ## Known Runtime Limits
 
@@ -148,5 +154,5 @@ review are deferred.
   claim applies to the transcript event stream, not every artifact in the
   session directory.
 - Live-agent dogfood is still missing. The next tagged layer should prove the
-  same replay/fork/continue flow with a real local model or controllable agent
-  after the deterministic contract stays stable.
+  same replay/fork/continue flow with a real local model or controllable agent,
+  not only a configured Wardwright model returning a canned response.

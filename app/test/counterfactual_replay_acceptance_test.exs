@@ -131,6 +131,50 @@ defmodule WardwrightWeb.CounterfactualReplayAcceptanceTest do
              get_in(comparison, ["original", "failure_class"]) || "",
              get_in(comparison, ["fork", "failure_class"]) || ""
            )
+
+    put_live_continuation_model_config()
+
+    assert {:ok, live_fork} =
+             apply(@replay_module, :fork, [
+               %{
+                 "fork_cursor" => fork_cursor,
+                 "policy_overlay" => %{
+                   "allowed_tools_until_read" => ["list_files", "read_file"],
+                   "id" => "read-before-edit",
+                   "phase" => "tool.planning",
+                   "requires_prior_read_for" => ["edit_file"]
+                 },
+                 "source_session_id" => session_id
+               }
+             ])
+
+    assert {:ok, live_fixed} =
+             apply(@replay_module, :continue, [
+               live_fork["fork_session_id"],
+               %{"model_id" => "counterfactual-live-acceptance", "runner" => "wardwright_model"}
+             ])
+
+    assert live_fixed["status"] == "passed"
+    assert live_fixed["provider_called"] == true
+    assert get_in(live_fixed, ["runner", "kind"]) == "wardwright_model"
+    assert [live_receipt_id | _] = get_in(live_fixed, ["gateway", "receipt_ids"])
+    assert is_binary(live_receipt_id)
+    live_receipt = Wardwright.ReceiptStore.get(live_receipt_id)
+
+    assert live_receipt
+           |> get_in(["vcr", "full_session", "request", "body", "messages"])
+           |> Enum.any?(fn message ->
+             message["role"] == "user" and
+               message["content"] =~ "transcript_before_continuation" and
+               message["content"] =~ "edit_file"
+           end)
+
+    assert {:ok, live_transcript} = apply(@replay_module, :transcript, [live_fork["fork_session_id"]])
+
+    assert Enum.any?(live_transcript["events"], fn event ->
+             event["type"] == "model.continuation.response" and
+               event["status"] == "passed"
+           end)
   end
 
   defp missing_runtime_api do
@@ -186,5 +230,34 @@ defmodule WardwrightWeb.CounterfactualReplayAcceptanceTest do
         "settings.json" => ~s({"feature_enabled": false})
       }
     }
+  end
+
+  defp put_live_continuation_model_config do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "counterfactual-live-acceptance")
+      |> Map.put("version", "acceptance-live-v0")
+      |> Map.put("vcr", %{"mode" => "full_session"})
+      |> Map.put("requires_api_key", false)
+      |> Map.put("auth", %{"unkeyed_model_access" => "public"})
+      |> Map.put("targets", [
+        %{
+          "canned_outputs" => [
+            "Read settings.json before editing; feature_enabled is true and tests passed."
+          ],
+          "context_window" => 8192,
+          "model" => "canned/counterfactual-live-acceptance",
+          "provider_kind" => "canned_sequence"
+        }
+      ])
+      |> Map.put("dispatchers", [
+        %{
+          "id" => "dispatcher.counterfactual-live-acceptance",
+          "models" => ["canned/counterfactual-live-acceptance"]
+        }
+      ])
+      |> Map.put("route_root", "dispatcher.counterfactual-live-acceptance")
+
+    {:ok, _config} = Wardwright.put_model_config(config)
   end
 end

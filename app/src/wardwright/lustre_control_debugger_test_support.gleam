@@ -115,6 +115,24 @@ pub fn forking_from_loaded_fork_point_shows_comparison() -> Bool {
   && view_contains(simulation, "read-before-edit")
 }
 
+pub fn live_model_continuation_shows_provider_call(model_id: String) -> Bool {
+  let simulation =
+    start()
+    |> click_button("Run deterministic demo")
+    |> click_button("Load transcript")
+    |> change_select("control_continuation_mode", "wardwright_model")
+    |> change_select("control_live_model_id", model_id)
+    |> click_button("Fork and continue")
+
+  view_contains(simulation, "continued through a Wardwright model")
+  && view_contains(simulation, "Continuation")
+  && view_contains(simulation, "live Wardwright model " <> model_id)
+  && view_contains(simulation, "Provider called")
+  && view_contains(simulation, "yes")
+  && view_contains(simulation, "Live receipt")
+  && view_contains(simulation, "Comparison accepted")
+}
+
 pub fn invalid_policy_overlay_blocks_fork() -> Bool {
   let simulation =
     start()

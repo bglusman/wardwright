@@ -124,22 +124,20 @@ defmodule WardwrightWeb.CounterfactualReplay do
 
   def fork(_opts), do: {:error, "fork options must be a JSON object"}
 
-  def continue(fork_session_id, _opts) when is_binary(fork_session_id) do
+  def continue(fork_session_id, opts) when is_binary(fork_session_id) and is_map(opts) do
     with {:ok, metadata} <- read_json(fork_session_id, @metadata_file) do
       scenario = metadata["scenario"] || %{}
-      events = fork_continuation_events(scenario, fork_session_id)
-      :ok = append_events(fork_session_id, events)
 
-      outcome = %{
-        "artifacts" => %{"settings.json" => ~s({"feature_enabled": true})},
-        "failure" => %{"class" => ""},
-        "session_id" => fork_session_id,
-        "status" => "passed",
-        "tests" => %{"status" => "passed"}
-      }
+      case opts["runner"] || "scripted_agent" do
+        runner when runner in ["scripted_agent", "deterministic"] ->
+          continue_scripted(fork_session_id, scenario)
 
-      :ok = write_json(fork_session_id, @outcome_file, outcome)
-      {:ok, outcome}
+        runner when runner in ["wardwright_model", "live_model"] ->
+          continue_with_wardwright_model(fork_session_id, scenario, metadata, opts)
+
+        runner ->
+          {:error, "unsupported continuation runner #{inspect(runner)}"}
+      end
     end
   end
 
@@ -177,26 +175,242 @@ defmodule WardwrightWeb.CounterfactualReplay do
     config = gateway_config(model_id, version)
     {:ok, _config} = Wardwright.put_model_config(config)
 
-    body =
-      %{
-        "messages" => [%{"content" => scenario["task"] || "Run the counterfactual scenario.", "role" => "user"}],
-        "metadata" => %{"run_id" => session_id, "session_id" => session_id},
-        "model" => model_id
-      }
-      |> Jason.encode!()
+    request = %{
+      "messages" => [%{"content" => scenario["task"] || "Run the counterfactual scenario.", "role" => "user"}],
+      "metadata" => %{"run_id" => session_id, "session_id" => session_id},
+      "model" => model_id
+    }
+
+    with {:ok, receipt_id, _body, _receipt} <-
+           call_gateway_request(request, "counterfactual-acceptance", nil) do
+      {:ok, receipt_id}
+    end
+  end
+
+  defp call_gateway_request(request, agent_id, model_api_key) do
+    body = Jason.encode!(request)
 
     conn =
       :post
       |> conn("/v1/chat/completions", body)
       |> put_req_header("content-type", "application/json")
-      |> put_req_header("x-wardwright-agent-id", "counterfactual-acceptance")
+      |> put_req_header("x-wardwright-agent-id", agent_id)
+      |> put_model_api_key(model_api_key)
       |> Wardwright.Router.call(Wardwright.Router.init([]))
 
-    case get_resp_header(conn, "x-wardwright-receipt-id") do
-      [receipt_id | _] -> {:ok, receipt_id}
-      _ -> {:error, "gateway call did not produce a receipt"}
+    body = decode_response_body(conn.resp_body)
+
+    case {conn.status, get_resp_header(conn, "x-wardwright-receipt-id")} do
+      {status, [receipt_id | _]} when status in 200..299 ->
+        {:ok, receipt_id, body, Wardwright.ReceiptStore.get(receipt_id)}
+
+      {status, [receipt_id | _]} ->
+        {:error, "live continuation gateway call failed with HTTP #{status} for receipt #{receipt_id}"}
+
+      {status, _} ->
+        {:error, "live continuation gateway call failed with HTTP #{status}: #{gateway_error_message(body)}"}
     end
   end
+
+  defp put_model_api_key(conn, nil), do: conn
+  defp put_model_api_key(conn, ""), do: conn
+  defp put_model_api_key(conn, api_key), do: put_req_header(conn, "x-wardwright-model-api-key", api_key)
+
+  defp decode_response_body(body) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, decoded} -> decoded
+      {:error, _} -> %{"raw" => body}
+    end
+  end
+
+  defp gateway_error_message(%{"error" => %{"message" => message}}) when is_binary(message), do: message
+  defp gateway_error_message(%{"raw" => raw}) when is_binary(raw), do: raw
+  defp gateway_error_message(body), do: inspect(body)
+
+  defp continue_scripted(fork_session_id, scenario) do
+    events = fork_continuation_events(scenario, fork_session_id)
+    :ok = append_events(fork_session_id, events)
+
+    outcome = %{
+      "artifacts" => %{"settings.json" => ~s({"feature_enabled": true})},
+      "failure" => %{"class" => ""},
+      "runner" => %{"kind" => "scripted_agent"},
+      "session_id" => fork_session_id,
+      "status" => "passed",
+      "tests" => %{"status" => "passed"}
+    }
+
+    :ok = write_json(fork_session_id, @outcome_file, outcome)
+    {:ok, outcome}
+  end
+
+  defp continue_with_wardwright_model(fork_session_id, scenario, metadata, opts) do
+    model_id = opts["model_id"] |> blank_to_nil()
+    api_key = opts["model_api_key"] |> blank_to_nil()
+
+    with {:model_id, model_id} when is_binary(model_id) <- {:model_id, model_id},
+         {:ok, _config} <- Wardwright.model_config(model_id),
+         {:ok, fork_events} <- read_events(fork_session_id),
+         request = live_continuation_request(model_id, fork_session_id, scenario, metadata, fork_events),
+         {:ok, receipt_id, body, receipt} <-
+           call_gateway_request(request, "counterfactual-live-continuation", api_key) do
+      content = assistant_content(body)
+      called_provider = provider_called?(receipt)
+      {status, failure_class, tests_status} = classify_live_continuation(content, receipt)
+
+      events =
+        live_continuation_events(
+          fork_session_id,
+          model_id,
+          request,
+          receipt_id,
+          receipt,
+          content,
+          status
+        )
+
+      :ok = append_events(fork_session_id, events)
+
+      outcome = %{
+        "failure" => %{"class" => failure_class},
+        "gateway" => %{"path" => "/v1/chat/completions", "receipt_ids" => [receipt_id]},
+        "provider_called" => called_provider,
+        "response" => %{"content" => content},
+        "runner" => %{"kind" => "wardwright_model", "model_id" => model_id},
+        "session_id" => fork_session_id,
+        "status" => status,
+        "tests" => %{"status" => tests_status}
+      }
+
+      :ok = write_json(fork_session_id, @outcome_file, outcome)
+      {:ok, outcome}
+    else
+      {:model_id, _} -> {:error, "live continuation requires a Wardwright model id"}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp live_continuation_request(model_id, fork_session_id, scenario, metadata, fork_events) do
+    %{
+      "messages" => [
+        %{
+          "content" =>
+            "You are continuing a forked Wardwright agent session from recorded transcript evidence. " <>
+              "Use the policy overlay as the new control contract and explain the next safe action.",
+          "role" => "system"
+        },
+        %{
+          "content" =>
+            Jason.encode!(%{
+              "fork_cursor" => metadata["fork_cursor"],
+              "policy_overlay" => metadata["policy_overlay"],
+              "task" => scenario["task"],
+              "transcript_before_continuation" => transcript_summary(fork_events),
+              "workspace_files" => workspace_files(scenario)
+            }),
+          "role" => "user"
+        }
+      ],
+      "metadata" => %{
+        "counterfactual_continuation" => true,
+        "run_id" => fork_session_id,
+        "session_id" => fork_session_id
+      },
+      "model" => model_id
+    }
+  end
+
+  defp live_continuation_events(fork_session_id, model_id, request, receipt_id, receipt, content, status) do
+    [
+      event(fork_session_id, 101, "model.continuation.request", %{
+        "message_count" => length(request["messages"] || []),
+        "model_id" => model_id,
+        "runner" => "wardwright_model"
+      }),
+      event(fork_session_id, 102, "receipt.finalized", %{
+        "gateway" => %{"path" => "/v1/chat/completions"},
+        "provider_called" => provider_called?(receipt),
+        "receipt_id" => receipt_id,
+        "status" => get_in(receipt || %{}, ["final", "status"]) || "unknown"
+      }),
+      event(fork_session_id, 103, "model.continuation.response", %{
+        "content_preview" => content_preview(content),
+        "status" => status
+      })
+    ]
+  end
+
+  defp assistant_content(%{"choices" => [choice | _]}) when is_map(choice) do
+    case get_in(choice, ["message", "content"]) do
+      content when is_binary(content) and content != "" -> content
+      _ -> choice |> get_in(["message"]) |> Jason.encode!()
+    end
+  end
+
+  defp assistant_content(_body), do: ""
+
+  defp provider_called?(%{"attempts" => [attempt | _]}) when is_map(attempt), do: attempt["called_provider"] == true
+
+  defp provider_called?(_receipt), do: false
+
+  defp classify_live_continuation(content, receipt) do
+    final_status = get_in(receipt || %{}, ["final", "status"]) || "unknown"
+    normalized = content |> to_string() |> String.downcase()
+
+    cond do
+      final_status not in ["completed", "completed_after_guard"] ->
+        {"failed", "provider_or_policy_failure", "failed"}
+
+      String.contains?(normalized, "feature_enabled") and String.contains?(normalized, "pass") ->
+        {"passed", "", "passed"}
+
+      true ->
+        {"continued_live", "unverified_live_continuation", "unknown"}
+    end
+  end
+
+  defp content_preview(content) when is_binary(content), do: String.slice(content, 0, 240)
+
+  defp blank_to_nil(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp blank_to_nil(_value), do: nil
+
+  defp workspace_files(%{"workspace" => workspace}) when is_map(workspace), do: Map.keys(workspace)
+  defp workspace_files(_scenario), do: []
+
+  defp transcript_summary(events) when is_list(events) do
+    Enum.map(events, fn event ->
+      %{
+        "cursor" => event["cursor"],
+        "sequence" => event["sequence"],
+        "tool" => get_in(event, ["tool", "name"]),
+        "type" => event["type"]
+      }
+      |> put_if_present("args", get_in(event, ["tool", "args"]))
+      |> put_if_present("result", compact_tool_result(get_in(event, ["tool", "result"])))
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Map.new()
+    end)
+  end
+
+  defp compact_tool_result(result) when is_map(result) do
+    result
+    |> Map.take(["failure_class", "files", "status"])
+    |> case do
+      empty when empty == %{} -> nil
+      compact -> compact
+    end
+  end
+
+  defp compact_tool_result(_result), do: nil
+
+  defp put_if_present(map, _key, nil), do: map
+  defp put_if_present(map, key, value), do: Map.put(map, key, value)
 
   defp gateway_config(model_id, version) do
     Wardwright.default_config()

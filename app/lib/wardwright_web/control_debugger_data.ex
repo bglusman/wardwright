@@ -59,7 +59,7 @@ defmodule WardwrightWeb.ControlDebuggerData do
       {:ok, health} = WardwrightWeb.CounterfactualReplay.transcript_store_health()
 
       [
-        {"Runtime", "deterministic replay/fork contract available"},
+        {"Runtime", "deterministic replay/fork and live model continuation available"},
         {"Transcript store", store_location(health)},
         {"Default capture", if(health["default_enabled"] == true, do: "enabled", else: "off; opt in per model")},
         {"Durability", capability_summary(health)},
@@ -73,6 +73,29 @@ defmodule WardwrightWeb.ControlDebuggerData do
   def default_policy_overlay_json do
     read_before_edit_overlay()
     |> Jason.encode!(pretty: true)
+  end
+
+  def model_options do
+    Wardwright.externally_callable_model_configs()
+    |> Enum.map(fn config ->
+      model_id = config["model_id"] || ""
+      target_count = config |> Map.get("targets", []) |> length()
+      access = if(Wardwright.model_requires_api_key?(config), do: "keyed", else: "open")
+
+      {
+        model_id,
+        "#{model_id} - #{access} - #{target_count} target(s)"
+      }
+    end)
+  end
+
+  def default_live_model_id do
+    model_options()
+    |> List.first()
+    |> case do
+      nil -> ""
+      {model_id, _label} -> model_id
+    end
   end
 
   def run_counterfactual_demo do
@@ -178,10 +201,30 @@ defmodule WardwrightWeb.ControlDebuggerData do
   end
 
   def fork_and_continue_from_point(session_id, fork_point, overlay_json) do
+    fork_and_continue_from_point(session_id, fork_point, overlay_json, "scripted_agent", "")
+  end
+
+  def fork_and_continue_from_point(session_id, fork_point, overlay_json, continuation_mode, live_model_id) do
+    fork_and_continue_from_point(session_id, fork_point, overlay_json, continuation_mode, live_model_id, "")
+  end
+
+  def fork_and_continue_from_point(
+        session_id,
+        fork_point,
+        overlay_json,
+        continuation_mode,
+        live_model_id,
+        model_api_key
+      ) do
     session_id = session_id |> to_string() |> String.trim()
     fork_point = fork_point |> to_string() |> String.trim()
+    continuation_mode = continuation_mode |> to_string() |> String.trim() |> blank_fallback("scripted_agent")
+    live_model_id = live_model_id |> to_string() |> String.trim()
+    model_api_key = model_api_key |> to_string() |> String.trim()
 
     with {:inputs, false} <- {:inputs, session_id == "" or fork_point == ""},
+         {:mode, true} <- {:mode, continuation_mode in ["scripted_agent", "wardwright_model"]},
+         {:live_model, true} <- {:live_model, continuation_mode != "wardwright_model" or live_model_id != ""},
          {:ok, overlay} <- decode_policy_overlay(overlay_json),
          {:ok, fork} <-
            WardwrightWeb.CounterfactualReplay.fork(%{
@@ -192,22 +235,33 @@ defmodule WardwrightWeb.ControlDebuggerData do
          fork_session_id when is_binary(fork_session_id) <- fork["fork_session_id"],
          {:ok, fixed} <-
            WardwrightWeb.CounterfactualReplay.continue(fork_session_id, %{
-             "runner" => "scripted_agent",
+             "model_api_key" => model_api_key,
+             "model_id" => live_model_id,
+             "runner" => continuation_mode,
              "script_id" => "read-settings-then-edit"
            }),
          {:ok, comparison} <- WardwrightWeb.CounterfactualReplay.compare(session_id, fork_session_id) do
-      {true, "Forked from selected point, applied policy overlay, and continued.",
+      {true, continuation_success_message(continuation_mode),
        [
          {"Original session", session_id},
          {"Fork point", fork_point},
          {"Fork session", fork_session_id},
+         {"Continuation", continuation_summary(fixed)},
          {"Fork status", fixed["status"] || "unknown"},
+         {"Provider called", bool_text(fixed["provider_called"])},
+         {"Live receipt", fixed |> get_in(["gateway", "receipt_ids"]) |> receipt_ids_summary()},
          {"Comparison accepted", bool_text(comparison["accepted"])},
          {"Applied rules", applied_rule_summary(comparison)}
        ]}
     else
       {:inputs, true} ->
         {false, "Load a transcript and choose a fork point first.", []}
+
+      {:mode, false} ->
+        {false, "Choose deterministic or live model continuation.", []}
+
+      {:live_model, false} ->
+        {false, "Choose a Wardwright model for live continuation.", []}
 
       {:error, message} ->
         {false, "Could not fork from selected point: #{message}", []}
@@ -385,6 +439,20 @@ defmodule WardwrightWeb.ControlDebuggerData do
       _ -> "none"
     end
   end
+
+  defp continuation_success_message("wardwright_model"),
+    do: "Forked from selected point, applied policy overlay, and continued through a Wardwright model."
+
+  defp continuation_success_message(_mode), do: "Forked from selected point, applied policy overlay, and continued."
+
+  defp continuation_summary(%{"runner" => %{"kind" => "wardwright_model", "model_id" => model_id}}),
+    do: "live Wardwright model #{model_id}"
+
+  defp continuation_summary(%{"runner" => %{"kind" => kind}}), do: kind
+  defp continuation_summary(_fixed), do: "unknown"
+
+  defp receipt_ids_summary([id | _]) when is_binary(id), do: id
+  defp receipt_ids_summary(_ids), do: "none"
 
   defp read_before_edit_overlay do
     %{

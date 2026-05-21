@@ -19,6 +19,9 @@ type PatternOption =
 type ReceiptOption =
   #(String, String, String, String)
 
+type ModelOption =
+  #(String, String)
+
 type ReplayFact =
   #(String, String)
 
@@ -41,6 +44,9 @@ pub type Model {
     transcript_error: String,
     selected_fork_point: String,
     policy_overlay_json: String,
+    continuation_mode: String,
+    continuation_model_id: String,
+    continuation_model_api_key: String,
     transcript_events: List(TranscriptEvent),
     fork_replay_status: String,
     fork_replay_error: String,
@@ -65,6 +71,9 @@ pub type Msg {
   LoadTranscript
   SelectForkPoint(String)
   PolicyOverlayChanged(String)
+  ContinuationModeChanged(String)
+  ContinuationModelChanged(String)
+  ContinuationModelApiKeyChanged(String)
   ReplayToForkPoint
   ForkAndContinue
 }
@@ -99,6 +108,12 @@ fn external_counterfactual_facts() -> List(ReplayFact)
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "default_policy_overlay_json")
 fn external_default_policy_overlay_json() -> String
 
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "model_options")
+fn external_model_options() -> List(ModelOption)
+
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "default_live_model_id")
+fn external_default_live_model_id() -> String
+
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "load_transcript_for_receipt")
 fn external_load_transcript_for_receipt(
   receipt_id: String,
@@ -115,6 +130,9 @@ fn external_fork_and_continue_from_point(
   session_id: String,
   fork_point: String,
   policy_overlay_json: String,
+  continuation_mode: String,
+  live_model_id: String,
+  model_api_key: String,
 ) -> #(Bool, String, List(ReplayFact))
 
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "run_counterfactual_demo")
@@ -148,6 +166,9 @@ pub fn init(_flags: Nil) -> Model {
     transcript_error: "",
     selected_fork_point: "",
     policy_overlay_json: external_default_policy_overlay_json(),
+    continuation_mode: "scripted_agent",
+    continuation_model_id: external_default_live_model_id(),
+    continuation_model_api_key: "",
     transcript_events: [],
     fork_replay_status: "",
     fork_replay_error: "",
@@ -178,6 +199,9 @@ pub fn update(model: Model, msg: Msg) -> Model {
         transcript_error: "",
         selected_fork_point: "",
         policy_overlay_json: external_default_policy_overlay_json(),
+        continuation_mode: "scripted_agent",
+        continuation_model_id: external_default_live_model_id(),
+        continuation_model_api_key: "",
         transcript_events: [],
         fork_replay_status: "",
         fork_replay_error: "",
@@ -254,6 +278,9 @@ pub fn update(model: Model, msg: Msg) -> Model {
             transcript_error: "",
             selected_fork_point: "",
             policy_overlay_json: external_default_policy_overlay_json(),
+            continuation_mode: "scripted_agent",
+            continuation_model_id: external_default_live_model_id(),
+            continuation_model_api_key: "",
             transcript_events: [],
             fork_replay_status: "",
             fork_replay_error: "",
@@ -303,6 +330,9 @@ pub fn update(model: Model, msg: Msg) -> Model {
             transcript_error: message,
             selected_fork_point: "",
             policy_overlay_json: external_default_policy_overlay_json(),
+            continuation_mode: "scripted_agent",
+            continuation_model_id: external_default_live_model_id(),
+            continuation_model_api_key: "",
             transcript_events: [],
             fork_replay_status: "",
             fork_replay_error: "",
@@ -330,6 +360,33 @@ pub fn update(model: Model, msg: Msg) -> Model {
       Model(
         ..model,
         policy_overlay_json: policy_overlay_json,
+        fork_continue_status: "",
+        fork_continue_error: "",
+        fork_continue_facts: [],
+      )
+
+    ContinuationModeChanged(continuation_mode) ->
+      Model(
+        ..model,
+        continuation_mode: continuation_mode,
+        fork_continue_status: "",
+        fork_continue_error: "",
+        fork_continue_facts: [],
+      )
+
+    ContinuationModelChanged(model_id) ->
+      Model(
+        ..model,
+        continuation_model_id: model_id,
+        fork_continue_status: "",
+        fork_continue_error: "",
+        fork_continue_facts: [],
+      )
+
+    ContinuationModelApiKeyChanged(api_key) ->
+      Model(
+        ..model,
+        continuation_model_api_key: api_key,
         fork_continue_status: "",
         fork_continue_error: "",
         fork_continue_facts: [],
@@ -366,6 +423,9 @@ pub fn update(model: Model, msg: Msg) -> Model {
           model.transcript_session_id,
           model.selected_fork_point,
           model.policy_overlay_json,
+          model.continuation_mode,
+          model.continuation_model_id,
+          model.continuation_model_api_key,
         )
 
       case ok {
@@ -569,7 +629,7 @@ fn counterfactual_card(model: Model) -> Element(Msg) {
     counterfactual_facts(model),
     html.small([class("debugger-note")], [
       text(
-        "The demo runs a scripted failed agent session through Wardwright, records a transcript, replays to the unsafe edit cursor, forks with a read-before-edit policy overlay, and continues deterministically. Free-form cursor selection and policy editing are still not wired. Selected receipt: "
+        "The demo runs a scripted failed agent session through Wardwright, records a transcript, replays to the unsafe edit cursor, forks with a read-before-edit policy overlay, and continues deterministically. The transcript inspector below can also continue the fork through a selected Wardwright model. Selected receipt: "
         <> blank_default(model.receipt_id, "none selected")
         <> ".",
       ),
@@ -617,6 +677,7 @@ fn transcript_card(model: Model) -> Element(Msg) {
     status_text(model.transcript_status, model.transcript_error),
     fork_point_summary(model),
     transcript_events(model),
+    continuation_controls(model),
     policy_overlay_editor(model),
     status_text(model.fork_replay_status, model.fork_replay_error),
     replay_point_facts(model),
@@ -727,6 +788,41 @@ fn policy_overlay_editor(model: Model) -> Element(Msg) {
   ])
 }
 
+fn continuation_controls(model: Model) -> Element(Msg) {
+  html.div([class("continuation-controls")], [
+    labeled_select(
+      "Continuation mode",
+      "control_continuation_mode",
+      model.continuation_mode,
+      continuation_mode_options(model.continuation_mode),
+      ContinuationModeChanged,
+    ),
+    labeled_select(
+      "Live Wardwright model",
+      "control_live_model_id",
+      model.continuation_model_id,
+      live_model_options(model.continuation_model_id),
+      ContinuationModelChanged,
+    ),
+    html.label([class("field")], [
+      html.span([], [text("Model API key")]),
+      html.input([
+        id("control_live_model_api_key"),
+        name("control_live_model_api_key"),
+        placeholder("optional for keyed models"),
+        type_("password"),
+        value(model.continuation_model_api_key),
+        event.on_input(ContinuationModelApiKeyChanged),
+      ]),
+    ]),
+    html.small([class("debugger-note continuation-note")], [
+      text(
+        "Replay to fork point never calls a provider. Fork and continue uses deterministic replay unless live model continuation is selected. The model API key field is used for this continuation request and is not saved by the debugger.",
+      ),
+    ]),
+  ])
+}
+
 fn replay_point_facts(model: Model) -> Element(Msg) {
   case model.fork_replay_facts {
     [] -> html.div([], [])
@@ -808,6 +904,37 @@ fn receipt_options(selected_id: String) -> List(Element(Msg)) {
   case options {
     [] -> [
       select_ui.option([selected(True)], "No receipts recorded yet", ""),
+    ]
+    _ -> options
+  }
+}
+
+fn continuation_mode_options(selected_id: String) -> List(Element(Msg)) {
+  [
+    select_ui.option(
+      [selected(selected_id == "scripted_agent")],
+      "Deterministic scripted continuation",
+      "scripted_agent",
+    ),
+    select_ui.option(
+      [selected(selected_id == "wardwright_model")],
+      "Live Wardwright model continuation",
+      "wardwright_model",
+    ),
+  ]
+}
+
+fn live_model_options(selected_id: String) -> List(Element(Msg)) {
+  let options =
+    external_model_options()
+    |> list.map(fn(option) {
+      let #(model_id, label) = option
+      select_ui.option([selected(model_id == selected_id)], label, model_id)
+    })
+
+  case options {
+    [] -> [
+      select_ui.option([selected(True)], "No externally callable models", ""),
     ]
     _ -> options
   }
@@ -923,6 +1050,15 @@ pub fn styles() -> String {
     line-height: 1.45;
     resize: vertical;
   }
+  .continuation-controls {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    align-items: end;
+  }
+  .continuation-note {
+    grid-column: 1 / -1;
+  }
   .transcript-event {
     width: 100%;
     display: grid;
@@ -974,7 +1110,7 @@ pub fn styles() -> String {
     font-size: 13px;
   }
   @media (max-width: 860px) {
-    .control-debugger-app, .debugger-actions {
+    .control-debugger-app, .debugger-actions, .continuation-controls {
       grid-template-columns: 1fr;
     }
     .transcript-event {

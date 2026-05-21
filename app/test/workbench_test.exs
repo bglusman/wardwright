@@ -724,7 +724,7 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Replay, change policy, continue")
 
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains(
-             "deterministic replay/fork contract available"
+             "deterministic replay/fork and live model continuation available"
            )
 
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("append-only files")
@@ -732,7 +732,7 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Run deterministic demo")
 
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains(
-             "Free-form cursor selection and policy editing are still not wired"
+             "can also continue the fork through a selected Wardwright model"
            )
   end
 
@@ -750,6 +750,14 @@ defmodule WardwrightWeb.WorkbenchTest do
 
   test "control debugger forks from the selected point and compares the outcome" do
     assert :wardwright@lustre_control_debugger_test_support.forking_from_loaded_fork_point_shows_comparison()
+  end
+
+  test "control debugger can continue a fork through a configured Wardwright model" do
+    put_counterfactual_live_model_config()
+
+    assert :wardwright@lustre_control_debugger_test_support.live_model_continuation_shows_provider_call(
+             "counterfactual-live-canned"
+           )
   end
 
   test "control debugger validates editable policy overlays before forking" do
@@ -830,6 +838,32 @@ defmodule WardwrightWeb.WorkbenchTest do
       |> Map.put("targets", [%{"context_window" => 8192, "model" => "ollama/gemma4:e4b"}])
       |> Map.put("dispatchers", [%{"id" => "dispatcher.cow", "models" => ["ollama/gemma4:e4b"]}])
       |> Map.put("route_root", "dispatcher.cow")
+
+    {:ok, _config} = Wardwright.put_model_config(config)
+  end
+
+  defp put_counterfactual_live_model_config do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "counterfactual-live-canned")
+      |> Map.put("version", "counterfactual-live-test")
+      |> Map.put("vcr", %{"mode" => "full_session"})
+      |> Map.put("requires_api_key", false)
+      |> Map.put("auth", %{"unkeyed_model_access" => "public"})
+      |> Map.put("targets", [
+        %{
+          "canned_outputs" => [
+            "Read settings.json before editing; feature_enabled is true and tests passed."
+          ],
+          "context_window" => 8192,
+          "model" => "canned/counterfactual-live",
+          "provider_kind" => "canned_sequence"
+        }
+      ])
+      |> Map.put("dispatchers", [
+        %{"id" => "dispatcher.counterfactual-live", "models" => ["canned/counterfactual-live"]}
+      ])
+      |> Map.put("route_root", "dispatcher.counterfactual-live")
 
     {:ok, _config} = Wardwright.put_model_config(config)
   end
