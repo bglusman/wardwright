@@ -96,8 +96,8 @@ pub type Msg {
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "pattern_options")
 fn external_pattern_options() -> List(PatternOption)
 
-@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "default_pattern_id")
-fn external_default_pattern_id() -> String
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "default_pattern_id_for_example")
+fn external_default_pattern_id_for_example(example_id: String) -> String
 
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "receipt_options")
 fn external_receipt_options() -> List(ReceiptOption)
@@ -187,7 +187,7 @@ pub fn init(_flags: Nil) -> Model {
 
   Model(
     receipt_id: external_default_receipt_id(),
-    pattern_id: external_default_pattern_id(),
+    pattern_id: external_default_pattern_id_for_example(example_id),
     scenario_title: "",
     import_status: "",
     import_error: "",
@@ -291,7 +291,11 @@ pub fn update(model: Model, msg: Msg) -> Model {
     }
 
     ExampleChanged(example_id) ->
-      Model(..model, example_id: example_id)
+      Model(
+        ..model,
+        example_id: example_id,
+        pattern_id: external_default_pattern_id_for_example(example_id),
+      )
       |> reset_transcript_fork_and_counterfactual
 
     RecordExampleSession -> {
@@ -308,6 +312,9 @@ pub fn update(model: Model, msg: Msg) -> Model {
               Model(
                 ..reset_transcript_fork_and_counterfactual(model),
                 receipt_id: receipt_id,
+                pattern_id: external_default_pattern_id_for_example(
+                  model.example_id,
+                ),
                 transcript_session_id: session_id,
                 transcript_status: load_message,
                 transcript_error: "",

@@ -744,6 +744,12 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert :wardwright@lustre_control_debugger_test_support.running_counterfactual_demo_shows_outcome()
   end
 
+  test "control debugger targets the matching workbench pattern for counterfactual examples" do
+    assert :wardwright@lustre_control_debugger_test_support.read_before_edit_example_targets_tool_governance_pattern()
+
+    assert :wardwright@lustre_control_debugger_test_support.output_contract_example_targets_output_pattern()
+  end
+
   test "control debugger keeps fork actions attached to a loaded transcript event" do
     assert :wardwright@lustre_control_debugger_test_support.fork_actions_are_contextual_to_loaded_event()
   end

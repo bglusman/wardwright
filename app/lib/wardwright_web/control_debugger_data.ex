@@ -22,6 +22,10 @@ defmodule WardwrightWeb.ControlDebuggerData do
     end
   end
 
+  def default_pattern_id_for_example("read-before-edit"), do: "tool-governance"
+  def default_pattern_id_for_example("output-contract"), do: "ambiguous-success"
+  def default_pattern_id_for_example(_example_id), do: default_pattern_id()
+
   def receipt_options do
     %{}
     |> Wardwright.ReceiptStore.list(25)
