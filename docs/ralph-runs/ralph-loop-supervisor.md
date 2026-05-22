@@ -22,8 +22,8 @@ validation record below.
 
 - Historical loops completed before this tracker: 3.
 - Additional heartbeat continuation budget: 10 loops.
-- Additional loops completed: 5.
-- Additional loops remaining: 5.
+- Additional loops completed: 6.
+- Additional loops remaining: 4.
 
 ## Historical Baseline
 
@@ -138,14 +138,56 @@ validation record below.
     between export and verification. The verifier remains separate and
     conservative, and the UI explicitly keeps equivalent resume claims false.
 
+### Loop 9 - OpenCode Import Trial
+
+- Timestamp: 2026-05-22T19:58-05:00 focused RBE-002 trial.
+- Starting commit: `50a2a86`.
+- Ending commit: this OpenCode import-trial evidence commit on
+  `codex/ralph-ui-loop-pilot-1`.
+- Scope: ran a real OpenCode import and forked continuation against a fresh
+  Wardwright read-before-edit trace export, with OpenCode configured for
+  `forge/forge` backed by `gemma4:26b-a4b-it-q4_K_M`.
+- Findings:
+  - `opencode import` successfully imported the Wardwright export and created
+    session `ses_wwQj1zkBdHxnvqJh4n8JSODMku`.
+  - OpenCode stored the imported trace as message text plus normal OpenCode
+    step parts, not as native tool-call/tool-result rows. The imported artifact
+    itself also contains only `text`, `step-start`, and `step-finish` parts.
+  - A forked `opencode run --session ... --fork --model forge/forge` created
+    session `ses_1ade18f54ffeGorVGCX6ghMQye` and correctly concluded that
+    `edit_file` occurred before any `read_file` of `README.md`.
+  - The forked model response identified the failure event cursor rather than
+    perfectly normalizing every cursor, so this is useful continuation evidence
+    but not exact machine-verification evidence.
+  - Running `verify_state_fidelity` against the actual observed imported state
+    fails as expected: the imported OpenCode database does not expose the trace
+    fingerprint or tool-result fingerprints needed to prove native state
+    fidelity.
+- Validation:
+  - Live OpenCode import and forked run completed with the current
+    `gemma4:26b-a4b-it-q4_K_M` configuration.
+  - `verify_state_fidelity` returned `status: probe_mismatch` for the observed
+    imported state, while the read-before-edit cursor-identification check
+    passed.
+- Adversarial review:
+  - This partially falsifies the stronger RBE-002 interpretation for current
+    OpenCode JSON import: it is not native equivalent resume with preserved
+    tool state. It does validate the weaker handoff claim: OpenCode can import
+    the evidence, fork from it, and reason from it. PR language should keep the
+    current best-effort/fidelity-warning framing unless a future adapter can
+    export or recover native OpenCode tool-result state.
+
 ## Open Followup
 
 ### RALPH-RBE-002
 
-OpenCode import/resume is still unproven as native resumed live-agent execution
-with preserved hidden/tool state. OpenCode exposes `import`, `--session`, and
-`--fork`, but the Ralph loop should not claim equivalent live-agent resume until
-a future cycle runs a real import/resume trial and verifies state fidelity.
+OpenCode import/resume is now live-tested as best-effort evidence handoff, but
+not as native resumed live-agent execution with preserved hidden/tool state.
+OpenCode exposes `import`, `--session`, and `--fork`, and a forked model can
+reason from the imported trace. The current import stores Wardwright tool
+evidence as text rather than native tool-result state, so the Ralph loop must
+not claim equivalent live-agent resume unless a future adapter proves stronger
+state fidelity.
 
 ## Closed Followups
 
