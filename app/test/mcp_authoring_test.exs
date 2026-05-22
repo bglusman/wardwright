@@ -157,6 +157,8 @@ defmodule Wardwright.MCPAuthoringTest do
 
     assert opencode["fidelity"] == "session_import_best_effort"
     assert opencode["equivalent_agent_resume"] == false
+    assert opencode["resume_claim_status"] == "unverified_best_effort_handoff"
+    assert get_in(opencode, ["state_fidelity_verification", "required"]) == true
 
     assert {:reply, %Response{} = export_response, %Frame{}} =
              ExportAgentHarnessTrace.execute(
@@ -166,6 +168,17 @@ defmodule Wardwright.MCPAuthoringTest do
 
     assert get_in(export_response.structured_content, ["export", "artifact_format"]) == "opencode_session_json"
     assert get_in(export_response.structured_content, ["export", "adapter", "equivalent_agent_resume"]) == false
+
+    assert get_in(export_response.structured_content, ["export", "adapter", "resume_claim_status"]) ==
+             "unverified_best_effort_handoff"
+
+    assert get_in(export_response.structured_content, [
+             "export",
+             "adapter",
+             "state_fidelity_verification",
+             "required"
+           ]) == true
+
     assert hd(get_in(export_response.structured_content, ["export", "commands"])) =~ "opencode import"
   end
 

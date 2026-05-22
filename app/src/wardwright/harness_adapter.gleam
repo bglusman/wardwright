@@ -64,6 +64,13 @@ pub fn adapter_status(installed: Bool, native_session_import: Bool) -> String {
   }
 }
 
+pub fn resume_claim_status(equivalent_agent_resume: Bool) -> String {
+  case equivalent_agent_resume {
+    True -> "verified_equivalent_resume"
+    False -> "unverified_best_effort_handoff"
+  }
+}
+
 fn require(
   missing: List(String),
   present: Bool,

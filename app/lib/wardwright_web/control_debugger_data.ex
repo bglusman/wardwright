@@ -147,7 +147,9 @@ defmodule WardwrightWeb.ControlDebuggerData do
        [
          {"Adapter", adapter["label"] || adapter_id},
          {"Fidelity", adapter["fidelity"] || "unknown"},
+         {"Resume claim", adapter["resume_claim_status"] || "unknown"},
          {"Equivalent agent resume", bool_text(adapter["equivalent_agent_resume"])},
+         {"Verification required", bool_text(get_in(adapter, ["state_fidelity_verification", "required"]))},
          {"Artifact", export["artifact_format"] || "unknown"},
          {"Saved file", saved_files |> List.first() |> blank_fallback("none")},
          {"Command", command |> blank_fallback(commands |> List.first() |> blank_fallback("none"))},

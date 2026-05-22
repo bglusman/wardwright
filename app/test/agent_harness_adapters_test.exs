@@ -27,6 +27,14 @@ defmodule WardwrightWeb.AgentHarnessAdaptersTest do
     opencode = Enum.find(adapters, &(&1["id"] == "opencode"))
     assert opencode["fidelity"] == "session_import_best_effort"
     assert opencode["equivalent_agent_resume"] == false
+    assert opencode["resume_claim_status"] == "unverified_best_effort_handoff"
+    assert get_in(opencode, ["state_fidelity_verification", "required"]) == true
+
+    assert "inspect the harness session store/export for preserved tool results and hidden state" in get_in(
+             opencode,
+             ["state_fidelity_verification", "steps"]
+           )
+
     assert "native_tool_results" in opencode["missing_fidelity"]
     assert opencode["capabilities"]["native_session_import"]
 
@@ -43,6 +51,8 @@ defmodule WardwrightWeb.AgentHarnessAdaptersTest do
     assert export["artifact_format"] == "opencode_session_json"
     assert export["adapter"]["fidelity"] == "session_import_best_effort"
     assert export["adapter"]["equivalent_agent_resume"] == false
+    assert export["adapter"]["resume_claim_status"] == "unverified_best_effort_handoff"
+    assert get_in(export, ["adapter", "state_fidelity_verification", "required"]) == true
     assert [import_command, run_command] = export["commands"]
     assert import_command =~ "opencode import 'wardwright-"
     assert run_command =~ "--fork"
@@ -67,6 +77,7 @@ defmodule WardwrightWeb.AgentHarnessAdaptersTest do
     assert trace_text =~ "edit_file"
     assert trace_text =~ "read_before_edit_violation"
     assert export["fidelity_notice"] =~ "best-effort"
+    assert Enum.any?(export["warnings"], &String.contains?(&1, "State fidelity verification is still required"))
   end
 
   test "opencode export can be saved as a human-usable import artifact" do

@@ -22,8 +22,8 @@ validation record below.
 
 - Historical loops completed before this tracker: 3.
 - Additional heartbeat continuation budget: 10 loops.
-- Additional loops completed: 1.
-- Additional loops remaining: 9.
+- Additional loops completed: 2.
+- Additional loops remaining: 8.
 
 ## Historical Baseline
 
@@ -57,6 +57,23 @@ validation record below.
   - Main risk is losing detailed visual evidence. That is acceptable for this
     branch because the evidence was oversized and not useful to the product
     review loop; reproducible tests and commits are the stronger evidence.
+
+### Loop 5 - Harness Fidelity Verification Status
+
+- Timestamp: 2026-05-22T22:41Z heartbeat.
+- Starting commit: `d6b1bb2`.
+- Ending commit: this harness verification status commit on
+  `codex/ralph-ui-loop-pilot-1`.
+- Scope: made `RALPH-RBE-002` operational by exposing a machine-readable resume
+  claim status and state-fidelity verification checklist on harness adapters.
+- Validation:
+  - `mise run check:docs`: passed.
+  - `cd app && MIX_ENV=test mise exec -- mix test`: passed, 393 tests with
+    21 properties and 6 excluded live/acceptance tests.
+- Adversarial review:
+  - This does not close `RALPH-RBE-002`; it deliberately prevents accidental
+    closure by making the missing proof explicit across UI, MCP, and exported
+    adapter payloads.
 
 ## Open Followup
 

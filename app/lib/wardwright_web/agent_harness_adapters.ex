@@ -102,17 +102,28 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
     workspace_snapshot = capabilities["workspace_snapshot"] == true
     private_agent_state = capabilities["private_agent_state"] == true
 
+    equivalent_agent_resume =
+      :wardwright@harness_adapter.can_claim_equivalent_agent_resume(
+        native_session_import,
+        native_session_resume,
+        native_tool_results,
+        workspace_snapshot,
+        private_agent_state
+      )
+
+    missing_fidelity =
+      :wardwright@harness_adapter.missing_fidelity(
+        native_session_import,
+        native_session_fork,
+        native_tool_results,
+        workspace_snapshot,
+        private_agent_state
+      )
+
     %{
       "capabilities" => capabilities,
       "contract_version" => @contract_version,
-      "equivalent_agent_resume" =>
-        :wardwright@harness_adapter.can_claim_equivalent_agent_resume(
-          native_session_import,
-          native_session_resume,
-          native_tool_results,
-          workspace_snapshot,
-          private_agent_state
-        ),
+      "equivalent_agent_resume" => equivalent_agent_resume,
       "fidelity" =>
         :wardwright@harness_adapter.fidelity_label(
           native_session_import,
@@ -124,14 +135,9 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
       "id" => id,
       "installed" => installed,
       "label" => label,
-      "missing_fidelity" =>
-        :wardwright@harness_adapter.missing_fidelity(
-          native_session_import,
-          native_session_fork,
-          native_tool_results,
-          workspace_snapshot,
-          private_agent_state
-        ),
+      "missing_fidelity" => missing_fidelity,
+      "resume_claim_status" => :wardwright@harness_adapter.resume_claim_status(equivalent_agent_resume),
+      "state_fidelity_verification" => state_fidelity_verification(equivalent_agent_resume, missing_fidelity),
       "status" => :wardwright@harness_adapter.adapter_status(installed, native_session_import)
     }
   end
@@ -436,7 +442,8 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
 
     [
       if(adapter["installed"] != true, do: "#{adapter["label"]} was not detected on PATH."),
-      missing_warning(missing)
+      missing_warning(missing),
+      verification_warning(adapter)
     ]
     |> Enum.reject(&is_nil/1)
   end
@@ -445,6 +452,36 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
 
   defp missing_warning(missing) do
     "Missing fidelity: #{Enum.join(missing, ", ")}."
+  end
+
+  defp verification_warning(%{"equivalent_agent_resume" => true}), do: nil
+
+  defp verification_warning(%{"state_fidelity_verification" => %{"required" => true}}) do
+    "State fidelity verification is still required before treating this as equivalent agent resume."
+  end
+
+  defp verification_warning(_adapter), do: nil
+
+  defp state_fidelity_verification(true, _missing_fidelity) do
+    %{
+      "required" => false,
+      "status" => "verified_equivalent_resume",
+      "steps" => []
+    }
+  end
+
+  defp state_fidelity_verification(false, missing_fidelity) do
+    %{
+      "missing_fidelity" => missing_fidelity,
+      "required" => true,
+      "status" => "unverified_best_effort_handoff",
+      "steps" => [
+        "import the saved Wardwright artifact into the target harness",
+        "resume or fork through the harness native session controls",
+        "inspect the harness session store/export for preserved tool results and hidden state",
+        "run a behavior-level continuation and compare it with the Wardwright trace"
+      ]
+    }
   end
 
   defp safe_json(value) do

@@ -512,6 +512,15 @@ OpenAI-compatible declared tools by their normalized `openai.function` names,
 or to add an adapter that maps a client-specific namespace before policy
 evaluation.
 
+OpenCode trace export remains a best-effort handoff until a separate
+state-fidelity trial proves native replay equivalence. Adapter payloads expose
+`resume_claim_status: unverified_best_effort_handoff` and a
+`state_fidelity_verification` checklist so UI, MCP, and CLI consumers know the
+next proof step: import the saved artifact, resume or fork through native
+OpenCode controls, inspect the native session store/export for preserved tool
+results and hidden state, then compare the continuation against the Wardwright
+trace.
+
 ### Discussion-Derived Follow-Ups
 
 The Forge discussion reinforced that the real overlap is proxy/middleware
