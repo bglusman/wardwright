@@ -371,6 +371,69 @@ Full app validation also passed after integration:
 (cd app && mise exec --command 'mix test --no-deps-check')
 ```
 
+## Track 6: Agent-Operable Control Debugger
+
+### Plan
+
+The Control Debugger loop should be usable by an assisting agent without
+scraping the UI. The first MCP/API parity slice should expose the same
+read-before-edit family the UI already proves: list built-in examples, record a
+scripted example, load trace events by receipt or session id, replay to a
+cursor without a provider call, fork from a cursor with deterministic scripted
+continuation, and save selected trace evidence as a simulator case.
+
+### Adversarial Plan Review
+
+The risk is creating an agent-only control path that does not match the UI, or
+claiming more safety than the trace evidence supports. Write-capable tools must
+say what they write. Replay must remain provider-free. Fork/continue should use
+the deterministic scripted runner unless a separate live-provider proof is
+explicitly requested.
+
+### Implementation Notes
+
+`WardwrightWeb.ControlDebuggerTools` now wraps the existing Control Debugger
+backend operations in structured payloads. Protected HTTP endpoints live under
+`/v1/policy-authoring/control-debugger/...`, and Hermes MCP tools expose the
+same controls:
+
+- `list_control_debugger_examples`
+- `record_control_debugger_example`
+- `load_control_debugger_trace`
+- `replay_control_debugger_cursor`
+- `fork_control_debugger_cursor`
+- `save_control_debugger_evidence`
+
+`wardwright tools` and `wardwright tools --json` advertise the new API controls
+with method, path, when-to-use guidance, and safety notes. Read-only MCP tools
+are annotated read-only; recording, forking, and saving are intentionally
+write-capable. The MCP fork tool uses deterministic scripted continuation and
+reports `provider_called=false`.
+
+### Adversarial Implementation And Design Review
+
+The slice deliberately avoids live model continuation over MCP. That keeps the
+agent-operable path deterministic and prevents an MCP caller from accidentally
+turning a replay proof into a provider call. The evidence-save API stores the
+selected trace prefix as a pinned simulator case; it preserves cursor/session
+metadata but does not pretend that the simulator case is the policy source of
+truth.
+
+### Test Evidence
+
+Focused coverage:
+
+```text
+cd app && MIX_ENV=test mise exec -- mix test --no-deps-check test/mcp_authoring_test.exs
+cd app && MIX_ENV=test mise exec -- mix test --no-deps-check test/public_api_test.exs
+cd app && MIX_ENV=test mise exec -- mix test --no-deps-check test/cli_test.exs
+cd app && MIX_ENV=test mise exec -- mix test --no-deps-check test/workbench_test.exs
+```
+
+The MCP and HTTP tests run the read-before-edit loop through non-UI controls and
+assert agreement on receipt id, trace cursor, provider-free replay, accepted
+deterministic fork, applied rule id, and saved `tool-governance` scenario.
+
 ## Manual Experiments
 
 ### Browser-Controlled Debugger

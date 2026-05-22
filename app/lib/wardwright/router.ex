@@ -597,6 +597,117 @@ defmodule Wardwright.Router do
     end
   end
 
+  get "/v1/policy-authoring/control-debugger/examples" do
+    with :ok <- require_protected_access(conn),
+         {:ok, examples} <- WardwrightWeb.ControlDebuggerTools.list_examples() do
+      json(conn, 200, examples)
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+    end
+  end
+
+  post "/v1/policy-authoring/control-debugger/examples/:example_id/record" do
+    with :ok <- require_protected_access(conn),
+         {:ok, recording} <- WardwrightWeb.ControlDebuggerTools.record_example(example_id) do
+      json(conn, 201, recording)
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message, data} ->
+        json(
+          conn,
+          400,
+          WardwrightWeb.ControlDebuggerTools.error_response(message, "invalid_control_debugger_recording", data)
+        )
+    end
+  end
+
+  post "/v1/policy-authoring/control-debugger/traces/load" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, trace} <- WardwrightWeb.ControlDebuggerTools.load_trace(body) do
+      json(conn, 200, trace)
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_control_debugger_trace")
+
+      {:error, message, data} ->
+        json(
+          conn,
+          400,
+          WardwrightWeb.ControlDebuggerTools.error_response(message, "invalid_control_debugger_trace", data)
+        )
+    end
+  end
+
+  post "/v1/policy-authoring/control-debugger/traces/replay-cursor" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, replay} <- WardwrightWeb.ControlDebuggerTools.replay_cursor(body) do
+      json(conn, 200, replay)
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_control_debugger_replay")
+
+      {:error, message, data} ->
+        json(
+          conn,
+          400,
+          WardwrightWeb.ControlDebuggerTools.error_response(message, "invalid_control_debugger_replay", data)
+        )
+    end
+  end
+
+  post "/v1/policy-authoring/control-debugger/traces/fork-cursor" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, fork} <- WardwrightWeb.ControlDebuggerTools.fork_cursor(body) do
+      json(conn, 200, fork)
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_control_debugger_fork")
+
+      {:error, message, data} ->
+        json(
+          conn,
+          400,
+          WardwrightWeb.ControlDebuggerTools.error_response(message, "invalid_control_debugger_fork", data)
+        )
+    end
+  end
+
+  post "/v1/policy-authoring/control-debugger/traces/save-evidence" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, saved} <- WardwrightWeb.ControlDebuggerTools.save_evidence(body) do
+      json(conn, 201, saved)
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_control_debugger_evidence")
+
+      {:error, message, data} ->
+        json(
+          conn,
+          400,
+          WardwrightWeb.ControlDebuggerTools.error_response(message, "invalid_control_debugger_evidence", data)
+        )
+    end
+  end
+
   get "/v1/policy-authoring/harness-adapters" do
     case require_protected_access(conn) do
       :ok ->

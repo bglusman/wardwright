@@ -355,6 +355,12 @@ defmodule Wardwright.PublicApiTest do
     assert "record_scenario" in tool_names
     assert "delete_scenario" in tool_names
     assert "import_receipt_scenario" in tool_names
+    assert "list_control_debugger_examples" in tool_names
+    assert "record_control_debugger_example" in tool_names
+    assert "load_control_debugger_trace" in tool_names
+    assert "replay_control_debugger_cursor" in tool_names
+    assert "fork_control_debugger_cursor" in tool_names
+    assert "save_control_debugger_evidence" in tool_names
     assert "export_regression_pack" in tool_names
     assert "apply_scenario_retention" in tool_names
     assert "propose_rule_change" in tool_names
@@ -374,6 +380,76 @@ defmodule Wardwright.PublicApiTest do
 
     missing = call(:get, "/v1/policy-authoring/projections/not-real")
     assert missing.status == 404
+  end
+
+  test "protected control debugger API records loads replays forks and saves selected trace evidence" do
+    examples = call(:get, "/v1/policy-authoring/control-debugger/examples")
+    assert examples.status == 200
+    assert Enum.any?(JSON.decode!(examples.resp_body)["data"], &(&1["id"] == "read-before-edit"))
+
+    recorded = call(:post, "/v1/policy-authoring/control-debugger/examples/read-before-edit/record", %{})
+    assert recorded.status == 201
+    recording = JSON.decode!(recorded.resp_body)
+
+    receipt_id = recording["receipt_id"]
+    session_id = get_in(recording, ["facts", "Original session"])
+    cursor = get_in(recording, ["facts", "Fork cursor"])
+
+    assert receipt_id =~ "rcpt_"
+    assert session_id =~ "session_"
+    assert cursor =~ "#{session_id}:"
+
+    loaded =
+      call(:post, "/v1/policy-authoring/control-debugger/traces/load", %{
+        "receipt_id" => receipt_id
+      })
+
+    assert loaded.status == 200
+    trace = JSON.decode!(loaded.resp_body)
+    assert trace["session_id"] == session_id
+    assert trace["suggested_fork_cursor"] == cursor
+
+    selected = Enum.find(trace["events"], &(&1["cursor"] == cursor))
+    assert selected["label"] == "Tool call: edit_file"
+    assert selected["recommendation"] =~ "edit_file ran before read_file"
+
+    replayed =
+      call(:post, "/v1/policy-authoring/control-debugger/traces/replay-cursor", %{
+        "session_id" => session_id,
+        "trace_cursor" => cursor
+      })
+
+    assert replayed.status == 200
+    replay = JSON.decode!(replayed.resp_body)
+    assert replay["provider_called"] == false
+    assert get_in(replay, ["facts", "Provider called"]) == "no"
+
+    forked =
+      call(:post, "/v1/policy-authoring/control-debugger/traces/fork-cursor", %{
+        "policy_overlay" => %{"id" => "api-read-before-edit", "requires_prior_read_for" => ["edit_file"]},
+        "session_id" => session_id,
+        "trace_cursor" => cursor
+      })
+
+    assert forked.status == 200
+    fork = JSON.decode!(forked.resp_body)
+    assert fork["provider_called"] == false
+    assert get_in(fork, ["facts", "Comparison accepted"]) == "yes"
+    assert get_in(fork, ["facts", "Applied rules"]) == "api-read-before-edit"
+
+    saved =
+      call(:post, "/v1/policy-authoring/control-debugger/traces/save-evidence", %{
+        "pattern_id" => "tool-governance",
+        "session_id" => session_id,
+        "title" => "API read-before-edit trace evidence",
+        "trace_cursor" => cursor
+      })
+
+    assert saved.status == 201
+    saved_body = JSON.decode!(saved.resp_body)
+    assert saved_body["pattern_id"] == "tool-governance"
+    assert get_in(saved_body, ["scenario", "source"]) == "live_replay"
+    assert get_in(saved_body, ["scenario", "receipt_preview", "trace_cursor"]) == cursor
   end
 
   test "protected policy authoring API lists and evaluates Dune snippets" do

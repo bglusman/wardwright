@@ -144,6 +144,12 @@ defmodule Wardwright.CLITest do
     assert output =~ "propose_rule_change"
     assert output =~ "list_harness_adapters"
     assert output =~ "export_agent_harness_trace"
+    assert output =~ "list_control_debugger_examples"
+    assert output =~ "record_control_debugger_example"
+    assert output =~ "load_control_debugger_trace"
+    assert output =~ "replay_control_debugger_cursor"
+    assert output =~ "fork_control_debugger_cursor"
+    assert output =~ "save_control_debugger_evidence"
     refute output =~ "not implemented"
     assert output =~ "validate_policy_artifact"
   end
@@ -173,6 +179,12 @@ defmodule Wardwright.CLITest do
     assert "delete_scenario" in names
     assert "list_harness_adapters" in names
     assert "export_agent_harness_trace" in names
+    assert "list_control_debugger_examples" in names
+    assert "record_control_debugger_example" in names
+    assert "load_control_debugger_trace" in names
+    assert "replay_control_debugger_cursor" in names
+    assert "fork_control_debugger_cursor" in names
+    assert "save_control_debugger_evidence" in names
     assert "propose_rule_change" in names
     assert "validate_policy_artifact" in names
 

@@ -1,0 +1,131 @@
+[
+  {
+    "description": "Fork a Control Debugger trace at a selected cursor and continue deterministically.\n\nThis writes fork transcript evidence but does not call a provider. It uses the\ndeterministic scripted continuation that the Ralph read-before-edit UI path\nuses by default.\n",
+    "inputSchema": {
+      "properties": {
+        "policy_overlay": {
+          "description": "Policy overlay JSON object to apply before deterministic continuation."
+        },
+        "session_id": {
+          "description": "Trace session id.",
+          "type": "string"
+        },
+        "trace_cursor": {
+          "description": "Cursor to fork from.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "trace_cursor"
+      ],
+      "type": "object"
+    },
+    "name": "fork_control_debugger_cursor"
+  },
+  {
+    "annotations": {
+      "read_only": true
+    },
+    "description": "List built-in Control Debugger counterfactual examples.\n",
+    "inputSchema": {
+      "properties": {},
+      "type": "object"
+    },
+    "name": "list_control_debugger_examples"
+  },
+  {
+    "annotations": {
+      "read_only": true
+    },
+    "description": "Load Control Debugger trace events by receipt id or session id.\n",
+    "inputSchema": {
+      "properties": {
+        "receipt_id": {
+          "description": "Receipt id whose full-session transcript should be loaded.",
+          "type": "string"
+        },
+        "session_id": {
+          "description": "Trace session id to load directly.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "load_control_debugger_trace"
+  },
+  {
+    "description": "Record a built-in Control Debugger counterfactual example.\n\nThis writes receipt and transcript evidence for the selected example. The\nbuilt-in examples use deterministic scripted continuation and do not require a\npaid provider call.\n",
+    "inputSchema": {
+      "properties": {
+        "example_id": {
+          "description": "Built-in example id, for example read-before-edit or output-contract.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "example_id"
+      ],
+      "type": "object"
+    },
+    "name": "record_control_debugger_example"
+  },
+  {
+    "annotations": {
+      "read_only": true
+    },
+    "description": "Replay a Control Debugger trace up to a selected cursor without a provider call.\n",
+    "inputSchema": {
+      "properties": {
+        "session_id": {
+          "description": "Trace session id.",
+          "type": "string"
+        },
+        "trace_cursor": {
+          "description": "Cursor to stop before.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "trace_cursor"
+      ],
+      "type": "object"
+    },
+    "name": "replay_control_debugger_cursor"
+  },
+  {
+    "description": "Save selected Control Debugger trace evidence as a pinned simulator case.\n\nThis is write-capable. The selected trace events can contain sensitive\nsession metadata, so saved scenario packs must be reviewed before sharing.\n",
+    "inputSchema": {
+      "properties": {
+        "pattern_id": {
+          "description": "Workbench policy pattern id for the simulator case.",
+          "type": "string"
+        },
+        "scenario_id": {
+          "description": "Optional stable simulator scenario id.",
+          "type": "string"
+        },
+        "session_id": {
+          "description": "Trace session id.",
+          "type": "string"
+        },
+        "title": {
+          "description": "Optional scenario title.",
+          "type": "string"
+        },
+        "trace_cursor": {
+          "description": "Selected trace cursor to preserve.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "pattern_id",
+        "trace_cursor"
+      ],
+      "type": "object"
+    },
+    "name": "save_control_debugger_evidence"
+  }
+]

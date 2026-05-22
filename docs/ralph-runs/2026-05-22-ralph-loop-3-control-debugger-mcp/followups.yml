@@ -1,0 +1,20 @@
+- id: RALPH-RBE-002
+  source_run: docs/ralph-runs/2026-05-22-read-before-edit-followups
+  carried_by: docs/ralph-runs/2026-05-22-ralph-loop-3-control-debugger-mcp
+  status: open
+  type: missing_capability
+  severity: important
+  summary: OpenCode import/resume has not been proven as native resumed live-agent execution with preserved hidden/tool state.
+  observed_from_this_run: Local opencode exposes import, session, and fork commands, but this run did not prove that an imported Wardwright trace resumes with private agent state and native tool-result state preserved.
+  expected_operator_experience: A future pilot should run a native OpenCode import/resume trial from a Wardwright-exported trace and verify exact state fidelity before claiming equivalent resume.
+  suggested_next_step: Import an exported Wardwright OpenCode artifact, resume it with opencode --session or --fork, inspect OpenCode's native session export/database state, and update adapter fidelity only if hidden state and tool results are preserved.
+- id: RALPH-RBE-005
+  source_run: docs/ralph-runs/2026-05-22-read-before-edit-followups
+  carried_by: docs/ralph-runs/2026-05-22-ralph-loop-3-control-debugger-mcp
+  status: closed
+  type: surface_parity
+  severity: important
+  summary: MCP and protected HTTP now expose first-class Control Debugger trace controls for the read-before-edit Ralph loop.
+  observed_from_this_run: MCP tools and protected HTTP endpoints can list examples, record the built-in read-before-edit session, load trace events, replay to cursor without provider calls, fork deterministically, and save selected trace evidence as a tool-governance simulator case.
+  closure_evidence: docs/ralph-runs/2026-05-22-ralph-loop-3-control-debugger-mcp
+  remaining_risk: MCP deterministic fork does not expose live model continuation; that is intentional until a separate live-provider safety proof exists.

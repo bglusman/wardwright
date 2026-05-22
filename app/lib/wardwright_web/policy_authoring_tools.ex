@@ -123,6 +123,60 @@ defmodule WardwrightWeb.PolicyAuthoringTools do
         "/agent-authoring.html#replay-receipts-before-changing-policy"
       ),
       tool(
+        "list_control_debugger_examples",
+        "GET",
+        "/v1/policy-authoring/control-debugger/examples",
+        "List built-in Control Debugger counterfactual examples, their default simulator pattern, and policy overlay.",
+        "Use before recording a Ralph counterfactual example from a shell or MCP agent.",
+        "Read-only. Returns example metadata only; no transcript, receipt, or simulator case is written.",
+        "/agent-authoring.html#replay-receipts-before-changing-policy"
+      ),
+      tool(
+        "record_control_debugger_example",
+        "POST",
+        "/v1/policy-authoring/control-debugger/examples/{example_id}/record",
+        "Record a built-in Control Debugger counterfactual example session and return receipt, session, and suggested cursor facts.",
+        "Use when an assisting agent needs the same starting trace the UI creates with Record example session.",
+        "Write-capable. Creates local receipt and transcript evidence. Built-in examples use deterministic scripted continuation and do not require a paid provider call.",
+        "/agent-authoring.html#replay-receipts-before-changing-policy"
+      ),
+      tool(
+        "load_control_debugger_trace",
+        "POST",
+        "/v1/policy-authoring/control-debugger/traces/load",
+        "Load a Control Debugger trace by receipt_id or session_id, including event cursors and suggested fork points.",
+        "Use after recording or selecting a trace before replaying, forking, or saving evidence.",
+        "Read-only. Trace events can contain sensitive session metadata; review before sharing.",
+        "/agent-authoring.html#replay-receipts-before-changing-policy"
+      ),
+      tool(
+        "replay_control_debugger_cursor",
+        "POST",
+        "/v1/policy-authoring/control-debugger/traces/replay-cursor",
+        "Replay a Control Debugger trace up to a selected cursor without making a provider call.",
+        "Use to prove the selected replay/fork point from non-UI tooling.",
+        "Read-only. Stops before the selected cursor and reports provider_called=false.",
+        "/agent-authoring.html#replay-receipts-before-changing-policy"
+      ),
+      tool(
+        "fork_control_debugger_cursor",
+        "POST",
+        "/v1/policy-authoring/control-debugger/traces/fork-cursor",
+        "Fork a Control Debugger trace at a selected cursor, apply a policy overlay, and continue with deterministic scripted steps.",
+        "Use to reproduce the UI's default Ralph fork/continue path without scraping buttons.",
+        "Write-capable. Writes fork transcript evidence but does not call a provider.",
+        "/agent-authoring.html#replay-receipts-before-changing-policy"
+      ),
+      tool(
+        "save_control_debugger_evidence",
+        "POST",
+        "/v1/policy-authoring/control-debugger/traces/save-evidence",
+        "Save selected Control Debugger trace evidence as a pinned simulator case for a policy pattern.",
+        "Use after replaying or forking a selected cursor that should become simulator or regression evidence.",
+        "Write-capable. Saved trace events can include sensitive metadata; review scenario packs before publishing.",
+        "/agent-authoring.html#record-scenarios-as-regression-evidence"
+      ),
+      tool(
         "list_harness_adapters",
         "GET",
         "/v1/policy-authoring/harness-adapters",
