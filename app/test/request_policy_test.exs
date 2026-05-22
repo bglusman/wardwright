@@ -14,7 +14,7 @@ defmodule Wardwright.RequestPolicyTest do
 
     conn = call(:post, "/v1/wardwright/simulate", request)
     assert conn.status == 200
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     assert get_in(body, ["receipt", "final", "alert_count"]) == 1
 
@@ -54,7 +54,7 @@ defmodule Wardwright.RequestPolicyTest do
       })
 
     assert conn.status == 200
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     assert get_in(body, ["receipt", "request", "message_count"]) == 2
 

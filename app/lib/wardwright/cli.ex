@@ -33,7 +33,7 @@ defmodule Wardwright.CLI do
 
       ["tools", "--json" | _] ->
         WardwrightWeb.PolicyAuthoringTools.list()
-        |> Jason.encode!()
+        |> JSON.encode!()
         |> write_fun.()
 
         {:halt, 0}

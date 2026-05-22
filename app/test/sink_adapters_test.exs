@@ -6,7 +6,7 @@ defmodule Wardwright.Test.SinkWebhook do
 
   post "/" do
     {:ok, body, conn} = Plug.Conn.read_body(conn)
-    send(:persistent_term.get({__MODULE__, :pid}), {:sink_webhook, Jason.decode!(body)})
+    send(:persistent_term.get({__MODULE__, :pid}), {:sink_webhook, JSON.decode!(body)})
     Plug.Conn.send_resp(conn, 204, "")
   end
 
@@ -90,13 +90,13 @@ defmodule Wardwright.SinkAdaptersTest do
       jsonl_path
       |> File.read!()
       |> String.split("\n", trim: true)
-      |> Enum.map(&Jason.decode!/1)
+      |> Enum.map(&JSON.decode!/1)
 
     assert jsonl_events |> Enum.count(&(&1["type"] == "policy.alert")) == 2
     assert jsonl_events |> Enum.count(&(&1["type"] == "receipt.finalized")) == 2
     refute File.read!(jsonl_path) =~ "raw-private-prompt"
 
-    status = call(:get, "/admin/sinks") |> Map.fetch!(:resp_body) |> Jason.decode!()
+    status = call(:get, "/admin/sinks") |> Map.fetch!(:resp_body) |> JSON.decode!()
     assert %{"data" => sinks} = status
     assert Enum.find(sinks, &(&1["id"] == "jsonl-audit"))["delivered_count"] == 4
     assert Enum.find(sinks, &(&1["id"] == "ops-webhook"))["delivered_count"] == 2

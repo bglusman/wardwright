@@ -393,10 +393,11 @@ defmodule Wardwright.ToolContext do
   end
 
   defp content_hash(value) do
-    case Jason.encode(value) do
-      {:ok, encoded} -> content_hash(encoded)
-      {:error, _error} -> nil
-    end
+    value
+    |> JSON.encode!()
+    |> content_hash()
+  rescue
+    Protocol.UndefinedError -> nil
   end
 
   defp hash_value(value) do

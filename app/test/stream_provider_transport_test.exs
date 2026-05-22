@@ -35,7 +35,7 @@ defmodule Wardwright.StreamProviderTransportTest do
 
     assert conn.status == 409
 
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     stream_policy = get_in(body, ["wardwright", "stream_policy"])
 
     assert get_in(body, ["wardwright", "status"]) == "stream_policy_retry_required"
@@ -223,7 +223,7 @@ defmodule Wardwright.StreamProviderTransportTest do
       |> String.split("\n\n", trim: true)
       |> Enum.map(&(&1 |> String.trim_leading("data:") |> String.trim()))
       |> Enum.reject(&(&1 == "[DONE]"))
-      |> Enum.map(&Jason.decode!/1)
+      |> Enum.map(&JSON.decode!/1)
       |> Enum.map(&get_in(&1, ["choices", Access.at(0), "index"]))
 
     assert indexes == [0, 0]
@@ -361,7 +361,7 @@ defmodule Wardwright.StreamProviderTransportTest do
 
     assert conn.status == 200
 
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     assert get_in(body, ["wardwright", "status"]) == "completed"
     assert get_in(body, ["wardwright", "provider_error"]) == nil
 
@@ -418,6 +418,6 @@ defmodule Wardwright.StreamProviderTransportTest do
       end)
     end)
     |> Enum.reject(&(&1 == "[DONE]"))
-    |> Enum.map(&Jason.decode!/1)
+    |> Enum.map(&JSON.decode!/1)
   end
 end

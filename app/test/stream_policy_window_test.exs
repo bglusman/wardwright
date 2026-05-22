@@ -67,7 +67,7 @@ defmodule Wardwright.StreamPolicyWindowTest do
     assert conn.status == 422
     assert get_resp_header(conn, "content-type") == ["application/json; charset=utf-8"]
 
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     assert get_in(body, ["wardwright", "status"]) == "stream_policy_blocked"
     assert get_in(body, ["wardwright", "selected_model"]) == "tiny/model"
     assert get_in(body, ["wardwright", "stream_policy", "released_to_consumer"]) == false
@@ -109,7 +109,7 @@ defmodule Wardwright.StreamPolicyWindowTest do
     assert conn.status == 422
     refute conn.resp_body =~ "text/event-stream"
 
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     assert get_in(body, ["wardwright", "status"]) == "stream_policy_blocked"
     assert get_in(body, ["wardwright", "stream_policy", "released_to_consumer"]) == false
     assert get_in(body, ["wardwright", "stream_policy", "trigger_count"]) == 1
@@ -150,7 +150,7 @@ defmodule Wardwright.StreamPolicyWindowTest do
 
     assert conn.status == 409
 
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     stream_policy = get_in(body, ["wardwright", "stream_policy"])
 
     assert stream_policy["released_to_consumer"] == false

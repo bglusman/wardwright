@@ -112,7 +112,7 @@ defmodule Wardwright.LiveProviderSmokeTest do
     |> Enum.filter(&String.starts_with?(&1, "data:"))
     |> Enum.map(&(&1 |> String.replace_prefix("data:", "") |> String.trim()))
     |> Enum.reject(&(&1 == "[DONE]"))
-    |> Enum.map(&Jason.decode!/1)
+    |> Enum.map(&JSON.decode!/1)
     |> Enum.map_join(&(get_in(&1, ["choices", Access.at(0), "delta", "content"]) || ""))
   end
 

@@ -129,12 +129,12 @@ defmodule WardwrightWeb.AuthoringAgent do
     - active_model_id: #{selected_model}
     - selected_policy_pattern: #{selected_pattern}
     - selected_recipe_id: #{selected_recipe}
-    - pending_drafts: #{Jason.encode!(Map.get(context, :pending_drafts, []))}
+    - pending_drafts: #{JSON.encode!(Map.get(context, :pending_drafts, []))}
 
     Current simulator turn:
-    - user_input: #{Jason.encode!(simulator_user_input)}
-    - raw_model_output_or_stream: #{Jason.encode!(simulator_model_response)}
-    - retry_attempt_outputs: #{Jason.encode!(simulator_response_attempts)}
+    - user_input: #{JSON.encode!(simulator_user_input)}
+    - raw_model_output_or_stream: #{JSON.encode!(simulator_model_response)}
+    - retry_attempt_outputs: #{JSON.encode!(simulator_response_attempts)}
 
     Available Wardwright authoring tools:
     #{tool_manifest()}
@@ -385,7 +385,7 @@ defmodule WardwrightWeb.AuthoringAgent do
     content
     |> candidate_json_strings()
     |> Enum.find_value(:error, fn candidate ->
-      case Jason.decode(candidate) do
+      case JSON.decode(candidate) do
         {:ok, %{"tool_calls" => calls} = plan} when is_list(calls) -> {:ok, plan}
         _ -> nil
       end

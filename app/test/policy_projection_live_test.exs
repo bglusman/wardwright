@@ -306,7 +306,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
       |> get("/policies/route-privacy/diagram")
 
     assert conn.status == 403
-    assert %{"error" => %{"code" => "protected_endpoint"}} = Jason.decode!(conn.resp_body)
+    assert %{"error" => %{"code" => "protected_endpoint"}} = JSON.decode!(conn.resp_body)
   end
 
   test "workbench accepts remote browser access with a configured admin bearer token" do
@@ -1336,7 +1336,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     File.write!(
       Path.join(workspace_dir, "tool-demo.json"),
-      Jason.encode!(%{
+      JSON.encode!(%{
         "category" => "tool.using",
         "id" => "tool-demo",
         "pattern_id" => "tool-governance",
@@ -1347,7 +1347,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     File.write!(
       Path.join(workspace_dir, "unsupported-demo.json"),
-      Jason.encode!(%{
+      JSON.encode!(%{
         "category" => "policy.future",
         "id" => "unsupported-demo",
         "pattern_id" => "future-policy-engine",
@@ -1737,7 +1737,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   defmodule DraftingAuthoringClient do
     def generate_text(_prompt, _opts) do
       {:ok,
-       Jason.encode!(%{
+       JSON.encode!(%{
          "answer" => "Drafted a cow-focused model.",
          "tool_calls" => [
            %{

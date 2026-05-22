@@ -5,10 +5,9 @@ defmodule WardwrightWeb.PolicyScenarioRegression do
 
   def exunit_source(pack) when is_map(pack) do
     with :ok <- validate_pack(pack),
-         {:ok, encoded_pack} <- Jason.encode(pack) do
+         {:ok, encoded_pack} <- encode_json(pack) do
       {:ok, render_exunit(pack, Base.encode64(encoded_pack))}
     else
-      {:error, %Jason.EncodeError{} = error} -> {:error, Exception.message(error)}
       {:error, message} when is_binary(message) -> {:error, message}
     end
   end
@@ -31,6 +30,12 @@ defmodule WardwrightWeb.PolicyScenarioRegression do
     end
   end
 
+  defp encode_json(value) do
+    {:ok, JSON.encode!(value)}
+  rescue
+    error in Protocol.UndefinedError -> {:error, Exception.message(error)}
+  end
+
   defp render_exunit(pack, encoded_pack) do
     module_name = generated_module_name(Map.fetch!(pack, "pattern_id"))
 
@@ -40,7 +45,7 @@ defmodule WardwrightWeb.PolicyScenarioRegression do
 
       @regression_pack "#{encoded_pack}"
                        |> Base.decode64!()
-                       |> Jason.decode!()
+                       |> JSON.decode!()
 
       def regression_pack, do: @regression_pack
 

@@ -30,7 +30,7 @@ defmodule Wardwright.RoutePolicyTest do
       })
 
     assert conn.status == 200
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     assert get_in(body, ["receipt", "decision", "selected_model"]) == "local/qwen"
 
@@ -70,7 +70,7 @@ defmodule Wardwright.RoutePolicyTest do
       })
 
     assert conn.status == 429
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     assert get_in(body, ["wardwright", "status"]) == "policy_failed_closed"
     receipt = body |> get_in(["wardwright", "receipt_id"]) |> Wardwright.ReceiptStore.get()
@@ -108,7 +108,7 @@ defmodule Wardwright.RoutePolicyTest do
       })
 
     assert conn.status == 200
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     assert get_in(body, ["receipt", "decision", "route_type"]) == "policy_override"
     assert get_in(body, ["receipt", "decision", "selected_model"]) == "large/model"
@@ -140,7 +140,7 @@ defmodule Wardwright.RoutePolicyTest do
       })
 
     assert conn.status == 429
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     assert get_in(body, ["wardwright", "status"]) == "policy_failed_closed"
 
     receipt = body |> get_in(["wardwright", "receipt_id"]) |> Wardwright.ReceiptStore.get()
@@ -174,7 +174,7 @@ defmodule Wardwright.RoutePolicyTest do
       })
 
     assert conn.status == 200
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     assert get_in(body, ["wardwright", "status"]) == "completed"
 
     receipt = body |> get_in(["wardwright", "receipt_id"]) |> Wardwright.ReceiptStore.get()
@@ -227,7 +227,7 @@ defmodule Wardwright.RoutePolicyTest do
       })
 
     assert conn.status == 429
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     receipt = body |> get_in(["wardwright", "receipt_id"]) |> Wardwright.ReceiptStore.get()
     assert get_in(receipt, ["decision", "route_blocked"]) == true
@@ -267,7 +267,7 @@ defmodule Wardwright.RoutePolicyTest do
       })
 
     assert conn.status == 200
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     assert get_in(body, ["receipt", "decision", "selected_model"]) == "local/qwen"
 
@@ -325,7 +325,7 @@ defmodule Wardwright.RoutePolicyTest do
       })
 
     assert conn.status == 200
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     assert get_in(body, ["receipt", "decision", "policy_route_constraints"]) == %{
              "allowed_targets" => ["local"],

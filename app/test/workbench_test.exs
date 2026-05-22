@@ -42,6 +42,7 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert conn.resp_body =~ "/assets/wardwright_state_graph.js"
     assert conn.resp_body =~ "/admin/socket/websocket"
     assert conn.resp_body =~ "page=workbench"
+    assert Plug.Conn.get_resp_header(conn, "cache-control") == ["no-store"]
     refute conn.resp_body =~ "Wardwright Lustre Workbench Spike"
   end
 
@@ -144,6 +145,9 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert json =~ "Model authoring"
     assert json =~ "Policy projection"
     assert json =~ "Fixture"
+    assert json =~ "/admin"
+    assert json =~ "/admin?view=model_access"
+    assert json =~ "/admin?view=control_debugger"
     refute json =~ "topbar-actions"
 
     for implementation_label <- [
@@ -174,6 +178,8 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert json =~ "Debug recording"
     assert json =~ "Receipt store"
     assert json =~ "Create Key"
+    assert json =~ "/admin?model=coding-balanced"
+    assert json =~ "/admin?view=control_debugger&model=coding-balanced"
     refute json =~ "Legacy workbench (deprecated)"
     refute json =~ ~s(href="/policies")
     refute json =~ "Lustre Workbench"
@@ -198,6 +204,8 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert json =~ "Simulator cases:"
     assert json =~ "VCR replay"
     assert json =~ "Explain receipt"
+    assert json =~ "/admin"
+    assert json =~ "/admin?view=model_access"
     refute json =~ "Phoenix.LiveView"
 
     WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
@@ -222,6 +230,35 @@ defmodule WardwrightWeb.WorkbenchTest do
              WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
 
     assert json =~ "query-selected-model"
+    assert json =~ "/admin?model=query-selected-model"
+    assert json =~ "/admin?view=model_access&model=query-selected-model"
+    assert json =~ "/admin?view=control_debugger&model=query-selected-model"
+
+    WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
+  end
+
+  test "admin transport preserves selected model on debugger fallback links" do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "debugger-selected-model")
+
+    assert {:ok, _config} = Wardwright.put_model_config(config)
+
+    assert {:ok, state} =
+             WardwrightWeb.LustreWorkbenchSocket.init(%{
+               connect_info: %{session: %{}},
+               params: %{"model" => "debugger-selected-model", "page" => "control_debugger"}
+             })
+
+    assert_receive {ref, message} when is_tuple(message), 1_000
+
+    assert {:push, {:text, json}, _state} =
+             WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
+
+    assert json =~ "Control debugger"
+    assert json =~ "/admin?model=debugger-selected-model"
+    assert json =~ "/admin?view=model_access&model=debugger-selected-model"
+    assert json =~ "/admin?view=control_debugger&model=debugger-selected-model"
 
     WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
   end
@@ -382,10 +419,14 @@ defmodule WardwrightWeb.WorkbenchTest do
            )
   end
 
-  test "admin shell keeps selected model synced between access and workbench pages" do
+  test "admin shell preserves selected model in workbench fallback link" do
     put_cow_transform_model_config()
 
-    assert :wardwright@lustre_admin_test_support.selecting_model_access_model_syncs_workbench(
+    assert :wardwright@lustre_admin_test_support.selecting_model_access_model_updates_workbench_href(
+             "cow-transform-workbench"
+           )
+
+    assert :wardwright@lustre_admin_test_support.workbench_deep_link_uses_selected_model(
              "cow-transform-workbench",
              "system/wardwright_policy_reminder: Include a small ASCII cow"
            )
@@ -677,6 +718,87 @@ defmodule WardwrightWeb.WorkbenchTest do
            )
   end
 
+  test "control debugger exposes counterfactual fork workflow and runtime readiness" do
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Counterfactual fork")
+
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Replay, change policy, continue")
+
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains(
+             "deterministic replay/fork and live model continuation available"
+           )
+
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("append-only files")
+
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Record example session")
+
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Agent harness export")
+
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains(
+             "can also continue the fork through a selected Wardwright model"
+           )
+
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("tool calls/results")
+  end
+
+  test "control debugger records the default counterfactual example from the UI" do
+    assert :wardwright@lustre_control_debugger_test_support.running_counterfactual_demo_shows_outcome()
+  end
+
+  test "control debugger keeps fork actions attached to a loaded transcript event" do
+    assert :wardwright@lustre_control_debugger_test_support.fork_actions_are_contextual_to_loaded_event()
+  end
+
+  test "control debugger records a non-tool output contract example from the UI" do
+    assert :wardwright@lustre_control_debugger_test_support.output_contract_example_shows_non_tool_fork_point()
+  end
+
+  test "control debugger loads transcript fork points from the demo receipt" do
+    assert :wardwright@lustre_control_debugger_test_support.loading_transcript_from_demo_receipt_shows_fork_points()
+  end
+
+  test "control debugger replays to the selected fork point without a provider call" do
+    assert :wardwright@lustre_control_debugger_test_support.replaying_to_loaded_fork_point_shows_no_provider_call()
+  end
+
+  test "control debugger forks from the selected point and compares the outcome" do
+    assert :wardwright@lustre_control_debugger_test_support.forking_from_loaded_fork_point_shows_comparison()
+  end
+
+  test "control debugger can continue a fork through a configured Wardwright model" do
+    put_counterfactual_live_model_config()
+
+    assert :wardwright@lustre_control_debugger_test_support.live_model_continuation_shows_provider_call(
+             "counterfactual-live-canned"
+           )
+  end
+
+  test "control debugger prepares an agent harness handoff from a loaded trace" do
+    assert :wardwright@lustre_control_debugger_test_support.harness_export_requires_loaded_trace()
+    assert :wardwright@lustre_control_debugger_test_support.opencode_harness_export_shows_fidelity_warning()
+  end
+
+  test "control debugger validates editable policy overlays before forking" do
+    assert :wardwright@lustre_control_debugger_test_support.invalid_policy_overlay_blocks_fork()
+  end
+
+  test "control debugger rejects blank policy overlays instead of applying a default" do
+    assert :wardwright@lustre_control_debugger_test_support.blank_policy_overlay_blocks_fork()
+  end
+
+  test "control debugger accepts generic editable policy overlays before forking" do
+    assert :wardwright@lustre_control_debugger_test_support.generic_policy_overlay_can_fork()
+  end
+
+  test "control debugger applies a valid edited policy overlay when forking" do
+    assert :wardwright@lustre_control_debugger_test_support.custom_policy_overlay_changes_applied_rule()
+  end
+
+  test "control debugger policy overlay text area is controlled" do
+    assert :wardwright@lustre_control_debugger_test_support.policy_overlay_textarea_is_controlled(
+             ~s({"id":"custom","requires_prior_read_for":["edit_file"]})
+           )
+  end
+
   test "control debugger receipt id text input is controlled" do
     assert :wardwright@lustre_control_debugger_test_support.receipt_text_input_is_controlled("manual_receipt_id")
   end
@@ -713,7 +835,7 @@ defmodule WardwrightWeb.WorkbenchTest do
   test "Gleam component starts as a real Lustre server component" do
     assert {:ok, component} =
              :wardwright@lustre_workbench.component()
-             |> :lustre.start_server_component(nil)
+             |> :lustre.start_server_component("")
 
     :lustre.send(component, :lustre.shutdown())
   end
@@ -737,6 +859,32 @@ defmodule WardwrightWeb.WorkbenchTest do
       |> Map.put("targets", [%{"context_window" => 8192, "model" => "ollama/gemma4:e4b"}])
       |> Map.put("dispatchers", [%{"id" => "dispatcher.cow", "models" => ["ollama/gemma4:e4b"]}])
       |> Map.put("route_root", "dispatcher.cow")
+
+    {:ok, _config} = Wardwright.put_model_config(config)
+  end
+
+  defp put_counterfactual_live_model_config do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "counterfactual-live-canned")
+      |> Map.put("version", "counterfactual-live-test")
+      |> Map.put("vcr", %{"mode" => "full_session"})
+      |> Map.put("requires_api_key", false)
+      |> Map.put("auth", %{"unkeyed_model_access" => "public"})
+      |> Map.put("targets", [
+        %{
+          "canned_outputs" => [
+            "Read settings.json before editing; feature_enabled is true and tests passed."
+          ],
+          "context_window" => 8192,
+          "model" => "canned/counterfactual-live",
+          "provider_kind" => "canned_sequence"
+        }
+      ])
+      |> Map.put("dispatchers", [
+        %{"id" => "dispatcher.counterfactual-live", "models" => ["canned/counterfactual-live"]}
+      ])
+      |> Map.put("route_root", "dispatcher.counterfactual-live")
 
     {:ok, _config} = Wardwright.put_model_config(config)
   end
@@ -842,7 +990,7 @@ defmodule WardwrightWeb.WorkbenchTest do
   defmodule AdminAuthoringClient do
     def generate_text(_prompt, _opts) do
       {:ok,
-       Jason.encode!(%{
+       JSON.encode!(%{
          "answer" => "Drafted admin cow model.",
          "next_steps" => ["review the draft before activation"],
          "tool_calls" => [
@@ -886,7 +1034,7 @@ defmodule WardwrightWeb.WorkbenchTest do
           "simulator context missing"
         end
 
-      {:ok, Jason.encode!(%{"answer" => answer, "tool_calls" => []})}
+      {:ok, JSON.encode!(%{"answer" => answer, "tool_calls" => []})}
     end
   end
 end

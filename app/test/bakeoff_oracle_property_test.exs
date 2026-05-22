@@ -5,7 +5,7 @@ defmodule Wardwright.BakeoffOraclePropertyTest do
   describe "structured output guard oracle" do
     property "accepts valid answers without guard events" do
       check all(answer <- valid_answer()) do
-        result = structured_guard_loop_oracle([Jason.encode!(answer)])
+        result = structured_guard_loop_oracle([JSON.encode!(answer)])
 
         assert result.final_status == "completed"
         assert result.guard_events == []
@@ -16,7 +16,7 @@ defmodule Wardwright.BakeoffOraclePropertyTest do
 
     property "records one guard event before a repaired valid answer" do
       check all({invalid_output, valid_output} <- invalid_then_valid_outputs()) do
-        result = structured_guard_loop_oracle([invalid_output, Jason.encode!(valid_output)])
+        result = structured_guard_loop_oracle([invalid_output, JSON.encode!(valid_output)])
 
         assert result.final_status == "completed_after_guard"
 
@@ -216,8 +216,8 @@ defmodule Wardwright.BakeoffOraclePropertyTest do
     invalid =
       member_of([
         "{not json",
-        Jason.encode!(%{"answer" => "too uncertain", "confidence" => 0.1}),
-        Jason.encode!(%{"answer" => "missing confidence"})
+        JSON.encode!(%{"answer" => "too uncertain", "confidence" => 0.1}),
+        JSON.encode!(%{"answer" => "missing confidence"})
       ])
 
     tuple({invalid, valid_answer()})
@@ -269,12 +269,12 @@ defmodule Wardwright.BakeoffOraclePropertyTest do
   end
 
   defp classify_structured_output(output) do
-    with {:ok, parsed} <- Jason.decode(output),
+    with {:json, {:ok, parsed}} <- {:json, JSON.decode(output)},
          :ok <- validate_answer_schema(parsed),
          :ok <- validate_confidence(parsed) do
       {:ok, parsed}
     else
-      {:error, %Jason.DecodeError{}} -> {:error, "json_syntax", "answer-json"}
+      {:json, {:error, _reason}} -> {:error, "json_syntax", "answer-json"}
       {:error, :schema} -> {:error, "schema_validation", "answer-json"}
       {:error, :confidence} -> {:error, "semantic_validation", "minimum-confidence"}
     end

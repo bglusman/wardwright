@@ -53,6 +53,13 @@ mise exec -- gleam format --check src
 mise exec -- mix test
 ```
 
+The counterfactual replay debugger has an opt-in acceptance contract for the
+deterministic replay/fork runtime:
+
+```bash
+mise exec -- mix test --only counterfactual_replay_acceptance
+```
+
 ## Implemented Surface
 
 - `GET /v1/models`

@@ -365,11 +365,11 @@ defmodule Wardwright do
     Enum.reduce(value, 0, fn
       %{"text" => text}, acc when is_binary(text) -> acc + String.length(text)
       %{"content" => text}, acc when is_binary(text) -> acc + String.length(text)
-      part, acc -> acc + byte_size(Jason.encode!(part))
+      part, acc -> acc + byte_size(JSON.encode!(part))
     end)
   end
 
-  defp content_length(value), do: byte_size(Jason.encode!(value))
+  defp content_length(value), do: byte_size(JSON.encode!(value))
 
   def model_record do
     model_record(current_config())
@@ -1142,7 +1142,7 @@ defmodule Wardwright do
         System.get_env("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 
     body =
-      Jason.encode!(%{
+      JSON.encode!(%{
         messages: provider_messages(request),
         model: model,
         stream: false
@@ -1164,7 +1164,7 @@ defmodule Wardwright do
         System.get_env("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 
     body =
-      Jason.encode!(%{
+      JSON.encode!(%{
         messages: provider_messages(request),
         model: model,
         stream: true
@@ -1187,7 +1187,7 @@ defmodule Wardwright do
         System.get_env("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 
     body =
-      Jason.encode!(%{
+      JSON.encode!(%{
         messages: provider_messages(request),
         model: model,
         stream: true
@@ -1208,7 +1208,7 @@ defmodule Wardwright do
     with base_url when base_url != "" <- Map.get(target, "provider_base_url", ""),
          {:ok, credential} <- provider_credential(target) do
       body =
-        Jason.encode!(%{
+        JSON.encode!(%{
           messages: provider_messages(request),
           model: provider_model(target),
           stream: false
@@ -1236,7 +1236,7 @@ defmodule Wardwright do
     with base_url when base_url != "" <- Map.get(target, "provider_base_url", ""),
          {:ok, credential} <- provider_credential(target) do
       body =
-        Jason.encode!(%{
+        JSON.encode!(%{
           messages: provider_messages(request),
           model: provider_model(target),
           stream: true
@@ -1261,7 +1261,7 @@ defmodule Wardwright do
     with base_url when base_url != "" <- Map.get(target, "provider_base_url", ""),
          {:ok, credential} <- provider_credential(target) do
       body =
-        Jason.encode!(%{
+        JSON.encode!(%{
           messages: provider_messages(request),
           model: provider_model(target),
           stream: true
@@ -1294,7 +1294,7 @@ defmodule Wardwright do
 
     case :httpc.request(:post, request, [{:timeout, 180_000}], body_format: :binary) do
       {:ok, {{_, status, _}, _headers, response_body}} when status in 200..299 ->
-        Jason.decode(response_body)
+        JSON.decode(response_body)
 
       {:ok, {{_, status, _}, _headers, _response_body}} ->
         {:error, "provider returned #{status}"}
@@ -1440,7 +1440,7 @@ defmodule Wardwright do
 
     metadata =
       Enum.reduce(lines, metadata, fn line, metadata ->
-        case Jason.decode(String.trim(line)) do
+        case JSON.decode(String.trim(line)) do
           {:ok, event} ->
             metadata = ollama_stream_metadata(metadata, event)
 
@@ -1515,7 +1515,7 @@ defmodule Wardwright do
             put_if_present(metadata, "done", true)
 
           data, metadata ->
-            case Jason.decode(data) do
+            case JSON.decode(data) do
               {:ok, event} ->
                 choice = openai_choice(event)
                 metadata = openai_stream_metadata(metadata, event)
@@ -1629,7 +1629,7 @@ defmodule Wardwright do
     response_body
     |> stream_lines()
     |> Enum.flat_map(fn line ->
-      case Jason.decode(line) do
+      case JSON.decode(line) do
         {:ok, event} -> [get_in(event, ["message", "content"]) || event["response"]]
         {:error, _} -> []
       end
@@ -1645,7 +1645,7 @@ defmodule Wardwright do
         []
 
       "data: " <> data ->
-        case Jason.decode(data) do
+        case JSON.decode(data) do
           {:ok, event} ->
             [
               get_in(event, ["choices", Access.at(0), "delta", "content"]) ||
@@ -1747,9 +1747,9 @@ defmodule Wardwright do
 
   defp encode_provider_body(encoded_body, request, forward_fields) when is_binary(encoded_body) do
     encoded_body
-    |> Jason.decode!()
+    |> JSON.decode!()
     |> Map.merge(forward_request_fields(request, forward_fields))
-    |> Jason.encode!()
+    |> JSON.encode!()
   end
 
   defp forward_request_fields(request, fields) do

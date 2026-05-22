@@ -157,6 +157,7 @@ property generators.
 | Prompt experiment receipts | Makes Wardwright useful as a prompt experiment boundary. | Prompt transform version, route, outcome labels, latency/cost. | Run A/B variants over fixture tasks; assert receipts can group by transform version. |
 | Cost/context budget guard | Prevents silent migration from cheap/fast routes to expensive/slow routes. | Estimated tokens, route selection, rolling run/session/tenant budget. | Generate calls near budget/context thresholds; assert route/degrade/alert decisions. |
 | Trace-to-regression loop | Turns production incidents into durable examples. | Receipt timeline, policy events, failure label, expected future behavior. | Import a labeled receipt; generate a BDD fixture that fails before the policy is added. |
+| Counterfactual replay debugger | Tests whether a new policy would have prevented or repaired an agent/model failure. | Full session transcript, event cursor, fork policy overlay, continuation result, comparison verdict. | Record a failed session, replay to the behavior cursor, fork with a policy overlay, continue the fork, and assert the changed run passes. |
 
 ## Policy Engine Implications
 
@@ -168,3 +169,6 @@ arbitrary access to receipts or storage.
 
 See [Policy Engine MVP](policy-engine.html) for the proposed initial phases,
 state scopes, and action model.
+
+See [Counterfactual Replay Contract](counterfactual-replay-contract.html) for
+the opt-in acceptance test and API contract for time-travel debugging.

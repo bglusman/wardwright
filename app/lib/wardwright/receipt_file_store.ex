@@ -25,7 +25,7 @@ defmodule Wardwright.ReceiptFileStore do
       receipt_id when is_binary(receipt_id) and receipt_id != "" ->
         path = receipt_path(receipt_id)
         tmp_path = "#{path}.#{System.unique_integer([:positive])}.tmp"
-        payload = Jason.encode!(receipt)
+        payload = JSON.encode!(receipt)
 
         File.mkdir_p!(Path.dirname(path))
         File.write!(tmp_path, payload)
@@ -65,7 +65,7 @@ defmodule Wardwright.ReceiptFileStore do
 
   defp decode_receipt_file(path) do
     with {:ok, json} <- File.read(path),
-         {:ok, receipt} when is_map(receipt) <- Jason.decode(json) do
+         {:ok, receipt} when is_map(receipt) <- JSON.decode(json) do
       [receipt]
     else
       _error -> []

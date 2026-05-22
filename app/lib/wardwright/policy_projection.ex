@@ -567,7 +567,7 @@ defmodule Wardwright.PolicyProjection do
 
     hash =
       :sha256
-      |> :crypto.hash(Jason.encode!(normalized))
+      |> :crypto.hash(JSON.encode!(normalized))
       |> Base.encode16(case: :lower)
 
     %{
@@ -2084,7 +2084,7 @@ defmodule Wardwright.PolicyProjection do
   defp evaluated_structured_output_simulation(turn) do
     text = turn_response(turn)
 
-    case Jason.decode(text) do
+    case JSON.decode(text) do
       {:error, _reason} ->
         structured_output_retry_simulation(
           turn,

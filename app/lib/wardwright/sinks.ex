@@ -209,7 +209,7 @@ defmodule Wardwright.Sinks do
         true ->
           File.mkdir_p!(Path.dirname(path))
 
-          File.write!(path, Jason.encode!(redacted_event(event, sink_state.config)) <> "\n", [
+          File.write!(path, JSON.encode!(redacted_event(event, sink_state.config)) <> "\n", [
             :append
           ])
 
@@ -235,7 +235,7 @@ defmodule Wardwright.Sinks do
           base_result(sink_id, "webhook", event, key, "duplicate_suppressed")
 
         true ->
-          payload = Jason.encode!(redacted_event(event, sink_state.config))
+          payload = JSON.encode!(redacted_event(event, sink_state.config))
           headers = [{~c"content-type", ~c"application/json"}]
           request = {String.to_charlist(url), headers, ~c"application/json", payload}
           timeout = get_in(sink_state.config, ["delivery", "timeout_ms"]) || @default_timeout_ms

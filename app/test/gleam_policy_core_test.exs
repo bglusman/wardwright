@@ -109,6 +109,66 @@ defmodule Wardwright.GleamPolicyCoreTest do
     assert PlanCore.event_after?(10, 2, 10, 1)
   end
 
+  test "counterfactual contract classifies replayable recording and live-fork readiness" do
+    assert :wardwright@counterfactual_contract.api_contract_version() ==
+             "wardwright.counterfactual_replay.v0"
+
+    assert :wardwright@counterfactual_contract.recording_scope("metadata_only", false, 1) ==
+             "metadata_only"
+
+    assert :wardwright@counterfactual_contract.recording_scope("full_session", false, 1) ==
+             "single_turn_full_session"
+
+    assert :wardwright@counterfactual_contract.recording_scope("full_session", true, 3) ==
+             "replayable_session"
+
+    missing =
+      :wardwright@counterfactual_contract.missing_runtime_capabilities(
+        true,
+        false,
+        true,
+        false
+      )
+
+    assert missing == ["replay_to_event_cursor", "live_continuation"]
+    assert :wardwright@counterfactual_contract.replay_mode(missing) == "explain_only"
+
+    assert :wardwright@counterfactual_contract.accepted_outcome(
+             "failed",
+             "passed",
+             "read_before_edit_violation",
+             ""
+           )
+
+    refute :wardwright@counterfactual_contract.accepted_outcome(
+             "failed",
+             "failed",
+             "read_before_edit_violation",
+             "read_before_edit_violation"
+           )
+  end
+
+  test "harness adapter contract refuses to overstate cross-agent replay fidelity" do
+    assert :wardwright@harness_adapter.contract_version() ==
+             "wardwright.harness_adapter.v0"
+
+    assert :wardwright@harness_adapter.fidelity_label(true, true, false, false, false) ==
+             "session_import_best_effort"
+
+    assert :wardwright@harness_adapter.fidelity_label(false, true, false, false, false) ==
+             "prompt_handoff"
+
+    assert :wardwright@harness_adapter.missing_fidelity(true, true, false, false, false) == [
+             "native_tool_results",
+             "workspace_snapshot",
+             "private_agent_state"
+           ]
+
+    refute :wardwright@harness_adapter.can_claim_equivalent_agent_resume(true, false, true, true, true)
+    refute :wardwright@harness_adapter.can_claim_equivalent_agent_resume(true, true, false, true, true)
+    assert :wardwright@harness_adapter.can_claim_equivalent_agent_resume(true, true, true, true, true)
+  end
+
   test "alert core classifies queue capacity, duplicate, and terminal states" do
     config = %{"capacity" => 1, "on_full" => "dead_letter"}
     alert = %{"idempotency_key" => "key-1", "rule_id" => "alert-rule", "session_id" => "s1"}

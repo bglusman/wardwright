@@ -232,7 +232,7 @@ defmodule Wardwright.MCPAuthoringTest do
       |> put_req_header("accept", "application/json, text/event-stream")
       |> post(
         "/mcp",
-        Jason.encode!(%{
+        JSON.encode!(%{
           "id" => 1,
           "jsonrpc" => "2.0",
           "method" => "initialize",
@@ -247,7 +247,7 @@ defmodule Wardwright.MCPAuthoringTest do
     assert initialize.status == 200
 
     assert %{"result" => %{"serverInfo" => %{"name" => "wardwright-policy-authoring"}}} =
-             Jason.decode!(initialize.resp_body)
+             JSON.decode!(initialize.resp_body)
 
     [session_id] = get_resp_header(initialize, "mcp-session-id")
 
@@ -258,7 +258,7 @@ defmodule Wardwright.MCPAuthoringTest do
       |> put_req_header("mcp-session-id", session_id)
       |> post(
         "/mcp",
-        Jason.encode!(%{
+        JSON.encode!(%{
           "jsonrpc" => "2.0",
           "method" => "notifications/initialized",
           "params" => %{}
@@ -274,7 +274,7 @@ defmodule Wardwright.MCPAuthoringTest do
       |> put_req_header("mcp-session-id", session_id)
       |> post(
         "/mcp",
-        Jason.encode!(%{
+        JSON.encode!(%{
           "id" => 2,
           "jsonrpc" => "2.0",
           "method" => "tools/list",
@@ -286,7 +286,7 @@ defmodule Wardwright.MCPAuthoringTest do
 
     tool_names =
       listed.resp_body
-      |> Jason.decode!()
+      |> JSON.decode!()
       |> get_in(["result", "tools"])
       |> Enum.map(& &1["name"])
 
@@ -325,7 +325,7 @@ defmodule Wardwright.MCPAuthoringTest do
 
     assert rejected.status == 403
     assert rejected.halted
-    assert Jason.decode!(rejected.resp_body)["error"]["code"] == "protected_endpoint"
+    assert JSON.decode!(rejected.resp_body)["error"]["code"] == "protected_endpoint"
   end
 
   defp restore_env(key, nil), do: Application.delete_env(:wardwright, key)
