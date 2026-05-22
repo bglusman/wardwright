@@ -1,9 +1,0 @@
-Selected event before the change:
-
-#5 Tool call: edit_file
-args: path=app.txt
-Suggested fork point: before mutating app.txt.
-
-The before page did not contain:
-
-Violation: edit_file ran before read_file for app.txt.
