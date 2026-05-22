@@ -113,8 +113,63 @@ defmodule WardwrightWeb.ControlDebuggerData do
     end
   end
 
+  def harness_adapter_options do
+    WardwrightWeb.AgentHarnessAdapters.list()
+    |> Enum.map(fn adapter ->
+      {
+        adapter["id"] || "",
+        adapter["label"] || adapter["id"] || "",
+        adapter["fidelity"] || "unknown",
+        adapter["status"] || "unknown"
+      }
+    end)
+  end
+
+  def default_harness_adapter_id, do: "opencode"
+
+  def export_harness_trace(session_id, adapter_id) do
+    session_id = session_id |> to_string() |> String.trim()
+    adapter_id = adapter_id |> to_string() |> String.trim() |> blank_fallback(default_harness_adapter_id())
+
+    with {:inputs, false} <- {:inputs, session_id == ""},
+         {:ok, export} <- WardwrightWeb.AgentHarnessAdapters.write_export(session_id, adapter_id) do
+      adapter = export["adapter"] || %{}
+      commands = export["commands"] || []
+      warnings = export["warnings"] || []
+      saved_files = export["saved_files"] || []
+      command = harness_export_command(export, saved_files)
+
+      {true, "Prepared #{adapter["label"] || adapter_id} trace handoff and saved #{length(saved_files)} file(s).",
+       [
+         {"Adapter", adapter["label"] || adapter_id},
+         {"Fidelity", adapter["fidelity"] || "unknown"},
+         {"Equivalent agent resume", bool_text(adapter["equivalent_agent_resume"])},
+         {"Artifact", export["artifact_format"] || "unknown"},
+         {"Saved file", saved_files |> List.first() |> blank_fallback("none")},
+         {"Command", command |> blank_fallback(commands |> List.first() |> blank_fallback("none"))},
+         {"Warnings", warnings |> Enum.join(" ") |> blank_fallback("none")}
+       ]}
+    else
+      {:inputs, true} ->
+        {false, "Load a session trace before exporting to an agent harness.", []}
+
+      {:error, message} ->
+        {false, "Could not export trace: #{message}", []}
+    end
+  end
+
   def run_counterfactual_demo do
     run_counterfactual_example(default_counterfactual_example_id())
+  end
+
+  defp harness_export_command(%{"adapter" => %{"id" => "opencode"}}, [path | _]) when is_binary(path) do
+    "opencode import #{shell_quote(path)}"
+  end
+
+  defp harness_export_command(_export, _saved_files), do: ""
+
+  defp shell_quote(value) do
+    "'" <> String.replace(to_string(value), "'", "'\"'\"'") <> "'"
   end
 
   def run_counterfactual_example(example_id) do

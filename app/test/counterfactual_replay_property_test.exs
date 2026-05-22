@@ -45,6 +45,30 @@ defmodule WardwrightWeb.CounterfactualReplayPropertyTest do
     end
   end
 
+  property "adapter fidelity never claims equivalent resume while any hidden-state requirement is missing" do
+    check all(
+            native_session_import <- boolean(),
+            native_session_resume <- boolean(),
+            native_tool_results <- boolean(),
+            workspace_snapshot <- boolean(),
+            private_agent_state <- boolean(),
+            max_runs: 40
+          ) do
+      equivalent =
+        :wardwright@harness_adapter.can_claim_equivalent_agent_resume(
+          native_session_import,
+          native_session_resume,
+          native_tool_results,
+          workspace_snapshot,
+          private_agent_state
+        )
+
+      assert equivalent ==
+               (native_session_import and native_session_resume and native_tool_results and workspace_snapshot and
+                  private_agent_state)
+    end
+  end
+
   defp replay_shape do
     bind(integer(2..12), fn event_count ->
       map(integer(1..event_count), fn cursor_index ->

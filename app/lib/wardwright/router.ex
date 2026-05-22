@@ -597,6 +597,31 @@ defmodule Wardwright.Router do
     end
   end
 
+  get "/v1/policy-authoring/harness-adapters" do
+    case require_protected_access(conn) do
+      :ok ->
+        json(conn, 200, Map.new([{"data", WardwrightWeb.AgentHarnessAdapters.list()}]))
+
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+    end
+  end
+
+  post "/v1/policy-authoring/harness-adapters/:adapter_id/export" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, session_id} <- required_body_string(body, "session_id"),
+         {:ok, export} <- WardwrightWeb.AgentHarnessAdapters.export(session_id, adapter_id, body) do
+      json(conn, 200, Map.new([{"export", export}]))
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_harness_adapter_export")
+    end
+  end
+
   get "/v1/policy-authoring/scenarios/:pattern_id/regression-export" do
     with :ok <- require_protected_access(conn),
          true <- known_policy_pattern?(pattern_id),
@@ -768,6 +793,19 @@ defmodule Wardwright.Router do
     case Map.get(body, @max_unpinned_key) do
       value when is_integer(value) and value >= 0 -> {:ok, value}
       _value -> {:error, "max_unpinned must be a non-negative integer"}
+    end
+  end
+
+  defp required_body_string(body, key) do
+    case body do
+      %{^key => value} when is_binary(value) ->
+        case String.trim(value) do
+          "" -> {:error, "#{key} must be a non-empty string"}
+          trimmed -> {:ok, trimmed}
+        end
+
+      _value ->
+        {:error, "#{key} must be a non-empty string"}
     end
   end
 

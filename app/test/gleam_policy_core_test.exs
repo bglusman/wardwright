@@ -148,6 +148,27 @@ defmodule Wardwright.GleamPolicyCoreTest do
            )
   end
 
+  test "harness adapter contract refuses to overstate cross-agent replay fidelity" do
+    assert :wardwright@harness_adapter.contract_version() ==
+             "wardwright.harness_adapter.v0"
+
+    assert :wardwright@harness_adapter.fidelity_label(true, true, false, false, false) ==
+             "session_import_best_effort"
+
+    assert :wardwright@harness_adapter.fidelity_label(false, true, false, false, false) ==
+             "prompt_handoff"
+
+    assert :wardwright@harness_adapter.missing_fidelity(true, true, false, false, false) == [
+             "native_tool_results",
+             "workspace_snapshot",
+             "private_agent_state"
+           ]
+
+    refute :wardwright@harness_adapter.can_claim_equivalent_agent_resume(true, false, true, true, true)
+    refute :wardwright@harness_adapter.can_claim_equivalent_agent_resume(true, true, false, true, true)
+    assert :wardwright@harness_adapter.can_claim_equivalent_agent_resume(true, true, true, true, true)
+  end
+
   test "alert core classifies queue capacity, duplicate, and terminal states" do
     config = %{"capacity" => 1, "on_full" => "dead_letter"}
     alert = %{"idempotency_key" => "key-1", "rule_id" => "alert-rule", "session_id" => "s1"}

@@ -70,6 +70,7 @@ pub fn running_counterfactual_demo_shows_outcome() -> Bool {
   && view_contains(simulation, "Selected trace event")
   && view_contains(simulation, "Recorded evidence")
   && view_contains(simulation, "What changes")
+  && view_contains(simulation, "Agent harness export")
   && view_contains(simulation, "Replay selected point")
   && view_contains(simulation, "Continue from selected point")
   && view_contains(
@@ -78,6 +79,26 @@ pub fn running_counterfactual_demo_shows_outcome() -> Bool {
   )
   && view_contains(simulation, "Tool call: edit_file")
   && !view_contains(simulation, "No session trace loaded yet")
+}
+
+pub fn harness_export_requires_loaded_trace() -> Bool {
+  start()
+  |> click_button("Prepare harness handoff")
+  |> view_contains("Load a session trace before exporting")
+}
+
+pub fn opencode_harness_export_shows_fidelity_warning() -> Bool {
+  let simulation =
+    start()
+    |> click_button("Record example session")
+    |> click_button("Prepare harness handoff")
+
+  view_contains(simulation, "Prepared OpenCode trace handoff and saved")
+  && view_contains(simulation, "session_import_best_effort")
+  && view_contains(simulation, "Saved file")
+  && view_contains(simulation, "Equivalent agent resume")
+  && view_contains(simulation, "no")
+  && view_contains(simulation, "opencode import")
 }
 
 pub fn fork_actions_are_contextual_to_loaded_event() -> Bool {

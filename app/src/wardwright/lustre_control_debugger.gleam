@@ -26,6 +26,9 @@ type ModelOption =
 type ExampleOption =
   #(String, String, String)
 
+type HarnessAdapterOption =
+  #(String, String, String, String)
+
 type ReplayFact =
   #(String, String)
 
@@ -52,6 +55,10 @@ pub type Model {
     continuation_mode: String,
     continuation_model_id: String,
     continuation_model_api_key: String,
+    harness_adapter_id: String,
+    harness_export_status: String,
+    harness_export_error: String,
+    harness_export_facts: List(ReplayFact),
     transcript_events: List(TranscriptEvent),
     fork_replay_status: String,
     fork_replay_error: String,
@@ -80,6 +87,8 @@ pub type Msg {
   ContinuationModeChanged(String)
   ContinuationModelChanged(String)
   ContinuationModelApiKeyChanged(String)
+  HarnessAdapterChanged(String)
+  ExportHarnessTrace
   ReplayToForkPoint
   ForkAndContinue
 }
@@ -116,6 +125,18 @@ fn external_model_options() -> List(ModelOption)
 
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "default_live_model_id")
 fn external_default_live_model_id() -> String
+
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "harness_adapter_options")
+fn external_harness_adapter_options() -> List(HarnessAdapterOption)
+
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "default_harness_adapter_id")
+fn external_default_harness_adapter_id() -> String
+
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "export_harness_trace")
+fn external_export_harness_trace(
+  session_id: String,
+  adapter_id: String,
+) -> #(Bool, String, List(ReplayFact))
 
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "counterfactual_example_options")
 fn external_counterfactual_example_options() -> List(ExampleOption)
@@ -185,6 +206,10 @@ pub fn init(_flags: Nil) -> Model {
     continuation_mode: "scripted_agent",
     continuation_model_id: external_default_live_model_id(),
     continuation_model_api_key: "",
+    harness_adapter_id: external_default_harness_adapter_id(),
+    harness_export_status: "",
+    harness_export_error: "",
+    harness_export_facts: [],
     transcript_events: [],
     fork_replay_status: "",
     fork_replay_error: "",
@@ -357,6 +382,37 @@ pub fn update(model: Model, msg: Msg) -> Model {
         continuation_model_api_key: api_key,
       )
 
+    HarnessAdapterChanged(adapter_id) ->
+      Model(
+        ..reset_harness_export_results(model),
+        harness_adapter_id: adapter_id,
+      )
+
+    ExportHarnessTrace -> {
+      let #(ok, message, facts) =
+        external_export_harness_trace(
+          model.transcript_session_id,
+          model.harness_adapter_id,
+        )
+
+      case ok {
+        True ->
+          Model(
+            ..model,
+            harness_export_status: message,
+            harness_export_error: "",
+            harness_export_facts: facts,
+          )
+        False ->
+          Model(
+            ..model,
+            harness_export_status: "",
+            harness_export_error: message,
+            harness_export_facts: [],
+          )
+      }
+    }
+
     ReplayToForkPoint -> {
       let #(ok, message, facts) =
         external_replay_to_fork_point(
@@ -426,6 +482,10 @@ fn reset_transcript_fork_and_counterfactual(model: Model) -> Model {
     continuation_mode: "scripted_agent",
     continuation_model_id: external_default_live_model_id(),
     continuation_model_api_key: "",
+    harness_adapter_id: external_default_harness_adapter_id(),
+    harness_export_status: "",
+    harness_export_error: "",
+    harness_export_facts: [],
     transcript_events: [],
     fork_replay_status: "",
     fork_replay_error: "",
@@ -448,6 +508,9 @@ fn reset_fork_results(model: Model) -> Model {
     fork_continue_status: "",
     fork_continue_error: "",
     fork_continue_facts: [],
+    harness_export_status: "",
+    harness_export_error: "",
+    harness_export_facts: [],
   )
 }
 
@@ -457,6 +520,15 @@ fn reset_continue_results(model: Model) -> Model {
     fork_continue_status: "",
     fork_continue_error: "",
     fork_continue_facts: [],
+  )
+}
+
+fn reset_harness_export_results(model: Model) -> Model {
+  Model(
+    ..model,
+    harness_export_status: "",
+    harness_export_error: "",
+    harness_export_facts: [],
   )
 }
 
@@ -491,6 +563,7 @@ pub fn panel(model: Model) -> Element(Msg) {
       import_card(model),
       replay_card(model),
       counterfactual_card(model),
+      harness_adapter_card(model),
     ]),
     transcript_card(model),
   ])
@@ -656,6 +729,40 @@ fn counterfactual_card(model: Model) -> Element(Msg) {
         <> ".",
       ),
     ]),
+  ])
+}
+
+fn harness_adapter_card(model: Model) -> Element(Msg) {
+  html.article([class("panel debugger-card")], [
+    html.div([class("panel-heading")], [
+      html.div([], [
+        html.span([], [text("Agent harness export")]),
+        html.strong([], [text("Best-effort continuation")]),
+      ]),
+      badge.badge([badge.variant(badge.Outline)], [text("adapter")]),
+    ]),
+    labeled_select(
+      "Harness adapter",
+      "control_harness_adapter_id",
+      model.harness_adapter_id,
+      harness_adapter_options(model.harness_adapter_id),
+      HarnessAdapterChanged,
+    ),
+    button.button(
+      [
+        button.variant(button.Ghost),
+        type_("button"),
+        event.on_click(ExportHarnessTrace),
+      ],
+      [text("Prepare harness handoff")],
+    ),
+    html.small([class("debugger-note")], [
+      text(
+        "Exports the loaded session trace for another agent harness. OpenCode can receive a session JSON import; Claude, Codex, and Pi start as lower-fidelity prompt handoffs unless their native import surface is proven.",
+      ),
+    ]),
+    status_text(model.harness_export_status, model.harness_export_error),
+    harness_export_facts(model),
   ])
 }
 
@@ -1005,6 +1112,13 @@ fn fork_continue_facts(model: Model) -> Element(Msg) {
   }
 }
 
+fn harness_export_facts(model: Model) -> Element(Msg) {
+  case model.harness_export_facts {
+    [] -> html.div([], [])
+    facts -> html.dl([class("debugger-facts")], list.map(facts, fact))
+  }
+}
+
 fn fact(replay_fact: ReplayFact) -> Element(Msg) {
   let #(label, value_text) = replay_fact
 
@@ -1104,6 +1218,18 @@ fn continuation_mode_options(selected_id: String) -> List(Element(Msg)) {
   ]
 }
 
+fn harness_adapter_options(selected_id: String) -> List(Element(Msg)) {
+  external_harness_adapter_options()
+  |> list.map(fn(option) {
+    let #(adapter_id, label, fidelity, status) = option
+    select_ui.option(
+      [selected(adapter_id == selected_id)],
+      label <> " - " <> fidelity <> " - " <> status,
+      adapter_id,
+    )
+  })
+}
+
 fn continuation_scope(continuation_mode: String) -> String {
   case continuation_mode {
     "wardwright_model" -> "continues through a Wardwright model"
@@ -1152,7 +1278,7 @@ pub fn styles() -> String {
   }
   .debugger-actions {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 14px;
   }
   .debugger-card {

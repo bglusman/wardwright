@@ -161,6 +161,12 @@ and receipt event. That transcript is stored in the same append-only transcript
 store as scripted examples and can be loaded from the Control Debugger by
 selecting the generated receipt.
 
+The debugger can also prepare agent-harness exports from a loaded session trace.
+OpenCode is the first concrete target because its CLI exposes session export,
+import, resume, and fork commands. Claude Code, Codex, and Pi start as lower
+fidelity prompt-handoff adapters until a supported external import surface is
+proven. See [Agent Harness Adapter Contract](../contracts/agent-harness-adapter-contract.html).
+
 ## Known Runtime Limits
 
 - The deterministic runner currently drives the gateway through the router test

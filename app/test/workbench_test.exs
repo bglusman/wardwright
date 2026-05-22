@@ -731,6 +731,8 @@ defmodule WardwrightWeb.WorkbenchTest do
 
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Record example session")
 
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Agent harness export")
+
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains(
              "can also continue the fork through a selected Wardwright model"
            )
@@ -768,6 +770,11 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert :wardwright@lustre_control_debugger_test_support.live_model_continuation_shows_provider_call(
              "counterfactual-live-canned"
            )
+  end
+
+  test "control debugger prepares an agent harness handoff from a loaded trace" do
+    assert :wardwright@lustre_control_debugger_test_support.harness_export_requires_loaded_trace()
+    assert :wardwright@lustre_control_debugger_test_support.opencode_harness_export_shows_fidelity_warning()
   end
 
   test "control debugger validates editable policy overlays before forking" do
