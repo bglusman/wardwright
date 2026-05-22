@@ -180,6 +180,7 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
       ],
       "fidelity_notice" => fidelity_notice(adapter),
       "session_id" => session_id,
+      "state_fidelity_probe" => state_fidelity_probe(session_id, adapter, events),
       "warnings" => adapter_warnings(adapter)
     }
   end
@@ -275,6 +276,7 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
       "commands" => handoff_commands(adapter["id"], cwd),
       "fidelity_notice" => fidelity_notice(adapter),
       "session_id" => session_id,
+      "state_fidelity_probe" => state_fidelity_probe(session_id, adapter, events),
       "warnings" => adapter_warnings(adapter)
     }
   end
@@ -329,10 +331,16 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
          :ok <- chmod_private_dir(dir) do
       case export["artifact_format"] do
         "opencode_session_json" ->
-          write_json_artifact(dir, opencode_file_name(session_id), export["artifact"])
+          with {:ok, artifact_paths} <- write_json_artifact(dir, opencode_file_name(session_id), export["artifact"]),
+               {:ok, probe_paths} <- write_probe_artifact(dir, export) do
+            {:ok, artifact_paths ++ probe_paths}
+          end
 
         "prompt_handoff" ->
-          write_prompt_handoff_files(dir, get_in(export, ["artifact", "files"]) || [])
+          with {:ok, artifact_paths} <- write_prompt_handoff_files(dir, get_in(export, ["artifact", "files"]) || []),
+               {:ok, probe_paths} <- write_probe_artifact(dir, export) do
+            {:ok, artifact_paths ++ probe_paths}
+          end
 
         _format ->
           {:error, "unsupported harness export artifact format"}
@@ -350,6 +358,12 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
   rescue
     _error -> {:error, "could not encode harness export artifact"}
   end
+
+  defp write_probe_artifact(dir, %{"state_fidelity_probe" => probe}) when is_map(probe) do
+    write_json_artifact(dir, "wardwright-state-fidelity-probe.json", probe)
+  end
+
+  defp write_probe_artifact(_dir, _export), do: {:ok, []}
 
   defp write_prompt_handoff_files(dir, files) when is_list(files) do
     files
@@ -373,7 +387,7 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
     ["opencode import #{shell_quote(path)}" | Enum.drop(export["commands"] || [], 1)]
   end
 
-  defp saved_export_commands(%{"adapter" => %{"id" => "claude"}}, [_trace_path, prompt_path])
+  defp saved_export_commands(%{"adapter" => %{"id" => "claude"}}, [_trace_path, prompt_path | _])
        when is_binary(prompt_path) do
     [
       "claude --print --input-format text --output-format stream-json < #{shell_quote(prompt_path)}",
@@ -381,7 +395,7 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
     ]
   end
 
-  defp saved_export_commands(%{"adapter" => %{"id" => "codex"}}, [_trace_path, prompt_path])
+  defp saved_export_commands(%{"adapter" => %{"id" => "codex"}}, [_trace_path, prompt_path | _])
        when is_binary(prompt_path) do
     [
       "codex exec --json - < #{shell_quote(prompt_path)}",
@@ -389,7 +403,8 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
     ]
   end
 
-  defp saved_export_commands(%{"adapter" => %{"id" => "pi"}}, [_trace_path, prompt_path]) when is_binary(prompt_path) do
+  defp saved_export_commands(%{"adapter" => %{"id" => "pi"}}, [_trace_path, prompt_path | _])
+       when is_binary(prompt_path) do
     [
       "pi < #{shell_quote(prompt_path)}",
       "oh-my-pi < #{shell_quote(prompt_path)}"
@@ -484,10 +499,48 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
     }
   end
 
+  defp state_fidelity_probe(session_id, adapter, events) do
+    tool_result_fingerprints =
+      events
+      |> Enum.filter(&tool_result_event?/1)
+      |> Enum.map(fn event ->
+        %{
+          "cursor" => event["cursor"] || "",
+          "fingerprint" => stable_fingerprint(event["tool"] || event),
+          "tool_name" => get_in(event, ["tool", "name"]) || "unknown"
+        }
+      end)
+
+    %{
+      "adapter_id" => adapter["id"],
+      "event_count" => length(events),
+      "pass_conditions" => [
+        "imported harness session exposes the same trace_fingerprint",
+        "imported harness session preserves every tool_result_fingerprint",
+        "forked continuation can identify the same read-before-edit cursor before taking write-class action"
+      ],
+      "schema" => "wardwright.harness_state_fidelity_probe.v0",
+      "session_id" => session_id,
+      "tool_result_count" => length(tool_result_fingerprints),
+      "tool_result_fingerprints" => tool_result_fingerprints,
+      "trace_fingerprint" => stable_fingerprint(events)
+    }
+  end
+
+  defp tool_result_event?(%{"tool" => %{"result" => _result}}), do: true
+  defp tool_result_event?(_event), do: false
+
   defp safe_json(value) do
     JSON.encode!(value)
   rescue
     _ -> inspect(value)
+  end
+
+  defp stable_fingerprint(value) do
+    value
+    |> safe_json()
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
   end
 
   defp opencode_session_id(session_id), do: "ses_ww" <> short_hash(session_id)

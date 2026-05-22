@@ -179,6 +179,10 @@ defmodule Wardwright.MCPAuthoringTest do
              "required"
            ]) == true
 
+    assert get_in(export_response.structured_content, ["export", "state_fidelity_probe", "schema"]) ==
+             "wardwright.harness_state_fidelity_probe.v0"
+
+    assert get_in(export_response.structured_content, ["export", "state_fidelity_probe", "tool_result_count"]) > 0
     assert hd(get_in(export_response.structured_content, ["export", "commands"])) =~ "opencode import"
   end
 

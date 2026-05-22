@@ -22,8 +22,8 @@ validation record below.
 
 - Historical loops completed before this tracker: 3.
 - Additional heartbeat continuation budget: 10 loops.
-- Additional loops completed: 2.
-- Additional loops remaining: 8.
+- Additional loops completed: 3.
+- Additional loops remaining: 7.
 
 ## Historical Baseline
 
@@ -74,6 +74,29 @@ validation record below.
   - This does not close `RALPH-RBE-002`; it deliberately prevents accidental
     closure by making the missing proof explicit across UI, MCP, and exported
     adapter payloads.
+
+### Loop 6 - Harness State-Fidelity Probe
+
+- Timestamp: 2026-05-22T23:06Z heartbeat.
+- Starting commit: `0f16020`.
+- Ending commit: this state-fidelity probe commit on
+  `codex/ralph-ui-loop-pilot-1`.
+- Scope: added an executable `state_fidelity_probe` to harness exports, with
+  trace and tool-result fingerprints plus pass conditions for the eventual
+  OpenCode import/resume fidelity trial. The push gate also exposed persistent
+  transcript-store leakage between Mix invocations, so the loop isolated
+  `RouterCase` transcript storage per test before pushing.
+- Validation:
+  - `mise run check:docs`: passed.
+  - `cd app && MIX_ENV=test mise exec -- mix test`: passed, 393 tests with
+    21 properties and 6 excluded live/acceptance tests.
+- Adversarial review:
+  - This still does not close `RALPH-RBE-002`; it turns the next proof step
+    from prose into a concrete sidecar artifact that a harness trial can
+    inspect. The risk is another export field, but it is scoped to harness
+    evidence and covered across direct export and MCP tests. The RouterCase
+    isolation fix reduces cross-run state coupling without changing production
+    transcript behavior.
 
 ## Open Followup
 

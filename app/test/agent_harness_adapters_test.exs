@@ -78,6 +78,16 @@ defmodule WardwrightWeb.AgentHarnessAdaptersTest do
     assert trace_text =~ "read_before_edit_violation"
     assert export["fidelity_notice"] =~ "best-effort"
     assert Enum.any?(export["warnings"], &String.contains?(&1, "State fidelity verification is still required"))
+    assert get_in(export, ["state_fidelity_probe", "schema"]) == "wardwright.harness_state_fidelity_probe.v0"
+    assert get_in(export, ["state_fidelity_probe", "adapter_id"]) == "opencode"
+    assert get_in(export, ["state_fidelity_probe", "event_count"]) > 0
+    assert get_in(export, ["state_fidelity_probe", "tool_result_count"]) > 0
+    assert get_in(export, ["state_fidelity_probe", "trace_fingerprint"]) =~ ~r/^[0-9a-f]{64}$/
+
+    assert Enum.any?(
+             get_in(export, ["state_fidelity_probe", "tool_result_fingerprints"]),
+             &(&1["tool_name"] == "edit_file" and &1["fingerprint"] =~ ~r/^[0-9a-f]{64}$/)
+           )
   end
 
   test "opencode export can be saved as a human-usable import artifact" do
@@ -85,14 +95,17 @@ defmodule WardwrightWeb.AgentHarnessAdaptersTest do
     export_dir = Path.join(System.tmp_dir!(), "wardwright-harness-export-#{System.unique_integer([:positive])}")
 
     assert {:ok, export} = AgentHarnessAdapters.write_export(session_id, "opencode", %{"export_dir" => export_dir})
-    assert [path] = export["saved_files"]
+    assert [path, probe_path] = export["saved_files"]
     assert Path.basename(path) == "wardwright-#{Base.url_encode64(session_id, padding: false)}.opencode.json"
+    assert Path.basename(probe_path) == "wardwright-state-fidelity-probe.json"
     assert hd(export["commands"]) == "opencode import '#{path}'"
 
     saved = JSON.decode!(File.read!(path))
     assert saved["info"]["id"] == export["artifact"]["info"]["id"]
     assert get_in(saved, ["messages", Access.at(0), "info", "summary"]) == %{"diffs" => []}
+    assert JSON.decode!(File.read!(probe_path)) == export["state_fidelity_probe"]
     assert private_mode?(path, 0o600)
+    assert private_mode?(probe_path, 0o600)
     assert private_mode?(Path.dirname(path), 0o700)
 
     File.rm_rf!(export_dir)
@@ -103,14 +116,16 @@ defmodule WardwrightWeb.AgentHarnessAdaptersTest do
     export_dir = Path.join(System.tmp_dir!(), "wardwright-harness-export-#{System.unique_integer([:positive])}")
 
     assert {:ok, export} = AgentHarnessAdapters.write_export(session_id, "claude", %{"export_dir" => export_dir})
-    assert [trace_path, prompt_path] = export["saved_files"]
+    assert [trace_path, prompt_path, probe_path] = export["saved_files"]
     assert Path.basename(trace_path) == "wardwright-trace.md"
     assert Path.basename(prompt_path) == "wardwright-handoff-prompt.md"
+    assert Path.basename(probe_path) == "wardwright-state-fidelity-probe.json"
     assert hd(export["commands"]) =~ prompt_path
     assert hd(export["commands"]) =~ "claude --print"
     assert File.read!(prompt_path) =~ "best-effort handoff"
     assert private_mode?(trace_path, 0o600)
     assert private_mode?(prompt_path, 0o600)
+    assert private_mode?(probe_path, 0o600)
     assert private_mode?(Path.dirname(prompt_path), 0o700)
 
     File.rm_rf!(export_dir)

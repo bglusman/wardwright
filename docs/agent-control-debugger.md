@@ -515,11 +515,13 @@ evaluation.
 OpenCode trace export remains a best-effort handoff until a separate
 state-fidelity trial proves native replay equivalence. Adapter payloads expose
 `resume_claim_status: unverified_best_effort_handoff` and a
-`state_fidelity_verification` checklist so UI, MCP, and CLI consumers know the
-next proof step: import the saved artifact, resume or fork through native
-OpenCode controls, inspect the native session store/export for preserved tool
-results and hidden state, then compare the continuation against the Wardwright
-trace.
+`state_fidelity_verification` checklist plus a `state_fidelity_probe` object.
+The probe contains a trace fingerprint and tool-result fingerprints that an
+agent can compare after importing the saved artifact and resuming or forking
+through native OpenCode controls. A passing trial must show that the native
+harness exposes the same trace fingerprint, preserves every tool-result
+fingerprint, and can identify the read-before-edit cursor before any
+write-class action in the forked continuation.
 
 ### Discussion-Derived Follow-Ups
 
