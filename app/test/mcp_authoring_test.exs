@@ -24,6 +24,7 @@ defmodule Wardwright.MCPAuthoringTest do
   alias WardwrightWeb.MCP.Tools.SaveControlDebuggerEvidence
   alias WardwrightWeb.MCP.Tools.SaveDuneSnippet
   alias WardwrightWeb.MCP.Tools.ValidatePolicyArtifact
+  alias WardwrightWeb.MCP.Tools.VerifyHarnessStateFidelity
 
   @endpoint WardwrightWeb.Endpoint
 
@@ -79,7 +80,8 @@ defmodule Wardwright.MCPAuthoringTest do
              "save_control_debugger_evidence",
              "save_dune_snippet",
              "simulate_policy",
-             "validate_policy_artifact"
+             "validate_policy_artifact",
+             "verify_harness_state_fidelity"
            ]
   end
 
@@ -184,6 +186,28 @@ defmodule Wardwright.MCPAuthoringTest do
 
     assert get_in(export_response.structured_content, ["export", "state_fidelity_probe", "tool_result_count"]) > 0
     assert hd(get_in(export_response.structured_content, ["export", "commands"])) =~ "opencode import"
+
+    probe = get_in(export_response.structured_content, ["export", "state_fidelity_probe"])
+
+    assert {:reply, %Response{} = verification_response, %Frame{}} =
+             VerifyHarnessStateFidelity.execute(
+               %{
+                 "observed" => %{
+                   "read_before_edit_cursor_identified" => true,
+                   "tool_result_fingerprints" => probe["tool_result_fingerprints"],
+                   "trace_fingerprint" => probe["trace_fingerprint"]
+                 },
+                 "probe" => probe
+               },
+               Frame.new()
+             )
+
+    assert get_in(verification_response.structured_content, ["verification", "passed"]) == true
+
+    assert get_in(verification_response.structured_content, [
+             "verification",
+             "equivalent_agent_resume_claim_allowed"
+           ]) == false
   end
 
   test "receipt replay MCP tool fails closed for unknown receipts" do
@@ -439,7 +463,8 @@ defmodule Wardwright.MCPAuthoringTest do
              "save_control_debugger_evidence",
              "save_dune_snippet",
              "simulate_policy",
-             "validate_policy_artifact"
+             "validate_policy_artifact",
+             "verify_harness_state_fidelity"
            ]
   end
 

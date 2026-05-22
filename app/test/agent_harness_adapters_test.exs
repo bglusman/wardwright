@@ -111,6 +111,53 @@ defmodule WardwrightWeb.AgentHarnessAdaptersTest do
     File.rm_rf!(export_dir)
   end
 
+  test "state fidelity verification compares probe evidence without claiming equivalent resume" do
+    session_id = recorded_session_id!()
+    assert {:ok, export} = AgentHarnessAdapters.export(session_id, "opencode")
+    probe = export["state_fidelity_probe"]
+
+    assert verification =
+             AgentHarnessAdapters.verify_state_fidelity(probe, %{
+               "read_before_edit_cursor_identified" => true,
+               "tool_result_fingerprints" => probe["tool_result_fingerprints"],
+               "trace_fingerprint" => probe["trace_fingerprint"]
+             })
+
+    assert verification["schema"] == "wardwright.harness_state_fidelity_verification.v0"
+    assert verification["passed"] == true
+    assert verification["status"] == "probe_matched"
+    assert verification["equivalent_agent_resume_claim_allowed"] == false
+
+    failed =
+      AgentHarnessAdapters.verify_state_fidelity(probe, %{
+        "read_before_edit_cursor_identified" => false,
+        "tool_result_fingerprints" => [],
+        "trace_fingerprint" => "not-the-exported-trace"
+      })
+
+    assert failed["passed"] == false
+    assert failed["status"] == "probe_mismatch"
+    assert Enum.any?(failed["checks"], &(&1["name"] == "tool_result_fingerprints" and &1["missing"] != []))
+    assert Enum.any?(failed["checks"], &(&1["name"] == "read_before_edit_cursor_identified" and &1["passed"] == false))
+
+    [first_fingerprint | _rest] = probe["tool_result_fingerprints"]
+    duplicate_probe = Map.put(probe, "tool_result_fingerprints", [first_fingerprint, first_fingerprint])
+
+    duplicate_failed =
+      AgentHarnessAdapters.verify_state_fidelity(duplicate_probe, %{
+        "read_before_edit_cursor_identified" => true,
+        "tool_result_fingerprints" => [first_fingerprint],
+        "trace_fingerprint" => probe["trace_fingerprint"]
+      })
+
+    assert duplicate_failed["passed"] == false
+
+    assert Enum.any?(
+             duplicate_failed["checks"],
+             &(&1["name"] == "tool_result_fingerprints" and length(&1["missing"]) == 1)
+           )
+  end
+
   test "prompt handoff exports save private files and show path-aware commands" do
     session_id = recorded_session_id!()
     export_dir = Path.join(System.tmp_dir!(), "wardwright-harness-export-#{System.unique_integer([:positive])}")
@@ -192,6 +239,34 @@ defmodule WardwrightWeb.AgentHarnessAdaptersTest do
 
     assert get_in(JSON.decode!(blank_session_conn.resp_body), ["error", "message"]) ==
              "session_id must be a non-empty string"
+  end
+
+  test "public API verifies exported state fidelity probes behind protected access" do
+    session_id = recorded_session_id!()
+    assert {:ok, export} = AgentHarnessAdapters.export(session_id, "opencode")
+    probe = export["state_fidelity_probe"]
+
+    conn =
+      call(:post, "/v1/policy-authoring/harness-adapters/state-fidelity/verify", %{
+        "observed" => %{
+          "read_before_edit_cursor_identified" => true,
+          "tool_result_fingerprints" => probe["tool_result_fingerprints"],
+          "trace_fingerprint" => probe["trace_fingerprint"]
+        },
+        "probe" => probe
+      })
+
+    assert conn.status == 200
+    assert get_in(JSON.decode!(conn.resp_body), ["verification", "passed"]) == true
+
+    bad_conn =
+      call(:post, "/v1/policy-authoring/harness-adapters/state-fidelity/verify", %{
+        "observed" => %{},
+        "probe" => "not-a-probe"
+      })
+
+    assert bad_conn.status == 400
+    assert get_in(JSON.decode!(bad_conn.resp_body), ["error", "message"]) == "probe must be a JSON object"
   end
 
   defp recorded_session_id! do

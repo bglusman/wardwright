@@ -195,6 +195,15 @@ defmodule WardwrightWeb.PolicyAuthoringTools do
         "/agent-authoring.html#replay-receipts-before-changing-policy"
       ),
       tool(
+        "verify_harness_state_fidelity",
+        "POST",
+        "/v1/policy-authoring/harness-adapters/state-fidelity/verify",
+        "Compare a saved state-fidelity probe with observed imported-harness state.",
+        "Use after importing or resuming an external harness session to check whether trace and tool-result fingerprints survived the handoff.",
+        "Read-only. Passing this probe does not by itself prove equivalent native agent resume; it only verifies the concrete exported evidence.",
+        "/agent-control-debugger.html#opencode-client-run"
+      ),
+      tool(
         "export_regression_pack",
         "GET",
         "/v1/policy-authoring/scenarios/{pattern_id}/regression-export?format=json|exunit",

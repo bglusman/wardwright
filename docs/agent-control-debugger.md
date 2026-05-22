@@ -523,6 +523,15 @@ harness exposes the same trace fingerprint, preserves every tool-result
 fingerprint, and can identify the read-before-edit cursor before any
 write-class action in the forked continuation.
 
+The comparison step is also available as the
+`verify_harness_state_fidelity` MCP tool and protected
+`POST /v1/policy-authoring/harness-adapters/state-fidelity/verify` endpoint.
+Call it with the exported `state_fidelity_probe` plus observed imported-harness
+state containing `trace_fingerprint`, either `tool_result_fingerprints` or raw
+`events`, and `read_before_edit_cursor_identified: true`. A passing result means
+the probe evidence matched; it still leaves `equivalent_agent_resume` false
+until a broader live harness trial proves hidden state and workspace fidelity.
+
 ### Discussion-Derived Follow-Ups
 
 The Forge discussion reinforced that the real overlap is proxy/middleware

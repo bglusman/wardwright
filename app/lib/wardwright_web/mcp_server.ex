@@ -25,6 +25,7 @@ defmodule WardwrightWeb.MCPServer do
   alias WardwrightWeb.MCP.Tools.SaveDuneSnippet
   alias WardwrightWeb.MCP.Tools.SimulatePolicy
   alias WardwrightWeb.MCP.Tools.ValidatePolicyArtifact
+  alias WardwrightWeb.MCP.Tools.VerifyHarnessStateFidelity
 
   Code.ensure_compiled!(ExplainProjection)
   Code.ensure_compiled!(SimulatePolicy)
@@ -45,6 +46,7 @@ defmodule WardwrightWeb.MCPServer do
   Code.ensure_compiled!(ActivateWardwrightModel)
   Code.ensure_compiled!(ProposeRuleChange)
   Code.ensure_compiled!(ValidatePolicyArtifact)
+  Code.ensure_compiled!(VerifyHarnessStateFidelity)
 
   component(ExplainProjection, name: "explain_projection")
   component(SimulatePolicy, name: "simulate_policy")
@@ -65,4 +67,5 @@ defmodule WardwrightWeb.MCPServer do
   component(ActivateWardwrightModel, name: "activate_wardwright_model")
   component(ProposeRuleChange, name: "propose_rule_change")
   component(ValidatePolicyArtifact, name: "validate_policy_artifact")
+  component(VerifyHarnessStateFidelity, name: "verify_harness_state_fidelity")
 end

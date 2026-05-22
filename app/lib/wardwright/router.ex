@@ -733,6 +733,23 @@ defmodule Wardwright.Router do
     end
   end
 
+  post "/v1/policy-authoring/harness-adapters/state-fidelity/verify" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, probe} <- required_body_map(body, "probe"),
+         {:ok, observed} <- required_body_map(body, "observed"),
+         verification when is_map(verification) <-
+           WardwrightWeb.AgentHarnessAdapters.verify_state_fidelity(probe, observed) do
+      json(conn, 200, Map.new([{"verification", verification}]))
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_harness_state_fidelity_verification")
+    end
+  end
+
   get "/v1/policy-authoring/scenarios/:pattern_id/regression-export" do
     with :ok <- require_protected_access(conn),
          true <- known_policy_pattern?(pattern_id),
@@ -917,6 +934,13 @@ defmodule Wardwright.Router do
 
       _value ->
         {:error, "#{key} must be a non-empty string"}
+    end
+  end
+
+  defp required_body_map(body, key) do
+    case body do
+      %{^key => value} when is_map(value) -> {:ok, value}
+      _value -> {:error, "#{key} must be a JSON object"}
     end
   end
 

@@ -94,6 +94,71 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
 
   def write_export(_session_id, _adapter_id, _opts), do: {:error, "session_id and adapter_id are required"}
 
+  def verify_state_fidelity(probe, observed) when is_map(probe) and is_map(observed) do
+    observed_fingerprints =
+      cond do
+        is_list(observed["tool_result_fingerprints"]) ->
+          observed["tool_result_fingerprints"]
+
+        is_list(observed["events"]) ->
+          observed["events"]
+          |> Enum.filter(&tool_result_event?/1)
+          |> Enum.map(fn event ->
+            %{
+              "cursor" => event["cursor"] || "",
+              "fingerprint" => stable_fingerprint(event["tool"] || event),
+              "tool_name" => get_in(event, ["tool", "name"]) || "unknown"
+            }
+          end)
+
+        true ->
+          []
+      end
+
+    expected_fingerprints = probe["tool_result_fingerprints"] || []
+    missing = fingerprint_difference(expected_fingerprints, observed_fingerprints)
+    unexpected = fingerprint_difference(observed_fingerprints, expected_fingerprints)
+    expected_trace_fingerprint = probe["trace_fingerprint"]
+    observed_trace_fingerprint = observed["trace_fingerprint"]
+    trace_matches = is_binary(expected_trace_fingerprint) and expected_trace_fingerprint == observed_trace_fingerprint
+    tool_results_match = missing == [] and unexpected == []
+    read_before_edit_cursor_identified = observed["read_before_edit_cursor_identified"] == true
+    passed = trace_matches and tool_results_match and read_before_edit_cursor_identified
+
+    %{
+      "adapter_id" => probe["adapter_id"] || observed["adapter_id"],
+      "checks" => [
+        %{
+          "expected" => expected_trace_fingerprint,
+          "name" => "trace_fingerprint",
+          "observed" => observed_trace_fingerprint,
+          "passed" => trace_matches
+        },
+        %{
+          "expected_count" => length(expected_fingerprints),
+          "missing" => missing,
+          "name" => "tool_result_fingerprints",
+          "observed_count" => length(observed_fingerprints),
+          "passed" => tool_results_match,
+          "unexpected" => unexpected
+        },
+        %{
+          "name" => "read_before_edit_cursor_identified",
+          "observed" => observed["read_before_edit_cursor_identified"] == true,
+          "passed" => read_before_edit_cursor_identified
+        }
+      ],
+      "equivalent_agent_resume_claim_allowed" => false,
+      "passed" => passed,
+      "probe_schema" => probe["schema"],
+      "schema" => "wardwright.harness_state_fidelity_verification.v0",
+      "session_id" => probe["session_id"],
+      "status" => if(passed, do: "probe_matched", else: "probe_mismatch")
+    }
+  end
+
+  def verify_state_fidelity(_probe, _observed), do: {:error, "probe and observed must be JSON objects"}
+
   defp adapter(id, label, installed, capabilities) do
     native_session_import = capabilities["native_session_import"] == true
     native_session_fork = capabilities["native_session_fork"] == true
@@ -529,6 +594,32 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
 
   defp tool_result_event?(%{"tool" => %{"result" => _result}}), do: true
   defp tool_result_event?(_event), do: false
+
+  defp fingerprint_difference(left, right) do
+    right_counts = fingerprint_counts(right)
+
+    {missing, _remaining_counts} =
+      Enum.reduce(left, {[], right_counts}, fn item, {missing, counts} ->
+        fingerprint = item["fingerprint"]
+
+        if is_binary(fingerprint) and Map.get(counts, fingerprint, 0) > 0 do
+          {missing, Map.update!(counts, fingerprint, &(&1 - 1))}
+        else
+          {[item | missing], counts}
+        end
+      end)
+
+    Enum.reverse(missing)
+  end
+
+  defp fingerprint_counts(items) do
+    Enum.reduce(items, %{}, fn item, counts ->
+      case item["fingerprint"] do
+        fingerprint when is_binary(fingerprint) -> Map.update(counts, fingerprint, 1, &(&1 + 1))
+        _fingerprint -> counts
+      end
+    end)
+  end
 
   defp safe_json(value) do
     JSON.encode!(value)

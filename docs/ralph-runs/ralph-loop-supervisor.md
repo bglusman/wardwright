@@ -22,8 +22,8 @@ validation record below.
 
 - Historical loops completed before this tracker: 3.
 - Additional heartbeat continuation budget: 10 loops.
-- Additional loops completed: 3.
-- Additional loops remaining: 7.
+- Additional loops completed: 4.
+- Additional loops remaining: 6.
 
 ## Historical Baseline
 
@@ -95,8 +95,28 @@ validation record below.
     from prose into a concrete sidecar artifact that a harness trial can
     inspect. The risk is another export field, but it is scoped to harness
     evidence and covered across direct export and MCP tests. The RouterCase
-    isolation fix reduces cross-run state coupling without changing production
-    transcript behavior.
+  isolation fix reduces cross-run state coupling without changing production
+  transcript behavior.
+
+### Loop 7 - Harness State-Fidelity Verification
+
+- Timestamp: 2026-05-22T23:21Z heartbeat.
+- Starting commit: `0b72e77`.
+- Ending commit: this state-fidelity verification commit on
+  `codex/ralph-ui-loop-pilot-1`.
+- Scope: added a protected API and MCP tool to compare an exported
+  `state_fidelity_probe` with observed imported-harness state, including trace
+  fingerprint, tool-result fingerprint, and read-before-edit cursor checks.
+- Validation:
+  - `cd app && MIX_ENV=test mise exec -- mix test`: passed, 395 tests with
+    21 properties and 6 excluded live/acceptance tests.
+- Adversarial review:
+  - This still does not close `RALPH-RBE-002`; it makes the eventual
+    OpenCode import/resume trial measurable without claiming hidden-state
+    equivalence. The verifier intentionally keeps
+    `equivalent_agent_resume_claim_allowed` false even when the concrete probe
+    matches, because workspace snapshot and private harness state remain
+    unproven.
 
 ## Open Followup
 
