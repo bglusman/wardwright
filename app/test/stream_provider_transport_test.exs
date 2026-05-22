@@ -35,7 +35,7 @@ defmodule Wardwright.StreamProviderTransportTest do
 
     assert conn.status == 409
 
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     stream_policy = get_in(body, ["wardwright", "stream_policy"])
 
     assert get_in(body, ["wardwright", "status"]) == "stream_policy_retry_required"
@@ -223,7 +223,7 @@ defmodule Wardwright.StreamProviderTransportTest do
       |> String.split("\n\n", trim: true)
       |> Enum.map(&(&1 |> String.trim_leading("data:") |> String.trim()))
       |> Enum.reject(&(&1 == "[DONE]"))
-      |> Enum.map(&Jason.decode!/1)
+      |> Enum.map(&JSON.decode!/1)
       |> Enum.map(&get_in(&1, ["choices", Access.at(0), "index"]))
 
     assert indexes == [0, 0]
@@ -241,6 +241,81 @@ defmodule Wardwright.StreamProviderTransportTest do
 
     assert get_in(receipt, ["attempts", Access.at(0), "provider_metadata", "finish_reason"]) ==
              "stop"
+  end
+
+  test "openai-compatible stream targets preserve tool-call deltas from provider SSE chunks" do
+    base_url = streaming_provider_base_url("/openai")
+    System.put_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS", "1")
+    System.put_env("WARDWRIGHT_TEST_OPENAI_KEY", "test-openai-key")
+
+    on_exit(fn ->
+      System.delete_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS")
+      System.delete_env("WARDWRIGHT_TEST_OPENAI_KEY")
+    end)
+
+    config =
+      unit_policy_config()
+      |> Map.put("targets", [
+        %{
+          "context_window" => 256,
+          "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY",
+          "model" => "openai-compatible/live-test",
+          "provider_base_url" => base_url,
+          "provider_kind" => "openai-compatible"
+        }
+      ])
+      |> Map.put("governance", [])
+      |> Map.put("stream_rules", [])
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "prepare a pull request", role: "user"}],
+        model: "unit-model",
+        stream: true,
+        tool_choice: "auto",
+        tools: [%{function: %{name: "create_pull_request", parameters: %{type: "object"}}, type: "function"}]
+      })
+
+    assert conn.status == 200
+    assert get_resp_header(conn, "content-type") == ["text/event-stream"]
+    refute conn.resp_body =~ "hello "
+    refute conn.resp_body =~ "world"
+
+    tool_call_deltas =
+      conn.resp_body
+      |> sse_json_payloads()
+      |> Enum.map(&get_in(&1, ["choices", Access.at(0), "delta", "tool_calls"]))
+      |> Enum.reject(&is_nil/1)
+
+    assert [
+             [
+               %{
+                 "function" => %{"arguments" => "", "name" => "create_pull_request"},
+                 "id" => "call_stream_1",
+                 "index" => 0,
+                 "type" => "function"
+               }
+             ],
+             [
+               %{
+                 "function" => %{"arguments" => ~s({"title":"Streamed tools"})},
+                 "index" => 0
+               }
+             ]
+           ] = tool_call_deltas
+
+    [receipt_id] = get_resp_header(conn, "x-wardwright-receipt-id")
+    receipt = Wardwright.ReceiptStore.get(receipt_id)
+
+    assert get_in(receipt, ["final", "stream_policy", "status"]) == "completed"
+    assert get_in(receipt, ["final", "provider_metadata", "stream_format"]) == "openai_sse"
+    assert get_in(receipt, ["final", "provider_metadata", "finish_reason"]) == "tool_calls"
+
+    assert get_in(receipt, ["final", "provider_metadata", "preserved_delta_fields"]) == [
+             "tool_calls"
+           ]
   end
 
   test "openai-compatible targets forward tool request fields and preserve provider tool calls" do
@@ -286,7 +361,7 @@ defmodule Wardwright.StreamProviderTransportTest do
 
     assert conn.status == 200
 
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     assert get_in(body, ["wardwright", "status"]) == "completed"
     assert get_in(body, ["wardwright", "provider_error"]) == nil
 
@@ -329,5 +404,20 @@ defmodule Wardwright.StreamProviderTransportTest do
     assert get_in(receipt, ["attempts", Access.at(0), "provider_error"]) == nil
     assert get_in(receipt, ["final", "provider_metadata", "finish_reason"]) == "tool_calls"
     assert get_in(receipt, ["final", "provider_metadata", "usage", "total_tokens"]) == 5
+  end
+
+  defp sse_json_payloads(body) do
+    body
+    |> String.split("\n\n", trim: true)
+    |> Enum.flat_map(fn event ->
+      event
+      |> String.split(["\r\n", "\n"], trim: true)
+      |> Enum.flat_map(fn
+        "data:" <> data -> [String.trim(data)]
+        _line -> []
+      end)
+    end)
+    |> Enum.reject(&(&1 == "[DONE]"))
+    |> Enum.map(&JSON.decode!/1)
   end
 end

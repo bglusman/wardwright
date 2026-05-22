@@ -51,7 +51,7 @@ defmodule Wardwright.CLITest do
     assert collected(collector) =~ "admin path: /admin"
   end
 
-  test "admin access command opens model access controls" do
+  test "admin access command opens Model Management" do
     collector = collector()
 
     assert {:halt, 0} =
@@ -152,7 +152,7 @@ defmodule Wardwright.CLITest do
     tools =
       collector
       |> collected()
-      |> Jason.decode!()
+      |> JSON.decode!()
 
     names =
       tools

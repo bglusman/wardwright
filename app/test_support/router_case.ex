@@ -29,7 +29,7 @@ defmodule Wardwright.Test.StreamingProvider do
         {:ok, conn} =
           Plug.Conn.chunk(
             conn,
-            Jason.encode!(%{"done" => false, "message" => %{"content" => chunk}}) <> "\n"
+            JSON.encode!(%{"done" => false, "message" => %{"content" => chunk}}) <> "\n"
           )
 
         conn
@@ -38,7 +38,7 @@ defmodule Wardwright.Test.StreamingProvider do
     {:ok, conn} =
       Plug.Conn.chunk(
         conn,
-        Jason.encode!(%{
+        JSON.encode!(%{
           "done" => true,
           "done_reason" => "stop",
           "eval_count" => 2,
@@ -64,7 +64,7 @@ defmodule Wardwright.Test.StreamingProvider do
     |> Plug.Conn.put_resp_content_type("application/json")
     |> Plug.Conn.send_resp(
       200,
-      Jason.encode!(%{
+      JSON.encode!(%{
         "done" => true,
         "message" => %{"content" => content},
         "total_duration" => 123
@@ -77,7 +77,7 @@ defmodule Wardwright.Test.StreamingProvider do
 
     case Plug.Conn.get_req_header(conn, "authorization") do
       ["Bearer test-openai-key"] ->
-        request = Jason.decode!(body)
+        request = JSON.decode!(body)
 
         if request["stream"] == true do
           conn =
@@ -85,29 +85,19 @@ defmodule Wardwright.Test.StreamingProvider do
             |> Plug.Conn.put_resp_content_type("text/event-stream")
             |> Plug.Conn.send_chunked(200)
 
-          {:ok, conn} =
-            Plug.Conn.chunk(
-              conn,
-              "data: " <>
-                Jason.encode!(%{"choices" => [%{"delta" => %{"content" => "hello "}}]}) <>
-                "\n\n"
-            )
-
-          {:ok, conn} =
-            Plug.Conn.chunk(
-              conn,
-              "event: completion.delta\n" <>
-                "data:" <>
-                Jason.encode!(%{"choices" => [%{"delta" => %{"content" => "world"}}]}) <>
-                "\n\n"
-            )
+          {conn, finish_reason} =
+            if streamed_tool_request?(request) do
+              stream_openai_tool_calls(conn)
+            else
+              stream_openai_content(conn)
+            end
 
           {:ok, conn} =
             Plug.Conn.chunk(
               conn,
               "data: " <>
-                Jason.encode!(%{
-                  "choices" => [%{"delta" => %{}, "finish_reason" => "stop", "index" => 0}],
+                JSON.encode!(%{
+                  "choices" => [%{"delta" => %{}, "finish_reason" => finish_reason, "index" => 0}],
                   "usage" => %{"completion_tokens" => 2, "prompt_tokens" => 3, "total_tokens" => 5}
                 }) <>
                 "\n\n"
@@ -137,7 +127,7 @@ defmodule Wardwright.Test.StreamingProvider do
           Plug.Conn.send_resp(
             conn,
             200,
-            Jason.encode!(%{
+            JSON.encode!(%{
               "choices" => [%{"finish_reason" => finish_reason, "index" => 0, "message" => message}],
               "usage" => %{"completion_tokens" => 2, "prompt_tokens" => 3, "total_tokens" => 5}
             })
@@ -155,6 +145,81 @@ defmodule Wardwright.Test.StreamingProvider do
       Enum.any?(request["messages"] || [], fn message ->
         is_list(message["tool_calls"]) or message["tool_call_id"] == "call_1" or message["role"] == "tool"
       end)
+  end
+
+  defp streamed_tool_request?(request) do
+    is_list(request["tools"]) and request["tools"] != [] and request["tool_choice"] == "auto"
+  end
+
+  defp stream_openai_content(conn) do
+    {:ok, conn} =
+      Plug.Conn.chunk(
+        conn,
+        "data: " <>
+          JSON.encode!(%{"choices" => [%{"delta" => %{"content" => "hello "}}]}) <>
+          "\n\n"
+      )
+
+    {:ok, conn} =
+      Plug.Conn.chunk(
+        conn,
+        "event: completion.delta\n" <>
+          "data:" <>
+          JSON.encode!(%{"choices" => [%{"delta" => %{"content" => "world"}}]}) <>
+          "\n\n"
+      )
+
+    {conn, "stop"}
+  end
+
+  defp stream_openai_tool_calls(conn) do
+    {:ok, conn} =
+      Plug.Conn.chunk(
+        conn,
+        "data: " <>
+          JSON.encode!(%{
+            "choices" => [
+              %{
+                "delta" => %{
+                  "tool_calls" => [
+                    %{
+                      "function" => %{"arguments" => "", "name" => "create_pull_request"},
+                      "id" => "call_stream_1",
+                      "index" => 0,
+                      "type" => "function"
+                    }
+                  ]
+                },
+                "index" => 0
+              }
+            ]
+          }) <>
+          "\n\n"
+      )
+
+    {:ok, conn} =
+      Plug.Conn.chunk(
+        conn,
+        "data: " <>
+          JSON.encode!(%{
+            "choices" => [
+              %{
+                "delta" => %{
+                  "tool_calls" => [
+                    %{
+                      "function" => %{"arguments" => ~s({"title":"Streamed tools"})},
+                      "index" => 0
+                    }
+                  ]
+                },
+                "index" => 0
+              }
+            ]
+          }) <>
+          "\n\n"
+      )
+
+    {conn, "tool_calls"}
   end
 
   match _ do
@@ -194,7 +259,7 @@ defmodule Wardwright.RouterCase do
   @opts Wardwright.Router.init([])
 
   def call(method, path, body \\ nil, headers \\ [], remote_ip \\ {127, 0, 0, 1}) do
-    encoded = if !is_nil(body), do: Jason.encode!(body)
+    encoded = if !is_nil(body), do: JSON.encode!(body)
 
     method
     |> conn(path, encoded)

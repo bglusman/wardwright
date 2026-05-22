@@ -2,6 +2,7 @@ defmodule WardwrightWeb.ReceiptBuilder do
   @moduledoc false
 
   @tool_context_key "tool_context"
+  @vcr_schema "wardwright.policy_vcr.v0"
 
   def build(status, model, caller, request, decision, called_provider, policy, config) do
     receipt_id = "rcpt_" <> random_hex(8)
@@ -68,7 +69,8 @@ defmodule WardwrightWeb.ReceiptBuilder do
         @tool_context_key => policy["tool_context"]
       },
       "run_id" => get_in(caller, ["run_id", "value"]),
-      "simulation" => status == "simulated"
+      "simulation" => status == "simulated",
+      "vcr" => policy_vcr(status, request, decision, called_provider, policy, config)
     }
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
@@ -97,6 +99,7 @@ defmodule WardwrightWeb.ReceiptBuilder do
       |> put_if_present("provider_metadata", Map.get(provider, :provider_metadata))
       |> put_if_present("provider_error", provider.error)
     end)
+    |> put_provider_vcr(provider)
   end
 
   def chat_response(request, receipt, decision, %{response_message: response_message} = provider) do
@@ -250,6 +253,177 @@ defmodule WardwrightWeb.ReceiptBuilder do
       "trigger_count" => stream_policy.trigger_count
     }
   end
+
+  defp policy_vcr(status, request, decision, called_provider, policy, config) do
+    vcr_mode = Wardwright.vcr_mode(config)
+
+    %{
+      "decision" => %{
+        "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
+        "fallback_models" => decision.fallback_models,
+        "fallback_used" => decision.fallback_used,
+        "policy_route_constraints" => decision.policy_route_constraints,
+        "reason" => decision.reason,
+        "route_blocked" => decision.route_blocked,
+        "route_id" => decision.route_id,
+        "route_lineage" => Map.get(decision, :route_lineage, []),
+        "route_type" => decision.route_type,
+        "rule" => decision.rule,
+        "selected_context_window" => decision.selected_context_window,
+        "selected_model" => decision.selected_model,
+        "selected_models" => decision.selected_models,
+        "selected_provider" => decision.selected_provider,
+        "skipped" => decision.skipped,
+        "strategy" => decision.combine_strategy
+      },
+      "final" => %{"status" => status},
+      "mode" => vcr_mode,
+      "policy" => %{
+        "actions" => policy["actions"],
+        "alert_count" => policy["alert_count"],
+        "conflicts" => policy["conflicts"],
+        "events" => policy["events"],
+        "failed_closed" => policy["failed_closed"],
+        "route_constraints" => policy["route_constraints"],
+        "tool_policy" => policy["tool_policy"],
+        "tool_policy_selectors" => policy["tool_policy_selectors"]
+      },
+      "provider" => %{"called_provider" => called_provider},
+      "recorded_at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(),
+      "redaction" => vcr_redaction(vcr_mode),
+      "request" => sanitized_request(request, decision, policy, config),
+      "route" => route_vcr(decision),
+      "schema" => @vcr_schema
+    }
+    |> put_full_session_request(vcr_mode, request)
+  end
+
+  defp vcr_redaction("full_session"), do: "full_session"
+  defp vcr_redaction(_mode), do: "metadata_only"
+
+  defp put_full_session_request(vcr, "full_session", request) do
+    Map.put(vcr, "full_session", %{
+      "request" => %{
+        "body" => request,
+        "recorded_at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+      }
+    })
+  end
+
+  defp put_full_session_request(vcr, _mode, _request), do: vcr
+
+  defp route_vcr(decision) do
+    %{
+      "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
+      "fallback_models" => decision.fallback_models,
+      "fallback_used" => decision.fallback_used,
+      "policy_route_constraints" => decision.policy_route_constraints,
+      "reason" => decision.reason,
+      "route_blocked" => decision.route_blocked,
+      "route_id" => decision.route_id,
+      "route_lineage" => Map.get(decision, :route_lineage, []),
+      "route_type" => decision.route_type,
+      "rule" => decision.rule,
+      "selected_context_window" => decision.selected_context_window,
+      "selected_model" => decision.selected_model,
+      "selected_models" => decision.selected_models,
+      "selected_provider" => decision.selected_provider,
+      "skipped" => decision.skipped,
+      "strategy" => decision.combine_strategy
+    }
+  end
+
+  defp sanitized_request(request, decision, policy, config) do
+    messages = Map.get(request, "messages", [])
+
+    %{
+      "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
+      "message_content_lengths" => Enum.map(messages, &message_content_length/1),
+      "message_count" => length(messages),
+      "message_roles" => Enum.map(messages, &Map.get(&1, "role", "")),
+      "model" => Map.get(request, "model"),
+      "normalized_model" => Wardwright.model_id(config),
+      "stream" => Map.get(request, "stream", false),
+      "structured_output_configured" => not is_nil(config["structured_output"]),
+      @tool_context_key => policy["tool_context"]
+    }
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.new()
+  end
+
+  defp message_content_length(%{"content" => content}), do: content_length(content)
+  defp message_content_length(_message), do: 0
+
+  defp content_length(nil), do: 0
+  defp content_length(value) when is_binary(value), do: String.length(value)
+
+  defp content_length(value) when is_list(value) do
+    Enum.reduce(value, 0, fn
+      %{"text" => text}, acc when is_binary(text) -> acc + String.length(text)
+      %{"content" => text}, acc when is_binary(text) -> acc + String.length(text)
+      part, acc -> acc + byte_size(JSON.encode!(part))
+    end)
+  end
+
+  defp content_length(value), do: byte_size(JSON.encode!(value))
+
+  defp put_provider_vcr(receipt, provider) do
+    update_in(receipt, ["vcr"], fn
+      vcr when is_map(vcr) ->
+        provider_vcr =
+          %{
+            "called_provider" => provider.called_provider,
+            "latency_ms" => provider.latency_ms,
+            "mock" => provider.mock,
+            "model" => Map.get(provider, :selected_model),
+            "provider_error" => provider.error,
+            "provider_id" => provider_id_from_model(Map.get(provider, :selected_model)),
+            "provider_metadata" => Map.get(provider, :provider_metadata),
+            "status" => provider.status
+          }
+          |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+          |> Map.new()
+
+        vcr
+        |> Map.put("provider", provider_vcr)
+        |> put_in(["final", "status"], provider.status)
+        |> put_full_session_response(provider, receipt)
+
+      other ->
+        other
+    end)
+  end
+
+  defp put_full_session_response(%{"mode" => "full_session"} = vcr, provider, receipt) do
+    response_content = full_session_response_content(provider, receipt)
+    response_message = Map.get(provider, :response_message) || %{"content" => response_content, "role" => "assistant"}
+
+    response =
+      %{
+        "content" => response_content,
+        "provider_error" => provider.error,
+        "provider_metadata" => Map.get(provider, :provider_metadata),
+        "response_message" => response_message,
+        "status" => provider.status
+      }
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Map.new()
+
+    put_in(vcr, ["full_session", "response"], response)
+  end
+
+  defp put_full_session_response(vcr, _provider, _receipt), do: vcr
+
+  defp full_session_response_content(%{content: content}, _receipt) when is_binary(content), do: content
+
+  defp full_session_response_content(%{mock: true}, receipt) do
+    selected_model = get_in(receipt, ["decision", "selected_model"])
+    estimated_prompt_tokens = get_in(receipt, ["decision", "estimated_prompt_tokens"])
+
+    "Mock Wardwright response routed to #{selected_model}. Estimated prompt tokens: #{estimated_prompt_tokens}."
+  end
+
+  defp full_session_response_content(_provider, _receipt), do: nil
 
   def sink_usage(receipt) do
     %{

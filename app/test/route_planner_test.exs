@@ -116,7 +116,7 @@ defmodule Wardwright.RoutePlannerTest do
       })
 
     assert conn.status == 200
-    receipt = Jason.decode!(conn.resp_body)["receipt"]
+    receipt = JSON.decode!(conn.resp_body)["receipt"]
 
     assert get_in(receipt, ["decision", "route_type"]) == "alloy"
     assert get_in(receipt, ["decision", "strategy"]) == "weighted"
@@ -146,7 +146,7 @@ defmodule Wardwright.RoutePlannerTest do
       })
 
     assert conn.status == 200
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     assert get_in(body, ["choices", Access.at(0), "message", "content"]) ==
              "nested provider response"

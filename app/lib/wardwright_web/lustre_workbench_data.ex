@@ -70,7 +70,9 @@ defmodule WardwrightWeb.LustreWorkbenchData do
           "turn" => %{
             "model_response" => model_response || "",
             "response_attempts" =>
-              response_attempts |> normalize_response_attempts() |> Enum.reject(&(&1["model_output"] in [nil, ""])),
+              response_attempts
+              |> normalize_response_attempts()
+              |> Enum.reject(&(&1["model_output"] in [nil, ""])),
             "user_input" => user_input || ""
           }
         }
@@ -82,6 +84,93 @@ defmodule WardwrightWeb.LustreWorkbenchData do
         {:error, message} ->
           {false, message, ""}
       end
+    end
+  end
+
+  def authoring_status(model_id) do
+    status = WardwrightWeb.AuthoringAgent.status(%{model_id: model_id})
+
+    {
+      !!status.configured,
+      status |> Map.get(:model, "") |> to_string(),
+      status |> Map.get(:route, "") |> to_string(),
+      if(status.configured, do: "live", else: "setup needed")
+    }
+  end
+
+  def ask_authoring_agent(model_id, pattern_id, message) do
+    ask_authoring_agent(model_id, pattern_id, "", "", [], message)
+  end
+
+  def ask_authoring_agent(model_id, pattern_id, user_input, model_response, response_attempts, message) do
+    context = %{
+      model_id: model_id,
+      pattern_id: pattern_id,
+      recipe_id: "",
+      simulator_model_response: to_string(model_response),
+      simulator_response_attempts: normalize_response_attempts(response_attempts),
+      simulator_user_input: to_string(user_input)
+    }
+
+    {:ok, response} = WardwrightWeb.AuthoringAgent.respond(to_string(message), context)
+    draft = authoring_draft_summary(response)
+
+    {
+      to_string(Map.get(response, :status, "completed")),
+      to_string(Map.get(response, :content, "")),
+      elem(draft, 0),
+      elem(draft, 1),
+      elem(draft, 2),
+      elem(draft, 3)
+    }
+  rescue
+    _exception ->
+      {"error", "The authoring assistant failed before returning an answer.", "", "", "", ""}
+  end
+
+  def activate_authoring_draft(artifact_json) do
+    case JSON.decode(to_string(artifact_json)) do
+      {:ok, artifact} ->
+        case WardwrightWeb.PolicyAuthoringDrafts.activate_wardwright_model(%{
+               "artifact" => artifact
+             }) do
+          {:ok, result} ->
+            model_id = get_in(result, ["artifact", "model_id"]) || "draft"
+
+            {
+              true,
+              "Activated #{model_id}. It now appears in Model Management and /v1/models.",
+              model_id
+            }
+
+          {:error, message, _result} ->
+            {false, "Could not activate draft: #{message}", ""}
+        end
+
+      {:error, reason} ->
+        {false, "Could not read draft artifact JSON: #{Wardwright.Json.decode_error_message(reason)}", ""}
+    end
+  end
+
+  def validate_authoring_draft(artifact_json) do
+    case draft_artifact(artifact_json) do
+      {:ok, artifact} ->
+        result =
+          WardwrightWeb.PolicyAuthoringDrafts.wardwright_model_draft(%{"artifact" => artifact})
+
+        validation = result["validation"] || %{}
+        errors = validation["errors"] || []
+        warnings = validation["warnings"] || []
+        model_id = get_in(result, ["artifact", "model_id"]) || artifact["model_id"] || "draft"
+
+        if errors == [] do
+          {true, "Draft #{model_id}: 0 validation errors, #{length(warnings)} warnings.", model_id}
+        else
+          {false, "Draft #{model_id}: #{length(errors)} validation errors, #{length(warnings)} warnings.", model_id}
+        end
+
+      {:error, message} ->
+        {false, message, ""}
     end
   end
 
@@ -169,6 +258,7 @@ defmodule WardwrightWeb.LustreWorkbenchData do
   defp fixture_for_selected_policy?(_input), do: false
 
   defp fixture_title(%{"relationship" => "saved_scenario"} = input), do: "Saved: #{input["title"] || input["id"] || ""}"
+
   defp fixture_title(input), do: input["title"] || input["id"] || ""
 
   defp fixture_retry_responses(model_id, attempts) do
@@ -244,9 +334,53 @@ defmodule WardwrightWeb.LustreWorkbenchData do
 
   defp blank_fallback(_value, fallback), do: fallback
 
+  defp authoring_draft_summary(%{tool_results: tool_results}) when is_list(tool_results) do
+    tool_results
+    |> Enum.find(fn
+      %{"name" => "draft_wardwright_model", "status" => "executed"} -> true
+      _result -> false
+    end)
+    |> case do
+      %{
+        "result" => %{
+          "artifact" => %{"model_id" => model_id} = artifact,
+          "validation" => %{"errors" => errors, "warnings" => warnings}
+        }
+      }
+      when is_binary(model_id) and is_list(errors) and is_list(warnings) ->
+        artifact_json = Wardwright.Json.encode_display!(artifact)
+
+        {
+          model_id,
+          "Draft #{model_id}: #{length(errors)} validation errors, #{length(warnings)} warnings. Review the artifact and simulations before activation.",
+          artifact_json,
+          "Activating registers this model immediately in Model Management and /v1/models."
+        }
+
+      _result ->
+        {"", "", "", ""}
+    end
+  end
+
+  defp authoring_draft_summary(_response), do: {"", "", "", ""}
+
   def projection_summary(pattern_id, model_id) do
     config = model_config(model_id)
-    config_model_id = config["model_id"] || model_id || ""
+    projection_summary_for_config(pattern_id, config)
+  end
+
+  def projection_summary_for_draft(pattern_id, artifact_json) do
+    case draft_artifact(artifact_json) do
+      {:ok, config} ->
+        projection_summary_for_config(pattern_id, config)
+
+      {:error, _message} ->
+        :wardwright@projection_core.derive_summary(pattern_id, "invalid draft", "")
+    end
+  end
+
+  defp projection_summary_for_config(pattern_id, config) do
+    config_model_id = config["model_id"] || ""
     config_version = config["version"] || ""
 
     {engine_id, artifact_label, initial_state, default_projection, transitions} =
@@ -258,7 +392,12 @@ defmodule WardwrightWeb.LustreWorkbenchData do
       initial_state,
       default_projection,
       filter_projection_transitions(pattern_id, transitions, config) ++
-        composed_projection_transitions(pattern_id, config, initial_state, terminal_state(pattern_id, transitions))
+        composed_projection_transitions(
+          pattern_id,
+          config,
+          initial_state,
+          terminal_state(pattern_id, transitions)
+        )
     }
   end
 
@@ -269,6 +408,42 @@ defmodule WardwrightWeb.LustreWorkbenchData do
   def run_simulation(pattern_id, model_id, user_input, model_response, response_attempts) do
     config = model_config(model_id)
     response_attempts = normalize_response_attempts(response_attempts)
+
+    run_simulation_with_config(pattern_id, config, user_input, model_response, response_attempts)
+  end
+
+  def run_draft_simulation(pattern_id, artifact_json, user_input, model_response, response_attempts) do
+    response_attempts = normalize_response_attempts(response_attempts)
+
+    case draft_artifact(artifact_json) do
+      {:ok, config} ->
+        run_simulation_with_config(
+          pattern_id,
+          config,
+          user_input,
+          model_response,
+          response_attempts
+        )
+
+      {:error, message} ->
+        {
+          "invalid draft",
+          "draft-invalid",
+          user_input || "",
+          model_response || "",
+          false,
+          false,
+          [],
+          [{"draft", "draft artifact invalid", message, "error", "draft.invalid"}],
+          [],
+          "invalid draft",
+          ""
+        }
+    end
+  end
+
+  defp run_simulation_with_config(pattern_id, config, user_input, model_response, response_attempts) do
+    config = Wardwright.normalize_config(config)
 
     simulation =
       Wardwright.PolicyProjection.simulate_model_turn_with_attempts(
@@ -285,7 +460,16 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     user_received_output = user_received_output(stream, model_response)
     policy_actions = policy_actions(decision)
     trace_events = trace_events(simulation["trace"] || [])
-    state_events = state_replay_events(pattern_id, simulation, config, user_input, model_response, response_attempts)
+
+    state_events =
+      state_replay_events(
+        pattern_id,
+        simulation,
+        config,
+        user_input,
+        model_response,
+        response_attempts
+      )
 
     {
       decision["selected_model"] || "",
@@ -297,9 +481,22 @@ defmodule WardwrightWeb.LustreWorkbenchData do
       policy_actions,
       trace_events,
       state_events,
-      config["model_id"] || model_id || "",
+      config["model_id"] || "",
       config["version"] || ""
     }
+  end
+
+  defp draft_artifact(artifact_json) do
+    with {:ok, artifact} <- JSON.decode(to_string(artifact_json)),
+         true <- is_map(artifact) do
+      {:ok, Wardwright.normalize_config(artifact)}
+    else
+      {:error, reason} ->
+        {:error, "Draft JSON is invalid: #{Wardwright.Json.decode_error_message(reason)}"}
+
+      false ->
+        {:error, "Draft JSON must be an object."}
+    end
   end
 
   defp model_config(model_id) when is_binary(model_id) do
@@ -413,12 +610,25 @@ defmodule WardwrightWeb.LustreWorkbenchData do
       "demo-context-cascade",
       "Example model: route-only cascade across small and large canned providers.",
       [
-        %{"context_window" => 1024, "model" => "canned/small-context", "provider_kind" => "canned_sequence"},
-        %{"context_window" => 32_768, "model" => "canned/large-context", "provider_kind" => "canned_sequence"}
+        %{
+          "context_window" => 1024,
+          "model" => "canned/small-context",
+          "provider_kind" => "canned_sequence"
+        },
+        %{
+          "context_window" => 32_768,
+          "model" => "canned/large-context",
+          "provider_kind" => "canned_sequence"
+        }
       ],
       "cascade.demo-context",
       [],
-      [%{"id" => "cascade.demo-context", "models" => ["canned/small-context", "canned/large-context"]}]
+      [
+        %{
+          "id" => "cascade.demo-context",
+          "models" => ["canned/small-context", "canned/large-context"]
+        }
+      ]
     )
   end
 
@@ -540,22 +750,47 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     stream_state_transition? = stream_state_transition_capable?(config)
 
     Enum.filter(transitions, fn
-      {_from, "stream.release", _to, _action, _node_id} -> true
-      {_from, "request.rewrite", _to, _action, _node_id} -> request_rewrite?
-      {_from, "regex.rewrite", _to, _action, _node_id} -> stream_rewrite?
-      {_from, "rewrite.release", _to, _action, _node_id} -> stream_rewrite?
-      {_from, "regex.related-secret", _to, _action, _node_id} -> stream_rewrite? and stream_state_transition?
-      {_from, "history.related-secret", _to, _action, _node_id} -> stream_state_transition?
-      {_from, "receipt.write", _to, _action, _node_id} -> stream_state_transition?
-      {_from, _event, _to, _action, _node_id} -> false
+      {_from, "stream.release", _to, _action, _node_id} ->
+        true
+
+      {_from, "request.rewrite", _to, _action, _node_id} ->
+        request_rewrite?
+
+      {_from, "regex.rewrite", _to, _action, _node_id} ->
+        stream_rewrite?
+
+      {_from, "rewrite.release", _to, _action, _node_id} ->
+        stream_rewrite?
+
+      {_from, "regex.related-secret", _to, _action, _node_id} ->
+        stream_rewrite? and stream_state_transition?
+
+      {_from, "history.related-secret", _to, _action, _node_id} ->
+        stream_state_transition?
+
+      {_from, "receipt.write", _to, _action, _node_id} ->
+        stream_state_transition?
+
+      {_from, _event, _to, _action, _node_id} ->
+        false
     end)
   end
 
   defp filter_projection_transitions(_pattern_id, transitions, _config), do: transitions
 
-  @spec composed_projection_transitions(String.t(), model_config(), String.t(), String.t()) :: [tuple()]
+  @spec composed_projection_transitions(String.t(), model_config(), String.t(), String.t()) :: [
+          tuple()
+        ]
   defp composed_projection_transitions(pattern_id, config, parent_initial, parent_terminal) do
-    composed_projection_transitions(pattern_id, config, parent_initial, parent_terminal, nil, [], 0)
+    composed_projection_transitions(
+      pattern_id,
+      config,
+      parent_initial,
+      parent_terminal,
+      nil,
+      [],
+      0
+    )
   end
 
   @spec composed_projection_transitions(
@@ -605,7 +840,13 @@ defmodule WardwrightWeb.LustreWorkbenchData do
         child_visited = add_visited(visited, ref_id)
 
         {child_initial, child_terminal, child_transitions} =
-          prefixed_projection_transitions(pattern_id, artifact, child_prefix, child_visited, depth + 1)
+          prefixed_projection_transitions(
+            pattern_id,
+            artifact,
+            child_prefix,
+            child_visited,
+            depth + 1
+          )
 
         [
           {
@@ -632,7 +873,13 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     end)
   end
 
-  @spec prefixed_projection_transitions(String.t(), model_config(), String.t(), visited_model_ids(), non_neg_integer()) ::
+  @spec prefixed_projection_transitions(
+          String.t(),
+          model_config(),
+          String.t(),
+          visited_model_ids(),
+          non_neg_integer()
+        ) ::
           {String.t(), String.t(), [tuple()]}
   defp prefixed_projection_transitions(pattern_id, config, prefix, visited, depth) do
     config_model_id = config["model_id"] || ""
@@ -645,7 +892,15 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     terminal = terminal_state(pattern_id, transitions)
 
     nested =
-      composed_projection_transitions(pattern_id, config, initial_state, terminal, prefix, visited, depth)
+      composed_projection_transitions(
+        pattern_id,
+        config,
+        initial_state,
+        terminal,
+        prefix,
+        visited,
+        depth
+      )
 
     {
       initial_state,
@@ -694,7 +949,9 @@ defmodule WardwrightWeb.LustreWorkbenchData do
   end
 
   defp stream_retry_capable_tree?(config), do: config_tree_any?(config, &stream_retry_capable?/1)
+
   defp stream_rewrite_capable_tree?(config), do: config_tree_any?(config, &stream_rewrite_capable?/1)
+
   defp request_rewrite_capable_tree?(config), do: config_tree_any?(config, &request_rewrite_capable?/1)
 
   defp stream_state_transition_capable_tree?(config), do: config_tree_any?(config, &stream_state_transition_capable?/1)
@@ -704,7 +961,12 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     config_tree_any?(config, callback, [], 0)
   end
 
-  @spec config_tree_any?(model_config(), (model_config() -> boolean()), visited_model_ids(), non_neg_integer()) ::
+  @spec config_tree_any?(
+          model_config(),
+          (model_config() -> boolean()),
+          visited_model_ids(),
+          non_neg_integer()
+        ) ::
           boolean()
   defp config_tree_any?(_config, _callback, _visited, depth) when depth >= 4, do: false
 
@@ -742,9 +1004,14 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     config
     |> Map.get("stream_rules", [])
     |> Enum.any?(fn
-      %{"action" => "state_transition"} -> true
-      %{"transition_to" => transition_to} when is_binary(transition_to) -> String.trim(transition_to) != ""
-      _rule -> false
+      %{"action" => "state_transition"} ->
+        true
+
+      %{"transition_to" => transition_to} when is_binary(transition_to) ->
+        String.trim(transition_to) != ""
+
+      _rule ->
+        false
     end)
   end
 
@@ -780,7 +1047,9 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     retry_slot_candidates(config, [], 0)
   end
 
-  @spec retry_slot_candidates(model_config(), visited_model_ids(), non_neg_integer()) :: [non_neg_integer()]
+  @spec retry_slot_candidates(model_config(), visited_model_ids(), non_neg_integer()) :: [
+          non_neg_integer()
+        ]
   defp retry_slot_candidates(_config, _visited, depth) when depth >= 4, do: []
 
   defp retry_slot_candidates(config, visited, depth) do
@@ -842,7 +1111,14 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     config
     |> Map.get("stream_rules", [])
     |> Enum.find(
-      &(Map.get(&1, "action") in ["rewrite", "rewrite_chunk", "rewrite_span", "replace", "retry", "retry_with_reminder"])
+      &(Map.get(&1, "action") in [
+          "rewrite",
+          "rewrite_chunk",
+          "rewrite_span",
+          "replace",
+          "retry",
+          "retry_with_reminder"
+        ])
     )
     |> case do
       %{"regex" => regex} when is_binary(regex) ->
@@ -905,7 +1181,12 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     nested_default(config, callback, [], 0)
   end
 
-  @spec nested_default(model_config(), (model_config() -> String.t() | nil), visited_model_ids(), non_neg_integer()) ::
+  @spec nested_default(
+          model_config(),
+          (model_config() -> String.t() | nil),
+          visited_model_ids(),
+          non_neg_integer()
+        ) ::
           String.t() | nil
   defp nested_default(_config, _callback, _visited, depth) when depth >= 4, do: nil
 
@@ -1017,7 +1298,14 @@ defmodule WardwrightWeb.LustreWorkbenchData do
           )
 
         child_events =
-          state_replay_events(pattern_id, child_simulation, child_config, user_input, model_response, response_attempts)
+          state_replay_events(
+            pattern_id,
+            child_simulation,
+            child_config,
+            user_input,
+            model_response,
+            response_attempts
+          )
 
         case child_events do
           [] ->
@@ -1056,8 +1344,11 @@ defmodule WardwrightWeb.LustreWorkbenchData do
   defp delegated_route_id(lineage) when is_list(lineage) do
     lineage
     |> Enum.find_value(fn
-      %{"delegated_to" => delegated_to} when is_binary(delegated_to) and delegated_to != "" -> delegated_to
-      _step -> nil
+      %{"delegated_to" => delegated_to} when is_binary(delegated_to) and delegated_to != "" ->
+        delegated_to
+
+      _step ->
+        nil
     end)
   end
 
@@ -1094,8 +1385,14 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     []
     |> maybe_append_event(model_input_changed?(receipt), "request.rewrite")
     |> maybe_append_event(rewrites != [], "regex.rewrite")
-    |> maybe_append_event(rewrites != [] and transition == "review_required", "regex.related-secret")
-    |> maybe_append_event(rewrites == [] and transition == "review_required", "history.related-secret")
+    |> maybe_append_event(
+      rewrites != [] and transition == "review_required",
+      "regex.related-secret"
+    )
+    |> maybe_append_event(
+      rewrites == [] and transition == "review_required",
+      "history.related-secret"
+    )
     |> maybe_append_event(transition == "review_required", "receipt.write")
     |> maybe_append_event(rewrites != [] and transition != "review_required", "rewrite.release")
     |> maybe_append_event(rewrites == [] and transition != "review_required", "stream.release")

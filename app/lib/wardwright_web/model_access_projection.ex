@@ -48,7 +48,8 @@ defmodule WardwrightWeb.ModelAccessProjection do
       "provider_target_models" => config |> Wardwright.provider_targets() |> Enum.map(& &1["model"]),
       "route_root" => Map.get(config, "route_root", "dispatcher.prompt_length"),
       "route_type" => root_route_type(config),
-      "target_models" => config |> Map.get("targets", []) |> Enum.map(& &1["model"])
+      "target_models" => config |> Map.get("targets", []) |> Enum.map(& &1["model"]),
+      "vcr" => Map.get(config, "vcr", %{"mode" => "metadata_only"})
     }
   end
 

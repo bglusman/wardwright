@@ -114,6 +114,15 @@ defmodule WardwrightWeb.PolicyAuthoringTools do
         "/agent-authoring.html#record-scenarios-as-regression-evidence"
       ),
       tool(
+        "replay_receipt_policy",
+        "POST",
+        "/v1/policy-authoring/replay-receipts/{receipt_id}",
+        "Replay the policy and route decisions recorded in an existing receipt without making any provider call.",
+        "Use after importing or inspecting a receipt when you need deterministic control-layer evidence before drafting a policy change.",
+        "Read-only. Replay uses metadata-only VCR fields when present and never returns raw prompts or completions.",
+        "/agent-authoring.html#replay-receipts-before-changing-policy"
+      ),
+      tool(
         "export_regression_pack",
         "GET",
         "/v1/policy-authoring/scenarios/{pattern_id}/regression-export?format=json|exunit",

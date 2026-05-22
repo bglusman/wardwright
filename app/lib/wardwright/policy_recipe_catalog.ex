@@ -263,7 +263,7 @@ defmodule Wardwright.PolicyRecipeCatalog do
   end
 
   defp decode_recipes(body, source_id, collection) do
-    with {:ok, decoded} <- Jason.decode(body),
+    with {:json, {:ok, decoded}} <- {:json, JSON.decode(body)},
          {:ok, recipes} <- recipe_list(decoded) do
       recipes =
         recipes
@@ -272,7 +272,7 @@ defmodule Wardwright.PolicyRecipeCatalog do
 
       {:ok, recipes}
     else
-      {:error, %Jason.DecodeError{} = error} -> {:error, Exception.message(error)}
+      {:json, {:error, reason}} -> {:error, Wardwright.Json.decode_error_message(reason)}
       {:error, error} -> {:error, error}
     end
   end

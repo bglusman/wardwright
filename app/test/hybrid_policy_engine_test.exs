@@ -30,7 +30,7 @@ defmodule Wardwright.HybridPolicyEngineTest do
       })
 
     assert conn.status == 429
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     receipt = body |> get_in(["wardwright", "receipt_id"]) |> Wardwright.ReceiptStore.get()
 
     assert [
@@ -146,7 +146,7 @@ defmodule Wardwright.HybridPolicyEngineTest do
       })
 
     assert conn.status == 429
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     assert get_in(body, ["wardwright", "status"]) == "policy_failed_closed"
     receipt = body |> get_in(["wardwright", "receipt_id"]) |> Wardwright.ReceiptStore.get()

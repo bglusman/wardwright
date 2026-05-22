@@ -60,7 +60,7 @@ defmodule Wardwright.PolicyEngineAndConfigTest do
     conn = call(:post, "/__test/config", prefixed)
     assert conn.status == 400
 
-    assert Jason.decode!(conn.resp_body)["error"]["message"] ==
+    assert JSON.decode!(conn.resp_body)["error"]["message"] ==
              "model_id must be unprefixed"
 
     duplicate =
@@ -72,7 +72,7 @@ defmodule Wardwright.PolicyEngineAndConfigTest do
 
     conn = call(:post, "/__test/config", duplicate)
     assert conn.status == 400
-    assert Jason.decode!(conn.resp_body)["error"]["message"] == "duplicate target tiny/model"
+    assert JSON.decode!(conn.resp_body)["error"]["message"] == "duplicate target tiny/model"
 
     unknown_ref =
       unit_policy_config()
@@ -84,7 +84,7 @@ defmodule Wardwright.PolicyEngineAndConfigTest do
     conn = call(:post, "/__test/config", unknown_ref)
     assert conn.status == 400
 
-    assert Jason.decode!(conn.resp_body)["error"]["message"] ==
+    assert JSON.decode!(conn.resp_body)["error"]["message"] ==
              "dispatcher bad-dispatcher references unknown target missing/model"
 
     zero_weight =
@@ -101,7 +101,7 @@ defmodule Wardwright.PolicyEngineAndConfigTest do
     conn = call(:post, "/__test/config", zero_weight)
     assert conn.status == 400
 
-    assert Jason.decode!(conn.resp_body)["error"]["message"] ==
+    assert JSON.decode!(conn.resp_body)["error"]["message"] ==
              "alloy bad-alloy target tiny/model weight must be positive"
   end
 
@@ -112,6 +112,6 @@ defmodule Wardwright.PolicyEngineAndConfigTest do
 
     conn = call(:post, "/__test/config", unit_policy_config())
     assert conn.status == 404
-    assert Jason.decode!(conn.resp_body)["error"]["code"] == "not_found"
+    assert JSON.decode!(conn.resp_body)["error"]["code"] == "not_found"
   end
 end

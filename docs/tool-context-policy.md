@@ -53,8 +53,12 @@ usage details, Wardwright can only govern the pre-call route/provider/tool
 configuration and the final visible response; it cannot inspect or stop each
 hidden internal step.
 
-Tool-aware governance currently has three built-in rule shapes:
+Tool-aware governance currently has four built-in rule shapes:
 
+- `allowed_tools` declares the first-class tool surface for a state and phase.
+  Matching tools pass silently; unlisted requested tools emit the existing
+  `block` action with receipt evidence and fail closed before provider
+  execution.
 - `tool_selector` matches normalized tool context and emits ordinary policy
   actions such as `restrict_routes`, `switch_model`, `reroute`, `block`,
   `annotate`, or `alert_async`.
@@ -65,10 +69,10 @@ Tool-aware governance currently has three built-in rule shapes:
   later action when an `after` event is still inside the configured window and no
   `until` reset has occurred.
 
-Those rule shapes cover current-event matching, repeated-tool counting, and a
-first pass at ordered sequence control. The sequence implementation deliberately
-uses explicit state/window predicates so authors can see why a later tool was
-blocked.
+Those rule shapes cover explicit tool surfaces, current-event matching,
+repeated-tool counting, and a first pass at ordered sequence control. The
+sequence implementation deliberately uses explicit state/window predicates so
+authors can see why a later tool was blocked.
 
 Receipts expose normalized `request.tool_context`, `decision.tool_context`,
 `decision.tool_policy_selectors`, and `final.tool_policy` when relevant. Receipt
@@ -126,6 +130,40 @@ wall-clock windows, state is represented by the latest scoped `policy_state`
 fact, and raw tool payloads stay out of history. Multiple independent state
 machines in the same session should use disjoint state names for now; a future
 `state_machine_id` facet should make that isolation explicit.
+
+## Allowed Tools Slice Note
+
+Plan: add a minimal `allowed_tools` governance rule that is explicit about
+`state_scope`, `phase`, and allowed tool identities. Enforcement stays in
+`Wardwright.Policy.Plan` after `Wardwright.ToolContext` normalization, so
+receipts, route blocking, and validation use the existing policy path.
+
+Adversarial plan review: the unsafe shortcut would be a separate tool firewall
+beside policy planning, because it would drift from route constraints, receipts,
+state scope, and existing fail-closed behavior. The narrow rule also avoids
+turning `tool_selector` into a denylist/allowlist grab bag whose action
+semantics depend on convention.
+
+Implementation notes: `allowed_tools` compares the normalized request
+`primary_tool` plus declared `available_tools` against a non-empty allowlist for
+the current phase. If every requested tool matches, the rule emits no policy
+action. If any requested tool is unlisted, Wardwright records a normalized
+`block` action containing `allowed_tools`, `blocked_tools`,
+`allowed_tool_phase`, `state_scope`, and `tool_context`, then fails closed
+through the existing provider-outcome path.
+
+Adversarial implementation/design review: the slice is intentionally limited to
+request-visible tool facts. Hidden provider-hosted tools remain governed only by
+pre-call configuration and whatever provider events become visible later. The
+rule currently uses the latest scoped `policy_state`, so multiple independent
+state machines in one cache scope still need disjoint state names until the
+runtime gains a `state_machine_id` facet.
+
+Test evidence: focused tests cover a state transition into
+`reviewing_tool_result`, an allowed review tool that passes with no action, an
+unlisted shell tool that fails closed with block receipt evidence, validation
+errors for missing phase/tool identity, and projection output for the new
+allowed-tools node.
 
 ## Problems To Validate
 

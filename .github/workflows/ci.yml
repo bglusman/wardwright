@@ -69,19 +69,48 @@ jobs:
       - name: Check UI docs acknowledgement
         run: scripts/check-ui-docs-ack.sh
 
+  packaged-smoke:
+    name: packaged smoke
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: prod
+      APP_NAME: wardwright
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: erlef/setup-beam@8251c48667b97e88a0a24ec512f5b72a039fcea7 # v1
+        with:
+          otp-version: "28"
+          elixir-version: "1.19"
+          gleam-version: "1.16.0"
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.0.5
+        with:
+          version: "0.15.2"
+          use-cache: false
+      - name: Install deps
+        run: mix deps.get
+        working-directory: app
+      - name: Build linux packaged binary
+        run: mix tinfoil.build --target linux_x86_64 --skip-version-check
+        working-directory: app
+      - name: Smoke packaged binary
+        run: scripts/smoke-burrito-binary.sh app/burrito_out/wardwright_linux_x86_64
+
   test:
     name: test
     runs-on: ubuntu-latest
-    needs: [app, docs]
+    needs: [app, docs, packaged-smoke]
     if: always()
     steps:
       - name: Verify required jobs
         env:
           APP_RESULT: ${{ needs.app.result }}
           DOCS_RESULT: ${{ needs.docs.result }}
+          PACKAGED_SMOKE_RESULT: ${{ needs.packaged-smoke.result }}
         run: |
           set -euo pipefail
-          for result in "$APP_RESULT" "$DOCS_RESULT"; do
+          for result in "$APP_RESULT" "$DOCS_RESULT" "$PACKAGED_SMOKE_RESULT"; do
             if [ "$result" != "success" ]; then
               echo "A required job failed or was skipped"
               exit 1

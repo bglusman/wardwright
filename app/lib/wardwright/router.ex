@@ -18,7 +18,7 @@ defmodule Wardwright.Router do
   plug(Plug.Parsers,
     parsers: [:json],
     pass: ["application/json"],
-    json_decoder: Jason,
+    json_decoder: JSON,
     length: 1_048_576
   )
 
@@ -93,6 +93,7 @@ defmodule Wardwright.Router do
           |> WardwrightWeb.ReceiptBuilder.apply_provider_outcome(provider)
 
         Wardwright.ReceiptStore.insert(receipt)
+        record_counterfactual_transcript(receipt)
 
         record_runtime_event(model, config, caller, "receipt.finalized", %{
           "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0,
@@ -161,6 +162,7 @@ defmodule Wardwright.Router do
         )
 
       Wardwright.ReceiptStore.insert(receipt)
+      record_counterfactual_transcript(receipt)
 
       record_runtime_event(model, config, caller, "receipt.finalized", %{
         "alert_count" => get_in(receipt, ["final", "alert_count"]) || 0,
@@ -579,6 +581,47 @@ defmodule Wardwright.Router do
     end
   end
 
+  post "/v1/policy-authoring/replay-receipts/:receipt_id" do
+    with :ok <- require_protected_access(conn),
+         {:ok, replay} <- Wardwright.PolicyReplay.replay_receipt_id(receipt_id) do
+      json(conn, 200, Map.new([{"replay", replay}]))
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, :receipt_not_found} ->
+        error(conn, 404, "receipt not found", "not_found", "receipt_not_found")
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_policy_replay")
+    end
+  end
+
+  get "/v1/policy-authoring/harness-adapters" do
+    case require_protected_access(conn) do
+      :ok ->
+        json(conn, 200, Map.new([{"data", WardwrightWeb.AgentHarnessAdapters.list()}]))
+
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+    end
+  end
+
+  post "/v1/policy-authoring/harness-adapters/:adapter_id/export" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, session_id} <- required_body_string(body, "session_id"),
+         {:ok, export} <- WardwrightWeb.AgentHarnessAdapters.export(session_id, adapter_id, body) do
+      json(conn, 200, Map.new([{"export", export}]))
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_harness_adapter_export")
+    end
+  end
+
   get "/v1/policy-authoring/scenarios/:pattern_id/regression-export" do
     with :ok <- require_protected_access(conn),
          true <- known_policy_pattern?(pattern_id),
@@ -750,6 +793,19 @@ defmodule Wardwright.Router do
     case Map.get(body, @max_unpinned_key) do
       value when is_integer(value) and value >= 0 -> {:ok, value}
       _value -> {:error, "max_unpinned must be a non-negative integer"}
+    end
+  end
+
+  defp required_body_string(body, key) do
+    case body do
+      %{^key => value} when is_binary(value) ->
+        case String.trim(value) do
+          "" -> {:error, "#{key} must be a non-empty string"}
+          trimmed -> {:ok, trimmed}
+        end
+
+      _value ->
+        {:error, "#{key} must be a non-empty string"}
     end
   end
 
@@ -943,6 +999,13 @@ defmodule Wardwright.Router do
     :ok
   end
 
+  defp record_counterfactual_transcript(receipt) do
+    case WardwrightWeb.CounterfactualReplay.record_gateway_receipt(receipt) do
+      {:ok, _result} -> :ok
+      {:error, _reason} -> :ok
+    end
+  end
+
   defp test_config_allowed? do
     Application.get_env(:wardwright, :allow_test_config, false) or
       System.get_env("WARDWRIGHT_ALLOW_TEST_CONFIG") == "1"
@@ -951,7 +1014,7 @@ defmodule Wardwright.Router do
   defp json(conn, status, payload) do
     conn
     |> put_resp_content_type("application/json")
-    |> send_resp(status, Jason.encode!(payload))
+    |> send_resp(status, JSON.encode!(payload))
   end
 
   defp text(conn, status, body) do

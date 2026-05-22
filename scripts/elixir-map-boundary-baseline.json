@@ -12,11 +12,11 @@
   },
   "files": {
     "app/lib/wardwright.ex": {
-      "total": 292,
+      "total": 306,
       "patterns": {
-        "string_key_entry": 156,
-        "string_key_access": 30,
-        "map_call_string_key": 100,
+        "string_key_entry": 165,
+        "string_key_access": 33,
+        "map_call_string_key": 102,
         "get_in_string_path": 6
       }
     },
@@ -227,6 +227,15 @@
         "get_in_string_path": 0
       }
     },
+    "app/lib/wardwright/policy_replay.ex": {
+      "total": 0,
+      "patterns": {
+        "string_key_entry": 0,
+        "string_key_access": 0,
+        "map_call_string_key": 0,
+        "get_in_string_path": 0
+      }
+    },
     "app/lib/wardwright/policy_scenario.ex": {
       "total": 0,
       "patterns": {
@@ -264,10 +273,10 @@
       }
     },
     "app/lib/wardwright/receipt_store.ex": {
-      "total": 68,
+      "total": 71,
       "patterns": {
-        "string_key_entry": 40,
-        "string_key_access": 21,
+        "string_key_entry": 42,
+        "string_key_access": 22,
         "map_call_string_key": 0,
         "get_in_string_path": 7
       }
@@ -336,12 +345,12 @@
       }
     },
     "app/lib/wardwright/sqlite_store.ex": {
-      "total": 13,
+      "total": 24,
       "patterns": {
-        "string_key_entry": 6,
-        "string_key_access": 7,
+        "string_key_entry": 7,
+        "string_key_access": 13,
         "map_call_string_key": 0,
-        "get_in_string_path": 0
+        "get_in_string_path": 4
       }
     },
     "app/lib/wardwright/structured_output_retry_feedback.ex": {

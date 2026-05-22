@@ -24,6 +24,8 @@ defmodule Wardwright do
   @name_key "name"
   @refusal_key "refusal"
   @role_key "role"
+  @delta_key "delta"
+  @preserved_delta_fields_key "preserved_delta_fields"
   @system_fingerprint_key "system_fingerprint"
   @tool_call_id_key "tool_call_id"
   @tool_calls_key "tool_calls"
@@ -73,6 +75,7 @@ defmodule Wardwright do
         %{"context_window" => @local_context_window, "model" => @local_model},
         %{"context_window" => @managed_context_window, "model" => @managed_model}
       ],
+      "vcr" => %{"mode" => "metadata_only"},
       "version" => @model_version,
       @description_key => @default_description
     }
@@ -95,12 +98,15 @@ defmodule Wardwright do
   end
 
   def model_config(model) do
-    with {:ok, model_id} <- canonical_model_id(model),
-         {:ok, config} <- Map.fetch(current_configs(), model_id) do
-      {:ok, config}
-    else
-      :error -> {:error, "unknown Wardwright model #{inspect(model)}"}
-      {:error, message} -> {:error, message}
+    case canonical_model_id(model) do
+      {:ok, model_id} ->
+        case Map.fetch(current_configs(), model_id) do
+          {:ok, config} -> {:ok, config}
+          :error -> {:error, "unknown Wardwright model #{inspect(model)}"}
+        end
+
+      {:error, message} ->
+        {:error, message}
     end
   end
 
@@ -155,9 +161,78 @@ defmodule Wardwright do
 
   def put_model_config(_), do: {:error, "request body must be a JSON object"}
 
-  defp install_configs(configs) when is_list(configs) do
+  def archive_model_config(model) do
+    with {:ok, model_id} <- canonical_model_id(model),
+         {:ok, _config} <- model_config(model_id),
+         :ok <- require_model_registry_store(),
+         :ok <- require_archiveable_model(model_id) do
+      remaining_configs = Map.delete(current_configs(), model_id)
+      current_active_model_id = active_model_id()
+      preferred_active_model_id = if current_active_model_id != model_id, do: current_active_model_id
+
+      with {:ok, changed_count} <- model_registry_changed_count(Wardwright.SQLiteStore.archive_model_config(model_id)),
+           true <- changed_count > 0 do
+        install_configs(Map.values(remaining_configs), preferred_active_model_id)
+        configure_runtime(current_config())
+        {:ok, model_id}
+      else
+        false -> {:error, "unknown persisted Wardwright model #{inspect(model_id)}"}
+        {:error, reason} -> {:error, "could not archive #{inspect(model_id)}: #{inspect(reason)}"}
+      end
+    end
+  end
+
+  def restore_archived_model_config(model) do
+    with {:ok, model_id} <- canonical_model_id(model),
+         :ok <- require_model_registry_store(),
+         {:ok, config} <- archived_model_config_from_store(model_id),
+         :ok <- validate_config(config),
+         {:ok, _restored_config} <-
+           model_registry_restored_config(Wardwright.SQLiteStore.restore_model_config(model_id)) do
+      install_model_config(config)
+      configure_runtime(config)
+      {:ok, config}
+    else
+      {:error, :not_found} -> {:error, "unknown archived Wardwright model #{inspect(model)}"}
+      {:error, message} -> {:error, message}
+    end
+  end
+
+  def delete_archived_model_config(model) do
+    with {:ok, model_id} <- canonical_model_id(model),
+         :ok <- require_model_registry_store(),
+         {:ok, _config} <- archived_model_config_from_store(model_id) do
+      with {:ok, changed_count} <-
+             model_registry_changed_count(Wardwright.SQLiteStore.delete_archived_model_config(model_id)),
+           true <- changed_count > 0 do
+        {:ok, model_id}
+      else
+        false -> {:error, "unknown archived Wardwright model #{inspect(model)}"}
+        {:error, reason} -> {:error, "could not delete archived #{inspect(model)}: #{inspect(reason)}"}
+      end
+    else
+      {:error, :not_found} -> {:error, "unknown archived Wardwright model #{inspect(model)}"}
+      {:error, message} -> {:error, message}
+    end
+  end
+
+  def archived_model_configs do
+    {:ok, configs} = Wardwright.SQLiteStore.list_archived_models()
+    configs
+  end
+
+  def archived_model_summaries, do: Enum.map(archived_model_configs(), &model_summary/1)
+
+  defp install_configs(configs, preferred_active_model_id \\ nil) when is_list(configs) do
     configs = Map.new(configs, &{model_id(&1), &1})
-    active_model_id = configs |> Map.keys() |> Enum.sort() |> List.first() || @model_id
+
+    active_model_id =
+      if is_binary(preferred_active_model_id) and Map.has_key?(configs, preferred_active_model_id) do
+        preferred_active_model_id
+      else
+        configs |> Map.keys() |> Enum.sort() |> List.first() || @model_id
+      end
+
     active_config = Map.get(configs, active_model_id, default_config())
     :persistent_term.put({__MODULE__, :config}, active_config)
     :persistent_term.put({__MODULE__, :configs}, configs)
@@ -171,6 +246,43 @@ defmodule Wardwright do
     :persistent_term.put({__MODULE__, :configs}, configs)
     :persistent_term.put({__MODULE__, :active_model_id}, model_id)
   end
+
+  defp require_archiveable_model(model_id) do
+    if map_size(current_configs()) <= 1 do
+      {:error, "cannot archive #{inspect(model_id)} because Wardwright needs at least one active model"}
+    else
+      :ok
+    end
+  end
+
+  defp require_model_registry_store do
+    if Wardwright.SQLiteStore.enabled?() do
+      :ok
+    else
+      {:error, "model archive requires SQLite model registry storage"}
+    end
+  end
+
+  defp archived_model_config_from_store(model_id) do
+    case Wardwright.SQLiteStore.archived_model_config(model_id) do
+      {:ok, config} -> {:ok, config}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp active_model_id do
+    :persistent_term.get({__MODULE__, :active_model_id}, @model_id)
+  end
+
+  defp model_registry_changed_count({:ok, {:ok, count}}) when is_integer(count), do: {:ok, count}
+  defp model_registry_changed_count({:ok, count}) when is_integer(count), do: {:ok, count}
+  defp model_registry_changed_count({:error, reason}), do: {:error, reason}
+  defp model_registry_changed_count(other), do: {:error, other}
+
+  defp model_registry_restored_config({:ok, {:ok, config}}) when is_map(config), do: {:ok, config}
+  defp model_registry_restored_config({:ok, {:error, reason}}), do: {:error, reason}
+  defp model_registry_restored_config({:error, reason}), do: {:error, reason}
+  defp model_registry_restored_config(other), do: {:error, other}
 
   defp configure_runtime(config) do
     if Process.whereis(Wardwright.PolicyCache) do
@@ -207,6 +319,12 @@ defmodule Wardwright do
   def model_requires_api_key?(config \\ current_config()), do: Map.get(config, "requires_api_key", false) == true
 
   def unkeyed_model_access(config \\ current_config()), do: get_in(config, ["auth", "unkeyed_model_access"]) || "public"
+
+  def vcr_mode(config \\ current_config()) do
+    get_in(config, ["vcr", "mode"]) || "metadata_only"
+  end
+
+  def full_session_vcr?(config \\ current_config()), do: vcr_mode(config) == "full_session"
 
   def externally_callable?(config \\ current_config()) do
     model_requires_api_key?(config) or unkeyed_model_access(config) == "public"
@@ -247,11 +365,11 @@ defmodule Wardwright do
     Enum.reduce(value, 0, fn
       %{"text" => text}, acc when is_binary(text) -> acc + String.length(text)
       %{"content" => text}, acc when is_binary(text) -> acc + String.length(text)
-      part, acc -> acc + byte_size(Jason.encode!(part))
+      part, acc -> acc + byte_size(JSON.encode!(part))
     end)
   end
 
-  defp content_length(value), do: byte_size(Jason.encode!(value))
+  defp content_length(value), do: byte_size(JSON.encode!(value))
 
   def model_record do
     model_record(current_config())
@@ -302,6 +420,7 @@ defmodule Wardwright do
       "structured_output" => Map.get(config, "structured_output"),
       "traffic_24h" => 0,
       "unkeyed_model_access" => unkeyed_model_access(config),
+      "vcr" => Map.get(config, "vcr", %{"mode" => "metadata_only"}),
       @description_key => model_description(config)
     }
   end
@@ -322,6 +441,7 @@ defmodule Wardwright do
       "requires_api_key" => model_requires_api_key?(config),
       "route_type" => root_route_type(config),
       "status" => "active",
+      "vcr" => Map.get(config, "vcr", %{"mode" => "metadata_only"}),
       @description_key => model_description(config)
     }
   end
@@ -790,6 +910,7 @@ defmodule Wardwright do
 
           normalized_target |> Enum.reject(fn {_key, value} -> value == "" or value == [] end) |> Map.new()
         end),
+      "vcr" => normalize_vcr(Map.get(config, "vcr", %{})),
       "version" =>
         config
         |> Map.get("version", @model_version)
@@ -896,6 +1017,18 @@ defmodule Wardwright do
   end
 
   defp normalize_auth(_), do: %{"unkeyed_model_access" => "public"}
+
+  defp normalize_vcr(config) when is_map(config) do
+    mode =
+      case Map.get(config, "mode", "metadata_only") do
+        value when value in ["metadata_only", "full_session"] -> value
+        _ -> "metadata_only"
+      end
+
+    %{"mode" => mode}
+  end
+
+  defp normalize_vcr(_), do: %{"mode" => "metadata_only"}
 
   defp validate_config(%{"model_id" => model_id, "targets" => targets} = config) do
     cond do
@@ -1009,7 +1142,7 @@ defmodule Wardwright do
         System.get_env("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 
     body =
-      Jason.encode!(%{
+      JSON.encode!(%{
         messages: provider_messages(request),
         model: model,
         stream: false
@@ -1031,7 +1164,7 @@ defmodule Wardwright do
         System.get_env("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 
     body =
-      Jason.encode!(%{
+      JSON.encode!(%{
         messages: provider_messages(request),
         model: model,
         stream: true
@@ -1054,7 +1187,7 @@ defmodule Wardwright do
         System.get_env("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 
     body =
-      Jason.encode!(%{
+      JSON.encode!(%{
         messages: provider_messages(request),
         model: model,
         stream: true
@@ -1075,7 +1208,7 @@ defmodule Wardwright do
     with base_url when base_url != "" <- Map.get(target, "provider_base_url", ""),
          {:ok, credential} <- provider_credential(target) do
       body =
-        Jason.encode!(%{
+        JSON.encode!(%{
           messages: provider_messages(request),
           model: provider_model(target),
           stream: false
@@ -1103,7 +1236,7 @@ defmodule Wardwright do
     with base_url when base_url != "" <- Map.get(target, "provider_base_url", ""),
          {:ok, credential} <- provider_credential(target) do
       body =
-        Jason.encode!(%{
+        JSON.encode!(%{
           messages: provider_messages(request),
           model: provider_model(target),
           stream: true
@@ -1128,7 +1261,7 @@ defmodule Wardwright do
     with base_url when base_url != "" <- Map.get(target, "provider_base_url", ""),
          {:ok, credential} <- provider_credential(target) do
       body =
-        Jason.encode!(%{
+        JSON.encode!(%{
           messages: provider_messages(request),
           model: provider_model(target),
           stream: true
@@ -1161,7 +1294,7 @@ defmodule Wardwright do
 
     case :httpc.request(:post, request, [{:timeout, 180_000}], body_format: :binary) do
       {:ok, {{_, status, _}, _headers, response_body}} when status in 200..299 ->
-        Jason.decode(response_body)
+        JSON.decode(response_body)
 
       {:ok, {{_, status, _}, _headers, _response_body}} ->
         {:error, "provider returned #{status}"}
@@ -1307,7 +1440,7 @@ defmodule Wardwright do
 
     metadata =
       Enum.reduce(lines, metadata, fn line, metadata ->
-        case Jason.decode(String.trim(line)) do
+        case JSON.decode(String.trim(line)) do
           {:ok, event} ->
             metadata = ollama_stream_metadata(metadata, event)
 
@@ -1382,15 +1515,16 @@ defmodule Wardwright do
             put_if_present(metadata, "done", true)
 
           data, metadata ->
-            case Jason.decode(data) do
+            case JSON.decode(data) do
               {:ok, event} ->
+                choice = openai_choice(event)
                 metadata = openai_stream_metadata(metadata, event)
 
                 content =
-                  event
-                  |> openai_choice()
+                  choice
                   |> openai_choice_content()
 
+                if openai_choice_tool_calls?(choice), do: emit.(openai_tool_call_delta(choice))
                 if content not in [nil, ""], do: emit.(content)
                 metadata
 
@@ -1412,6 +1546,7 @@ defmodule Wardwright do
     |> put_if_present("usage", json_get(event, "usage"))
     |> put_if_present("system_fingerprint", json_get(event, "system_fingerprint"))
     |> put_if_present("refusal", json_get(json_get(choice, "delta"), "refusal"))
+    |> put_preserved_delta_field(choice, @tool_calls_key)
   end
 
   defp stream_metadata(format), do: put_if_present(%{}, "stream_format", format)
@@ -1426,6 +1561,38 @@ defmodule Wardwright do
   defp openai_choice_content(choice) do
     json_get(json_get(choice, "delta"), "content") ||
       json_get(json_get(choice, "message"), "content")
+  end
+
+  defp openai_choice_tool_calls?(choice) do
+    case json_get(json_get(choice, @delta_key), @tool_calls_key) do
+      calls when is_list(calls) -> calls != []
+      _ -> false
+    end
+  end
+
+  defp openai_tool_call_delta(choice) do
+    %{
+      wardwright_stream_choice_index: json_get(choice, "index") || 0,
+      wardwright_stream_delta: %{@tool_calls_key => json_get(json_get(choice, @delta_key), @tool_calls_key)}
+    }
+  end
+
+  defp put_preserved_delta_field(metadata, choice, field) do
+    case json_get(json_get(choice, @delta_key), field) do
+      value when value in [nil, []] ->
+        metadata
+
+      _value ->
+        fields =
+          metadata
+          |> Map.get(@preserved_delta_fields_key, [])
+          |> List.wrap()
+          |> Kernel.++([field])
+          |> Enum.uniq()
+          |> Enum.sort()
+
+        Map.put(metadata, @preserved_delta_fields_key, fields)
+    end
   end
 
   defp json_get(map, key) when is_map(map), do: Map.get(map, key)
@@ -1462,7 +1629,7 @@ defmodule Wardwright do
     response_body
     |> stream_lines()
     |> Enum.flat_map(fn line ->
-      case Jason.decode(line) do
+      case JSON.decode(line) do
         {:ok, event} -> [get_in(event, ["message", "content"]) || event["response"]]
         {:error, _} -> []
       end
@@ -1478,7 +1645,7 @@ defmodule Wardwright do
         []
 
       "data: " <> data ->
-        case Jason.decode(data) do
+        case JSON.decode(data) do
           {:ok, event} ->
             [
               get_in(event, ["choices", Access.at(0), "delta", "content"]) ||
@@ -1580,9 +1747,9 @@ defmodule Wardwright do
 
   defp encode_provider_body(encoded_body, request, forward_fields) when is_binary(encoded_body) do
     encoded_body
-    |> Jason.decode!()
+    |> JSON.decode!()
     |> Map.merge(forward_request_fields(request, forward_fields))
-    |> Jason.encode!()
+    |> JSON.encode!()
   end
 
   defp forward_request_fields(request, fields) do

@@ -94,6 +94,29 @@ governance:
       risk_class: write
 ```
 
+The first-class tool-surface rule is `allowed_tools`. It is explicit about the
+state and lifecycle phase that own the allowlist. When a normalized tool fact
+appears in that state and phase, every requested tool identity from
+`primary_tool` and `available_tools` must match one entry. Unlisted tools emit
+the existing `block` action and fail closed before provider execution:
+
+```yaml
+governance:
+  - id: review-state-tool-surface
+    kind: allowed_tools
+    state_scope: reviewing_tool_result
+    phase: planning
+    allowed_tools:
+      - namespace: review
+        name: approve_tool_result
+        risk_class: read_only
+```
+
+Receipts record the block as an ordinary policy action with `allowed_tools`,
+`blocked_tools`, `allowed_tool_phase`, `state_scope`, and the normalized
+`tool_context`. A matching tool call emits no action; the absence of a block is
+the pass condition.
+
 Rules can also compose with ordinary non-tool behavior:
 
 ```yaml

@@ -65,6 +65,9 @@ defmodule WardwrightWeb.AuthoringAgent do
     selected_model = selected_model_id(context)
     selected_pattern = Map.get(context, :pattern_id, "unknown")
     selected_recipe = Map.get(context, :recipe_id, "")
+    simulator_user_input = Map.get(context, :simulator_user_input, "")
+    simulator_model_response = Map.get(context, :simulator_model_response, "")
+    simulator_response_attempts = Map.get(context, :simulator_response_attempts, [])
 
     """
     You are Wardwright's in-page model-authoring assistant.
@@ -110,6 +113,10 @@ defmodule WardwrightWeb.AuthoringAgent do
       tools can express those cases.
     - If a simulation does not exercise the behavior you changed, say so plainly
       and propose the missing scenario instead of claiming success.
+    - Do not mention proxy names, provider plumbing, base URLs, or transport
+      layers in the operator-facing answer unless the user explicitly asks about
+      them or a tool result requires it. Focus on the Wardwright artifact and
+      its observable behavior.
     - Report validation warnings, coverage gaps, and simulator limitations in
       your answer. Do not bury them in next steps.
     - Good authoring tasks include: request reminders that trigger on user text,
@@ -122,7 +129,12 @@ defmodule WardwrightWeb.AuthoringAgent do
     - active_model_id: #{selected_model}
     - selected_policy_pattern: #{selected_pattern}
     - selected_recipe_id: #{selected_recipe}
-    - pending_drafts: #{Jason.encode!(Map.get(context, :pending_drafts, []))}
+    - pending_drafts: #{JSON.encode!(Map.get(context, :pending_drafts, []))}
+
+    Current simulator turn:
+    - user_input: #{JSON.encode!(simulator_user_input)}
+    - raw_model_output_or_stream: #{JSON.encode!(simulator_model_response)}
+    - retry_attempt_outputs: #{JSON.encode!(simulator_response_attempts)}
 
     Available Wardwright authoring tools:
     #{tool_manifest()}
@@ -318,7 +330,10 @@ defmodule WardwrightWeb.AuthoringAgent do
   defp authoring_action_requested?(message) when is_binary(message) do
     normalized = String.downcase(message)
 
-    Regex.match?(~r/\b(make|create|draft|build|add|update|change|modify|write|generate)\b/, normalized) and
+    Regex.match?(
+      ~r/\b(make|create|draft|build|add|update|change|modify|write|generate)\b/,
+      normalized
+    ) and
       Regex.match?(
         ~r/\b(model|policy|rule|guard|rewrite|route|scenario|snippet|behavior|behaviour)\b/,
         normalized
@@ -370,7 +385,7 @@ defmodule WardwrightWeb.AuthoringAgent do
     content
     |> candidate_json_strings()
     |> Enum.find_value(:error, fn candidate ->
-      case Jason.decode(candidate) do
+      case JSON.decode(candidate) do
         {:ok, %{"tool_calls" => calls} = plan} when is_list(calls) -> {:ok, plan}
         _ -> nil
       end

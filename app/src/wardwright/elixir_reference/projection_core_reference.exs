@@ -93,6 +93,8 @@ defmodule Wardwright.ElixirReference.ProjectionCore do
   def tool_action("tool_sequence", _top_action, then_action, _transition_to)
       when then_action != "", do: then_action
 
+  def tool_action("allowed_tools", _top_action, _then_action, _transition_to), do: "block"
+
   def tool_action("tool_result_guard", _top_action, _then_action, _transition_to),
     do: "review_result"
 

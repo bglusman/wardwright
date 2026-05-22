@@ -96,7 +96,7 @@ defmodule Wardwright.RuntimeVisibilityTest do
     status =
       :get
       |> call("/admin/runtime")
-      |> then(&Jason.decode!(&1.resp_body))
+      |> then(&JSON.decode!(&1.resp_body))
 
     assert Enum.any?(status["models"], &(&1["model_id"] == "coding-balanced"))
 
@@ -143,7 +143,7 @@ defmodule Wardwright.RuntimeVisibilityTest do
     status =
       :get
       |> call("/admin/runtime")
-      |> then(&Jason.decode!(&1.resp_body))
+      |> then(&JSON.decode!(&1.resp_body))
 
     assert Enum.any?(
              status["sessions"],
@@ -215,7 +215,7 @@ defmodule Wardwright.RuntimeVisibilityTest do
     status =
       :get
       |> call("/admin/runtime")
-      |> then(&Jason.decode!(&1.resp_body))
+      |> then(&JSON.decode!(&1.resp_body))
 
     assert %{
              "attempt_count" => 2,
@@ -256,7 +256,7 @@ defmodule Wardwright.RuntimeVisibilityTest do
         status =
           :get
           |> call("/admin/runtime")
-          |> then(&Jason.decode!(&1.resp_body))
+          |> then(&JSON.decode!(&1.resp_body))
 
         Enum.find(
           status["provider_attempts"],
@@ -279,7 +279,7 @@ defmodule Wardwright.RuntimeVisibilityTest do
                status =
                  :get
                  |> call("/admin/runtime")
-                 |> then(&Jason.decode!(&1.resp_body))
+                 |> then(&JSON.decode!(&1.resp_body))
 
                active? =
                  Enum.any?(
@@ -326,7 +326,7 @@ defmodule Wardwright.RuntimeVisibilityTest do
         status =
           :get
           |> call("/admin/runtime")
-          |> then(&Jason.decode!(&1.resp_body))
+          |> then(&JSON.decode!(&1.resp_body))
 
         Enum.find(
           status["provider_attempts"],
@@ -360,7 +360,7 @@ defmodule Wardwright.RuntimeVisibilityTest do
   defp wait_for(_fun, 0), do: flunk("condition was not met before timeout")
 
   defp call(method, path, body \\ nil, headers \\ []) do
-    encoded = if !is_nil(body), do: Jason.encode!(body)
+    encoded = if !is_nil(body), do: JSON.encode!(body)
 
     method
     |> conn(path, encoded)

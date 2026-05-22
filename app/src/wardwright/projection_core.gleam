@@ -197,6 +197,7 @@ pub fn tool_action(
     _, "tool_sequence", transition_to, _ if transition_to != "" ->
       "state_transition"
     _, "tool_sequence", _, then_action if then_action != "" -> then_action
+    _, "allowed_tools", _, _ -> "block"
     _, "tool_result_guard", _, _ -> "review_result"
     _, "tool_denylist", _, _ -> "deny_tool"
     _, _, _, _ -> "constrain_tools"

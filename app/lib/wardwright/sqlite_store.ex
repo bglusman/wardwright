@@ -3,7 +3,7 @@ defmodule Wardwright.SQLiteStore do
 
   alias Exqlite.Sqlite3
 
-  @schema_version 1
+  @schema_version 2
 
   def enabled?, do: not is_nil(store_path())
 
@@ -41,7 +41,7 @@ defmodule Wardwright.SQLiteStore do
        configs
        |> Enum.flat_map(fn
          [config_json] ->
-           case Jason.decode(config_json) do
+           case JSON.decode(config_json) do
              {:ok, config} -> [Wardwright.normalize_config(config)]
              _ -> []
            end
@@ -51,6 +51,48 @@ defmodule Wardwright.SQLiteStore do
        end)}
     else
       _ -> {:ok, []}
+    end
+  end
+
+  def list_archived_models do
+    with {:ok, result} <-
+           with_conn(fn conn ->
+             query_all(
+               conn,
+               """
+               SELECT config_json
+               FROM wardwright_models
+               WHERE active = 0
+               ORDER BY updated_at DESC, model_id ASC
+               """,
+               []
+             )
+           end),
+         configs when is_list(configs) <- result do
+      {:ok, decode_model_configs(configs)}
+    else
+      _ -> {:ok, []}
+    end
+  end
+
+  def archived_model_config(model_id) when is_binary(model_id) do
+    with {:ok, result} <-
+           with_conn(fn conn ->
+             query_all(
+               conn,
+               """
+               SELECT config_json
+               FROM wardwright_models
+               WHERE model_id = ? AND active = 0
+               LIMIT 1
+               """,
+               [model_id]
+             )
+           end),
+         [config] <- decode_model_configs(result) do
+      {:ok, config}
+    else
+      _ -> {:error, :not_found}
     end
   end
 
@@ -75,8 +117,86 @@ defmodule Wardwright.SQLiteStore do
             active = 1,
             updated_at = excluded.updated_at
           """,
-          [config["model_id"], Jason.encode!(config), now, now]
+          [config["model_id"], JSON.encode!(config), now, now]
         )
+      end)
+    end)
+  end
+
+  def archive_model_config(model_id) when is_binary(model_id) do
+    with_conn(fn conn ->
+      exec!(
+        conn,
+        """
+        UPDATE wardwright_models
+        SET active = 0, updated_at = ?
+        WHERE model_id = ?
+        """,
+        [DateTime.utc_now() |> DateTime.to_iso8601(), model_id]
+      )
+
+      changes!(conn)
+    end)
+  end
+
+  def restore_model_config(model_id) when is_binary(model_id) do
+    with_conn(fn conn ->
+      transaction!(conn, fn ->
+        config_json =
+          case query_all(
+                 conn,
+                 """
+                 SELECT config_json
+                 FROM wardwright_models
+                 WHERE model_id = ? AND active = 0
+                 LIMIT 1
+                 """,
+                 [model_id]
+               ) do
+            [[config_json]] -> config_json
+            _ -> nil
+          end
+
+        with true <- is_binary(config_json),
+             {:ok, config} <- JSON.decode(config_json) do
+          exec!(
+            conn,
+            """
+            UPDATE wardwright_models
+            SET active = 1, updated_at = ?
+            WHERE model_id = ?
+            """,
+            [DateTime.utc_now() |> DateTime.to_iso8601(), model_id]
+          )
+
+          {:ok, Wardwright.normalize_config(config)}
+        else
+          false -> {:error, :not_found}
+          _ -> {:error, :invalid_config_json}
+        end
+      end)
+    end)
+  end
+
+  def delete_archived_model_config(model_id) when is_binary(model_id) do
+    with_conn(fn conn ->
+      transaction!(conn, fn ->
+        exec!(
+          conn,
+          """
+          DELETE FROM wardwright_models
+          WHERE model_id = ? AND active = 0
+          """,
+          [model_id]
+        )
+
+        changed_count = changes!(conn)
+
+        if changed_count > 0 do
+          exec!(conn, "DELETE FROM model_api_keys WHERE model_id = ?", [model_id])
+        end
+
+        changed_count
       end)
     end)
   end
@@ -310,6 +430,13 @@ defmodule Wardwright.SQLiteStore do
     end
   end
 
+  defp changes!(conn) do
+    case Sqlite3.changes(conn) do
+      {:ok, count} when is_integer(count) -> count
+      {:error, reason} -> raise "sqlite changes failed: #{inspect(reason)}"
+    end
+  end
+
   defp query_one(conn, sql, params \\ []) do
     case Sqlite3.prepare(conn, sql) do
       {:ok, statement} ->
@@ -342,6 +469,20 @@ defmodule Wardwright.SQLiteStore do
       {:error, reason} ->
         raise "sqlite prepare failed: #{inspect(reason)}"
     end
+  end
+
+  defp decode_model_configs(rows) do
+    rows
+    |> Enum.flat_map(fn
+      [config_json] ->
+        case JSON.decode(config_json) do
+          {:ok, config} -> [Wardwright.normalize_config(config)]
+          _ -> []
+        end
+
+      _ ->
+        []
+    end)
   end
 
   defp key_record([id, model_id, label, prefix, key_hash, created_at]) do

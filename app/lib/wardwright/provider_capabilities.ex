@@ -62,7 +62,7 @@ defmodule Wardwright.ProviderCapabilities do
       stream_format: "openai_sse",
       terminal_metadata: ["finish_reason", "choice_index", "usage", "system_fingerprint", "refusal", "done"],
       unsupported_options_policy: "ignore_safe_options_fail_later_for_policy_relevant_options",
-      unsupported_stream_delta_fields: [@role_key, @tool_calls_key, "logprobs"]
+      unsupported_stream_delta_fields: [@role_key, "logprobs"]
     }
     |> to_map()
   end

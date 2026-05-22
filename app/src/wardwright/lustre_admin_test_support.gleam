@@ -5,32 +5,29 @@ import lustre/dev/simulate
 import lustre/element
 import wardwright/lustre_admin
 
-pub fn selecting_model_access_model_syncs_workbench(
+pub fn selecting_model_access_model_updates_workbench_href(
+  model_id: String,
+) -> Bool {
+  start("model_access")
+  |> change_select("model", model_id)
+  |> view_contains("/admin?model=" <> model_id)
+}
+
+pub fn workbench_deep_link_uses_selected_model(
   model_id: String,
   expected_text: String,
 ) -> Bool {
-  start()
-  |> click_nav("Model access")
-  |> change_select("model", model_id)
-  |> click_nav("Workbench")
+  start("workbench:" <> model_id)
   |> view_contains(expected_text)
 }
 
-fn start() {
+fn start(flags: String) {
   simulate.simple(
     init: lustre_admin.init,
     update: lustre_admin.update,
     view: lustre_admin.view,
   )
-  |> simulate.start("")
-}
-
-fn click_nav(simulation, label: String) {
-  simulation
-  |> simulate.click(on: query.element(
-    matching: query.tag("button")
-    |> query.and(query.text(label)),
-  ))
+  |> simulate.start(flags)
 }
 
 fn change_select(simulation, control_id: String, selected_id: String) {

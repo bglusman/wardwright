@@ -7,6 +7,9 @@ defmodule WardwrightWeb.LustreWorkbenchController do
     conn = fetch_query_params(conn)
 
     conn
+    |> put_resp_header("cache-control", "no-store")
+    |> put_resp_header("pragma", "no-cache")
+    |> put_resp_header("expires", "0")
     |> put_resp_content_type("text/html")
     |> html(
       page_html(
@@ -79,6 +82,8 @@ defmodule WardwrightWeb.LustreWorkbenchController do
   end
 
   defp page_param(%{"view" => "model_access"}), do: "model_access"
+  defp page_param(%{"view" => "control_debugger"}), do: "control_debugger"
   defp page_param(%{"page" => "model_access"}), do: "model_access"
+  defp page_param(%{"page" => "control_debugger"}), do: "control_debugger"
   defp page_param(_query_params), do: "workbench"
 end

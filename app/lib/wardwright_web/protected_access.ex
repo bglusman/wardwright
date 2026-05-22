@@ -52,7 +52,7 @@ defmodule WardwrightWeb.ProtectedAccess do
     |> put_resp_content_type("application/json")
     |> send_resp(
       403,
-      Jason.encode!(%{
+      JSON.encode!(%{
         error: %{
           code: "protected_endpoint",
           message: "protected endpoint requires localhost or admin token",

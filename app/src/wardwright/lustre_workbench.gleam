@@ -14,6 +14,7 @@ import ui/badge
 import ui/button
 import ui/select as select_ui
 import ui/table
+import wardwright/authoring_draft
 import wardwright/lustre_shell
 import wardwright/projection_core
 import wardwright/state_machine_core
@@ -80,6 +81,17 @@ pub type Model {
     fixture_title: String,
     fixture_status: String,
     fixture_error: String,
+    authoring_input: String,
+    authoring_configured: Bool,
+    authoring_model: String,
+    authoring_route: String,
+    authoring_status_label: String,
+    authoring_response_status: String,
+    authoring_response: String,
+    authoring_draft: authoring_draft.Draft,
+    authoring_refinement_input: String,
+    authoring_activation_status: String,
+    authoring_activation_error: String,
     step: Int,
     simulation: Simulation,
   )
@@ -94,6 +106,14 @@ pub type Msg {
   RetryResponseChanged(Int, String)
   FixtureTitleChanged(String)
   SaveFixture
+  AuthoringInputChanged(String)
+  AskAuthoring
+  SubmitAuthoring(List(#(String, String)))
+  AuthoringDraftChanged(String)
+  ActivateAuthoringDraft
+  AuthoringRefinementChanged(String)
+  SubmitAuthoringRefinement(List(#(String, String)))
+  ClearAuthoring
   RunSimulation
   SubmitSimulation(List(#(String, String)))
   StepBack
@@ -134,10 +154,37 @@ fn external_projection_summary(
   model_id: String,
 ) -> #(String, String, String, Bool, List(projection_core.StateTransition))
 
+@external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "projection_summary_for_draft")
+fn external_projection_summary_for_draft(
+  pattern_id: String,
+  artifact_json: String,
+) -> #(String, String, String, Bool, List(projection_core.StateTransition))
+
 @external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "run_simulation")
 fn external_run_simulation(
   pattern_id: String,
   model_id: String,
+  user_input: String,
+  model_response: String,
+  retry_responses: List(RetryResponse),
+) -> #(
+  String,
+  String,
+  String,
+  String,
+  Bool,
+  Bool,
+  List(PolicyAction),
+  List(TraceEvent),
+  List(String),
+  String,
+  String,
+)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "run_draft_simulation")
+fn external_run_draft_simulation(
+  pattern_id: String,
+  artifact_json: String,
   user_input: String,
   model_response: String,
   retry_responses: List(RetryResponse),
@@ -165,16 +212,50 @@ fn external_save_fixture(
   retry_responses: List(RetryResponse),
 ) -> #(Bool, String, String)
 
+@external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "authoring_status")
+fn external_authoring_status(
+  model_id: String,
+) -> #(Bool, String, String, String)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "ask_authoring_agent")
+fn external_ask_authoring_agent(
+  model_id: String,
+  pattern_id: String,
+  user_input: String,
+  model_response: String,
+  retry_responses: List(RetryResponse),
+  message: String,
+) -> #(String, String, String, String, String, String)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "activate_authoring_draft")
+fn external_activate_authoring_draft(
+  artifact_json: String,
+) -> #(Bool, String, String)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "validate_authoring_draft")
+fn external_validate_authoring_draft(
+  artifact_json: String,
+) -> #(Bool, String, String)
+
 pub fn component() {
   lustre.simple(init, update, view)
 }
 
-pub fn init(_flags: Nil) -> Model {
-  let model_id = external_default_model_id()
+pub fn init(selected_model_id: String) -> Model {
+  let model_id = case selected_model_id {
+    "" -> external_default_model_id()
+    _ -> selected_model_id
+  }
   let pattern_id = external_default_pattern_id(model_id)
   let fixture_id = default_fixture_id(pattern_id, model_id)
   let #(user_input, model_response, retry_responses) =
     fixture_turn(pattern_id, model_id, fixture_id)
+  let #(
+    authoring_configured,
+    authoring_model,
+    authoring_route,
+    authoring_status_label,
+  ) = external_authoring_status(model_id)
 
   Model(
     pattern_id:,
@@ -186,10 +267,22 @@ pub fn init(_flags: Nil) -> Model {
     fixture_title: "",
     fixture_status: "",
     fixture_error: "",
+    authoring_input: "",
+    authoring_configured:,
+    authoring_model:,
+    authoring_route:,
+    authoring_status_label:,
+    authoring_response_status: "",
+    authoring_response: "",
+    authoring_draft: authoring_draft.none(),
+    authoring_refinement_input: "",
+    authoring_activation_status: "",
+    authoring_activation_error: "",
     step: 0,
     simulation: run_simulation(
       pattern_id,
       model_id,
+      authoring_draft.none(),
       user_input,
       model_response,
       retry_responses,
@@ -224,6 +317,12 @@ pub fn update(model: Model, msg: Msg) -> Model {
       let fixture_id = default_fixture_id(pattern_id, model_id)
       let #(user_input, model_response, retry_responses) =
         fixture_turn(pattern_id, model_id, fixture_id)
+      let #(
+        authoring_configured,
+        authoring_model,
+        authoring_route,
+        authoring_status_label,
+      ) = external_authoring_status(model_id)
 
       run_model(
         Model(
@@ -236,6 +335,14 @@ pub fn update(model: Model, msg: Msg) -> Model {
           retry_responses: retry_responses,
           fixture_status: "",
           fixture_error: "",
+          authoring_configured:,
+          authoring_model:,
+          authoring_route:,
+          authoring_status_label:,
+          authoring_draft: authoring_draft.none(),
+          authoring_refinement_input: "",
+          authoring_activation_status: "",
+          authoring_activation_error: "",
           step: 0,
         ),
       )
@@ -310,6 +417,108 @@ pub fn update(model: Model, msg: Msg) -> Model {
       }
     }
 
+    AuthoringInputChanged(input) -> Model(..model, authoring_input: input)
+
+    AskAuthoring | SubmitAuthoring(_) -> {
+      case model.authoring_configured {
+        False -> model
+        True ->
+          case string.trim(model.authoring_input) {
+            "" -> model
+            prompt -> ask_authoring(model, prompt, "")
+          }
+      }
+    }
+
+    AuthoringDraftChanged(artifact_json) -> {
+      let #(ok, message, draft_model_id) =
+        external_validate_authoring_draft(artifact_json)
+
+      Model(
+        ..model,
+        authoring_draft: authoring_draft.update_artifact(
+          model.authoring_draft,
+          artifact_json,
+          ok,
+          message,
+          draft_model_id,
+        ),
+        authoring_activation_status: "",
+        authoring_activation_error: "",
+      )
+      |> reset_and_run_model
+    }
+
+    ActivateAuthoringDraft -> {
+      case string.trim(authoring_draft.artifact_json(model.authoring_draft)) {
+        "" ->
+          Model(
+            ..model,
+            authoring_activation_status: "",
+            authoring_activation_error: "No draft artifact is available to activate.",
+          )
+        artifact_json -> {
+          case authoring_draft.can_activate(model.authoring_draft) {
+            False ->
+              Model(
+                ..model,
+                authoring_activation_status: "",
+                authoring_activation_error: "Validate the draft artifact before activation.",
+              )
+            True -> {
+              let #(ok, message, activated_model_id) =
+                external_activate_authoring_draft(artifact_json)
+
+              case ok {
+                False ->
+                  Model(
+                    ..model,
+                    authoring_activation_status: "",
+                    authoring_activation_error: message,
+                  )
+                True ->
+                  activate_model_after_draft(model, message, activated_model_id)
+              }
+            }
+          }
+        }
+      }
+    }
+
+    AuthoringRefinementChanged(input) ->
+      Model(..model, authoring_refinement_input: input)
+
+    SubmitAuthoringRefinement(_) -> {
+      case model.authoring_configured {
+        False -> model
+        True ->
+          case string.trim(model.authoring_refinement_input) {
+            "" -> model
+            prompt ->
+              ask_authoring(
+                model,
+                refine_prompt(
+                  prompt,
+                  authoring_draft.artifact_json(model.authoring_draft),
+                ),
+                "refinement",
+              )
+          }
+      }
+    }
+
+    ClearAuthoring ->
+      Model(
+        ..model,
+        authoring_input: "",
+        authoring_response_status: "",
+        authoring_response: "",
+        authoring_draft: authoring_draft.none(),
+        authoring_refinement_input: "",
+        authoring_activation_status: "",
+        authoring_activation_error: "",
+      )
+
     RunSimulation | SubmitSimulation(_) -> run_model(Model(..model, step: 0))
 
     StepBack -> Model(..model, step: int.max(model.step - 1, 0))
@@ -338,12 +547,108 @@ pub fn update(model: Model, msg: Msg) -> Model {
   }
 }
 
+fn ask_authoring(model: Model, prompt: String, mode: String) -> Model {
+  let #(
+    status,
+    content,
+    draft_model,
+    draft_summary,
+    draft_artifact,
+    draft_review_note,
+  ) =
+    external_ask_authoring_agent(
+      model.model_id,
+      model.pattern_id,
+      model.user_input,
+      model.model_response,
+      model.retry_responses,
+      prompt,
+    )
+  let #(ok, message, validated_model_id) =
+    external_validate_authoring_draft(draft_artifact)
+  let draft =
+    authoring_draft.from_agent(
+      draft_model,
+      draft_summary,
+      draft_artifact,
+      draft_review_note,
+      ok,
+      message,
+      validated_model_id,
+    )
+
+  Model(
+    ..model,
+    authoring_input: case mode {
+      "" -> ""
+      _ -> model.authoring_input
+    },
+    authoring_refinement_input: case mode {
+      "refinement" -> ""
+      _ -> model.authoring_refinement_input
+    },
+    authoring_response_status: status,
+    authoring_response: content,
+    authoring_draft: draft,
+    authoring_activation_status: "",
+    authoring_activation_error: "",
+  )
+  |> reset_and_run_model
+}
+
+fn activate_model_after_draft(
+  model: Model,
+  message: String,
+  activated_model_id: String,
+) -> Model {
+  let model_id = blank_default(activated_model_id, model.model_id)
+  let pattern_id = external_default_pattern_id(model_id)
+  let fixture_id = default_fixture_id(pattern_id, model_id)
+  let #(user_input, model_response, retry_responses) =
+    fixture_turn(pattern_id, model_id, fixture_id)
+  let #(
+    authoring_configured,
+    authoring_model,
+    authoring_route,
+    authoring_status_label,
+  ) = external_authoring_status(model_id)
+
+  run_model(
+    Model(
+      ..model,
+      model_id:,
+      pattern_id:,
+      fixture_id:,
+      user_input:,
+      model_response:,
+      retry_responses:,
+      authoring_configured:,
+      authoring_model:,
+      authoring_route:,
+      authoring_status_label:,
+      authoring_draft: authoring_draft.none(),
+      authoring_refinement_input: "",
+      authoring_activation_status: message,
+      authoring_activation_error: "",
+      step: 0,
+    ),
+  )
+}
+
+fn refine_prompt(user_request: String, artifact_json: String) -> String {
+  "Refine this Wardwright draft artifact. Return a new draft_wardwright_model tool call; do not activate it.\n\nCurrent draft artifact:\n"
+  <> artifact_json
+  <> "\n\nRequested change:\n"
+  <> user_request
+}
+
 fn run_model(model: Model) -> Model {
   Model(
     ..model,
     simulation: run_simulation(
       model.pattern_id,
       model.model_id,
+      model.authoring_draft,
       model.user_input,
       model.model_response,
       model.retry_responses,
@@ -358,6 +663,7 @@ fn reset_and_run_model(model: Model) -> Model {
 fn run_simulation(
   pattern_id: String,
   model_id: String,
+  draft: authoring_draft.Draft,
   user_input: String,
   model_response: String,
   retry_responses: List(RetryResponse),
@@ -374,14 +680,24 @@ fn run_simulation(
     state_events,
     _config_model_id,
     _config_version,
-  ) =
-    external_run_simulation(
-      pattern_id,
-      model_id,
-      user_input,
-      model_response,
-      retry_responses,
-    )
+  ) = case authoring_draft.can_simulate(draft) {
+    True ->
+      external_run_draft_simulation(
+        pattern_id,
+        authoring_draft.artifact_json(draft),
+        user_input,
+        model_response,
+        retry_responses,
+      )
+    False ->
+      external_run_simulation(
+        pattern_id,
+        model_id,
+        user_input,
+        model_response,
+        retry_responses,
+      )
+  }
   let #(pattern_title, pattern_promise) = selected_pattern(pattern_id)
   let #(
     engine_id,
@@ -389,7 +705,14 @@ fn run_simulation(
     state_initial,
     state_default_projection,
     state_transitions,
-  ) = external_projection_summary(pattern_id, model_id)
+  ) = case authoring_draft.can_simulate(draft) {
+    True ->
+      external_projection_summary_for_draft(
+        pattern_id,
+        authoring_draft.artifact_json(draft),
+      )
+    False -> external_projection_summary(pattern_id, model_id)
+  }
 
   Simulation(
     pattern_title:,
@@ -514,7 +837,14 @@ pub fn workspace(model: Model) -> Element(Msg) {
         ]),
       ]),
     ]),
+    html.div([class("simulation-mode")], [
+      text(authoring_draft.simulation_label(
+        model.authoring_draft,
+        model.model_id,
+      )),
+    ]),
     simulator_form(model),
+    authoring_panel(model),
     results_grid(model),
     trace_panel(model),
   ])
@@ -543,6 +873,7 @@ fn labeled_select(
     html.span([], [text(label)]),
     select_ui.select(
       [
+        attribute("aria-label", label),
         id(control_id),
         name(control_id),
         value(selected_id),
@@ -741,6 +1072,253 @@ fn fixture_save_panel(model: Model) -> Element(Msg) {
   ])
 }
 
+fn authoring_panel(model: Model) -> Element(Msg) {
+  html.section([class("authoring-panel")], [
+    html.div([class("form-header")], [
+      html.div([], [
+        html.strong([], [text("Model authoring")]),
+        html.p([], [
+          text(
+            "Draft and review model changes against the current model and projection.",
+          ),
+        ]),
+      ]),
+      html.div([class("authoring-meta")], [
+        badge.badge(
+          [badge.variant(authoring_badge_variant(model.authoring_configured))],
+          [
+            text(model.authoring_status_label),
+          ],
+        ),
+        html.span([], [
+          html.strong([], [text("Assistant model")]),
+          text(" " <> blank_default(model.authoring_model, "not configured")),
+        ]),
+        html.span([], [
+          html.strong([], [text("Route")]),
+          text(" " <> blank_default(model.authoring_route, "direct")),
+        ]),
+      ]),
+    ]),
+    case model.authoring_configured {
+      False -> authoring_setup_panel()
+      True ->
+        html.div([class("authoring-live")], [
+          authoring_form(model),
+          authoring_response(model),
+        ])
+    },
+  ])
+}
+
+fn authoring_form(model: Model) -> Element(Msg) {
+  html.form(
+    [
+      id("authoring_agent_form"),
+      class("authoring-form"),
+      event.on_submit(SubmitAuthoring),
+    ],
+    [
+      html.label([class("field editor")], [
+        html.span([], [text("Request")]),
+        html.textarea(
+          [
+            id("authoring_agent_input"),
+            name("authoring_agent_input"),
+            rows(5),
+            placeholder("Ask for a reviewable model draft"),
+            value(model.authoring_input),
+            event.on_input(AuthoringInputChanged),
+          ],
+          model.authoring_input,
+        ),
+      ]),
+      html.div([class("actions")], [
+        button.button(
+          [
+            button.variant(button.Default),
+            type_("submit"),
+            disabled(string.trim(model.authoring_input) == ""),
+          ],
+          [text("Ask agent")],
+        ),
+        button.button(
+          [
+            button.variant(button.Ghost),
+            type_("button"),
+            event.on_click(ClearAuthoring),
+          ],
+          [text("Clear")],
+        ),
+      ]),
+    ],
+  )
+}
+
+fn authoring_setup_panel() -> Element(Msg) {
+  html.div([class("authoring-setup")], [
+    html.strong([], [text("In-app authoring agent is not configured")]),
+    html.p([], [
+      text(
+        "Configure the authoring agent environment and restart Wardwright to use the in-app assistant.",
+      ),
+    ]),
+    html.ul([], [
+      html.li([], [
+        text("Enable it with "),
+        html.code([], [text("WARDWRIGHT_AUTHORING_AGENT_ENABLED=1")]),
+        text("."),
+      ]),
+      html.li([], [
+        text(
+          "Set either direct provider credentials or a Wardwright-routed authoring model.",
+        ),
+      ]),
+      html.li([], [
+        text("Restart the server after changing the configuration."),
+      ]),
+    ]),
+    html.p([], [
+      text(
+        "You can also use your own agent against Wardwright through the MCP endpoint or CLI without enabling the in-page assistant.",
+      ),
+    ]),
+  ])
+}
+
+fn authoring_response(model: Model) -> Element(Msg) {
+  case model.authoring_response {
+    "" ->
+      html.div([class("authoring-empty")], [text("No authoring request yet.")])
+    response ->
+      html.div([class("authoring-response")], [
+        html.div([class("panel-heading")], [
+          html.span([], [text("Assistant response")]),
+          badge.badge(
+            [
+              badge.variant(authoring_response_variant(
+                model.authoring_response_status,
+              )),
+            ],
+            [
+              text(blank_default(model.authoring_response_status, "completed")),
+            ],
+          ),
+        ]),
+        html.pre([], [text(response)]),
+        activation_status(model),
+        authoring_draft_editor(model),
+      ])
+  }
+}
+
+fn authoring_draft_editor(model: Model) -> Element(Msg) {
+  case model.authoring_draft {
+    authoring_draft.NoDraft -> html.div([], [])
+    _ ->
+      html.div([class("authoring-draft")], [
+        html.div([class("draft-heading")], [
+          html.strong([], [
+            text(blank_default(
+              authoring_draft.model_id(model.authoring_draft),
+              "Draft",
+            )),
+          ]),
+          badge.badge(
+            [badge.variant(draft_badge_variant(model.authoring_draft))],
+            [text(authoring_draft.validation_label(model.authoring_draft))],
+          ),
+        ]),
+        html.span([], [text(authoring_draft.summary(model.authoring_draft))]),
+        html.small([], [
+          text(blank_default(
+            authoring_draft.review_note(model.authoring_draft),
+            "Edit the draft artifact, then validate through simulation before activation.",
+          )),
+        ]),
+        html.small([class("fixture-status")], [
+          text(authoring_draft.simulation_label(
+            model.authoring_draft,
+            model.model_id,
+          )),
+        ]),
+        html.label([class("field editor")], [
+          html.span([], [text("Review draft artifact")]),
+          html.textarea(
+            [
+              id("authoring_draft_artifact"),
+              name("authoring_draft_artifact"),
+              rows(16),
+              value(authoring_draft.artifact_json(model.authoring_draft)),
+              event.on_input(AuthoringDraftChanged),
+            ],
+            authoring_draft.artifact_json(model.authoring_draft),
+          ),
+        ]),
+        case authoring_draft.validation_message(model.authoring_draft) {
+          "" -> html.div([], [])
+          message ->
+            html.small([class(validation_class(model.authoring_draft))], [
+              text(message),
+            ])
+        },
+        button.button(
+          [
+            button.variant(button.Default),
+            type_("button"),
+            disabled(!authoring_draft.can_activate(model.authoring_draft)),
+            event.on_click(ActivateAuthoringDraft),
+          ],
+          [text("Approve and activate draft")],
+        ),
+        authoring_refinement_form(model),
+      ])
+  }
+}
+
+fn authoring_refinement_form(model: Model) -> Element(Msg) {
+  html.form(
+    [
+      id("authoring_refinement_form"),
+      class("authoring-form refinement-form"),
+      event.on_submit(SubmitAuthoringRefinement),
+    ],
+    [
+      html.label([class("field editor")], [
+        html.span([], [text("Ask for draft refinement")]),
+        html.textarea(
+          [
+            id("authoring_refinement_input"),
+            name("authoring_refinement_input"),
+            rows(4),
+            placeholder("Describe what is wrong or what should change"),
+            value(model.authoring_refinement_input),
+            event.on_input(AuthoringRefinementChanged),
+          ],
+          model.authoring_refinement_input,
+        ),
+      ]),
+      button.button(
+        [
+          button.variant(button.Ghost),
+          type_("submit"),
+          disabled(string.trim(model.authoring_refinement_input) == ""),
+        ],
+        [text("Ask agent to revise draft")],
+      ),
+    ],
+  )
+}
+
+fn activation_status(model: Model) -> Element(Msg) {
+  case model.authoring_activation_status, model.authoring_activation_error {
+    "", "" -> html.div([], [])
+    status, "" -> html.strong([class("fixture-status")], [text(status)])
+    "", error -> html.strong([class("fixture-error")], [text(error)])
+    _, error -> html.strong([class("fixture-error")], [text(error)])
+  }
+}
+
 fn retry_response_fields(model: Model) -> Element(Msg) {
   case model.retry_responses {
     [] -> html.div([], [])
@@ -898,7 +1476,7 @@ fn results_grid(model: Model) -> Element(Msg) {
   html.section([class("results")], [
     html.article([class(changed_class(simulation.input_changed))], [
       html.div([class("panel-heading")], [
-        html.span([], [text("Provider input")]),
+        html.span([], [text("Provider input after policy")]),
         badge.badge([badge.variant(status_variant(simulation.input_changed))], [
           text(change_label(simulation.input_changed)),
         ]),
@@ -907,7 +1485,7 @@ fn results_grid(model: Model) -> Element(Msg) {
     ]),
     html.article([class(changed_class(simulation.output_changed))], [
       html.div([class("panel-heading")], [
-        html.span([], [text("User output")]),
+        html.span([], [text("User output after policy")]),
         badge.badge([badge.variant(status_variant(simulation.output_changed))], [
           text(change_label(simulation.output_changed)),
         ]),
@@ -1419,6 +1997,35 @@ fn status_variant(changed: Bool) -> badge.Variant {
   }
 }
 
+fn authoring_badge_variant(configured: Bool) -> badge.Variant {
+  case configured {
+    True -> badge.Secondary
+    False -> badge.Outline
+  }
+}
+
+fn authoring_response_variant(status: String) -> badge.Variant {
+  case status {
+    "error" -> badge.Destructive
+    "not_configured" -> badge.Outline
+    _ -> badge.Secondary
+  }
+}
+
+fn draft_badge_variant(draft: authoring_draft.Draft) -> badge.Variant {
+  case authoring_draft.can_activate(draft) {
+    True -> badge.Secondary
+    False -> badge.Destructive
+  }
+}
+
+fn validation_class(draft: authoring_draft.Draft) -> String {
+  case authoring_draft.can_activate(draft) {
+    True -> "fixture-status"
+    False -> "fixture-error"
+  }
+}
+
 fn blank_default(value: String, fallback: String) -> String {
   case string.trim(value) {
     "" -> fallback
@@ -1447,7 +2054,7 @@ pub fn styles() -> String {
   .form-header strong, .trace-header strong {
     font-size: 17px;
   }
-  .form-header span, .trace-header span, .fact span {
+  .form-header span, .trace-header span, .fact span, .authoring-meta span {
     color: var(--muted-foreground);
     font-size: 12px;
     font-weight: 700;
@@ -1480,7 +2087,20 @@ pub fn styles() -> String {
     display: flex;
     flex-direction: column;
     gap: 18px;
+    min-width: 0;
     padding: 24px;
+  }
+  .simulation-mode {
+    width: fit-content;
+    max-width: 100%;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: #eef6f2;
+    color: #274736;
+    font-size: 12px;
+    font-weight: 800;
+    overflow-wrap: anywhere;
   }
   .topbar, .form-header, .trace-header, .panel-heading {
     display: flex;
@@ -1492,6 +2112,7 @@ pub fn styles() -> String {
     margin: 0;
     font-size: 28px;
     line-height: 1.15;
+    overflow-wrap: anywhere;
   }
   p {
     margin: 0;
@@ -1521,7 +2142,7 @@ pub fn styles() -> String {
     align-items: end;
     min-width: min(100%, 560px);
   }
-  .simulator, .panel, .trace-panel {
+  .simulator, .authoring-panel, .panel, .trace-panel {
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -1549,6 +2170,97 @@ pub fn styles() -> String {
   }
   .fixture-error {
     color: var(--destructive);
+  }
+  .authoring-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .authoring-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
+  }
+  .authoring-meta span {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 5px 8px;
+    background: #fff;
+    overflow-wrap: anywhere;
+  }
+  .authoring-form {
+    display: grid;
+    gap: 10px;
+  }
+  .authoring-live {
+    display: grid;
+    gap: 14px;
+  }
+  .authoring-response, .authoring-empty, .authoring-setup {
+    display: grid;
+    gap: 10px;
+    border: 1px solid #dbe5ed;
+    border-radius: 8px;
+    background: #f8fbfd;
+    padding: 12px;
+  }
+  .authoring-empty, .authoring-setup {
+    color: var(--muted-foreground);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .authoring-empty {
+    font-weight: 700;
+  }
+  .authoring-setup strong {
+    color: var(--foreground);
+  }
+  .authoring-setup p, .authoring-setup ul {
+    margin: 0;
+  }
+  .authoring-setup ul {
+    padding-left: 18px;
+  }
+  .authoring-setup code {
+    color: var(--foreground);
+    font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .authoring-response pre {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #354554;
+  }
+  .authoring-draft {
+    display: grid;
+    gap: 8px;
+    border: 1px solid #b9d9c9;
+    border-radius: 8px;
+    background: #f0fbf5;
+    padding: 10px;
+  }
+  .draft-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+  }
+  .authoring-draft span {
+    color: #435261;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .authoring-draft small {
+    color: #53616f;
+    line-height: 1.4;
+  }
+  .refinement-form {
+    border-top: 1px solid #d6eadf;
+    padding-top: 10px;
   }
   .turn-grid, .results {
     display: grid;
@@ -1751,11 +2463,14 @@ pub fn styles() -> String {
     .lustre-workbench {
       grid-template-columns: 1fr;
     }
+    .workspace {
+      padding: 18px;
+    }
     .rail {
       border-right: 0;
       border-bottom: 1px solid var(--border);
     }
-    .topbar, .form-header, .trace-header, .turn-grid, .results, .state-edge, .simulator-toolbar, .graph-toolbar, .fixture-save {
+    .topbar, .form-header, .trace-header, .turn-grid, .results, .state-edge, .simulator-toolbar, .graph-toolbar, .fixture-save, .authoring-meta {
       grid-template-columns: 1fr;
       flex-direction: column;
       min-width: 0;

@@ -41,7 +41,7 @@ defmodule Wardwright.HistoryPolicyTest do
       )
 
     assert miss.status == 200
-    assert get_in(Jason.decode!(miss.resp_body), ["receipt", "final", "alert_count"]) == 0
+    assert get_in(JSON.decode!(miss.resp_body), ["receipt", "final", "alert_count"]) == 0
 
     assert call(:post, "/v1/policy-cache/events", %{
              key: "shell:ls",
@@ -57,7 +57,7 @@ defmodule Wardwright.HistoryPolicyTest do
         [{"x-wardwright-session-id", "session-a"}]
       )
 
-    body = Jason.decode!(hit.resp_body)
+    body = JSON.decode!(hit.resp_body)
     assert get_in(body, ["receipt", "final", "alert_count"]) == 1
 
     assert get_in(body, ["receipt", "decision", "policy_actions", Access.at(0), "history_count"]) ==
@@ -105,7 +105,7 @@ defmodule Wardwright.HistoryPolicyTest do
         [{"x-wardwright-session-id", "session-tools"}]
       )
 
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     assert get_in(body, ["receipt", "final", "alert_count"]) == 1
 
@@ -157,7 +157,7 @@ defmodule Wardwright.HistoryPolicyTest do
       )
 
     action =
-      get_in(Jason.decode!(conn.resp_body), [
+      get_in(JSON.decode!(conn.resp_body), [
         "receipt",
         "decision",
         "policy_actions",
@@ -198,7 +198,7 @@ defmodule Wardwright.HistoryPolicyTest do
         [{"x-wardwright-session-id", "session-a"}]
       )
 
-    assert get_in(Jason.decode!(miss.resp_body), ["receipt", "final", "alert_count"]) == 0
+    assert get_in(JSON.decode!(miss.resp_body), ["receipt", "final", "alert_count"]) == 0
 
     hit =
       call(
@@ -213,7 +213,7 @@ defmodule Wardwright.HistoryPolicyTest do
         [{"x-wardwright-session-id", "session-a"}]
       )
 
-    receipt = Jason.decode!(hit.resp_body)["receipt"]
+    receipt = JSON.decode!(hit.resp_body)["receipt"]
     assert get_in(receipt, ["final", "alert_count"]) == 1
     assert [%{"outcome" => "queued"}] = get_in(receipt, ["final", "alert_delivery"])
 
@@ -225,6 +225,6 @@ defmodule Wardwright.HistoryPolicyTest do
         [{"x-wardwright-session-id", "session-b"}]
       )
 
-    assert get_in(Jason.decode!(isolated.resp_body), ["receipt", "final", "alert_count"]) == 0
+    assert get_in(JSON.decode!(isolated.resp_body), ["receipt", "final", "alert_count"]) == 0
   end
 end

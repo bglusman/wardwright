@@ -66,6 +66,24 @@ pub fn saving_access_updates_mode(
   |> view_contains(expected_text)
 }
 
+pub fn saving_vcr_mode_updates_model(
+  model_id: String,
+  vcr_mode: String,
+  expected_text: String,
+) -> Bool {
+  start()
+  |> change_select("model", model_id)
+  |> simulate.submit(
+    on: query.element(matching: query.id("model-access-form")),
+    fields: [
+      #("requires_api_key", "false"),
+      #("unkeyed_access", "public"),
+      #("vcr_mode", vcr_mode),
+    ],
+  )
+  |> view_contains(expected_text)
+}
+
 pub fn selecting_keyed_mode_hides_unkeyed_options() -> Bool {
   let simulation =
     start()
@@ -89,6 +107,53 @@ pub fn selecting_model_shows(model_id: String, expected_text: String) -> Bool {
   start()
   |> change_select("model", model_id)
   |> view_contains(expected_text)
+}
+
+pub fn archiving_model_hides_active_and_shows_archive(
+  model_id: String,
+  remaining_model_id: String,
+) -> Bool {
+  let simulation =
+    start()
+    |> change_select("model", model_id)
+    |> simulate.click(on: query.element(
+      matching: query.tag("button")
+      |> query.and(query.text("Archive model")),
+    ))
+
+  view_contains(simulation, "Archived " <> model_id)
+  && view_contains(simulation, remaining_model_id)
+  && view_contains(simulation, "Archived Models")
+  && view_contains(simulation, "Restore")
+  && view_contains(simulation, "Hard delete")
+}
+
+pub fn restoring_archived_model_selects_it(model_id: String) -> Bool {
+  let simulation =
+    start()
+    |> simulate.click(on: query.element(
+      matching: query.tag("button")
+      |> query.and(query.text("Restore")),
+    ))
+
+  view_contains(simulation, "Restored " <> model_id)
+  && view_contains(simulation, "Selected model")
+  && view_contains(simulation, model_id)
+}
+
+pub fn hard_deleting_archived_model_removes_it(model_id: String) -> Bool {
+  let simulation =
+    start()
+    |> simulate.click(on: query.element(
+      matching: query.tag("button")
+      |> query.and(query.text("Hard delete")),
+    ))
+
+  view_contains(simulation, "Hard-deleted archived model " <> model_id)
+  && view_contains(
+    simulation,
+    "No archived models are stored in the SQLite model registry.",
+  )
 }
 
 fn start() {

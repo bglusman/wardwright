@@ -33,7 +33,7 @@ defmodule Wardwright.CLI do
 
       ["tools", "--json" | _] ->
         WardwrightWeb.PolicyAuthoringTools.list()
-        |> Jason.encode!()
+        |> JSON.encode!()
         |> write_fun.()
 
         {:halt, 0}
@@ -60,7 +60,7 @@ defmodule Wardwright.CLI do
       wardwright                Print this help
       wardwright serve          Start the Wardwright HTTP service
       wardwright admin          Open the operator workbench, starting it if needed
-      wardwright admin access   Open model access controls
+      wardwright admin access   Open Model Management
       wardwright tools          Print policy-authoring MCP/API help for agents
       wardwright tools --json   Print machine-readable authoring tool metadata
       wardwright --version      Print the packaged app version
@@ -72,6 +72,7 @@ defmodule Wardwright.CLI do
       WARDWRIGHT_ADMIN_TOKEN      Optional token for protected local APIs
       BASIC_AUTH_PASSWORD         Optional password for protected operator UI/APIs; user is admin
       WARDWRIGHT_SQLITE_STORE     Optional SQLite path for models and hashed API keys
+      WARDWRIGHT_RECEIPT_STORE_DIR  Optional directory for per-receipt JSON files
       WARDWRIGHT_SQLITE_KEY       Optional SQLCipher key for the SQLite store
       WARDWRIGHT_SQLITE_KEY_FNOX  Optional fnox secret name for the SQLite SQLCipher key
       WARDWRIGHT_MODEL_API_KEY_HASH_SECRET  Optional stable secret for model API key hashes

@@ -112,7 +112,7 @@ defmodule Wardwright.MixProject do
     [
       app: :wardwright,
       version: "0.0.10",
-      elixir: "~> 1.17",
+      elixir: "~> 1.18",
       compilers: [:gleam_deps, :gleam] ++ Mix.compilers(),
       aliases: ["deps.get": ["deps.get", "gleam.deps.get"]],
       erlc_paths: [
@@ -163,7 +163,6 @@ defmodule Wardwright.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:jason, "~> 1.4"},
       {:dune, "~> 0.3.15"},
       {:gleam_stdlib, "~> 1.0", compile: false, app: false, override: true},
       {:gleam_erlang, "~> 1.3", compile: false, app: false},

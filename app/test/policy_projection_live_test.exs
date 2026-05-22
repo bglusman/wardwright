@@ -42,6 +42,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     Wardwright.reset_config()
     Wardwright.ReceiptStore.clear()
+    Wardwright.ModelApiKeyStore.reset!()
     Wardwright.PolicyScenarioStore.clear()
     Wardwright.PolicyCache.reset()
     :ok
@@ -207,6 +208,12 @@ defmodule Wardwright.PolicyProjectionLiveTest do
                node["writes"] == ["decision.blocked", "final.status"]
            end)
 
+    assert Enum.any?(nodes, fn node ->
+             node["id"] == "tool-policy.review-state-tool-surface" and
+               node["summary"] =~ "allowed=review.approve_tool_result" and
+               node["writes"] == ["decision.blocked", "final.status"]
+           end)
+
     assert Enum.any?(nodes, &(&1["id"] == "tool.receipt-context"))
     assert [%{"class" => "ordered", "node_ids" => node_ids}] = projection["conflicts"]
     assert "tool-policy.github-write-tools" in node_ids
@@ -299,7 +306,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
       |> get("/policies/route-privacy/diagram")
 
     assert conn.status == 403
-    assert %{"error" => %{"code" => "protected_endpoint"}} = Jason.decode!(conn.resp_body)
+    assert %{"error" => %{"code" => "protected_endpoint"}} = JSON.decode!(conn.resp_body)
   end
 
   test "workbench accepts remote browser access with a configured admin bearer token" do
@@ -376,10 +383,12 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert conn.resp_body =~ "page=model_access"
     refute conn.resp_body =~ "live_socket"
 
-    assert :wardwright@lustre_model_access_test_support.initial_view_contains("Model Access")
+    assert :wardwright@lustre_model_access_test_support.initial_view_contains("Model Management")
     assert :wardwright@lustre_model_access_test_support.initial_view_contains("coding-balanced")
     assert :wardwright@lustre_model_access_test_support.initial_view_contains("Access Policy")
-    assert :wardwright@lustre_model_access_test_support.initial_view_contains("Legacy workbench (deprecated)")
+    assert :wardwright@lustre_model_access_test_support.initial_view_contains("Debug recording")
+    assert :wardwright@lustre_model_access_test_support.initial_view_contains("Metadata only")
+    refute :wardwright@lustre_model_access_test_support.initial_view_contains("Legacy workbench (deprecated)")
 
     assert :wardwright@lustre_model_access_test_support.initial_view_contains(
              "No API keys have been created for this model."
@@ -415,7 +424,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
              "coding-balanced",
              "false",
              "internal",
-             "Model access saved."
+             "Model management settings saved."
            )
 
     refute Wardwright.model_requires_api_key?()
@@ -464,7 +473,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
              "alpha-access",
              "true",
              "internal",
-             "Model access saved."
+             "Model management settings saved."
            )
 
     assert {:ok, alpha_config} = Wardwright.model_config("alpha-access")
@@ -474,6 +483,57 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert Wardwright.unkeyed_model_access(alpha_config) == "internal"
     refute Wardwright.model_requires_api_key?(beta_config)
     assert Wardwright.unkeyed_model_access(beta_config) == "public"
+  end
+
+  test "model management page opts a model into full-session VCR capture" do
+    assert Wardwright.vcr_mode() == "metadata_only"
+
+    assert :wardwright@lustre_model_access_test_support.saving_vcr_mode_updates_model(
+             "coding-balanced",
+             "full_session",
+             "Full session"
+           )
+
+    assert Wardwright.vcr_mode() == "full_session"
+  end
+
+  test "model management page archives restores and hard-deletes models" do
+    path = temp_sqlite_path("wardwright-model-lifecycle")
+    original_path = Application.get_env(:wardwright, :sqlite_store_path)
+
+    Application.put_env(:wardwright, :sqlite_store_path, path)
+
+    on_exit(fn ->
+      restore_app_env(:sqlite_store_path, original_path)
+      remove_sqlite_store(path)
+    end)
+
+    alpha =
+      Wardwright.default_config()
+      |> Map.put("model_id", "alpha-access")
+
+    beta =
+      Wardwright.default_config()
+      |> Map.put("model_id", "beta-access")
+
+    assert {:ok, _alpha} = Wardwright.put_config(alpha)
+    assert {:ok, _beta} = Wardwright.put_model_config(beta)
+
+    assert :wardwright@lustre_model_access_test_support.archiving_model_hides_active_and_shows_archive(
+             "beta-access",
+             "alpha-access"
+           )
+
+    assert {:error, _message} = Wardwright.model_config("beta-access")
+    assert [%{"model_id" => "beta-access"}] = Wardwright.archived_model_configs()
+
+    assert :wardwright@lustre_model_access_test_support.restoring_archived_model_selects_it("beta-access")
+    assert {:ok, restored_beta} = Wardwright.model_config("beta-access")
+    assert restored_beta["model_id"] == "beta-access"
+
+    assert {:ok, _beta} = Wardwright.archive_model_config("beta-access")
+    assert :wardwright@lustre_model_access_test_support.hard_deleting_archived_model_removes_it("beta-access")
+    assert Wardwright.archived_model_configs() == []
   end
 
   test "LiveView client assets are served without an npm build step" do
@@ -498,7 +558,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "wardwright admin"
     assert html =~ "Registered model workbench"
     assert html =~ "Selecting a model leaves example preview"
-    assert html =~ "Model Access"
+    assert html =~ "Model Management"
     assert html =~ "href=\"/admin?view=model_access\""
     assert html =~ "/v1/chat/completions"
     assert html =~ "coding-balanced"
@@ -569,8 +629,8 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Beta workbench catches mooing output before release."
     assert html =~ "<strong>beta-workbench</strong>"
     assert html =~ beta_hash
-    assert html =~ "Selected Model Configuration"
-    assert html =~ "Show redacted model configuration"
+    assert html =~ "Selected Model Artifact"
+    assert html =~ "Show redacted model artifact"
     assert html =~ "Registered model selected"
     assert html =~ "Try this registered model"
     assert html =~ "stream policy triggered"
@@ -1276,7 +1336,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     File.write!(
       Path.join(workspace_dir, "tool-demo.json"),
-      Jason.encode!(%{
+      JSON.encode!(%{
         "category" => "tool.using",
         "id" => "tool-demo",
         "pattern_id" => "tool-governance",
@@ -1287,7 +1347,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     File.write!(
       Path.join(workspace_dir, "unsupported-demo.json"),
-      Jason.encode!(%{
+      JSON.encode!(%{
         "category" => "policy.future",
         "id" => "unsupported-demo",
         "pattern_id" => "future-policy-engine",
@@ -1539,6 +1599,15 @@ defmodule Wardwright.PolicyProjectionLiveTest do
           "name" => "create_pull_request",
           "namespace" => "mcp.github",
           "threshold" => 3
+        },
+        %{
+          "allowed_tools" => [
+            %{"name" => "approve_tool_result", "namespace" => "review", "risk_class" => "read_only"}
+          ],
+          "id" => "review-state-tool-surface",
+          "kind" => "allowed_tools",
+          "phase" => "planning",
+          "state_scope" => "reviewing_tool_result"
         }
       ])
 
@@ -1626,7 +1695,26 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     path
   end
 
+  defp temp_sqlite_path(prefix) do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "#{prefix}-#{System.unique_integer([:positive, :monotonic])}.sqlite3"
+      )
+
+    remove_sqlite_store(path)
+    path
+  end
+
+  defp remove_sqlite_store(path) do
+    File.rm(path)
+    File.rm("#{path}-wal")
+    File.rm("#{path}-shm")
+  end
+
   defp basic_auth(username, password), do: "Basic " <> Base.encode64("#{username}:#{password}")
+
+  defp restore_app_env(:sqlite_store_path, value), do: Application.put_env(:wardwright, :sqlite_store_path, value)
 
   defp restore_env(key, nil), do: System.delete_env(key)
   defp restore_env(key, value), do: System.put_env(key, value)
@@ -1649,7 +1737,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
   defmodule DraftingAuthoringClient do
     def generate_text(_prompt, _opts) do
       {:ok,
-       Jason.encode!(%{
+       JSON.encode!(%{
          "answer" => "Drafted a cow-focused model.",
          "tool_calls" => [
            %{

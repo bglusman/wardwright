@@ -1,11 +1,11 @@
 import lustre/attribute.{attribute, class}
 import lustre/element.{type Element, element, text}
 import lustre/element/html
-import lustre/event
 
 pub type Page {
   Workbench
   ModelAccess
+  ControlDebugger
 }
 
 pub fn sidebar(
@@ -29,12 +29,17 @@ pub fn sidebar(
         active_page == Workbench,
       ),
       rail_link(
-        "Model access",
-        "Configure model keys and access.",
+        "Model management",
+        "Configure keys, access, and VCR capture.",
         "/admin?view=model_access",
         active_page == ModelAccess,
       ),
-      deprecated_rail_link(),
+      rail_link(
+        "Control debugger",
+        "Explain receipts and save simulator cases.",
+        "/admin?view=control_debugger",
+        active_page == ControlDebugger,
+      ),
     ]),
     ..children
   ])
@@ -42,9 +47,9 @@ pub fn sidebar(
 
 pub fn admin_sidebar(
   active_page: Page,
+  selected_model: String,
   subtitle: String,
   children: List(Element(msg)),
-  to_msg: fn(Page) -> msg,
 ) -> Element(msg) {
   html.aside([class("rail")], [
     html.div([class("brand")], [
@@ -55,19 +60,24 @@ pub fn admin_sidebar(
       ]),
     ]),
     element("nav", [class("rail-nav")], [
-      rail_button(
+      rail_admin_link(
         "Workbench",
         "Run and inspect registered models.",
+        admin_href(Workbench, selected_model),
         active_page == Workbench,
-        to_msg(Workbench),
       ),
-      rail_button(
-        "Model access",
-        "Configure model keys and access.",
+      rail_admin_link(
+        "Model management",
+        "Configure keys, access, and VCR capture.",
+        admin_href(ModelAccess, selected_model),
         active_page == ModelAccess,
-        to_msg(ModelAccess),
       ),
-      deprecated_rail_link(),
+      rail_admin_link(
+        "Control debugger",
+        "Explain receipts and save simulator cases.",
+        admin_href(ControlDebugger, selected_model),
+        active_page == ControlDebugger,
+      ),
     ]),
     ..children
   ])
@@ -95,21 +105,20 @@ fn rail_link(
   )
 }
 
-fn rail_button(
+fn rail_admin_link(
   label: String,
   description: String,
+  href: String,
   active: Bool,
-  msg: msg,
 ) -> Element(msg) {
   element(
-    "button",
+    "a",
     [
       class(case active {
         True -> "active"
         False -> ""
       }),
-      attribute("type", "button"),
-      event.on_click(msg),
+      attribute("href", href),
     ],
     [
       html.strong([], [text(label)]),
@@ -118,11 +127,21 @@ fn rail_button(
   )
 }
 
-fn deprecated_rail_link() -> Element(msg) {
-  element("a", [class("deprecated"), attribute("href", "/policies")], [
-    html.strong([], [text("Legacy workbench (deprecated)")]),
-    html.span([], [text("Previous policy view.")]),
-  ])
+fn admin_href(page: Page, selected_model: String) -> String {
+  let model_query = case selected_model {
+    "" -> ""
+    _ -> "&model=" <> selected_model
+  }
+
+  case page {
+    Workbench ->
+      case selected_model {
+        "" -> "/admin"
+        _ -> "/admin?model=" <> selected_model
+      }
+    ModelAccess -> "/admin?view=model_access" <> model_query
+    ControlDebugger -> "/admin?view=control_debugger" <> model_query
+  }
 }
 
 pub fn styles() -> String {
@@ -133,6 +152,7 @@ pub fn styles() -> String {
   .rail {
     position: sticky;
     top: 0;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 18px;
@@ -146,8 +166,10 @@ pub fn styles() -> String {
     display: flex;
     align-items: center;
     gap: 12px;
+    min-width: 0;
   }
   .brand div, .field {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -164,6 +186,7 @@ pub fn styles() -> String {
   }
   .brand strong {
     font-size: 17px;
+    overflow-wrap: anywhere;
   }
   .brand span, .field > span {
     color: var(--muted-foreground);
@@ -187,6 +210,7 @@ pub fn styles() -> String {
     text-align: left;
     text-decoration: none;
     cursor: pointer;
+    min-width: 0;
   }
   .rail-nav a:hover, .rail-nav a.active,
   .rail-nav button:hover, .rail-nav button.active {
@@ -195,25 +219,13 @@ pub fn styles() -> String {
   }
   .rail-nav strong {
     font-size: 13px;
+    overflow-wrap: anywhere;
   }
   .rail-nav span {
     color: var(--muted-foreground);
     font-size: 12px;
     font-weight: 700;
     line-height: 1.35;
-  }
-  .rail-nav a.deprecated {
-    margin-top: 4px;
-    padding: 7px 10px;
-    opacity: 0.72;
-  }
-  .rail-nav a.deprecated strong {
-    font-size: 11px;
-    font-weight: 700;
-  }
-  .rail-nav a.deprecated span {
-    font-size: 10px;
-    font-weight: 600;
   }
   .sidebar-footer {
     position: sticky;
@@ -225,6 +237,14 @@ pub fn styles() -> String {
     border: 1px solid var(--border);
     border-radius: 8px;
     background: #fff;
+  }
+  @media (max-width: 860px) {
+    .rail {
+      width: 100%;
+      height: auto;
+      max-width: 100vw;
+      padding: 18px;
+    }
   }
   "
 }

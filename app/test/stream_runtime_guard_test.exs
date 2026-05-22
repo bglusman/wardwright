@@ -322,7 +322,7 @@ defmodule Wardwright.StreamRuntimeGuardTest do
     assert get_resp_header(conn, "content-type") == ["application/json; charset=utf-8"]
     refute conn.resp_body =~ "data:"
 
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     assert get_in(body, ["wardwright", "status"]) == "provider_error"
     assert get_in(body, ["wardwright", "provider_error"]) =~ "provider timed out after 1ms"
 
@@ -381,7 +381,7 @@ defmodule Wardwright.StreamRuntimeGuardTest do
     assert get_resp_header(conn, "content-type") == ["application/json; charset=utf-8"]
     refute conn.resp_body =~ "data:"
 
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     assert get_in(body, ["wardwright", "status"]) == "stream_policy_latency_exceeded"
 
     receipt = body |> get_in(["wardwright", "receipt_id"]) |> Wardwright.ReceiptStore.get()

@@ -10,12 +10,13 @@ defmodule Wardwright.StorageAndAdminTest do
                "json_queries" => true,
                "retention_jobs" => false,
                "time_range_indexes" => false,
-               "transactional" => true
+               "transactional" => false
              },
              "contract_version" => "storage-contract-v0",
              "kind" => "memory",
              "migration_version" => 1,
              "read_health" => "ok",
+             "receipt_count" => 0,
              "write_health" => "ok"
            }
   end
@@ -76,7 +77,6 @@ defmodule Wardwright.StorageAndAdminTest do
 
     assert get_in(providers, ["openai", "capabilities", "unsupported_stream_delta_fields"]) == [
              "role",
-             "tool_calls",
              "logprobs"
            ]
 
@@ -96,12 +96,13 @@ defmodule Wardwright.StorageAndAdminTest do
   test "admin storage endpoint exposes receipt store health" do
     conn = call(:get, "/admin/storage")
     assert conn.status == 200
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     assert body["kind"] == "memory"
     assert body["contract_version"] == "storage-contract-v0"
     assert body["migration_version"] == 1
     assert body["read_health"] == "ok"
+    assert body["capabilities"]["durable"] == false
     assert body["write_health"] == "ok"
   end
 
@@ -162,6 +163,71 @@ defmodule Wardwright.StorageAndAdminTest do
              Wardwright.model_configs() |> Enum.map(& &1["model_id"]) |> Enum.sort()
   end
 
+  test "model_config returns a readable error for unknown models" do
+    assert {:error, "unknown Wardwright model \"missing-model\""} = Wardwright.model_config("missing-model")
+  end
+
+  test "sqlite model registry archives restores and hard-deletes model definitions" do
+    path = temp_sqlite_path("wardwright-model-archive")
+    original_path = Application.get_env(:wardwright, :sqlite_store_path)
+
+    Application.put_env(:wardwright, :sqlite_store_path, path)
+
+    on_exit(fn ->
+      restore_app_env(:sqlite_store_path, original_path)
+      remove_sqlite_store(path)
+    end)
+
+    alpha = unit_policy_config() |> Map.put("model_id", "persisted-alpha")
+    beta = unit_policy_config() |> Map.put("model_id", "persisted-beta")
+
+    assert {:ok, _alpha} = Wardwright.put_config(alpha)
+    assert {:ok, _beta} = Wardwright.put_model_config(beta)
+
+    assert {:ok, "persisted-beta"} = Wardwright.archive_model_config("persisted-beta")
+    assert {:error, _message} = Wardwright.model_config("persisted-beta")
+    assert [%{"model_id" => "persisted-beta"}] = Wardwright.archived_model_configs()
+
+    :persistent_term.erase({Wardwright, :config})
+    :persistent_term.erase({Wardwright, :configs})
+    :persistent_term.erase({Wardwright, :active_model_id})
+
+    assert {:ok, _loaded} = Wardwright.load_persisted_config()
+
+    assert ["persisted-alpha"] ==
+             Wardwright.model_configs() |> Enum.map(& &1["model_id"]) |> Enum.sort()
+
+    assert {:ok, restored} = Wardwright.restore_archived_model_config("persisted-beta")
+    assert restored["model_id"] == "persisted-beta"
+    assert {:ok, _beta_config} = Wardwright.model_config("persisted-beta")
+
+    assert {:ok, "persisted-beta"} = Wardwright.archive_model_config("persisted-beta")
+    assert {:ok, "persisted-beta"} = Wardwright.delete_archived_model_config("persisted-beta")
+    assert Wardwright.archived_model_configs() == []
+    assert {:error, _message} = Wardwright.restore_archived_model_config("persisted-beta")
+  end
+
+  test "model archiving refuses non-durable storage and the last active model" do
+    original_path = Application.get_env(:wardwright, :sqlite_store_path)
+    Application.put_env(:wardwright, :sqlite_store_path, nil)
+
+    assert {:error, "model archive requires SQLite model registry storage"} =
+             Wardwright.archive_model_config("coding-balanced")
+
+    path = temp_sqlite_path("wardwright-model-last-active")
+    Application.put_env(:wardwright, :sqlite_store_path, path)
+
+    on_exit(fn ->
+      restore_app_env(:sqlite_store_path, original_path)
+      remove_sqlite_store(path)
+    end)
+
+    assert {:ok, _config} = Wardwright.put_config(unit_policy_config())
+
+    assert {:error, message} = Wardwright.archive_model_config("unit-model")
+    assert message =~ "needs at least one active model"
+  end
+
   test "sqlite store persists and deletes model API key hashes" do
     path = temp_sqlite_path("wardwright-model-keys")
     original_path = Application.get_env(:wardwright, :sqlite_store_path)
@@ -186,6 +252,77 @@ defmodule Wardwright.StorageAndAdminTest do
     assert {:ok, [^record]} = Wardwright.SQLiteStore.list_api_keys("coding-balanced")
     assert {:ok, {:ok, 1}} = Wardwright.SQLiteStore.delete_api_key("key_test")
     assert {:ok, []} = Wardwright.SQLiteStore.list_api_keys("coding-balanced")
+  end
+
+  test "file store persists receipts for debugger replay across receipt store reloads" do
+    path = temp_dir_path("wardwright-receipts")
+    original_path = Application.get_env(:wardwright, :receipt_store_dir)
+
+    Application.put_env(:wardwright, :receipt_store_dir, path)
+
+    on_exit(fn ->
+      Wardwright.ReceiptStore.configure_storage(:memory)
+      restore_app_env(:receipt_store_dir, original_path)
+      File.rm_rf(path)
+    end)
+
+    assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:file)
+    receipt = receipt_fixture("rcpt_file", 1_800_000_123, "agent-file")
+
+    Wardwright.ReceiptStore.insert(receipt)
+    assert Wardwright.ReceiptStore.get("rcpt_file")["receipt_id"] == "rcpt_file"
+    assert Wardwright.ReceiptStore.health()["kind"] == "file"
+    assert Wardwright.ReceiptStore.health()["capabilities"]["durable"] == true
+    assert [_stored_receipt] = File.ls!(path)
+
+    assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:memory)
+    assert Wardwright.ReceiptStore.get("rcpt_file") == nil
+
+    assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:file)
+    assert Wardwright.ReceiptStore.get("rcpt_file")["receipt_id"] == "rcpt_file"
+    assert Enum.map(Wardwright.ReceiptStore.list(%{}, 10), & &1["receipt_id"]) == ["rcpt_file"]
+  end
+
+  test "file store accepts parallel receipt writes as independent files" do
+    path = temp_dir_path("wardwright-parallel-receipts")
+    original_path = Application.get_env(:wardwright, :receipt_store_dir)
+
+    Application.put_env(:wardwright, :receipt_store_dir, path)
+
+    on_exit(fn ->
+      Wardwright.ReceiptStore.configure_storage(:memory)
+      restore_app_env(:receipt_store_dir, original_path)
+      File.rm_rf(path)
+    end)
+
+    assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:file)
+
+    receipt_ids =
+      1..20
+      |> Task.async_stream(
+        fn index ->
+          receipt_id = "rcpt_file_parallel_#{index}"
+          Wardwright.ReceiptStore.insert(receipt_fixture(receipt_id, 1_800_001_000 + index, "agent-file"))
+          receipt_id
+        end,
+        max_concurrency: 20,
+        timeout: 5_000
+      )
+      |> Enum.map(fn {:ok, receipt_id} -> receipt_id end)
+      |> Enum.sort()
+
+    assert File.ls!(path) |> length() == 20
+
+    assert Wardwright.ReceiptStore.list(%{}, 50)
+           |> Enum.map(& &1["receipt_id"])
+           |> Enum.sort() == receipt_ids
+
+    assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:memory)
+    assert {:ok, _state} = Wardwright.ReceiptStore.configure_storage(:file)
+
+    assert Wardwright.ReceiptStore.list(%{}, 50)
+           |> Enum.map(& &1["receipt_id"])
+           |> Enum.sort() == receipt_ids
   end
 
   test "sqlite store rejects configured encryption when SQLCipher is unavailable" do
@@ -332,7 +469,7 @@ defmodule Wardwright.StorageAndAdminTest do
         ] do
       conn = call(method, path, body, [], remote_ip)
       assert conn.status == 403
-      assert %{"error" => %{"code" => "protected_endpoint"}} = Jason.decode!(conn.resp_body)
+      assert %{"error" => %{"code" => "protected_endpoint"}} = JSON.decode!(conn.resp_body)
     end
   end
 
@@ -359,7 +496,7 @@ defmodule Wardwright.StorageAndAdminTest do
       )
 
     assert conn.status == 200
-    assert Jason.decode!(conn.resp_body)["kind"] == "memory"
+    assert JSON.decode!(conn.resp_body)["kind"] == "memory"
   end
 
   test "protected prototype endpoints require basic auth when a basic auth password is configured" do
@@ -395,7 +532,7 @@ defmodule Wardwright.StorageAndAdminTest do
       )
 
     assert conn.status == 200
-    assert Jason.decode!(conn.resp_body)["kind"] == "memory"
+    assert JSON.decode!(conn.resp_body)["kind"] == "memory"
   end
 
   test "protected admin API creates lists and revokes model API keys without exposing hashes" do
@@ -406,7 +543,7 @@ defmodule Wardwright.StorageAndAdminTest do
       })
 
     assert created.status == 201
-    body = Jason.decode!(created.resp_body)
+    body = JSON.decode!(created.resp_body)
     key = body["api_key"]
     assert key["key"] =~ "wwk_"
     assert key["label"] == "gateway-prod"
@@ -414,7 +551,7 @@ defmodule Wardwright.StorageAndAdminTest do
 
     listed = call(:get, "/admin/model-api-keys?model=coding-balanced")
     assert listed.status == 200
-    assert [listed_key] = Jason.decode!(listed.resp_body)["data"]
+    assert [listed_key] = JSON.decode!(listed.resp_body)["data"]
     assert listed_key["id"] == key["id"]
     assert listed_key["prefix"] == key["prefix"]
     refute Map.has_key?(listed_key, "key")
@@ -422,14 +559,14 @@ defmodule Wardwright.StorageAndAdminTest do
 
     prefixed = call(:get, "/admin/model-api-keys?model=wardwright/coding-balanced")
     assert prefixed.status == 200
-    assert [prefixed_key] = Jason.decode!(prefixed.resp_body)["data"]
+    assert [prefixed_key] = JSON.decode!(prefixed.resp_body)["data"]
     assert prefixed_key["id"] == key["id"]
 
     deleted = call(:delete, "/admin/model-api-keys/#{key["id"]}")
     assert deleted.status == 200
 
     relisted = call(:get, "/admin/model-api-keys?model=coding-balanced")
-    assert Jason.decode!(relisted.resp_body)["data"] == []
+    assert JSON.decode!(relisted.resp_body)["data"] == []
   end
 
   test "protected APIs do not emit wildcard CORS headers" do
@@ -506,6 +643,35 @@ defmodule Wardwright.StorageAndAdminTest do
                "tenant_id" => "tenant-a"
              }
            ]
+  end
+
+  test "receipt list includes VCR summary without full-session payloads" do
+    receipt =
+      "rcpt_vcr_summary"
+      |> receipt_fixture(1_800_000_100, "agent-vcr")
+      |> Map.put("vcr", %{
+        "full_session" => %{
+          "request" => %{"body" => %{"messages" => [%{"content" => "sensitive prompt"}]}},
+          "response" => %{"content" => "sensitive response"}
+        },
+        "mode" => "full_session",
+        "redaction" => "full_session",
+        "schema" => "wardwright.policy_vcr.v0"
+      })
+
+    Wardwright.ReceiptStore.insert(receipt)
+
+    assert [summary] = Wardwright.ReceiptStore.list(%{"model_id" => "coding-balanced"}, 1)
+    assert summary["receipt_id"] == "rcpt_vcr_summary"
+
+    assert summary["vcr"] == %{
+             "mode" => "full_session",
+             "redaction" => "full_session",
+             "schema" => "wardwright.policy_vcr.v0"
+           }
+
+    refute JSON.encode!(summary) =~ "sensitive prompt"
+    refute JSON.encode!(summary) =~ "sensitive response"
   end
 
   test "receipt list supports storage contract filters" do
@@ -611,6 +777,17 @@ defmodule Wardwright.StorageAndAdminTest do
       )
 
     remove_sqlite_store(path)
+    path
+  end
+
+  defp temp_dir_path(prefix) do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "#{prefix}-#{System.unique_integer([:positive, :monotonic])}"
+      )
+
+    File.rm_rf(path)
     path
   end
 

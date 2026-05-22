@@ -27,7 +27,7 @@ defmodule Wardwright.AlertDeliveryPolicyTest do
       })
 
     assert conn.status == 429
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     assert get_in(body, ["wardwright", "status"]) == "policy_failed_closed"
     assert [%{"outcome" => "failed_closed"}] = get_in(body, ["wardwright", "alert_delivery"])
   end
@@ -56,7 +56,7 @@ defmodule Wardwright.AlertDeliveryPolicyTest do
       })
 
     assert conn.status == 200
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     assert [
              %{
@@ -134,7 +134,7 @@ defmodule Wardwright.AlertDeliveryPolicyTest do
 
     conn = call(:get, "/admin/policy-alerts")
     assert conn.status == 200
-    assert %{"kind" => "in_memory_alert_sink", "queue_depth" => 0} = Jason.decode!(conn.resp_body)
+    assert %{"kind" => "in_memory_alert_sink", "queue_depth" => 0} = JSON.decode!(conn.resp_body)
   end
 
   test "admin sink status is protected and exposes all configured sinks" do
@@ -144,7 +144,7 @@ defmodule Wardwright.AlertDeliveryPolicyTest do
     assert conn.status == 200
 
     assert %{"data" => [%{"id" => "policy-alerts", "kind" => "in_memory_alert_sink"}]} =
-             Jason.decode!(conn.resp_body)
+             JSON.decode!(conn.resp_body)
   end
 
   test "alert fail-closed blocks streaming and simulation paths consistently" do
@@ -172,7 +172,7 @@ defmodule Wardwright.AlertDeliveryPolicyTest do
     assert stream.status == 429
     assert get_resp_header(stream, "content-type") == ["application/json; charset=utf-8"]
 
-    assert get_in(Jason.decode!(stream.resp_body), ["wardwright", "status"]) ==
+    assert get_in(JSON.decode!(stream.resp_body), ["wardwright", "status"]) ==
              "policy_failed_closed"
 
     assert call(:post, "/__test/config", config).status == 200
@@ -187,7 +187,7 @@ defmodule Wardwright.AlertDeliveryPolicyTest do
 
     assert simulated.status == 200
 
-    assert get_in(Jason.decode!(simulated.resp_body), ["receipt", "final", "status"]) ==
+    assert get_in(JSON.decode!(simulated.resp_body), ["receipt", "final", "status"]) ==
              "policy_failed_closed"
   end
 end

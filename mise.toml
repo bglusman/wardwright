@@ -1,6 +1,6 @@
 [tools]
 erlang = "29.0"
-elixir = "1.20.0-rc.5-otp-29"
+elixir = "1.20.0-rc.6-otp-29"
 gleam = "1.16.0"
 node = "22"
 
@@ -18,7 +18,10 @@ run = "ruby scripts/check-elixir-map-boundaries.rb"
 
 [tasks."check:style"]
 description = "Run gradual Elixir static-analysis ratchets"
-run = "cd app && mix credo --format=oneline"
+run = [
+  "ruby scripts/check-no-jason-usage.rb",
+  "cd app && mix credo --format=oneline",
+]
 
 [tasks."check:types"]
 description = "Run incremental Dialyzer through Assay"
@@ -58,6 +61,10 @@ run = [
   "cd app && MIX_ENV=test mix muex --files 'lib/wardwright/router.ex' --test-paths 'test/request_policy_test.exs,test/route_policy_test.exs,test/hybrid_policy_engine_test.exs,test/structured_output_policy_test.exs,test/history_policy_test.exs,test/alert_delivery_policy_test.exs,test/stream_policy_window_test.exs,test/stream_policy_horizon_test.exs,test/stream_retry_policy_test.exs,test/stream_runtime_guard_test.exs,test/stream_provider_transport_test.exs,test/stream_retry_budget_test.exs,test/public_api_test.exs,test/policy_engine_and_config_test.exs,test/storage_and_admin_test.exs,test/runtime_visibility_test.exs' --max-mutations 40 --fail-at 100",
   "cd app && mix clean",
 ]
+
+[tasks."mutation:counterfactual"]
+description = "Run focused Muex checks for the counterfactual replay runtime; do not run concurrently with mix test"
+run = "cd app && MIX_ENV=test mix muex --files 'lib/wardwright_web/counterfactual_replay.ex' --test-paths 'test/counterfactual_replay_acceptance_test.exs,test/counterfactual_replay_property_test.exs,test/workbench_test.exs' --max-mutations 40 --fail-at 80 && mix clean"
 
 [tasks."run:app"]
 description = "Run app on 127.0.0.1:8791"

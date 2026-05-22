@@ -37,7 +37,10 @@ defmodule WardwrightWeb.AuthoringAgentTest do
       WardwrightWeb.AuthoringAgent.prompt("Make the private route gate easier to review.", %{
         model_id: "wardwright/coding-balanced",
         pattern_id: "route-privacy",
-        recipe_id: "private-helpdesk-local-gate"
+        recipe_id: "private-helpdesk-local-gate",
+        simulator_model_response: "raw provider output",
+        simulator_response_attempts: [%{"index" => 2, "model_output" => "retry output"}],
+        simulator_user_input: "operator test input"
       })
 
     assert prompt =~ "Wardwright's in-page model-authoring assistant"
@@ -55,8 +58,13 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     assert prompt =~ "For regex semantics, use stream_rules[].regex"
     assert prompt =~ "validate it and simulate at least"
     assert prompt =~ "one matching case and one non-matching control case"
+    assert prompt =~ "Do not mention proxy names"
     assert prompt =~ "Report validation warnings, coverage gaps, and simulator limitations"
     assert prompt =~ "A plausible artifact is not enough."
+    assert prompt =~ "Current simulator turn:"
+    assert prompt =~ ~s(user_input: "operator test input")
+    assert prompt =~ ~s(raw_model_output_or_stream: "raw provider output")
+    assert prompt =~ ~s("model_output":"retry output")
     assert prompt =~ "draft_wardwright_model"
     assert prompt =~ "activate_wardwright_model"
     assert prompt =~ "simulate_policy"
@@ -106,7 +114,11 @@ defmodule WardwrightWeb.AuthoringAgentTest do
   end
 
   test "status can load authoring agent settings from a local config file" do
-    path = Path.join(System.tmp_dir!(), "wardwright-authoring-agent-#{System.unique_integer([:positive])}.env")
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "wardwright-authoring-agent-#{System.unique_integer([:positive])}.env"
+      )
 
     File.write!(path, """
     # local operator config
@@ -223,7 +235,8 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
 
-    {:ok, response} = WardwrightWeb.AuthoringAgent.respond("Make a cow model with a moo rewrite rule.")
+    {:ok, response} =
+      WardwrightWeb.AuthoringAgent.respond("Make a cow model with a moo rewrite rule.")
 
     assert response.status == "error"
     assert response.content =~ "No authoring tool was executed"
@@ -241,7 +254,8 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_ENABLED", "1")
     System.put_env("WARDWRIGHT_AUTHORING_AGENT_API_KEY", "test-key")
 
-    {:ok, response} = WardwrightWeb.AuthoringAgent.respond("Make a cow model with a moo rewrite rule.")
+    {:ok, response} =
+      WardwrightWeb.AuthoringAgent.respond("Make a cow model with a moo rewrite rule.")
 
     assert response.status == "completed"
     assert response.content =~ "Retried with a draft tool call."
@@ -606,14 +620,18 @@ defmodule WardwrightWeb.AuthoringAgentTest do
   defmodule DraftingAuthoringClient do
     def generate_text(_prompt, _opts) do
       {:ok,
-       Jason.encode!(%{
+       JSON.encode!(%{
          "answer" => "Drafted a cow-focused model.",
          "next_steps" => ["activate_wardwright_model after review"],
          "tool_calls" => [
            %{
              "arguments" => %{
                "model_id" => "cow-guard",
-               "route" => %{"id" => "dispatcher.cow", "models" => ["local-ollama"], "type" => "dispatcher"},
+               "route" => %{
+                 "id" => "dispatcher.cow",
+                 "models" => ["local-ollama"],
+                 "type" => "dispatcher"
+               },
                "stream_rules" => [
                  %{
                    "action" => "rewrite_chunk",
@@ -635,7 +653,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
   defmodule NestedBehaviorPrimitiveAuthoringClient do
     def generate_text(_prompt, _opts) do
       {:ok,
-       Jason.encode!(%{
+       JSON.encode!(%{
          "answer" => "I drafted a cow-focused model.",
          "approval_needed" => [
            "validate_policy_artifact after draft generation",
@@ -667,7 +685,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
   defmodule OutputBehaviorPrimitiveAuthoringClient do
     def generate_text(_prompt, _opts) do
       {:ok,
-       Jason.encode!(%{
+       JSON.encode!(%{
          "answer" => "I drafted an output-stream cow model.",
          "tool_calls" => [
            %{
@@ -712,7 +730,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
   defmodule ActivatingAuthoringClient do
     def generate_text(_prompt, _opts) do
       {:ok,
-       Jason.encode!(%{
+       JSON.encode!(%{
          "answer" => "I prepared an activation.",
          "tool_calls" => [
            %{"arguments" => %{"artifact" => %{}}, "name" => "activate_wardwright_model"}
@@ -724,7 +742,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
   defmodule CapturingAuthoringClient do
     def generate_text(_prompt, opts) do
       {:ok,
-       Jason.encode!(%{
+       JSON.encode!(%{
          "answer" =>
            "model=#{opts[:model].id} provider_model=#{opts[:model].model} base_url=#{opts[:model].base_url} api_key=#{opts[:api_key]}",
          "tool_calls" => []
@@ -735,7 +753,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
   defmodule NoToolDraftAuthoringClient do
     def generate_text(_prompt, _opts) do
       {:ok,
-       Jason.encode!(%{
+       JSON.encode!(%{
          "answer" => "I drafted the cow model in prose only.",
          "tool_calls" => []
        })}
@@ -746,7 +764,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
     def generate_text(prompt, _opts) do
       if String.contains?(prompt, "Previous assistant answer did not include") do
         {:ok,
-         Jason.encode!(%{
+         JSON.encode!(%{
            "answer" => "Retried with a draft tool call.",
            "tool_calls" => [
              %{
@@ -768,7 +786,7 @@ defmodule WardwrightWeb.AuthoringAgentTest do
          })}
       else
         {:ok,
-         Jason.encode!(%{
+         JSON.encode!(%{
            "answer" => "I drafted the cow model in prose only.",
            "tool_calls" => []
          })}

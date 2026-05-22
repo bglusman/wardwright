@@ -1,14 +1,29 @@
 # Wardwright
 
-Wardwright is middleware for LLM models. Agents call a stable
-OpenAI-compatible model name while Wardwright owns the behavior behind it:
-provider routing, model composition, policy checks, stream retries and rewrites,
-tool controls, caller traceability, simulations, and receipts.
+Wardwright is a governed model gateway for AI agents.
+
+Agents call Wardwright using normal OpenAI-compatible model names. Wardwright
+decides what those names mean: which provider or local model to use, what policy
+rules apply, when to retry, reroute, block, or rewrite output, and what receipt
+should be recorded afterward.
+
+Use Wardwright when you want model behavior to be a reviewed, testable contract
+instead of scattered prompt strings, provider IDs, and retry logic inside every
+agent.
 
 Wardwright models can be simple, such as one local Ollama target, or more
 structured, such as a route graph that delegates to other Wardwright models,
 switches providers by context size, applies stream rules, and records why each
 decision happened.
+
+Today, Wardwright can run as a local or remote service, expose
+OpenAI-compatible endpoints, define Wardwright models, simulate policy behavior
+in the `/admin` workbench, record receipts, and exercise early policy examples
+such as routing decisions, stream governance, output checks, retries, and saved
+simulator test cases. The legacy `/policies` workbench is still present during
+the transition, but new operator workflows start from `/admin`. The admin
+surface currently supports basic auth, while individual models can be configured
+for API-key or open access.
 
 ## Install
 
@@ -54,10 +69,10 @@ steps, and service details.
 
 Then visit `http://127.0.0.1:8787/admin`. Set `BASIC_AUTH_PASSWORD` before
 exposing the workbench or protected control APIs beyond loopback; the Basic Auth
-username is always `admin`. Model calls remain governed separately by model
-access configuration.
+username is always `admin`. Model calls remain governed separately by Model
+Management.
 
-## Model Access
+## Model Management
 
 Wardwright models are unkeyed by default. Operators can set a model to require a
 model-scoped API key, or set unkeyed models to internal-only composition:
@@ -74,12 +89,19 @@ or revoke keys for that model. Raw keys are shown once; Wardwright
 stores only a hash in the SQLite store at
 `~/.local/share/wardwright/wardwright.sqlite3` unless `XDG_DATA_HOME` or
 `WARDWRIGHT_SQLITE_STORE` points somewhere else. The same store persists
-registered model definitions.
+registered model definitions. Model Management can archive a model so it no
+longer appears in discovery or routing, restore it from the SQLite registry, or
+hard-delete the archived artifact when it should stop being recoverable.
 Keep `WARDWRIGHT_SECRET_KEY_BASE` stable, or set
 `WARDWRIGHT_MODEL_API_KEY_HASH_SECRET` explicitly, so stored keys remain
 verifiable across restarts. To encrypt the SQLite store, provide
 `WARDWRIGHT_SQLITE_KEY` or `WARDWRIGHT_SQLITE_KEY_FNOX`; the exqlite NIF must be
 built against SQLCipher or Wardwright will fail closed at startup.
+
+Receipts are stored separately as one JSON file per receipt under
+`~/.local/share/wardwright/receipts`, unless `WARDWRIGHT_RECEIPT_STORE_DIR`
+points somewhere else. Test builds can disable receipt persistence and keep
+receipts in memory.
 
 ## Use With Agents
 
@@ -97,8 +119,7 @@ wardwright tools --json
 Wardwright exposes:
 
 - OpenAI-compatible `/v1/chat/completions` and `/v1/models` endpoints.
-- A registered-model workbench at `/admin`, with the legacy policy
-  projection workbench still available at `/policies`.
+- A registered-model workbench at `/admin`.
 - Protected authoring APIs, plus MCP tools at `/mcp`.
 - Receipts, simulations, model access details, and admin status endpoints.
 
@@ -107,7 +128,7 @@ agents should follow before activating a model.
 
 `wardwright admin` opens the workbench in your browser. If nothing is listening
 on the configured `WARDWRIGHT_BIND` port, it starts a local background service
-first. Use `wardwright admin access` to jump directly to model access controls.
+first. Use `wardwright admin access` to jump directly to Model Management.
 
 ## Provider Credentials
 
@@ -128,8 +149,8 @@ The installed service includes a registered-model workbench at `/admin`. It
 lets you choose the Wardwright model being simulated, load a fixture, edit caller
 input, backend model output, and retry attempts, then step through routing,
 state transitions, stream retries, rewrites, tool decisions, and receipt events.
-The older `/policies` workbench remains available as a legacy fallback during
-the transition.
+The older `/policies` workbench remains in the service during the transition,
+but new operator workflows should start from `/admin`.
 
 ![Wardwright registered-model workbench showing a retry fixture](docs/assets/workbench/registered-model-workbench.png)
 
@@ -139,10 +160,11 @@ composition shape.
 
 ## Current Runtime
 
-The active app is a Phoenix service with server-rendered operator workbenches.
-Elixir owns runtime plumbing, provider calls, HTTP/API boundaries, and receipts;
-Gleam is used for correctness-heavy pure policy logic where the boundary is
-stable.
+The active app is a Phoenix service with a Lustre operator workbench. Elixir
+owns Phoenix, HTTP/API boundaries, provider calls, storage drivers, PubSub, and
+top-level supervision; Gleam owns correctness-heavy policy logic and new
+workbench behavior. Runtime state is being evaluated for `gleam_otp` migration
+where typed actors can remove invalid states or clarify concurrency ownership.
 
 Current capabilities include:
 

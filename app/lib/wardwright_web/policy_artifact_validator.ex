@@ -14,10 +14,22 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
                           "route_gate",
                           "history_threshold",
                           "history_regex_threshold",
+                          "allowed_tools",
                           "tool_selector",
                           "tool_loop_threshold",
                           "tool_sequence"
                         ])
+  @tool_phase_values MapSet.new([
+                       "planning",
+                       "argument_repair",
+                       "result_interpretation",
+                       "loop_governance",
+                       "unknown",
+                       "tool.planning",
+                       "tool.using",
+                       "tool.result_interpreting",
+                       "tool.loop_governing"
+                     ])
   @supported_stream_actions MapSet.new([
                               "pass",
                               "block",
@@ -246,14 +258,77 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
           checks
       end
 
-    validate_route_action(rule, checks, artifact)
+    checks
+    |> validate_allowed_tools_rule(rule)
+    |> validate_route_action(rule, artifact)
   end
 
   defp validate_governance_rule(_rule, checks, _artifact) do
     error(checks, "governance", "governance rules must be objects")
   end
 
-  defp validate_route_action(rule, checks, artifact) do
+  defp validate_allowed_tools_rule(checks, %{"kind" => "allowed_tools"} = rule) do
+    rule_id = rule |> Map.get("id", "allowed-tools") |> to_string()
+
+    checks =
+      case Map.get(rule, "phase") do
+        phase when is_binary(phase) ->
+          if MapSet.member?(@tool_phase_values, phase) do
+            checks
+          else
+            error(checks, "governance.phase", "allowed_tools rule #{rule_id} uses unsupported phase #{phase}")
+          end
+
+        _phase ->
+          error(checks, "governance.phase", "allowed_tools rule #{rule_id} requires phase")
+      end
+
+    case Map.get(rule, "allowed_tools") do
+      tools when is_list(tools) and tools != [] ->
+        Enum.reduce(tools, checks, &validate_allowed_tool(&1, &2, rule_id))
+
+      _tools ->
+        error(
+          checks,
+          "governance.allowed_tools",
+          "allowed_tools rule #{rule_id} requires a non-empty allowed_tools list"
+        )
+    end
+  end
+
+  defp validate_allowed_tools_rule(checks, _rule), do: checks
+
+  defp validate_allowed_tool(tool, checks, rule_id) when is_map(tool) do
+    name = tool |> Map.get("name", get_in(tool, ["tool", "name"])) |> string_value()
+    namespace = tool |> Map.get("namespace", get_in(tool, ["tool", "namespace"])) |> string_value()
+
+    checks =
+      if name == "" do
+        error(
+          checks,
+          "governance.allowed_tools[].name",
+          "allowed_tools rule #{rule_id} has an allowed tool without name"
+        )
+      else
+        checks
+      end
+
+    if namespace == "" do
+      error(
+        checks,
+        "governance.allowed_tools[].namespace",
+        "allowed_tools rule #{rule_id} has an allowed tool without namespace"
+      )
+    else
+      checks
+    end
+  end
+
+  defp validate_allowed_tool(_tool, checks, rule_id) do
+    error(checks, "governance.allowed_tools", "allowed_tools rule #{rule_id} entries must be objects")
+  end
+
+  defp validate_route_action(checks, rule, artifact) do
     case Map.get(rule, "action") do
       "restrict_routes" ->
         allowed = route_action_targets(rule)
@@ -697,6 +772,9 @@ defmodule WardwrightWeb.PolicyArtifactValidator do
       true -> "mock"
     end
   end
+
+  defp string_value(value) when is_binary(value), do: String.trim(value)
+  defp string_value(_value), do: ""
 
   defp blank_to_nil(value) when is_binary(value) do
     value = String.trim(value)

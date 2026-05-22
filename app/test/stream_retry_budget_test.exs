@@ -30,7 +30,7 @@ defmodule Wardwright.StreamRetryBudgetTest do
     assert conn.status == 409
     assert get_resp_header(conn, "content-type") == ["application/json; charset=utf-8"]
 
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     assert get_in(body, ["wardwright", "status"]) == "stream_policy_retry_required"
     assert get_in(body, ["wardwright", "stream_policy", "released_to_consumer"]) == false
     refute conn.resp_body =~ "data:"
@@ -94,7 +94,7 @@ defmodule Wardwright.StreamRetryBudgetTest do
       })
 
     assert conn.status == 409
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
 
     assert get_in(body, ["wardwright", "stream_policy", "max_retries"]) == 0
     assert get_in(body, ["wardwright", "stream_policy", "retry_count"]) == 0
@@ -148,7 +148,7 @@ defmodule Wardwright.StreamRetryBudgetTest do
     refute conn.resp_body =~ "data:"
     refute conn.resp_body =~ "NewClient("
 
-    body = Jason.decode!(conn.resp_body)
+    body = JSON.decode!(conn.resp_body)
     assert get_in(body, ["wardwright", "status"]) == "stream_policy_retry_context_exceeded"
 
     [receipt_id] = get_resp_header(conn, "x-wardwright-receipt-id")

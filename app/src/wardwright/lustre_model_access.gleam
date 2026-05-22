@@ -23,11 +23,13 @@ pub type Model {
     model_id: String,
     requires_api_key: Bool,
     unkeyed_access: String,
+    vcr_mode: String,
     keys: List(KeyOption),
     key_label: String,
     created_key: String,
     status: String,
     error: String,
+    receipt_storage_note: String,
   )
 }
 
@@ -35,10 +37,14 @@ pub type Msg {
   ModelChanged(String)
   AccessModeChanged(String)
   UnkeyedAccessChanged(String)
+  VcrModeChanged(String)
   KeyLabelChanged(String)
   CreateKey(List(#(String, String)))
   RevokeKey(String)
   SaveAccess(List(#(String, String)))
+  ArchiveModel
+  RestoreArchivedModel(String)
+  DeleteArchivedModel(String)
 }
 
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "default_model_id")
@@ -47,8 +53,13 @@ fn external_default_model_id() -> String
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "model_options")
 fn external_model_options() -> List(ModelOption)
 
+@external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "archived_model_options")
+fn external_archived_model_options() -> List(ModelOption)
+
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "access_summary")
-fn external_access_summary(model_id: String) -> #(String, Bool, String, Int)
+fn external_access_summary(
+  model_id: String,
+) -> #(String, Bool, String, Int, String, String)
 
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "key_options")
 fn external_key_options(model_id: String) -> List(KeyOption)
@@ -67,7 +78,17 @@ fn external_save_access(
   model_id: String,
   requires_api_key: Bool,
   unkeyed_access: String,
+  vcr_mode: String,
 ) -> #(Bool, String)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "archive_model")
+fn external_archive_model(model_id: String) -> #(Bool, String, String)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "restore_archived_model")
+fn external_restore_archived_model(model_id: String) -> #(Bool, String, String)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "delete_archived_model")
+fn external_delete_archived_model(model_id: String) -> #(Bool, String, String)
 
 pub fn component() {
   lustre.simple(init, update, view)
@@ -89,6 +110,8 @@ pub fn update(model: Model, msg: Msg) -> Model {
     AccessModeChanged(mode) -> Model(..model, requires_api_key: mode == "true")
 
     UnkeyedAccessChanged(access) -> Model(..model, unkeyed_access: access)
+
+    VcrModeChanged(mode) -> Model(..model, vcr_mode: mode)
 
     KeyLabelChanged(label) -> Model(..model, key_label: label)
 
@@ -123,11 +146,47 @@ pub fn update(model: Model, msg: Msg) -> Model {
       let unkeyed_access =
         field_value(fields, "unkeyed_access", model.unkeyed_access)
 
+      let vcr_mode = field_value(fields, "vcr_mode", model.vcr_mode)
+
       let #(ok, message) =
-        external_save_access(model.model_id, requires_api_key, unkeyed_access)
+        external_save_access(
+          model.model_id,
+          requires_api_key,
+          unkeyed_access,
+          vcr_mode,
+        )
 
       case ok {
         True -> load_model(model.model_id, message, "", "")
+        False -> load_model(model.model_id, "", message, "")
+      }
+    }
+
+    ArchiveModel -> {
+      let #(ok, message, next_model_id) = external_archive_model(model.model_id)
+
+      case ok {
+        True -> load_model(next_model_id, message, "", "")
+        False -> load_model(model.model_id, "", message, "")
+      }
+    }
+
+    RestoreArchivedModel(model_id) -> {
+      let #(ok, message, next_model_id) =
+        external_restore_archived_model(model_id)
+
+      case ok {
+        True -> load_model(next_model_id, message, "", "")
+        False -> load_model(model.model_id, "", message, "")
+      }
+    }
+
+    DeleteArchivedModel(model_id) -> {
+      let #(ok, message, next_model_id) =
+        external_delete_archived_model(model_id)
+
+      case ok {
+        True -> load_model(next_model_id, message, "", "")
         False -> load_model(model.model_id, "", message, "")
       }
     }
@@ -140,18 +199,20 @@ fn load_model(
   error: String,
   created_key: String,
 ) -> Model {
-  let #(model_id, requires_api_key, unkeyed_access, _) =
+  let #(model_id, requires_api_key, unkeyed_access, _, vcr_mode, storage_note) =
     external_access_summary(requested_model_id)
 
   Model(
     model_id:,
     requires_api_key:,
     unkeyed_access:,
+    vcr_mode:,
     keys: external_key_options(model_id),
     key_label: "",
     created_key:,
     status:,
     error:,
+    receipt_storage_note: storage_note,
   )
 }
 
@@ -185,11 +246,11 @@ pub fn workspace(model: Model) -> Element(Msg) {
   html.main([class("workspace")], [
     html.header([class("topbar")], [
       html.div([], [
-        html.p([class("eyebrow")], [text("Access control")]),
-        html.h1([], [text("Model Access")]),
+        html.p([class("eyebrow")], [text("Model control")]),
+        html.h1([], [text("Model Management")]),
         html.p([], [
           text(
-            "Choose a Wardwright model, then configure API-key requirements and unkeyed access.",
+            "Choose a Wardwright model, then configure access and debugging capture.",
           ),
         ]),
       ]),
@@ -198,8 +259,10 @@ pub fn workspace(model: Model) -> Element(Msg) {
     html.section([class("model-key-grid")], [
       model_summary(model),
       access_policy_editor(model),
+      model_lifecycle_panel(model),
       create_key_panel(model),
       keys_panel(model),
+      archived_models_panel(),
     ]),
   ])
 }
@@ -216,6 +279,8 @@ pub fn sidebar_controls(model: Model) -> List(Element(Msg)) {
           False -> model.unkeyed_access
         }),
       ]),
+      html.span([], [text("VCR")]),
+      html.code([], [text(vcr_mode_label(model.vcr_mode))]),
     ]),
   ]
 }
@@ -223,7 +288,7 @@ pub fn sidebar_controls(model: Model) -> List(Element(Msg)) {
 fn sidebar(model: Model) -> Element(Msg) {
   lustre_shell.sidebar(
     lustre_shell.ModelAccess,
-    "Model access",
+    "Model management",
     sidebar_controls(model),
   )
 }
@@ -301,6 +366,8 @@ fn model_summary(model: Model) -> Element(Msg) {
         False -> "Unkeyed"
       }),
       metric("Unkeyed access", model.unkeyed_access),
+      metric("VCR", vcr_mode_label(model.vcr_mode)),
+      metric("Receipt store", model.receipt_storage_note),
       metric("Keys", int.to_string(list.length(model.keys))),
     ]),
   ])
@@ -376,12 +443,134 @@ fn access_policy_editor(model: Model) -> Element(Msg) {
             ]),
           ]),
         ]),
+        debug_recording_options(model),
         button.button([button.variant(button.Default), type_("submit")], [
-          text("Save access policy"),
+          text("Save model management settings"),
         ]),
       ],
     ),
   ])
+}
+
+fn model_lifecycle_panel(_model: Model) -> Element(Msg) {
+  html.article([class("panel lifecycle-panel")], [
+    html.div([class("panel-header")], [
+      html.div([], [
+        html.h2([], [text("Model Lifecycle")]),
+        html.p([], [
+          text(
+            "Archive a model to remove it from discovery and routing while keeping its stored artifact recoverable.",
+          ),
+        ]),
+      ]),
+    ]),
+    button.button(
+      [
+        button.variant(button.Destructive),
+        type_("button"),
+        event.on_click(ArchiveModel),
+      ],
+      [text("Archive model")],
+    ),
+    html.small([], [
+      text(
+        "Archive requires SQLite model registry storage. Restore or hard-delete archived models below.",
+      ),
+    ]),
+  ])
+}
+
+fn archived_models_panel() -> Element(Msg) {
+  let archived_models = external_archived_model_options()
+
+  html.details([class("panel archived-models-panel")], [
+    html.summary([], [
+      html.span([], [text("Archived Models")]),
+      html.small([], [
+        text(
+          "Hidden by default; restore for review or hard-delete from SQLite.",
+        ),
+      ]),
+    ]),
+    case archived_models {
+      [] ->
+        html.p([], [
+          text("No archived models are stored in the SQLite model registry."),
+        ])
+      _ ->
+        html.table([], [
+          html.thead([], [
+            html.tr([], [
+              html.th([], [text("Model")]),
+              html.th([], [text("Version")]),
+              html.th([], [text("Actions")]),
+            ]),
+          ]),
+          html.tbody([], archived_model_rows(archived_models)),
+        ])
+    },
+  ])
+}
+
+fn archived_model_rows(models: List(ModelOption)) -> List(Element(Msg)) {
+  list.map(models, fn(model) {
+    let #(model_id, _, version, _) = model
+
+    html.tr([], [
+      html.td([], [html.code([], [text(model_id)])]),
+      html.td([], [text(version)]),
+      html.td([class("row-actions")], [
+        button.button(
+          [
+            button.variant(button.Default),
+            type_("button"),
+            event.on_click(RestoreArchivedModel(model_id)),
+          ],
+          [text("Restore")],
+        ),
+        button.button(
+          [
+            button.variant(button.Destructive),
+            type_("button"),
+            event.on_click(DeleteArchivedModel(model_id)),
+          ],
+          [text("Hard delete")],
+        ),
+      ]),
+    ])
+  })
+}
+
+fn debug_recording_options(model: Model) -> Element(Msg) {
+  html.fieldset([], [
+    html.legend([], [text("Debug recording")]),
+    radio_card(
+      "vcr_mode",
+      "metadata_only",
+      model.vcr_mode == "metadata_only",
+      "Metadata only",
+      "Default receipt VCR. Stores roles, lengths, policy facts, and route facts without prompt or completion text.",
+      VcrModeChanged,
+    ),
+    radio_card(
+      "vcr_mode",
+      "full_session",
+      model.vcr_mode == "full_session",
+      "Full session",
+      "Opt-in capture for replay investigations. Stores full request and provider response payloads in the receipt store.",
+      VcrModeChanged,
+    ),
+    html.small([class("recording-note")], [
+      text("Current receipt store: " <> model.receipt_storage_note <> "."),
+    ]),
+  ])
+}
+
+fn vcr_mode_label(mode: String) -> String {
+  case mode {
+    "full_session" -> "Full session"
+    _ -> "Metadata only"
+  }
 }
 
 fn unkeyed_access_options(model: Model) -> Element(Msg) {
@@ -526,10 +715,15 @@ pub fn styles() -> String {
     font-weight: 700;
     line-height: 1.35;
   }
+  .recording-note {
+    display: block;
+    overflow-wrap: anywhere;
+  }
   .workspace {
     display: flex;
     flex-direction: column;
     gap: 18px;
+    min-width: 0;
     padding: 24px;
   }
   .topbar {
@@ -547,6 +741,7 @@ pub fn styles() -> String {
   h1 {
     font-size: 30px;
     line-height: 1.15;
+    overflow-wrap: anywhere;
   }
   p {
     color: #46525f;
@@ -596,7 +791,7 @@ pub fn styles() -> String {
   }
   .metrics {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: 8px;
   }
   .metrics div {
@@ -713,6 +908,25 @@ pub fn styles() -> String {
   .keys-panel {
     grid-column: 1 / -1;
   }
+  .archived-models-panel {
+    grid-column: 1 / -1;
+  }
+  details.panel {
+    display: block;
+  }
+  summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    font-weight: 800;
+  }
+  .row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
   pre {
     overflow: auto;
     margin: 0;
@@ -724,6 +938,9 @@ pub fn styles() -> String {
   @media (max-width: 860px) {
     .model-access-app, .model-key-grid, .inline-form {
       grid-template-columns: 1fr;
+    }
+    .workspace {
+      padding: 18px;
     }
     .rail {
       border-right: 0;

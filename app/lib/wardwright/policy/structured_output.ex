@@ -16,12 +16,12 @@ defmodule Wardwright.Policy.StructuredOutput do
   def run(_config, provider_fun) when is_function(provider_fun, 1), do: provider_fun.(0)
 
   def validate_output(output, config) when is_binary(output) and is_map(config) do
-    with {:ok, parsed} <- Jason.decode(output),
+    with {:json, {:ok, parsed}} <- {:json, JSON.decode(output)},
          {:ok, schema_id} <- select_schema(parsed, Map.get(config, "schemas", %{})),
          :ok <- validate_semantic_rules(parsed, Map.get(config, "semantic_rules", [])) do
       {:ok, schema_id, parsed}
     else
-      {:error, %Jason.DecodeError{}} -> {:error, "json_syntax", "structured-json"}
+      {:json, {:error, _reason}} -> {:error, "json_syntax", "structured-json"}
       {:error, :schema} -> {:error, "schema_validation", "structured-json"}
       {:error, {:semantic, rule_id}} -> {:error, "semantic_validation", rule_id}
     end
