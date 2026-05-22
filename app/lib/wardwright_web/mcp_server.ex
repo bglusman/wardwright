@@ -11,14 +11,20 @@ defmodule WardwrightWeb.MCPServer do
   alias WardwrightWeb.MCP.Tools.DraftWardwrightModel
   alias WardwrightWeb.MCP.Tools.EvaluateDuneSnippet
   alias WardwrightWeb.MCP.Tools.ExplainProjection
+  alias WardwrightWeb.MCP.Tools.ExportAgentHarnessTrace
   alias WardwrightWeb.MCP.Tools.ListDuneSnippets
+  alias WardwrightWeb.MCP.Tools.ListHarnessAdapters
   alias WardwrightWeb.MCP.Tools.ProposeRuleChange
+  alias WardwrightWeb.MCP.Tools.ReplayReceiptPolicy
   alias WardwrightWeb.MCP.Tools.SaveDuneSnippet
   alias WardwrightWeb.MCP.Tools.SimulatePolicy
   alias WardwrightWeb.MCP.Tools.ValidatePolicyArtifact
 
   Code.ensure_compiled!(ExplainProjection)
   Code.ensure_compiled!(SimulatePolicy)
+  Code.ensure_compiled!(ReplayReceiptPolicy)
+  Code.ensure_compiled!(ListHarnessAdapters)
+  Code.ensure_compiled!(ExportAgentHarnessTrace)
   Code.ensure_compiled!(ListDuneSnippets)
   Code.ensure_compiled!(EvaluateDuneSnippet)
   Code.ensure_compiled!(SaveDuneSnippet)
@@ -30,6 +36,9 @@ defmodule WardwrightWeb.MCPServer do
 
   component(ExplainProjection, name: "explain_projection")
   component(SimulatePolicy, name: "simulate_policy")
+  component(ReplayReceiptPolicy, name: "replay_receipt_policy")
+  component(ListHarnessAdapters, name: "list_harness_adapters")
+  component(ExportAgentHarnessTrace, name: "export_agent_harness_trace")
   component(ListDuneSnippets, name: "list_dune_snippets")
   component(EvaluateDuneSnippet, name: "evaluate_dune_snippet")
   component(SaveDuneSnippet, name: "save_dune_snippet")

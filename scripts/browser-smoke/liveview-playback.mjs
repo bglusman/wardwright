@@ -88,6 +88,7 @@ try {
   }
 
   await assertRegisteredModelWorkbench();
+  await assertControlDebuggerSaveScenario();
 
   for (const viewport of overflowViewports) {
     for (const path of overflowPaths) {
@@ -182,6 +183,43 @@ async function assertRegisteredModelWorkbench() {
     }
 
     console.log("ok registered model workbench hides example simulation panels");
+  } finally {
+    cdp.close();
+  }
+}
+
+async function assertControlDebuggerSaveScenario() {
+  const target = await createChromeTarget();
+  const cdp = await connectCdp(target.webSocketDebuggerUrl);
+
+  try {
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 1280,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false
+    });
+
+    await cdp.send("Page.navigate", { url: `${appUrl}/admin?view=control_debugger` });
+    await cdp.waitFor("Page.loadEventFired");
+    await waitForEval(cdp, `pageText(document.body).includes("Control debugger")`);
+    await waitForEval(cdp, `!document.documentElement.classList.contains("phx-loading")`);
+
+    await clickButtonByText(cdp, "Record example session");
+    await waitForEval(
+      cdp,
+      `pageText(document.body).includes("Violation: edit_file ran before read_file for app.txt.")`
+    );
+
+    await clickButtonByText(cdp, "Save scenario");
+    await waitForEval(
+      cdp,
+      `pageText(document.body).includes("Open Workbench, choose tool-governance")`
+    );
+
+    console.log("ok control debugger saves read-before-edit scenario to tool-governance");
   } finally {
     cdp.close();
   }
@@ -353,6 +391,24 @@ async function clickControl(cdp, label) {
   }
 }
 
+async function clickButtonByText(cdp, label) {
+  const result = await evaluate(
+    cdp,
+    `(() => {
+      const button = allElements("button")
+        .find((candidate) => candidate.textContent.trim() === ${JSON.stringify(label)});
+      if (!button) return { error: "missing ${label} button" };
+      button.scrollIntoView({ block: "center", inline: "center" });
+      button.click();
+      return { clicked: true };
+    })()`
+  );
+
+  if (!result || result.error) {
+    throw new Error(result?.error || `Could not click ${label} button`);
+  }
+}
+
 async function assertClickableControl(cdp, viewportName, label) {
   const result = await evaluate(cdp, controlPointExpression(label));
 
@@ -429,6 +485,21 @@ async function evaluate(cdp, expression) {
         }
 
         return text.trim();
+      };
+
+      const allElements = (selector) => {
+        const elements = [...document.querySelectorAll(selector)];
+        const collect = (root) => {
+          if (!root?.querySelectorAll) return;
+          for (const element of root.querySelectorAll("*")) {
+            if (element.shadowRoot) {
+              elements.push(...element.shadowRoot.querySelectorAll(selector));
+              collect(element.shadowRoot);
+            }
+          }
+        };
+        collect(document);
+        return elements;
       };
 
       return (${expression});

@@ -738,10 +738,18 @@ defmodule WardwrightWeb.WorkbenchTest do
            )
 
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("tool calls/results")
+
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains(
+             "WARDWRIGHT_POLICY_SCENARIO_STORE_FILE"
+           )
   end
 
   test "control debugger records the default counterfactual example from the UI" do
     assert :wardwright@lustre_control_debugger_test_support.running_counterfactual_demo_shows_outcome()
+  end
+
+  test "control debugger states the exact read-before-edit violation on the selected trace event" do
+    assert :wardwright@lustre_control_debugger_test_support.read_before_edit_trace_states_exact_violation()
   end
 
   test "control debugger targets the matching workbench pattern for counterfactual examples" do

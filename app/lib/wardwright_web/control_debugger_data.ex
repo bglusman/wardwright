@@ -54,7 +54,7 @@ defmodule WardwrightWeb.ControlDebuggerData do
   end
 
   def storage_note do
-    "Receipts: #{store_location(Wardwright.ReceiptStore.health())}. Simulator cases: #{store_location(Wardwright.PolicyScenarioStore.health())}."
+    "Receipts: #{store_location(Wardwright.ReceiptStore.health())}. Simulator cases: #{scenario_store_location(Wardwright.PolicyScenarioStore.health())}."
   end
 
   def counterfactual_facts do
@@ -238,7 +238,7 @@ defmodule WardwrightWeb.ControlDebuggerData do
       fork_point = suggested_fork_point(events)
 
       {true, "Loaded #{length(events)} trace event(s) for #{receipt_id}.", session_id, fork_point,
-       Enum.map(events, &transcript_event_summary/1)}
+       transcript_event_summaries(events)}
     else
       {:receipt_id, true} ->
         {false, "Choose a receipt with a full-session transcript.", "", "", []}
@@ -650,16 +650,34 @@ defmodule WardwrightWeb.ControlDebuggerData do
     end
   end
 
-  defp transcript_event_summary(event) when is_map(event) do
+  defp transcript_event_summaries(events) when is_list(events) do
+    events
+    |> Enum.map_reduce(MapSet.new(), fn event, read_paths ->
+      summary = transcript_event_summary(event, read_paths)
+      {summary, record_read_path(read_paths, event)}
+    end)
+    |> elem(0)
+  end
+
+  defp transcript_event_summary(event, read_paths) when is_map(event) do
     cursor = event["cursor"] || ""
     sequence = event["sequence"] |> to_string()
     type = event["type"] || "event"
     label = event_label(event)
     detail = event_detail(event)
-    recommendation = fork_point_recommendation(event)
+    recommendation = fork_point_recommendation(event, read_paths)
 
     {cursor, sequence, type, label, detail, recommendation}
   end
+
+  defp record_read_path(read_paths, %{"type" => "tool.call"} = event) do
+    case {get_in(event, ["tool", "name"]), get_in(event, ["tool", "args", "path"])} do
+      {"read_file", path} when is_binary(path) and path != "" -> MapSet.put(read_paths, path)
+      _ -> read_paths
+    end
+  end
+
+  defp record_read_path(read_paths, _event), do: read_paths
 
   defp event_label(%{"type" => "tool.call"} = event) do
     tool_name = get_in(event, ["tool", "name"]) || "tool"
@@ -722,28 +740,37 @@ defmodule WardwrightWeb.ControlDebuggerData do
 
   defp event_detail(event), do: compact_json(Map.drop(event, ["schema", "cursor", "sequence", "session_id", "type"]))
 
-  defp fork_point_recommendation(%{"type" => "tool.call"} = event) do
+  defp fork_point_recommendation(%{"type" => "tool.call"} = event, read_paths) do
     tool_name = get_in(event, ["tool", "name"]) || ""
     args = get_in(event, ["tool", "args"]) || %{}
+    path = args["path"]
 
     cond do
-      tool_name == "edit_file" -> "Suggested fork point: before mutating #{args["path"] || "a file"}."
-      tool_name == "run_tests" -> "Possible fork point: before validation."
-      true -> "Can fork before this tool call."
+      tool_name == "edit_file" and is_binary(path) and path != "" and not MapSet.member?(read_paths, path) ->
+        "Violation: edit_file ran before read_file for #{path}. Suggested fork point: before mutating #{path}."
+
+      tool_name == "edit_file" ->
+        "Suggested fork point: before mutating #{path || "a file"}."
+
+      tool_name == "run_tests" ->
+        "Possible fork point: before validation."
+
+      true ->
+        "Can fork before this tool call."
     end
   end
 
-  defp fork_point_recommendation(%{"fork_point" => true, "type" => "model.response"}),
+  defp fork_point_recommendation(%{"fork_point" => true, "type" => "model.response"}, _read_paths),
     do: "Suggested fork point: before the response is validated or repaired."
 
-  defp fork_point_recommendation(%{"failure_class" => failure_class, "type" => "policy.decision"})
+  defp fork_point_recommendation(%{"failure_class" => failure_class, "type" => "policy.decision"}, _read_paths)
        when is_binary(failure_class) and failure_class != "",
        do: "Evidence event; usually fork before the response or action that triggered it."
 
-  defp fork_point_recommendation(%{"type" => "tool.result"}),
+  defp fork_point_recommendation(%{"type" => "tool.result"}, _read_paths),
     do: "Evidence event; usually fork before the matching call."
 
-  defp fork_point_recommendation(_event), do: "Context event."
+  defp fork_point_recommendation(_event, _read_paths), do: "Context event."
 
   defp compact_json(value) do
     value
@@ -811,6 +838,12 @@ defmodule WardwrightWeb.ControlDebuggerData do
   defp store_location(%{"kind" => "memory"}), do: "memory only; not durable across restart"
   defp store_location(%{"kind" => kind}), do: kind
   defp store_location(_health), do: "unknown"
+
+  defp scenario_store_location(%{"kind" => "memory"}),
+    do:
+      "memory only; not durable across restart. Set WARDWRIGHT_POLICY_SCENARIO_STORE_FILE to a local JSON path to keep saved simulator cases"
+
+  defp scenario_store_location(health), do: store_location(health)
 
   defp capability_summary(%{"capabilities" => capabilities}) when is_map(capabilities) do
     [

@@ -73,6 +73,8 @@ defmodule Wardwright.CLI do
       BASIC_AUTH_PASSWORD         Optional password for protected operator UI/APIs; user is admin
       WARDWRIGHT_SQLITE_STORE     Optional SQLite path for models and hashed API keys
       WARDWRIGHT_RECEIPT_STORE_DIR  Optional directory for per-receipt JSON files
+      WARDWRIGHT_TRANSCRIPT_STORE_DIR  Optional directory for replayable session trace events
+      WARDWRIGHT_POLICY_SCENARIO_STORE_FILE  Optional JSON file for durable simulator cases
       WARDWRIGHT_SQLITE_KEY       Optional SQLCipher key for the SQLite store
       WARDWRIGHT_SQLITE_KEY_FNOX  Optional fnox secret name for the SQLite SQLCipher key
       WARDWRIGHT_MODEL_API_KEY_HASH_SECRET  Optional stable secret for model API key hashes

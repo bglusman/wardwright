@@ -81,6 +81,21 @@ pub fn running_counterfactual_demo_shows_outcome() -> Bool {
   && !view_contains(simulation, "No session trace loaded yet")
 }
 
+pub fn read_before_edit_trace_states_exact_violation() -> Bool {
+  let simulation =
+    start()
+    |> click_button("Record example session")
+
+  view_contains(
+    simulation,
+    "Violation: edit_file ran before read_file for app.txt.",
+  )
+  && view_contains(
+    simulation,
+    "Violation: edit_file ran before read_file for app.txt. Suggested fork point: before mutating app.txt.",
+  )
+}
+
 pub fn read_before_edit_example_targets_tool_governance_pattern() -> Bool {
   start()
   |> click_button("Record example session")

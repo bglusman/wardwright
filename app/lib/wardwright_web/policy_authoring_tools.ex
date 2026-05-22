@@ -123,6 +123,24 @@ defmodule WardwrightWeb.PolicyAuthoringTools do
         "/agent-authoring.html#replay-receipts-before-changing-policy"
       ),
       tool(
+        "list_harness_adapters",
+        "GET",
+        "/v1/policy-authoring/harness-adapters",
+        "List available agent harness adapters, their import/export commands, and the fidelity limits that prevent claiming equivalent agent resume.",
+        "Use before handing a Wardwright trace to OpenCode, Codex, Claude, or another agent runner.",
+        "Read-only. Treat adapter fidelity and equivalent_agent_resume as authoritative; do not infer hidden agent state preservation from an import command.",
+        "/agent-authoring.html#replay-receipts-before-changing-policy"
+      ),
+      tool(
+        "export_agent_harness_trace",
+        "POST",
+        "/v1/policy-authoring/harness-adapters/{adapter_id}/export",
+        "Export a recorded full-session trace as a reviewable artifact for an external agent harness.",
+        "Use after loading a trace when an agent should inspect or continue from the recorded evidence outside the Wardwright UI.",
+        "Read-only unless the caller asks the UI/backend to save files. Exported artifacts can include sensitive trace metadata; equivalent resume is false unless the adapter explicitly says true.",
+        "/agent-authoring.html#replay-receipts-before-changing-policy"
+      ),
+      tool(
         "export_regression_pack",
         "GET",
         "/v1/policy-authoring/scenarios/{pattern_id}/regression-export?format=json|exunit",

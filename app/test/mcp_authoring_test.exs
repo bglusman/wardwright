@@ -11,8 +11,11 @@ defmodule Wardwright.MCPAuthoringTest do
   alias WardwrightWeb.MCP.Tools.DraftWardwrightModel
   alias WardwrightWeb.MCP.Tools.EvaluateDuneSnippet
   alias WardwrightWeb.MCP.Tools.ExplainProjection
+  alias WardwrightWeb.MCP.Tools.ExportAgentHarnessTrace
   alias WardwrightWeb.MCP.Tools.ListDuneSnippets
+  alias WardwrightWeb.MCP.Tools.ListHarnessAdapters
   alias WardwrightWeb.MCP.Tools.ProposeRuleChange
+  alias WardwrightWeb.MCP.Tools.ReplayReceiptPolicy
   alias WardwrightWeb.MCP.Tools.SaveDuneSnippet
   alias WardwrightWeb.MCP.Tools.ValidatePolicyArtifact
 
@@ -57,12 +60,47 @@ defmodule Wardwright.MCPAuthoringTest do
              "draft_wardwright_model",
              "evaluate_dune_snippet",
              "explain_projection",
+             "export_agent_harness_trace",
              "list_dune_snippets",
+             "list_harness_adapters",
              "propose_rule_change",
+             "replay_receipt_policy",
              "save_dune_snippet",
              "simulate_policy",
              "validate_policy_artifact"
            ]
+  end
+
+  test "agent harness MCP tools expose fidelity limits and export trace evidence" do
+    session_id = recorded_session_id!()
+
+    assert {:reply, %Response{} = list_response, %Frame{}} =
+             ListHarnessAdapters.execute(%{}, Frame.new())
+
+    opencode =
+      Enum.find(list_response.structured_content["data"], &(&1["id"] == "opencode"))
+
+    assert opencode["fidelity"] == "session_import_best_effort"
+    assert opencode["equivalent_agent_resume"] == false
+
+    assert {:reply, %Response{} = export_response, %Frame{}} =
+             ExportAgentHarnessTrace.execute(
+               %{"adapter_id" => "opencode", "session_id" => session_id},
+               Frame.new()
+             )
+
+    assert get_in(export_response.structured_content, ["export", "artifact_format"]) == "opencode_session_json"
+    assert get_in(export_response.structured_content, ["export", "adapter", "equivalent_agent_resume"]) == false
+    assert hd(get_in(export_response.structured_content, ["export", "commands"])) =~ "opencode import"
+  end
+
+  test "receipt replay MCP tool fails closed for unknown receipts" do
+    assert {:error, error, %Frame{}} =
+             ReplayReceiptPolicy.execute(%{"receipt_id" => "rcpt_missing"}, Frame.new())
+
+    assert error.reason == :execution_error
+    assert error.message == "receipt not found"
+    assert error.data == %{receipt_id: "rcpt_missing"}
   end
 
   test "projection tool returns deterministic projection payloads" do
@@ -296,8 +334,11 @@ defmodule Wardwright.MCPAuthoringTest do
              "draft_wardwright_model",
              "evaluate_dune_snippet",
              "explain_projection",
+             "export_agent_harness_trace",
              "list_dune_snippets",
+             "list_harness_adapters",
              "propose_rule_change",
+             "replay_receipt_policy",
              "save_dune_snippet",
              "simulate_policy",
              "validate_policy_artifact"
@@ -333,5 +374,22 @@ defmodule Wardwright.MCPAuthoringTest do
 
   defp temp_workspace_dir(prefix) do
     Path.join(System.tmp_dir!(), "#{prefix}-#{System.unique_integer([:positive])}")
+  end
+
+  defp recorded_session_id! do
+    scenario = %{
+      "contract_version" => :wardwright@counterfactual_contract.api_contract_version(),
+      "debugger_example_id" => "read-before-edit",
+      "expected" => %{"failure_class" => "read_before_edit_violation"},
+      "model_id" => "counterfactual-mcp-test",
+      "task" => "Enable the feature flag from settings.json.",
+      "workspace" => %{
+        "app.txt" => "feature_enabled=false",
+        "settings.json" => ~s({"feature_enabled":false})
+      }
+    }
+
+    assert {:ok, outcome} = WardwrightWeb.CounterfactualReplay.run_recorded_session(scenario)
+    outcome["session_id"]
   end
 end

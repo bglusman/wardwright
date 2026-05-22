@@ -24,6 +24,8 @@ defmodule Wardwright.CLITest do
     assert output =~ "wardwright admin"
     assert output =~ "wardwright tools"
     assert output =~ "WARDWRIGHT_BIND"
+    assert output =~ "WARDWRIGHT_TRANSCRIPT_STORE_DIR"
+    assert output =~ "WARDWRIGHT_POLICY_SCENARIO_STORE_FILE"
   end
 
   test "serve command starts the application" do
@@ -140,6 +142,8 @@ defmodule Wardwright.CLITest do
     assert output =~ "delete_dune_snippet"
     assert output =~ "activate_wardwright_model"
     assert output =~ "propose_rule_change"
+    assert output =~ "list_harness_adapters"
+    assert output =~ "export_agent_harness_trace"
     refute output =~ "not implemented"
     assert output =~ "validate_policy_artifact"
   end
@@ -167,6 +171,8 @@ defmodule Wardwright.CLITest do
     assert "activate_wardwright_model" in names
     assert "record_scenario" in names
     assert "delete_scenario" in names
+    assert "list_harness_adapters" in names
+    assert "export_agent_harness_trace" in names
     assert "propose_rule_change" in names
     assert "validate_policy_artifact" in names
 
