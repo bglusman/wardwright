@@ -21,6 +21,39 @@ leave the same review trail:
 4. adversarial implementation and design review
 5. test evidence
 
+## Ralph Loop Acceptance Criteria
+
+A Ralph debugging loop is not complete merely because one operator can click
+through the UI. The same debugging capability must be available through three
+operator surfaces:
+
+- the visual Control Debugger UI
+- MCP tools for an assisting agent
+- CLI or CLI-discoverable HTTP/API instructions for scriptable operation
+
+Each surface should be usable by a future agent or operator with no private
+project context. It may point to a dedicated help command, docs URL, or example
+catalog instead of embedding every example inline, but the surface itself must
+explain what to run next and where to get complete guidance.
+
+For a Ralph run to count as accepted, the evidence should show:
+
+- UI proof: screenshots of the investigation, replay or fork controls, final
+  result, and any confusing UI state that drove a change.
+- MCP proof: tool-discoverable names, argument shapes, and safety notes for the
+  same investigation path, or a clearly filed follow-up when a control is
+  missing.
+- CLI proof: `wardwright tools` or another documented command gives enough
+  context for an agent starting from a shell to discover the same debugging
+  workflow without reading the repository.
+- Cross-check proof: final scenario, trace, replay result, and saved evidence
+  agree across the UI and non-UI surfaces.
+
+The surfaces do not need identical interaction design. They do need to share the
+same backend capability model so that the UI cannot become a polished demo while
+MCP and CLI remain incomplete, and so that agent-assisted debugging does not
+gain invisible powers that a human operator cannot review.
+
 ## Track 1: Streaming Tool Calls
 
 ### Plan
