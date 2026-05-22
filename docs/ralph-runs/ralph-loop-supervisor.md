@@ -22,8 +22,8 @@ validation record below.
 
 - Historical loops completed before this tracker: 3.
 - Additional heartbeat continuation budget: 10 loops.
-- Additional loops completed: 4.
-- Additional loops remaining: 6.
+- Additional loops completed: 5.
+- Additional loops remaining: 5.
 
 ## Historical Baseline
 
@@ -117,6 +117,26 @@ validation record below.
     `equivalent_agent_resume_claim_allowed` false even when the concrete probe
     matches, because workspace snapshot and private harness state remain
     unproven.
+
+### Loop 8 - Harness Verification Handoff
+
+- Timestamp: 2026-05-22T23:36Z heartbeat.
+- Starting commit: `267eb03`.
+- Ending commit: this harness verification handoff commit on
+  `codex/ralph-ui-loop-pilot-1`.
+- Scope: made the Control Debugger handoff facts name the handoff artifact,
+  state-fidelity probe, handoff command, and `verify_harness_state_fidelity`
+  follow-up so the new verifier is discoverable from the UI and CLI help path.
+- Validation:
+  - `cd app && gleam format --check src`: passed.
+  - `cd app && gleam check --target erlang`: passed.
+  - `cd app && mix format --check-formatted`: passed.
+  - `cd app && mix test`: passed, 395 tests with 21 properties and 6 excluded
+    live/acceptance tests.
+- Adversarial review:
+  - This still does not close `RALPH-RBE-002`; it removes a usability gap
+    between export and verification. The verifier remains separate and
+    conservative, and the UI explicitly keeps equivalent resume claims false.
 
 ## Open Followup
 

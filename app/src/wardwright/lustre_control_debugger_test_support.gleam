@@ -123,10 +123,12 @@ pub fn opencode_harness_export_shows_fidelity_warning() -> Bool {
 
   view_contains(simulation, "Prepared OpenCode trace handoff and saved")
   && view_contains(simulation, "session_import_best_effort")
-  && view_contains(simulation, "Saved file")
+  && view_contains(simulation, "Handoff artifact")
+  && view_contains(simulation, "State probe")
   && view_contains(simulation, "Equivalent agent resume")
   && view_contains(simulation, "no")
   && view_contains(simulation, "opencode import")
+  && view_contains(simulation, "verify_harness_state_fidelity")
 }
 
 pub fn fork_actions_are_contextual_to_loaded_event() -> Bool {

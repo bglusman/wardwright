@@ -142,6 +142,7 @@ defmodule WardwrightWeb.ControlDebuggerData do
       warnings = export["warnings"] || []
       saved_files = export["saved_files"] || []
       command = harness_export_command(export, saved_files)
+      probe_file = harness_probe_file(saved_files)
 
       {true, "Prepared #{adapter["label"] || adapter_id} trace handoff and saved #{length(saved_files)} file(s).",
        [
@@ -151,8 +152,11 @@ defmodule WardwrightWeb.ControlDebuggerData do
          {"Equivalent agent resume", bool_text(adapter["equivalent_agent_resume"])},
          {"Verification required", bool_text(get_in(adapter, ["state_fidelity_verification", "required"]))},
          {"Artifact", export["artifact_format"] || "unknown"},
-         {"Saved file", saved_files |> List.first() |> blank_fallback("none")},
-         {"Command", command |> blank_fallback(commands |> List.first() |> blank_fallback("none"))},
+         {"Handoff artifact", saved_files |> List.first() |> blank_fallback("none")},
+         {"State probe", probe_file |> blank_fallback("none")},
+         {"Handoff command", command |> blank_fallback(commands |> List.first() |> blank_fallback("none"))},
+         {"Verify with",
+          harness_verification_instruction(probe_file, get_in(adapter, ["state_fidelity_verification", "required"]))},
          {"Warnings", warnings |> Enum.join(" ") |> blank_fallback("none")}
        ]}
     else
@@ -173,6 +177,20 @@ defmodule WardwrightWeb.ControlDebuggerData do
   end
 
   defp harness_export_command(_export, _saved_files), do: ""
+
+  defp harness_probe_file(saved_files) do
+    Enum.find(saved_files, &(Path.basename(to_string(&1)) == "wardwright-state-fidelity-probe.json"))
+  end
+
+  defp harness_verification_instruction(_probe_file, false), do: "not required"
+
+  defp harness_verification_instruction(nil, _required) do
+    "verify_harness_state_fidelity with the exported probe and observed imported-harness state"
+  end
+
+  defp harness_verification_instruction(probe_file, _required) do
+    "verify_harness_state_fidelity with #{probe_file} and observed imported-harness state"
+  end
 
   defp shell_quote(value) do
     "'" <> String.replace(to_string(value), "'", "'\"'\"'") <> "'"

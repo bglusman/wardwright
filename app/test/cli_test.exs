@@ -144,6 +144,7 @@ defmodule Wardwright.CLITest do
     assert output =~ "propose_rule_change"
     assert output =~ "list_harness_adapters"
     assert output =~ "export_agent_harness_trace"
+    assert output =~ "verify_harness_state_fidelity"
     assert output =~ "list_control_debugger_examples"
     assert output =~ "record_control_debugger_example"
     assert output =~ "load_control_debugger_trace"
@@ -179,6 +180,7 @@ defmodule Wardwright.CLITest do
     assert "delete_scenario" in names
     assert "list_harness_adapters" in names
     assert "export_agent_harness_trace" in names
+    assert "verify_harness_state_fidelity" in names
     assert "list_control_debugger_examples" in names
     assert "record_control_debugger_example" in names
     assert "load_control_debugger_trace" in names
