@@ -230,6 +230,8 @@ defmodule WardwrightWeb.AgentHarnessAdaptersTest do
     assert hd(export["commands"]) =~ ".omp/rules"
     assert Enum.at(export["commands"], 1) =~ "omp --session"
     assert File.read!(rule_path) =~ "interruptMode: \"always\""
+    assert File.read!(rule_path) =~ ~S|- "."|
+    assert File.read!(rule_path) =~ ~S|- "tool:edit_file(*)"|
     assert File.read!(extension_path) =~ "wardwright_verify_state_fidelity"
     assert private_mode?(session_path, 0o600)
     assert private_mode?(rule_path, 0o600)

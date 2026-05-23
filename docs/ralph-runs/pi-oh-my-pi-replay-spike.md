@@ -69,6 +69,10 @@ comparison is not "Wardwright or omp"; it is "Wardwright proves and audits the
 rule, omp optionally enforces the proven rule in the user's live agent loop."
 The same exported rule should therefore be run as a behavioral equivalence
 check: same trace, same expected interruption, same failure classification.
+The exported OMP rule keeps the match condition deliberately broad and uses
+tool scopes for edit/write/patch tool names, because OMP evaluates `condition`
+against streamed content while `scope` narrows which tool argument streams are
+eligible.
 
 ### OpenCode Plugin
 

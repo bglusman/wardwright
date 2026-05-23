@@ -857,13 +857,13 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
     ---
     description: Wardwright read-before-edit replay guard
     condition:
-      - "edit_file"
-      - "write_file"
-      - "patch"
+      - "."
     scope:
-      - "text"
       - "tool:edit(*)"
       - "tool:write(*)"
+      - "tool:patch(*)"
+      - "tool:edit_file(*)"
+      - "tool:write_file(*)"
     interruptMode: "always"
     ---
 
