@@ -91,11 +91,107 @@ defmodule Wardwright.CLIAdaptersTest do
     opencode = Enum.find(results, &(&1.target == "opencode"))
     assert opencode.detected == true
     assert opencode.runtime == "omp"
-    assert opencode.runtime_source == "hint"
+    assert opencode.runtime_source == "runtime hint"
     assert opencode.adapter_id == "wardwright-omp"
     assert opencode.coverage == "covered_through_runtime"
     assert opencode.fidelity == "runtime_verified"
     assert opencode.state == "installable"
+    assert opencode.install_plan == "install_runtime_adapter"
+
+    assert opencode.next_actions == [
+             "run `wardwright adapters install omp` to install the runtime adapter used by OpenCode"
+           ]
+  end
+
+  test "doctor resolves OpenCode Pi bridge runtime from project configuration" do
+    workspace = tmp_workspace("wardwright-opencode-pi-runtime")
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    write_opencode_runtime_config(workspace, %{
+      "runtime" => "pi-opencode-bridge"
+    })
+
+    results =
+      Adapters.doctor(
+        find_executable: fake_opencode_finder(),
+        workspace_root: workspace
+      )
+
+    opencode = Enum.find(results, &(&1.target == "opencode"))
+    assert opencode.detected == true
+    assert opencode.runtime == "pi"
+    assert opencode.runtime_source == "pi-opencode-bridge"
+    assert opencode.adapter_id == "wardwright-pi"
+    assert opencode.coverage == "covered_through_runtime"
+    assert opencode.fidelity == "runtime_verified"
+    assert opencode.state == "installable"
+    assert opencode.install_plan == "install_runtime_adapter"
+
+    assert opencode.next_actions == [
+             "run `wardwright adapters install pi` to install the runtime adapter used by OpenCode"
+           ]
+  end
+
+  test "doctor keeps OpenCode-native lower fidelity instead of claiming Pi or OMP runtime verification" do
+    workspace = tmp_workspace("wardwright-opencode-native-runtime")
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    write_opencode_runtime_config(workspace, %{
+      "agentRuntime" => %{
+        "id" => "opencode-native",
+        "source" => "project config"
+      }
+    })
+
+    results =
+      Adapters.doctor(
+        find_executable: fake_opencode_finder(),
+        workspace_root: workspace
+      )
+
+    opencode = Enum.find(results, &(&1.target == "opencode"))
+    assert opencode.runtime == "opencode-native"
+    assert opencode.runtime_source == "project config"
+    assert opencode.adapter_id == "wardwright-opencode"
+    assert opencode.coverage == "surface_scaffold"
+    assert opencode.fidelity == "session_import_best_effort"
+    assert opencode.state == "installable"
+    assert opencode.install_plan == "install_plugin_scaffold"
+    refute opencode.fidelity == "runtime_verified"
+
+    assert opencode.next_actions == [
+             "OpenCode-native plugin install is not packaged yet; use the current harness export scaffold for best-effort handoff"
+           ]
+  end
+
+  test "doctor resolves OpenCode Codex runtime as gateway identity support without OMP probe claims" do
+    workspace = tmp_workspace("wardwright-opencode-codex-runtime")
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    write_opencode_runtime_config(workspace, %{
+      "runtime" => "openai-codex",
+      "runtime_source" => "opencode provider config"
+    })
+
+    collector = collector()
+
+    assert 0 =
+             Adapters.run(["doctor", "--json"], collector,
+               find_executable: fake_opencode_finder(),
+               workspace_root: workspace
+             )
+
+    results = collected() |> JSON.decode!()
+    opencode = Enum.find(results, &(&1["target"] == "opencode"))
+
+    assert opencode["runtime"] == "codex"
+    assert opencode["runtime_source"] == "opencode provider config"
+    assert opencode["adapter_id"] == "wardwright-codex"
+    assert opencode["coverage"] == "gateway_identity"
+    assert opencode["fidelity"] == "prompt_handoff"
+    assert opencode["state"] == "installable"
+    assert opencode["install_plan"] == "install_gateway_identity"
+    refute Enum.any?(opencode["next_actions"], &String.contains?(&1, "probe omp"))
   end
 
   test "install omp writes only project-local Wardwright adapter files" do
@@ -481,6 +577,19 @@ defmodule Wardwright.CLIAdaptersTest do
       "omp" -> "/tmp/fake-bin/omp"
       _binary -> nil
     end
+  end
+
+  defp fake_opencode_finder do
+    fn
+      "opencode" -> "/tmp/fake-bin/opencode"
+      _binary -> nil
+    end
+  end
+
+  defp write_opencode_runtime_config(workspace, payload) do
+    path = Path.join(workspace, ".opencode/wardwright-runtime.json")
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, JSON.encode!(payload))
   end
 
   defp tmp_workspace(prefix) do

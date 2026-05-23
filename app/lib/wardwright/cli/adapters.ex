@@ -5,6 +5,7 @@ defmodule Wardwright.CLI.Adapters do
   alias Wardwright.AgentAdapters.Identity
   alias Wardwright.AgentAdapters.OmpInstaller
   alias Wardwright.AgentAdapters.OmpPack
+  alias Wardwright.AgentAdapters.OpenCodeRuntime
 
   @key_adapter_id "adapter_id"
   @key_adapter_version "adapter_version"
@@ -290,7 +291,8 @@ defmodule Wardwright.CLI.Adapters do
 
   defp doctor_target(target, opts) do
     detected_path = detected_path(target, opts)
-    runtime = runtime_for(target, detected_path, opts)
+    runtime_info = runtime_info_for(target, detected_path, opts)
+    runtime = runtime_info.runtime
     resolution = resolution_for(target.surface, runtime)
     supported? = supported_resolution?(resolution)
     detected? = is_binary(detected_path)
@@ -313,12 +315,12 @@ defmodule Wardwright.CLI.Adapters do
       detected: detected?,
       detected_path: detected_path,
       fidelity: resolution.fidelity,
-      install_plan: :wardwright@adapter_core.install_plan(state, "project", false),
+      install_plan: doctor_install_plan(state, target, resolution),
       installed_paths: installation.installed_paths,
       label: target.label,
       next_actions: next_actions(state, target, resolution),
       runtime: if(detected?, do: runtime, else: "not_detected"),
-      runtime_source: runtime_source(target, detected_path, opts),
+      runtime_source: runtime_info.source,
       state: state,
       target: target.target
     }
@@ -351,6 +353,11 @@ defmodule Wardwright.CLI.Adapters do
       runtime_probe_passed: false
     }
   end
+
+  defp doctor_install_plan("installable", %{target: "opencode"}, resolution), do: resolution.install_strategy
+
+  defp doctor_install_plan(state, _target, _resolution),
+    do: :wardwright@adapter_core.install_plan(state, "project", false)
 
   defp catalog_resolution(%{default_runtime: nil}), do: unsupported_resolution()
 
@@ -522,30 +529,37 @@ defmodule Wardwright.CLI.Adapters do
     |> Enum.map_join("\n", &"  #{&1}")
   end
 
-  defp runtime_for(target, nil, _opts), do: target.default_runtime || "unknown"
-
-  defp runtime_for(target, _detected_path, opts) do
-    runtime_hints = Keyword.get(opts, :runtime_hints, %{})
-    hinted_runtime = Map.get(runtime_hints, target.target)
-    hinted_runtime || target.default_runtime || "unknown"
+  defp runtime_info_for(target, nil, _opts) do
+    %{
+      runtime: target.default_runtime || "unknown",
+      source: if(target.default_runtime, do: "default", else: "not_detected")
+    }
   end
 
-  defp runtime_source(target, nil, _opts) do
-    if target.default_runtime, do: "default", else: "not_detected"
-  end
-
-  defp runtime_source(target, _detected_path, opts) do
+  defp runtime_info_for(target, _detected_path, opts) do
     runtime_hints = Keyword.get(opts, :runtime_hints, %{})
 
     if Map.has_key?(runtime_hints, target.target) do
-      "hint"
+      %{runtime: Map.fetch!(runtime_hints, target.target), source: "runtime hint"}
     else
-      "default"
+      detected_runtime_info_for(target, opts)
     end
   end
 
-  defp runtime_source(%{runtime_source: "hint"}), do: " via runtime hint"
+  defp detected_runtime_info_for(%{target: "opencode"} = target, opts) do
+    workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
+
+    case OpenCodeRuntime.resolve(workspace_root) do
+      {:ok, runtime} -> %{runtime: runtime.runtime, source: runtime.source}
+      :unknown -> %{runtime: target.default_runtime || "unknown", source: "default"}
+    end
+  end
+
+  defp detected_runtime_info_for(target, _opts), do: %{runtime: target.default_runtime || "unknown", source: "default"}
+
   defp runtime_source(%{runtime_source: "default"}), do: " via default"
+  defp runtime_source(%{runtime_source: "not_detected"}), do: ""
+  defp runtime_source(%{runtime_source: source}) when is_binary(source) and source != "", do: " via #{source}"
   defp runtime_source(_row), do: ""
 
   defp request_pairing_identity(gateway_token, opts) do
@@ -591,6 +605,24 @@ defmodule Wardwright.CLI.Adapters do
 
   defp next_actions("not_detected", target, _resolution), do: ["install #{Enum.join(target.binaries, " or ")} first"]
 
+  defp next_actions("installable", %{target: "opencode"}, %{coverage: "covered_through_runtime"} = resolution) do
+    runtime_target = runtime_adapter_target(resolution.adapter_id)
+
+    ["run `wardwright adapters install #{runtime_target}` to install the runtime adapter used by OpenCode"]
+  end
+
+  defp next_actions("installable", %{target: "opencode"}, %{install_strategy: "install_plugin_scaffold"}) do
+    [
+      "OpenCode-native plugin install is not packaged yet; use the current harness export scaffold for best-effort handoff"
+    ]
+  end
+
+  defp next_actions("installable", %{target: "opencode"}, %{install_strategy: "install_gateway_identity"}) do
+    action(
+      "install Codex/gateway identity support when that adapter surface is packaged; do not run the OMP runtime probe"
+    )
+  end
+
   defp next_actions("installable", target, resolution) do
     ["run `wardwright adapters install #{target.target}` to #{install_summary(resolution.install_strategy)}"]
   end
@@ -624,6 +656,10 @@ defmodule Wardwright.CLI.Adapters do
   defp install_summary("install_plugin_scaffold"), do: "install the plugin/import scaffold"
   defp install_summary("install_gateway_identity"), do: "install gateway identity support"
   defp install_summary(_install_strategy), do: "install adapter support files"
+
+  defp runtime_adapter_target("wardwright-omp"), do: "omp"
+  defp runtime_adapter_target("wardwright-pi"), do: "pi"
+  defp runtime_adapter_target(_adapter_id), do: "opencode"
 
   defp action(message), do: [message]
 
