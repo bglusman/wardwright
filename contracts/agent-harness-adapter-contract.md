@@ -106,5 +106,10 @@ trace files and shaping external JSON.
 - Whether Wardwright and omp produce equivalent TTSR behavior for the same
   rule, or whether placement changes agent visibility, enforcement overhead, or
   correctness.
+- Whether the gateway should alter defaults when a verified adapter identity is
+  present, for example opt-in debugger auto-recording for adapted agents while
+  preserving today's explicit controls for generic clients.
+- How Wardwright should install, verify, and repair agent adapter configuration
+  without making adapters a requirement for baseline gateway/API use.
 - Whether Wardwright should add a CLI command for adapter exports in addition to
   the protected API/UI.

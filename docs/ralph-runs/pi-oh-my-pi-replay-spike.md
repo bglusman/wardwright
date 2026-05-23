@@ -81,6 +81,53 @@ plugin can add replay reminders and metadata around future tool execution, but
 it does not repair the current import limitation where Wardwright evidence is
 stored as text/step parts rather than native imported tool-result state.
 
+## Adapter Policy Questions
+
+Agent adapters should be treated as capability signals, not requirements.
+Wardwright should continue to work for ordinary clients exactly as it does now,
+then selectively unlock better behavior when an adapter is present and
+verified.
+
+The gateway should probably distinguish at least these cases:
+
+- no adapter signal: use today's explicit debugger controls and do not assume
+  agent-local state exists;
+- adapter installed but unverified: expose setup status and conservative
+  handoff/export commands, but do not change recording defaults;
+- adapter verified for the current workspace/session: allow opt-in behavior
+  such as "auto-record debugger traces for adapted agents";
+- adapter verified plus state-fidelity probe matched: allow stronger replay UI
+  affordances while still avoiding equivalent-resume claims unless the full
+  contract says so.
+
+That suggests debugger recording should become policy-driven rather than a
+single global toggle. A useful default could be:
+
+- record when the request declares a trusted Wardwright adapter identity and the
+  user enabled adapter auto-recording;
+- do not auto-record for generic OpenAI-compatible clients unless the user
+  enabled broader gateway recording;
+- always allow explicit record/replay controls regardless of adapter status.
+
+Shipping also needs a real install and maintenance story. The adapter should be
+easy to discover and diagnose without requiring users to understand each
+agent's config layout. A future Wardwright CLI surface could provide:
+
+- `wardwright adapters install omp` to place rules/extensions and write the
+  minimal agent config;
+- `wardwright adapters doctor` to report installed versions, config paths,
+  reachable gateway URL, auth status, and whether the adapter identity is being
+  sent on live requests;
+- `wardwright adapters repair` or scoped install subcommands when config drift
+  is common enough to justify mutation;
+- export-only fallback commands for users who do not want persistent agent
+  integration.
+
+The standard should stay strict: adapters are worth shipping when they improve
+visibility, fidelity, setup ergonomics, or enforcement latency. They should not
+become the only path unless they unlock something that cannot degrade cleanly
+to today's gateway/API support.
+
 ## Current Verdict
 
 Pi/omp is more promising than OpenCode for counterfactual replay because Pi
