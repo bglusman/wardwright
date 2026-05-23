@@ -372,6 +372,13 @@ defmodule WardwrightWeb.WorkbenchTest do
 
     assert WardwrightWeb.LustreWorkbenchData.default_model_response("demo-composed-retry-router") =~
              "OldClient"
+
+    assert {"model-default", "Model default", "Current model policy sample", _input, _response, retry_responses} =
+             WardwrightWeb.LustreWorkbenchData.fixture_options("tts-retry", "demo-retry-guard")
+             |> Enum.find(&(elem(&1, 0) == "model-default"))
+
+    assert {2, "Still uses OldClient(arg)."} in retry_responses
+    assert {3, "Use NewClient(arg) in the migration."} in retry_responses
   end
 
   test "Lustre state graph composes across nested Wardwright model targets" do

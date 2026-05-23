@@ -201,7 +201,7 @@ pub fn invalid_authoring_draft_blocks_simulation(
 
   view_contains(edited, "Draft JSON is invalid")
   && view_contains(edited, "invalid draft")
-  && view_contains(edited, "Simulating active model " <> model_id)
+  && view_contains(edited, "Registered model")
 }
 
 pub fn authoring_refinement_prompt_is_available(

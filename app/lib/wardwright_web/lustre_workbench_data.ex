@@ -245,7 +245,7 @@ defmodule WardwrightWeb.LustreWorkbenchData do
       "Current model policy sample",
       default_model_simulation_user_input(config),
       default_model_simulation_response(config),
-      fixture_retry_responses(model_id, [])
+      fixture_retry_responses(model_id, default_retry_attempts(config))
     }
   end
 
@@ -325,6 +325,33 @@ defmodule WardwrightWeb.LustreWorkbenchData do
   end
 
   defp parse_attempt_index(_index), do: nil
+
+  defp default_retry_attempts(config) do
+    local_default_retry_attempts(config) ||
+      nested_retry_attempt_default(config) ||
+      []
+  end
+
+  defp local_default_retry_attempts(config) do
+    config
+    |> Map.get("targets", [])
+    |> Enum.find_value(fn
+      %{"canned_outputs" => [_first, _second | _rest] = outputs} ->
+        outputs
+        |> Enum.drop(1)
+        |> Enum.with_index(2)
+        |> Enum.map(fn {output, index} -> %{"index" => index, "model_output" => to_string(output)} end)
+
+      _target ->
+        nil
+    end)
+  end
+
+  defp nested_retry_attempt_default(config) do
+    config
+    |> nested_model_configs([])
+    |> Enum.find_value(&local_default_retry_attempts/1)
+  end
 
   defp slug(value) do
     value

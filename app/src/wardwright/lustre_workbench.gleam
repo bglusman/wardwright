@@ -818,7 +818,7 @@ pub fn view(model: Model) -> Element(Msg) {
     html.style([], styles()),
     lustre_shell.sidebar(
       lustre_shell.Workbench,
-      "Live model workbench",
+      "Model lab",
       sidebar_controls(model),
     ),
     workspace(model),
@@ -826,30 +826,120 @@ pub fn view(model: Model) -> Element(Msg) {
 }
 
 pub fn workspace(model: Model) -> Element(Msg) {
+  let example_preview = is_example_model_id(model.model_id)
+
   html.main([class("workspace")], [
     html.header([class("topbar")], [
       html.div([], [
-        html.h1([], [text(model.model_id)]),
-        html.p([], [
-          text(
-            model.simulation.pattern_title
-            <> ": "
-            <> model.simulation.pattern_promise,
-          ),
+        html.h1([], [text(model_title(model.model_id))]),
+        html.p([], [text(model_description(model))]),
+        html.small([class("model-subtitle")], [
+          text(model.model_id <> " / " <> model.simulation.pattern_title),
         ]),
       ]),
+      html.div([class("mode-actions")], [
+        html.span([class(mode_badge_class(example_preview))], [
+          text(mode_title(example_preview)),
+        ]),
+        case example_preview {
+          True ->
+            element(
+              "a",
+              [class("secondary-link"), attribute("href", "/admin")],
+              [text("Open live model")],
+            )
+
+          False -> html.span([], [])
+        },
+      ]),
     ]),
-    html.div([class("simulation-mode")], [
-      text(authoring_draft.simulation_label(
-        model.authoring_draft,
-        model.model_id,
-      )),
+    html.div([class(mode_banner_class(example_preview))], [
+      text(mode_banner_text(example_preview, model)),
     ]),
     simulator_form(model),
     results_grid(model),
     trace_panel(model),
     authoring_panel(model),
   ])
+}
+
+fn model_title(model_id: String) -> String {
+  case example_model_info(model_id) {
+    Ok(#(_, title, _, _)) -> blank_default(title, model_id)
+    Error(_) -> model_id
+  }
+}
+
+fn model_description(model: Model) -> String {
+  case example_model_info(model.model_id) {
+    Ok(#(_, _, description, _)) ->
+      blank_default(description, pattern_description(model))
+    Error(_) -> pattern_description(model)
+  }
+}
+
+fn pattern_description(model: Model) -> String {
+  model.simulation.pattern_title <> ": " <> model.simulation.pattern_promise
+}
+
+fn is_example_model_id(model_id: String) -> Bool {
+  case example_model_info(model_id) {
+    Ok(_) -> True
+    Error(_) -> False
+  }
+}
+
+fn example_model_info(model_id: String) -> Result(ExampleModelOption, Nil) {
+  external_example_model_options()
+  |> find_example_model(model_id)
+}
+
+fn find_example_model(
+  options: List(ExampleModelOption),
+  model_id: String,
+) -> Result(ExampleModelOption, Nil) {
+  case options {
+    [] -> Error(Nil)
+    [option, ..rest] -> {
+      let #(option_id, _, _, _) = option
+
+      case option_id == model_id {
+        True -> Ok(option)
+        False -> find_example_model(rest, model_id)
+      }
+    }
+  }
+}
+
+fn mode_title(example_preview: Bool) -> String {
+  case example_preview {
+    True -> "Example preview"
+    False -> "Registered model"
+  }
+}
+
+fn mode_badge_class(example_preview: Bool) -> String {
+  case example_preview {
+    True -> "mode-badge preview"
+    False -> "mode-badge live"
+  }
+}
+
+fn mode_banner_class(example_preview: Bool) -> String {
+  case example_preview {
+    True -> "simulation-mode preview"
+    False -> "simulation-mode live"
+  }
+}
+
+fn mode_banner_text(example_preview: Bool, model: Model) -> String {
+  case example_preview {
+    True ->
+      "Previewing an example. Select a registered model when you want to inspect live local behavior."
+
+    False ->
+      authoring_draft.simulation_label(model.authoring_draft, model.model_id)
+  }
 }
 
 pub fn sidebar_controls(model: Model) -> List(Element(Msg)) {
@@ -1545,6 +1635,7 @@ fn results_grid(model: Model) -> Element(Msg) {
   let simulation = model.simulation
 
   html.section([class("results")], [
+    latest_run_summary(simulation),
     html.article([class(changed_class(simulation.input_changed))], [
       html.div([class("panel-heading")], [
         html.span([], [text("Sent to provider")]),
@@ -1593,6 +1684,62 @@ fn results_grid(model: Model) -> Element(Msg) {
     policy_action_table(simulation.policy_actions),
     state_machine_graph(model),
     state_machine_table(simulation.state_replay),
+  ])
+}
+
+fn latest_run_summary(simulation: Simulation) -> Element(Msg) {
+  html.article([class("panel run-summary")], [
+    html.div([class("panel-heading")], [
+      html.div([], [
+        html.span([], [text("Latest simulated run")]),
+        html.strong([], [
+          text(
+            "Provider "
+            <> blank_default(simulation.selected_model, "not selected")
+            <> " / ends in "
+            <> blank_default(
+              simulation.state_replay.final_state,
+              "single state",
+            ),
+          ),
+        ]),
+      ]),
+      badge.badge([badge.variant(badge.Secondary)], [
+        text(blank_default(simulation.verdict, "unknown")),
+      ]),
+    ]),
+    html.div([class("run-path")], trace_summary_items(simulation.trace_events)),
+  ])
+}
+
+fn trace_summary_items(events: List(TraceEvent)) -> List(Element(Msg)) {
+  case events {
+    [] -> [
+      html.span([class("run-step")], [text("No trace events recorded.")]),
+    ]
+    _ -> events |> take_trace_events(6) |> list.map(trace_summary_item)
+  }
+}
+
+fn take_trace_events(
+  events: List(TraceEvent),
+  remaining: Int,
+) -> List(TraceEvent) {
+  case remaining <= 0 {
+    True -> []
+    False ->
+      case events {
+        [] -> []
+        [event, ..rest] -> [event, ..take_trace_events(rest, remaining - 1)]
+      }
+  }
+}
+
+fn trace_summary_item(event: TraceEvent) -> Element(Msg) {
+  let #(phase, label, _, severity, _) = event
+
+  html.span([class("run-step " <> severity_class(severity))], [
+    text(blank_default(label, blank_default(phase, "event"))),
   ])
 }
 
@@ -2224,6 +2371,52 @@ pub fn styles() -> String {
   .runtime-note {
     margin-top: auto;
   }
+  .mode-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .mode-badge {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    max-width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 850;
+    overflow-wrap: anywhere;
+  }
+  .mode-badge.preview {
+    background: #fff6e7;
+    border-color: #e1b96e;
+    color: #6b4a12;
+  }
+  .mode-badge.live {
+    background: #eef6f2;
+    border-color: #9ec8c3;
+    color: #274736;
+  }
+  .secondary-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--foreground);
+    font-size: 12px;
+    font-weight: 800;
+    text-decoration: none;
+  }
+  .secondary-link:hover {
+    background: var(--accent);
+    color: var(--accent-foreground);
+  }
   .workspace {
     display: flex;
     flex-direction: column;
@@ -2243,6 +2436,11 @@ pub fn styles() -> String {
     font-weight: 800;
     overflow-wrap: anywhere;
   }
+  .simulation-mode.preview {
+    background: #fffaf0;
+    border-color: #e1b96e;
+    color: #6b4a12;
+  }
   .topbar, .form-header, .trace-header, .panel-heading {
     display: flex;
     justify-content: space-between;
@@ -2259,6 +2457,14 @@ pub fn styles() -> String {
     margin: 0;
     color: #46525f;
     line-height: 1.45;
+  }
+  .model-subtitle {
+    display: block;
+    margin-top: 8px;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    font-weight: 700;
+    overflow-wrap: anywhere;
   }
   .status-stack, .actions {
     display: flex;
@@ -2511,6 +2717,48 @@ pub fn styles() -> String {
   .panel.changed {
     border-color: #d99a24;
     background: #fffaf0;
+  }
+  .run-summary {
+    grid-column: 1 / -1;
+    gap: 12px;
+  }
+  .run-summary .panel-heading strong {
+    display: block;
+    margin-top: 4px;
+    font-size: 14px;
+  }
+  .run-path {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .run-step {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 7px 9px;
+    border: 1px solid #dbe5ed;
+    border-radius: 999px;
+    background: #f7faf9;
+    color: #354554;
+    font-size: 12px;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+  }
+  .run-step.fail {
+    border-color: #ecb4a9;
+    background: #fff4f1;
+    color: #7a2d1f;
+  }
+  .run-step.warn {
+    border-color: #e1b96e;
+    background: #fffaf0;
+    color: #6b4a12;
+  }
+  .run-step.pass {
+    border-color: #bcded3;
+    background: #f0faf6;
+    color: #274736;
   }
   pre {
     min-height: 170px;
