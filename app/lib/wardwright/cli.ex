@@ -1,9 +1,10 @@
 defmodule Wardwright.CLI do
   @moduledoc false
 
+  alias Wardwright.CLI.Adapters
   alias Wardwright.CLI.Admin
 
-  def run(argv, write_fun \\ &IO.puts/1, admin_fun \\ &Admin.open/2) do
+  def run(argv, write_fun \\ &IO.puts/1, admin_fun \\ &Admin.open/2, adapters_fun \\ &Adapters.run/2) do
     case argv do
       ["--version" | _] ->
         write_fun.(version())
@@ -29,6 +30,10 @@ defmodule Wardwright.CLI do
 
       ["admin" | rest] ->
         status = admin_fun.(admin_path(rest), write_fun)
+        {:halt, status}
+
+      ["adapters" | rest] ->
+        status = adapters_fun.(rest, write_fun)
         {:halt, status}
 
       ["tools", "--json" | _] ->
@@ -61,6 +66,8 @@ defmodule Wardwright.CLI do
       wardwright serve          Start the Wardwright HTTP service
       wardwright admin          Open the operator workbench, starting it if needed
       wardwright admin access   Open Model Management
+      wardwright adapters list  List installable agent adapter targets
+      wardwright adapters doctor  Detect local adapter/runtime status
       wardwright tools          Print policy-authoring MCP/API help for agents
       wardwright tools --json   Print machine-readable authoring tool metadata
       wardwright --version      Print the packaged app version
