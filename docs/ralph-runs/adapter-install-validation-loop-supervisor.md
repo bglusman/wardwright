@@ -381,3 +381,61 @@ execution constraints for the loop are:
   surfaces.
 - Next open item: backlog item 6, extend `probe omp` to invoke the current
   runtime equivalence probe from the packaged CLI path.
+
+### Loop 6 - OMP Adapter Probe CLI
+
+- Timestamp: 2026-05-23T18:06-04:00.
+- Starting commit: `67d9a01`.
+- Ending implementation commit: `93e0647`.
+- Scope: added `wardwright adapters probe omp`, packaged the OMP TTSR runtime
+  equivalence probe under `app/priv/agent_adapters`, and kept the repository
+  `scripts/omp-ttsr-runtime-equivalence.mjs` path as a thin wrapper around the
+  packaged probe implementation. The CLI now runs the probe against the
+  project-installed OMP rule and paired adapter config, records sanitized probe
+  evidence in `.omp/wardwright-adapter.json`, and lets doctor report
+  `verified_with_probe` only when both the gateway identity validates and the
+  runtime probe has passed.
+- Validation:
+  - `cd app && MIX_ENV=test mise exec -- sh -lc 'mix compile && mix test --no-compile test/cli_adapters_test.exs test/cli_test.exs test/agent_adapter_identity_test.exs test/gleam_adapter_core_test.exs'`
+  - `cd app && MIX_ENV=test mise exec -- mix format --check-formatted`
+  - `mise run check:maps`
+  - `mise run check:types`
+  - `mise exec -- node --check scripts/omp-ttsr-runtime-equivalence.mjs`
+  - `mise exec -- node --check app/priv/agent_adapters/omp-ttsr-runtime-equivalence.mjs`
+  - `gitleaks protect --staged --config .gitleaks.toml --verbose`
+  - Commit hook reran app format/test and staged gitleaks:
+    `388 passed (21 properties, 367 tests), 6 excluded`; staged gitleaks
+    clean.
+- Adversarial review:
+  - Architecture: filesystem/config mutation and subprocess execution stay in
+    `Wardwright.AgentAdapters.OmpInstaller`; the CLI boundary only parses
+    options, detects the OMP binary, and renders outcomes. Probe evidence is a
+    sanitized status/digest record, not raw output or adapter credentials. The
+    state classification still goes through the Gleam adapter core, so probe
+    success cannot override drifted files or an unverified identity.
+  - Architecture concern reviewed: the CLI module continues to grow, but this
+    slice did not put process execution or manifest hashing into it. Future
+    non-OMP probes should move through per-target adapter modules rather than
+    adding target-specific probe branches directly to the CLI module.
+  - Code quality/comments: the root script is now a wrapper so there is one
+    runtime-probe implementation to maintain. No comments were added; function
+    names and evidence keys carry the contract. Probe failures currently print
+    the synthetic probe subprocess output; that is acceptable for this probe
+    because it uses Wardwright-controlled fixture prompts, but future probes
+    that can surface real agent content must redact or hash output before
+    printing.
+  - Test quality: tests assert product behavior with temp workspaces and an
+    injected process runner: probe refuses unpaired installs, uses the installed
+    rule and paired config path, does not print or store the gateway token in
+    probe evidence, and only reaches `verified_with_probe` when doctor can
+    validate the identity. These tests would fail for source-only rule probing,
+    token leakage, skipping pairing, or marking probe verification without
+    identity verification.
+  - Post-commit review of `93e0647` found no blockers.
+- Skipped probes: the real OMP TTSR subprocess probe was skipped because
+  neither `omp` nor `oh-my-pi` is installed in this environment. OpenCode
+  surface probe, OpenClaw runtime probes, and Claude gateway identity probe
+  remain skipped because this loop only wires the OMP packaged CLI probe path.
+- Next open item: backlog item 7, add OpenCode runtime resolution and ensure
+  Pi/OMP-backed, OpenCode-native, and Codex-backed modes get distinct fidelity
+  labels.
