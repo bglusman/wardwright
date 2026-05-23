@@ -1,6 +1,7 @@
 defmodule Wardwright.CLIAdaptersTest do
   use ExUnit.Case, async: true
 
+  alias Wardwright.AgentAdapters.OmpPack
   alias Wardwright.CLI.Adapters
 
   test "list prints stable adapter targets without claiming runtime-specific OpenCode support" do
@@ -61,6 +62,7 @@ defmodule Wardwright.CLIAdaptersTest do
     assert omp["runtime"] == "not_detected"
     assert omp["state"] == "not_detected"
     assert omp["install_plan"] == "no_install"
+    assert omp["installed_paths"] == []
     assert omp["next_actions"] == ["install omp or oh-my-pi first"]
   end
 
@@ -93,6 +95,147 @@ defmodule Wardwright.CLIAdaptersTest do
     assert opencode.coverage == "covered_through_runtime"
     assert opencode.fidelity == "runtime_verified"
     assert opencode.state == "installable"
+  end
+
+  test "install omp writes only project-local Wardwright adapter files" do
+    workspace = tmp_workspace("wardwright-omp-install")
+    collector = collector()
+
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    assert 0 =
+             Adapters.run(["install", "omp"], collector,
+               find_executable: fake_omp_finder(),
+               workspace_root: workspace
+             )
+
+    output = collected()
+    assert output =~ "Installed OMP adapter files"
+
+    expected_paths = Enum.map(OmpPack.expected_files(), & &1.path)
+
+    assert Enum.sort(expected_paths) ==
+             workspace
+             |> Path.join(".omp")
+             |> all_relative_files()
+             |> Enum.map(&Path.join(".omp", &1))
+             |> Enum.sort()
+
+    assert File.read!(Path.join(workspace, ".omp/rules/wardwright-read-before-edit.md")) =~
+             "Wardwright read-before-edit replay guard"
+  end
+
+  test "doctor reports installed OMP files as unverified until pairing or probe evidence exists" do
+    workspace = tmp_workspace("wardwright-omp-doctor-installed")
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    assert 0 =
+             Adapters.run(["install", "omp"], collector(),
+               find_executable: fake_omp_finder(),
+               workspace_root: workspace
+             )
+
+    results =
+      Adapters.doctor(
+        find_executable: fake_omp_finder(),
+        workspace_root: workspace
+      )
+
+    omp = Enum.find(results, &(&1.target == "omp"))
+    assert omp.state == "installed_unverified"
+    assert omp.install_plan == "pair_or_probe"
+    assert ".omp/wardwright-adapter-manifest.json" in omp.installed_paths
+    assert omp.next_actions == ["run `wardwright adapters pair omp` or `wardwright adapters probe omp`"]
+  end
+
+  test "doctor detects modified OMP adapter files as drifted" do
+    workspace = tmp_workspace("wardwright-omp-doctor-drifted")
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    assert 0 =
+             Adapters.run(["install", "omp"], collector(),
+               find_executable: fake_omp_finder(),
+               workspace_root: workspace
+             )
+
+    rule_path = Path.join(workspace, ".omp/rules/wardwright-read-before-edit.md")
+    File.write!(rule_path, "local project edit\n")
+
+    results =
+      Adapters.doctor(
+        find_executable: fake_omp_finder(),
+        workspace_root: workspace
+      )
+
+    omp = Enum.find(results, &(&1.target == "omp"))
+    assert omp.state == "drifted"
+    assert omp.install_plan == "repair_required"
+
+    assert omp.next_actions == [
+             "review local edits, then run `wardwright adapters install omp --repair` if replacement is intentional"
+           ]
+  end
+
+  test "install omp refuses to overwrite edited files unless repair is explicit" do
+    workspace = tmp_workspace("wardwright-omp-repair")
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    assert 0 =
+             Adapters.run(["install", "omp"], collector(),
+               find_executable: fake_omp_finder(),
+               workspace_root: workspace
+             )
+
+    rule_path = Path.join(workspace, ".omp/rules/wardwright-read-before-edit.md")
+    File.write!(rule_path, "local project edit\n")
+
+    collector = collector()
+
+    assert 1 =
+             Adapters.run(["install", "omp"], collector,
+               find_executable: fake_omp_finder(),
+               workspace_root: workspace
+             )
+
+    assert File.read!(rule_path) == "local project edit\n"
+    assert collected() =~ "rerun with `--repair`"
+
+    assert 0 =
+             Adapters.run(["install", "omp", "--repair"], collector(),
+               find_executable: fake_omp_finder(),
+               workspace_root: workspace
+             )
+
+    assert File.read!(rule_path) =~ "Wardwright read-before-edit replay guard"
+  end
+
+  test "uninstall omp removes Wardwright-owned files but leaves edited files in place" do
+    workspace = tmp_workspace("wardwright-omp-uninstall")
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    assert 0 =
+             Adapters.run(["install", "omp"], collector(),
+               find_executable: fake_omp_finder(),
+               workspace_root: workspace
+             )
+
+    rule_path = Path.join(workspace, ".omp/rules/wardwright-read-before-edit.md")
+    File.write!(rule_path, "local project edit\n")
+
+    collector = collector()
+
+    assert 0 =
+             Adapters.run(["uninstall", "omp"], collector, workspace_root: workspace)
+
+    output = collected()
+    assert output =~ "Removed Wardwright-owned OMP adapter files"
+    assert output =~ ".omp/extensions/wardwright-state-fidelity.ts"
+    assert output =~ "Skipped edited or unknown files"
+    assert output =~ ".omp/rules/wardwright-read-before-edit.md"
+
+    assert File.read!(rule_path) == "local project edit\n"
+    refute File.exists?(Path.join(workspace, ".omp/extensions/wardwright-state-fidelity.ts"))
+    refute File.exists?(Path.join(workspace, ".omp/wardwright-adapter-manifest.json"))
   end
 
   test "doctor human output explains unsupported detected runtime without overclaiming install support" do
@@ -144,5 +287,27 @@ defmodule Wardwright.CLIAdaptersTest do
     after
       0 -> lines |> Enum.reverse() |> Enum.join("\n")
     end
+  end
+
+  defp fake_omp_finder do
+    fn
+      "omp" -> "/tmp/fake-bin/omp"
+      _binary -> nil
+    end
+  end
+
+  defp tmp_workspace(prefix) do
+    path = Path.join(System.tmp_dir!(), "#{prefix}-#{System.unique_integer([:positive])}")
+    File.rm_rf!(path)
+    File.mkdir_p!(path)
+    path
+  end
+
+  defp all_relative_files(path) do
+    path
+    |> Path.join("**/*")
+    |> Path.wildcard()
+    |> Enum.filter(&File.regular?/1)
+    |> Enum.map(&Path.relative_to(&1, path))
   end
 end

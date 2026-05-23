@@ -134,12 +134,12 @@ const cases = [
 ];
 
 async function loadExportedOmpRule() {
-  const sourcePath = path.join(REPO_ROOT, "app", "lib", "wardwright_web", "agent_harness_adapters.ex");
+  const sourcePath = path.join(REPO_ROOT, "app", "lib", "wardwright", "agent_adapters", "omp_pack.ex");
   const source = await readFile(sourcePath, "utf8");
-  const match = /defp oh_my_pi_ttsr_rule do\s+"""\n([\s\S]*?)\n\s+"""\n\s+end/.exec(source);
+  const match = /def rule_content do\s+"""\n([\s\S]*?)\n\s+"""\n\s+end/.exec(source);
 
   if (!match) {
-    throw new Error(`Could not find oh_my_pi_ttsr_rule heredoc in ${sourcePath}`);
+    throw new Error(`Could not find OMP rule content in ${sourcePath}`);
   }
 
   return `${match[1]

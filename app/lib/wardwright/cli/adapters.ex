@@ -1,6 +1,8 @@
 defmodule Wardwright.CLI.Adapters do
   @moduledoc false
 
+  alias Wardwright.AgentAdapters.OmpInstaller
+
   @targets [
     %{
       binaries: ~w(omp oh-my-pi),
@@ -68,6 +70,12 @@ defmodule Wardwright.CLI.Adapters do
         write_fun.(doctor_human(opts))
         0
 
+      ["install", target | rest] ->
+        install(target, rest, write_fun, opts)
+
+      ["uninstall", target | rest] ->
+        uninstall(target, rest, write_fun, opts)
+
       _ ->
         write_fun.(help())
         2
@@ -94,6 +102,56 @@ defmodule Wardwright.CLI.Adapters do
 
   def doctor(opts \\ []) do
     Enum.map(@targets, &doctor_target(&1, opts))
+  end
+
+  def install(target, argv, write_fun, opts \\ [])
+
+  def install("omp", argv, write_fun, opts) do
+    with {:ok, parsed} <- parse_install_args(argv),
+         :ok <- ensure_project_scope(parsed.scope),
+         :ok <- ensure_runtime_detected("omp", opts) do
+      workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
+
+      case OmpInstaller.install(workspace_root, repair?: parsed.repair?) do
+        {:ok, result} ->
+          write_fun.(install_success_human(result))
+          0
+
+        {:error, :repair_required, inspection} ->
+          write_fun.(repair_required_human(inspection))
+          1
+      end
+    else
+      {:error, message} ->
+        write_fun.(message)
+        2
+    end
+  end
+
+  def install(_target, _argv, write_fun, _opts) do
+    write_fun.("Only `wardwright adapters install omp` is implemented in this loop.")
+    2
+  end
+
+  def uninstall(target, argv, write_fun, opts \\ [])
+
+  def uninstall("omp", argv, write_fun, opts) do
+    with {:ok, parsed} <- parse_scope_args(argv),
+         :ok <- ensure_project_scope(parsed.scope) do
+      workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
+      {:ok, result} = OmpInstaller.uninstall(workspace_root)
+      write_fun.(uninstall_success_human(result))
+      0
+    else
+      {:error, message} ->
+        write_fun.(message)
+        2
+    end
+  end
+
+  def uninstall(_target, _argv, write_fun, _opts) do
+    write_fun.("Only `wardwright adapters uninstall omp` is implemented in this loop.")
+    2
   end
 
   defp list_human(opts) do
@@ -144,14 +202,15 @@ defmodule Wardwright.CLI.Adapters do
     resolution = resolution_for(target.surface, runtime)
     supported? = supported_resolution?(resolution)
     detected? = is_binary(detected_path)
+    installation = installation_for(target, opts)
 
     state =
       :wardwright@adapter_core.adapter_state(
         detected?,
         supported?,
         supported?,
-        false,
-        true,
+        installation.installed_files_present,
+        installation.installed_manifest_matches,
         false,
         false
       )
@@ -163,12 +222,35 @@ defmodule Wardwright.CLI.Adapters do
       detected_path: detected_path,
       fidelity: resolution.fidelity,
       install_plan: :wardwright@adapter_core.install_plan(state, "project", false),
+      installed_paths: installation.installed_paths,
       label: target.label,
       next_actions: next_actions(state, target, resolution),
       runtime: if(detected?, do: runtime, else: "not_detected"),
       runtime_source: runtime_source(target, detected_path, opts),
       state: state,
       target: target.target
+    }
+  end
+
+  defp installation_for(%{target: "omp"}, opts) do
+    workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
+    inspection = OmpInstaller.status(workspace_root)
+
+    %{
+      installed_files_present: inspection.installed_files_present,
+      installed_manifest_matches: inspection.installed_manifest_matches,
+      installed_paths:
+        inspection.files
+        |> Enum.filter(& &1.present?)
+        |> Enum.map(& &1.path)
+    }
+  end
+
+  defp installation_for(_target, _opts) do
+    %{
+      installed_files_present: false,
+      installed_manifest_matches: true,
+      installed_paths: []
     }
   end
 
@@ -209,6 +291,91 @@ defmodule Wardwright.CLI.Adapters do
         _ -> nil
       end
     end)
+  end
+
+  defp ensure_runtime_detected(target, opts) do
+    target = Enum.find(@targets, &(&1.target == target))
+
+    if detected_path(target, opts) do
+      :ok
+    else
+      {:error, "Cannot install OMP adapter: install omp or oh-my-pi first."}
+    end
+  end
+
+  defp parse_install_args(argv) do
+    parse_scope_args(argv, %{repair?: false, scope: "project"})
+  end
+
+  defp parse_scope_args(argv, parsed \\ %{scope: "project"}) do
+    case argv do
+      [] ->
+        {:ok, parsed}
+
+      ["--repair" | rest] ->
+        parse_scope_args(rest, Map.put(parsed, :repair?, true))
+
+      ["--scope", scope | rest] when scope in ["project", "user"] ->
+        parse_scope_args(rest, Map.put(parsed, :scope, scope))
+
+      [<<"--scope=", scope::binary>> | rest] ->
+        if scope in ["project", "user"] do
+          parse_scope_args(rest, Map.put(parsed, :scope, scope))
+        else
+          {:error, "Unknown adapter scope: #{scope}"}
+        end
+
+      [unknown | _rest] ->
+        {:error, "Unknown adapter option: #{unknown}"}
+    end
+  end
+
+  defp ensure_project_scope("project"), do: :ok
+  defp ensure_project_scope("user"), do: {:error, "User-scope adapter install is not implemented yet."}
+
+  defp install_success_human(result) do
+    verb = if result.repaired?, do: "Repaired", else: "Installed"
+
+    """
+    #{verb} OMP adapter files:
+    #{Enum.map_join(result.written, "\n", &"  #{&1}")}
+    """
+  end
+
+  defp repair_required_human(inspection) do
+    present =
+      inspection.files
+      |> Enum.filter(& &1.present?)
+      |> Enum.map_join("\n", &"  #{&1.path}")
+
+    """
+    OMP adapter files are present but do not match the Wardwright adapter pack.
+    Review local edits before replacing them, then rerun with `--repair`.
+    Present files:
+    #{present}
+    """
+  end
+
+  defp uninstall_success_human(result) do
+    skipped =
+      case result.skipped do
+        [] -> "  none"
+        paths -> Enum.map_join(paths, "\n", &"  #{&1}")
+      end
+
+    removed =
+      case result.removed do
+        [] -> "  none"
+        paths -> Enum.map_join(paths, "\n", &"  #{&1}")
+      end
+
+    """
+    Removed Wardwright-owned OMP adapter files:
+    #{removed}
+
+    Skipped edited or unknown files:
+    #{skipped}
+    """
   end
 
   defp runtime_for(target, nil, _opts), do: target.default_runtime || "unknown"
@@ -287,6 +454,8 @@ defmodule Wardwright.CLI.Adapters do
       wardwright adapters list --json   Print machine-readable adapter targets
       wardwright adapters doctor        Detect local runtime and adapter status
       wardwright adapters doctor --json Print machine-readable doctor output
+      wardwright adapters install omp [--scope project] [--repair]
+      wardwright adapters uninstall omp [--scope project]
     """
   end
 end

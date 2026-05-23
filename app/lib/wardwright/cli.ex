@@ -66,8 +66,10 @@ defmodule Wardwright.CLI do
       wardwright serve          Start the Wardwright HTTP service
       wardwright admin          Open the operator workbench, starting it if needed
       wardwright admin access   Open Model Management
-      wardwright adapters list  List installable agent adapter targets
-      wardwright adapters doctor  Detect local adapter/runtime status
+      wardwright adapters list     List installable agent adapter targets
+      wardwright adapters doctor   Detect local adapter/runtime status
+      wardwright adapters install  Install project-local adapter files
+      wardwright adapters uninstall  Remove Wardwright-owned adapter files
       wardwright tools          Print policy-authoring MCP/API help for agents
       wardwright tools --json   Print machine-readable authoring tool metadata
       wardwright --version      Print the packaged app version

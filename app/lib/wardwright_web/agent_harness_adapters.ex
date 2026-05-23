@@ -7,6 +7,8 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
   run behave the way it did.
   """
 
+  alias Wardwright.AgentAdapters.OmpPack
+
   @contract_version "wardwright.harness_adapter.v0"
   @opencode_version "1.15.4"
   @pi_package "@earendil-works/pi-coding-agent@0.75.5"
@@ -853,65 +855,11 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
   end
 
   defp oh_my_pi_ttsr_rule do
-    """
-    ---
-    description: Wardwright read-before-edit replay guard
-    condition:
-      - "."
-    scope:
-      - "tool:edit(*)"
-      - "tool:write(*)"
-      - "tool:patch(*)"
-      - "tool:edit_file(*)"
-      - "tool:write_file(*)"
-    interruptMode: "always"
-    ---
-
-    If a continuation is about to edit or write a file from an imported
-    Wardwright trace, require explicit read evidence for the same path first.
-    Treat missing read evidence as a replay finding, not as permission to keep
-    editing.
-    """
+    OmpPack.rule_content()
   end
 
   defp pi_state_fidelity_extension do
-    """
-    import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-    import { createHash } from "node:crypto";
-    import { readFileSync } from "node:fs";
-
-    function digest(value: unknown): string {
-      return createHash("sha256").update(JSON.stringify(value)).digest("hex");
-    }
-
-    export default function wardwrightStateFidelity(pi: ExtensionAPI) {
-      const z = pi.zod;
-
-      pi.registerTool({
-        name: "wardwright_verify_state_fidelity",
-        label: "Verify Wardwright fidelity",
-        description: "Compare an exported Wardwright probe with observed Pi replay state.",
-        parameters: z.object({
-          probePath: z.string(),
-          observed: z.any(),
-        }),
-        async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-          const probe = JSON.parse(readFileSync(params.probePath, "utf8"));
-          const observed = params.observed ?? {};
-          return {
-            content: [{ type: "text", text: JSON.stringify({
-              schema: "wardwright.pi_state_fidelity_verification_spike.v0",
-              adapter_id: probe.adapter_id,
-              trace_fingerprint_matches: probe.trace_fingerprint === observed.trace_fingerprint,
-              observed_digest: digest(observed),
-              equivalent_agent_resume_claim_allowed: false,
-            }) }],
-            details: {},
-          };
-        },
-      });
-    }
-    """
+    OmpPack.state_fidelity_extension_content()
   end
 
   defp opencode_state_fidelity_plugin do
