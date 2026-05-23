@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 retry_delay_seconds="${RALPH_RETRY_DELAY_SECONDS:-${RALPH_INTERVAL_SECONDS:-900}}"
+idle_delay_seconds="${RALPH_IDLE_DELAY_SECONDS:-300}"
 state_dir="$(cd "$repo_root" && git rev-parse --git-path ralph-runs/adapter-install-validation)"
 sentinel="$state_dir/complete"
 log_file="$state_dir/runner.log"
@@ -29,8 +30,15 @@ trap cleanup EXIT INT TERM
 echo "adapter Ralph loop runner started at $(date -Iseconds)" >>"$log_file"
 echo "repo: $repo_root" >>"$log_file"
 echo "retry_delay_seconds: $retry_delay_seconds" >>"$log_file"
+echo "idle_delay_seconds: $idle_delay_seconds" >>"$log_file"
 
-while [[ ! -f "$sentinel" ]]; do
+while true; do
+  if [[ -f "$sentinel" ]]; then
+    echo "[$(date -Iseconds)] completion sentinel present; idling" >>"$log_file"
+    sleep "$idle_delay_seconds"
+    continue
+  fi
+
   started_at="$(date -Iseconds)"
   echo "[$started_at] starting iteration" >>"$log_file"
 
@@ -52,9 +60,4 @@ while [[ ! -f "$sentinel" ]]; do
     fi
   fi
 
-  if [[ -f "$sentinel" ]]; then
-    break
-  fi
 done
-
-echo "adapter Ralph loop runner stopped at $(date -Iseconds)" >>"$log_file"
