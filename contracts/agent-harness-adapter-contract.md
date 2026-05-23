@@ -39,9 +39,11 @@ private agent state.
 | Adapter | Export | Fidelity | Notes |
 | --- | --- | --- | --- |
 | OpenCode | OpenCode session JSON | `session_import_best_effort` | OpenCode exposes `export`, `import`, `run --session`, and `--fork`. Wardwright emits an importable session-shaped artifact with the trace rendered as evidence, but it does not yet prove native OpenCode tool calls are restored as first-class tool state. |
+| OpenCode plugin spike | OpenCode session JSON plus plugin scaffold | `session_import_best_effort` | OpenCode plugins may help with replay reminders and metadata on future runs, but the plugin surface does not change the imported session's missing native Wardwright tool-result state. |
 | Claude Code | prompt/files | `prompt_handoff` | Claude stores JSONL transcripts and supports resume/fork for its own sessions, but Wardwright does not rely on an undocumented external import path. |
 | Codex | prompt/files | `prompt_handoff` | Codex supports resume/fork for its own sessions. Wardwright treats external trace insertion as a prompt handoff until a stable import surface exists. |
-| Pi / oh-my-pi | prompt/files | `prompt_handoff` | Pi was not detected on this machine during this slice. The public TTSR idea is relevant, but the adapter starts as a low-fidelity target. |
+| Pi | Pi session JSONL | `session_import_best_effort` | Pi exposes append-only JSONL sessions and supports `--session` / `--fork`. Wardwright can emit native-looking message and tool-result entries, but workspace snapshots and private agent state remain unproven. |
+| oh-my-pi / omp | Pi session JSONL plus `.omp/rules` TTSR bundle | `session_import_best_effort` | omp is compelling as the user-facing runtime home for TTSR-shaped rules. Wardwright can replay and test the same rule, then export the rule into omp when users prefer live enforcement there. The comparison should be behavioral: the same trace and rule should produce the same interruption and failure classification unless agent visibility, runtime efficiency, or implementation correctness differs. |
 
 ## API Shape
 
@@ -96,7 +98,13 @@ trace files and shaping external JSON.
 - Whether OpenCode accepts a generated session JSON with rendered evidence
   across more versions, and whether a stricter generated schema can represent
   native tool parts.
-- Whether Claude Code, Codex, or Pi expose supported import APIs that preserve
-  tool call identity and result provenance.
+- Whether Pi/omp session JSONL imports can preserve enough tool call identity
+  and result provenance across versions to justify stronger claims.
+- Whether a rule that passes Wardwright replay should remain in Wardwright,
+  move into omp TTSR, or live in both places with Wardwright as the proof and
+  audit layer.
+- Whether Wardwright and omp produce equivalent TTSR behavior for the same
+  rule, or whether placement changes agent visibility, enforcement overhead, or
+  correctness.
 - Whether Wardwright should add a CLI command for adapter exports in addition to
   the protected API/UI.
