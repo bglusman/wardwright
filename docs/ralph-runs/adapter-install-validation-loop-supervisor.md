@@ -715,3 +715,48 @@ execution constraints for the loop are:
 - Next open item: run the real OMP runtime equivalence probe in an environment
   with `omp` or `oh-my-pi`; completion sentinel remains blocked until that
   blocking probe is observed or the requirements are explicitly changed.
+
+### Loop 12 - OMP Runtime Probe Blocker Check
+
+- Timestamp: 2026-05-23T18:50:59-04:00.
+- Starting commit: `5b7ebb3`.
+- Ending implementation commit: `5b7ebb3` (blocker-check loop; no product code
+  or docs content changed before this supervisor record).
+- Scope: attempted the highest-priority open item from loop 11: run the real
+  OMP TTSR runtime equivalence probe in this environment. The probe could not
+  make progress because no `omp`, `oh-my-pi`, or `pi` binary is installed on
+  `PATH`; only OpenCode, OpenClaw, and Claude Code were detected.
+- Validation:
+  - `command -v omp || true; command -v oh-my-pi || true; command -v pi || true;
+    command -v opencode || true; command -v openclaw || true; command -v claude
+    || true`: detected `/opt/homebrew/bin/opencode`,
+    `/opt/homebrew/bin/openclaw`, and `/Users/admin/.local/bin/claude`; OMP/Pi
+    runtimes were absent.
+  - `OMP_BIN=omp node scripts/omp-ttsr-runtime-equivalence.mjs`: failed before
+    runtime behavior could be observed. All four cases (`edit`, `edit_file`,
+    `write`, and `read`) reported `Failed to start OMP binary "omp": spawn omp
+    ENOENT`.
+  - `git rev-parse --git-path
+    ralph-runs/adapter-install-validation/complete`: sentinel path resolved,
+    and the sentinel remains absent.
+- Adversarial review:
+  - Architecture: no architecture changed. This result confirms the remaining
+    completion blocker is external runtime availability, not a reason to weaken
+    the probe contract or substitute fake-runtime evidence for OMP TTSR
+    fidelity.
+  - Code quality/comments: no code or comments changed. The probe failure is
+    clear enough for operator action: install a real `omp` or `oh-my-pi`
+    runtime, or revise the requirements if the release should no longer block
+    on real OMP verification.
+  - Test quality: the probe did not reach behavioral assertions because process
+    startup failed. The existing fake-runtime packaged demo remains useful for
+    CLI wiring, pairing, sanitized evidence, and cleanup, but it still cannot
+    prove OMP TTSR behavior.
+- Skipped probes: OpenCode surface probe, OpenClaw runtime probes, and Claude
+  gateway identity probe remain skipped because the loop stopped at the
+  blocking OMP runtime requirement and did not add new runtime probe or adapter
+  pairing surfaces.
+- Next open item: provide a real `omp` or `oh-my-pi` runtime on `PATH` and
+  rerun `OMP_BIN=omp node scripts/omp-ttsr-runtime-equivalence.mjs`, then rerun
+  the packaged `wardwright adapters probe omp` lifecycle before considering the
+  completion sentinel.
