@@ -968,7 +968,7 @@ fn policy_projection_select(model: Model) -> Element(Msg) {
           class("help-dot"),
           attribute(
             "title",
-            "Projection chooses the policy lens for this model. The graph shows possible transitions for the selected model, then highlights the replay path driven by the current fixture and edits.",
+            "Choose the behavior view for this model. The graph shows possible transitions, then highlights the path driven by the current scenario and edits.",
           ),
         ],
         [text("?")],
@@ -990,11 +990,11 @@ fn simulator_form(model: Model) -> Element(Msg) {
   html.form([class("simulator"), event.on_submit(SubmitSimulation)], [
     html.div([class("form-header")], [
       html.div([], [
-        html.strong([], [text("Selected model turn simulator")]),
+        html.strong([], [text("Simulate a turn")]),
       ]),
       html.div([class("simulator-toolbar")], [
         labeled_select(
-          "Fixture",
+          "Scenario",
           "fixture_id",
           model.fixture_id,
           fixture_options(model.pattern_id, model.model_id, model.fixture_id),
@@ -1024,7 +1024,7 @@ fn simulator_form(model: Model) -> Element(Msg) {
         UserInputChanged,
       ),
       text_area(
-        "Raw model output / stream",
+        "Model stream",
         "model_response",
         model.model_response,
         "Type the model output to evaluate",
@@ -1039,7 +1039,7 @@ fn simulator_form(model: Model) -> Element(Msg) {
 fn fixture_save_panel(model: Model) -> Element(Msg) {
   html.div([class("fixture-save")], [
     html.label([class("field")], [
-      html.span([], [text("Save fixture")]),
+      html.span([], [text("Save as scenario")]),
       html.input([
         id("fixture_title"),
         name("fixture_title"),
@@ -1054,12 +1054,10 @@ fn fixture_save_panel(model: Model) -> Element(Msg) {
         type_("button"),
         event.on_click(SaveFixture),
       ],
-      [text("Save current turn")],
+      [text("Save scenario")],
     ),
     html.span([class("fixture-note")], [
-      text(
-        "Saved fixtures are available to every model on this projection; the source model is recorded.",
-      ),
+      text("Saved scenarios can be reused across models."),
     ]),
     case model.fixture_status {
       "" -> html.span([], [])
@@ -1079,7 +1077,7 @@ fn authoring_panel(model: Model) -> Element(Msg) {
         html.strong([], [text("Model authoring")]),
         html.p([], [
           text(
-            "Draft and review model changes against the current model and projection.",
+            "Draft and review model changes against the current model and behavior view.",
           ),
         ]),
       ]),

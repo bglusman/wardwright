@@ -151,7 +151,7 @@ async function assertRegisteredModelWorkbench() {
     await cdp.waitFor("Page.loadEventFired");
     await waitForEval(
       cdp,
-      `document.body && document.body.innerText.includes("Registered model selected")`
+      `document.body && document.body.innerText.includes("Live model selected")`
     );
     await waitForEval(cdp, `!document.documentElement.classList.contains("phx-loading")`);
     await waitForEval(cdp, `document.body.textContent.includes("browser-smoke-redact")`);
@@ -161,7 +161,7 @@ async function assertRegisteredModelWorkbench() {
       `(() => {
         const text = document.body.innerText;
         const forbidden = [
-          "Policy run map",
+          "Run path",
           "State and turn model",
           "Receipt Preview",
           "Selected Node",

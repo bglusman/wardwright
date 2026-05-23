@@ -249,30 +249,30 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     {:ok, view, html} = live(build_conn(), "/policies/route-privacy/trace_overlay")
 
     assert html =~ "Private context route gate"
-    assert html =~ "Trace details"
-    assert html =~ "raw run evidence"
+    assert html =~ "Trace"
+    assert html =~ "step evidence"
     assert html =~ "Request route plan"
     assert html =~ "Artifact first"
-    assert html =~ "Policy nodes"
-    assert html =~ "Simulation evidence"
-    assert html =~ "Review load"
+    assert html =~ "Rules"
+    assert html =~ "Simulation"
+    assert html =~ "Needs review"
     assert html =~ "Why this exists"
 
     connected_html = render(view)
 
     assert connected_html =~ "Private context route gate"
-    assert connected_html =~ "Trace details"
+    assert connected_html =~ "Trace"
     assert connected_html =~ "Request route plan"
     assert connected_html =~ "Artifact first"
-    assert connected_html =~ "Policy nodes"
-    assert connected_html =~ "Simulation evidence"
-    assert connected_html =~ "State model"
-    assert connected_html =~ "Review load"
+    assert connected_html =~ "Rules"
+    assert connected_html =~ "Simulation"
+    assert connected_html =~ "State"
+    assert connected_html =~ "Needs review"
     assert connected_html =~ "Why this exists"
 
     assert {:error, {:redirect, %{to: "/policies/route-privacy/effect_matrix/recipe/private-helpdesk-local-gate"}}} =
              view
-             |> element("a", "Effect table")
+             |> element("a", "Effects")
              |> render_click()
 
     {:ok, matrix_view, _html} =
@@ -284,7 +284,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     matrix_html = render(matrix_view)
 
     assert matrix_html =~ "Private context route gate"
-    assert matrix_html =~ "Effect table"
+    assert matrix_html =~ "Effects"
     assert matrix_html =~ "writes and actions"
     assert matrix_html =~ "route.allowed_targets"
   end
@@ -368,8 +368,8 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     {:ok, _view, html} = live(build_conn(), "/policies/tts-retry/diagram")
 
     assert html =~ ~s(href="/admin")
-    assert html =~ "Legacy Workbench"
-    assert html =~ "Use the previous policy projection view."
+    assert html =~ "Example Library"
+    assert html =~ "Browse and simulate example model behavior."
     refute html =~ "Lustre Workbench"
     refute html =~ "Gleam UI"
   end
@@ -556,8 +556,8 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "/mcp"
     assert html =~ "wardwright tools"
     assert html =~ "wardwright admin"
-    assert html =~ "Registered model workbench"
-    assert html =~ "Selecting a model leaves example preview"
+    assert html =~ "Live model"
+    assert html =~ "Select a live model"
     assert html =~ "Model Management"
     assert html =~ "href=\"/admin?view=model_access\""
     assert html =~ "/v1/chat/completions"
@@ -570,8 +570,8 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "Tool access"
     assert html =~ "draft tools enabled"
     assert html =~ "Ask agent"
-    assert html =~ "Policy Simulator"
-    assert html =~ "Policy run map"
+    assert html =~ "Simulator"
+    assert html =~ "Run path"
     assert html =~ "State and turn model"
     assert html =~ "Playback"
     assert html =~ "Ready: 5 trace events available for playback."
@@ -624,14 +624,14 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     {:ok, view, html} = live(build_conn(), "/policies/tts-retry/diagram?model=beta-workbench")
 
-    assert html =~ "Registered model workbench:"
+    assert html =~ "Inspecting live model:"
     assert html =~ "<h1>beta-workbench</h1>"
     assert html =~ "Beta workbench catches mooing output before release."
     assert html =~ "<strong>beta-workbench</strong>"
     assert html =~ beta_hash
     assert html =~ "Selected Model Artifact"
     assert html =~ "Show redacted model artifact"
-    assert html =~ "Registered model selected"
+    assert html =~ "Live model selected"
     assert html =~ "Try this registered model"
     assert html =~ "stream policy triggered"
     assert html =~ "User receives after Wardwright"
@@ -646,15 +646,14 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert html =~ "History Cache"
     assert html =~ "alpha-workbench"
     assert html =~ "beta-workbench"
-    refute html =~ "Policy run map"
+    refute html =~ "Run path"
     refute html =~ "State and turn model"
     refute html =~ "Receipt Preview"
     refute html =~ "Selected Node"
     refute html =~ "Review Findings"
     refute html =~ "retry arbiter"
-    refute html =~ "Example story"
     refute html =~ "A coding assistant keeps recommending an old client constructor"
-    refute html =~ "Choose a registered model"
+    refute html =~ "Select live model"
 
     changed =
       view
@@ -691,19 +690,18 @@ defmodule Wardwright.PolicyProjectionLiveTest do
       |> element("form.workbench_model_selector")
       |> render_change(%{"workbench_model" => "alpha-workbench"})
 
-    assert updated =~ "Registered model workbench:"
+    assert updated =~ "Inspecting live model:"
     assert updated =~ "<h1>alpha-workbench</h1>"
     assert updated =~ "<strong>alpha-workbench</strong>"
-    assert updated =~ "Registered model selected"
+    assert updated =~ "Live model selected"
     assert updated =~ "Try this registered model"
     assert updated =~ "Runtime Visibility"
     assert updated =~ "History Cache"
-    refute updated =~ "Policy run map"
+    refute updated =~ "Run path"
     refute updated =~ "State and turn model"
     refute updated =~ "Receipt Preview"
     refute updated =~ "Selected Node"
     refute updated =~ "Review Findings"
-    refute updated =~ "Example story"
 
     assert updated =~
              "/policies/stream-rewrite-state/diagram/recipe/credential-redaction-ladder"
@@ -1142,7 +1140,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     assert html =~ "Regex rewrite and state transition"
     assert html =~ "Example catalog"
-    assert html =~ "Example scenarios"
+    assert html =~ "Example models"
     assert html =~ "Examples are read-only previews."
     assert html =~ "Project examples"
     assert html =~ "wardwright.dev/recipes"
@@ -1160,7 +1158,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     assert html =~ "Editable turn"
     assert html =~ "Raw user input"
-    assert html =~ "Raw model output / stream"
+    assert html =~ "Model stream"
     assert html =~ "User-visible output"
     refute html =~ "Model receives after Wardwright"
     assert html =~ "Relevant examples"
@@ -1231,7 +1229,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     assert selected =~ "Raw user input"
     assert selected =~ "Model receives after Wardwright"
     assert selected =~ "[private-context omitted]"
-    assert selected =~ "Raw model output / stream"
+    assert selected =~ "Model stream"
     assert selected =~ "User receives after Wardwright"
     assert selected =~ "account [account-id]"
     assert selected =~ "request context redacted"
@@ -1389,14 +1387,14 @@ defmodule Wardwright.PolicyProjectionLiveTest do
 
     assert {:error, {:redirect, %{to: "/policies/tool-governance/state_machine/recipe/tool-loop-cost-brake"}}} =
              view
-             |> element("a", "State model")
+             |> element("a", "State")
              |> render_click()
 
     {:ok, _state_view, updated} =
       live(build_conn(), "/policies/tool-governance/state_machine/recipe/tool-loop-cost-brake")
 
     assert updated =~ "Project examples"
-    assert updated =~ "State model"
+    assert updated =~ "State"
   end
 
   test "LiveView default project example source loads committed starter recipes" do
@@ -1440,8 +1438,8 @@ defmodule Wardwright.PolicyProjectionLiveTest do
       live(build_conn(), "/policies/route-privacy/diagram/recipe/context-window-dispatcher")
 
     assert active_recipe_link?(direct_html, "context-window-dispatcher")
-    assert direct_html =~ "Example preview:"
-    assert direct_html =~ "Choose a registered model"
+    assert direct_html =~ "Previewing example:"
+    assert direct_html =~ "Select live model"
   end
 
   test "LiveView recipe selection changes ambiguous-success scenarios" do
@@ -1511,7 +1509,7 @@ defmodule Wardwright.PolicyProjectionLiveTest do
     :ok = put_route_gate_config()
     {:ok, route_view, route_html} = live(build_conn(), "/policies/route-privacy/state_machine")
 
-    assert route_html =~ "State model"
+    assert route_html =~ "State"
     assert route_html =~ "State machine transition graph"
     assert route_html =~ "default one-state"
     assert route_html =~ "No explicit transitions"

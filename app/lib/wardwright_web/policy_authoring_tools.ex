@@ -20,7 +20,7 @@ defmodule WardwrightWeb.PolicyAuthoringTools do
         "/v1/policy-authoring/simulations/{pattern_id}",
         "Return persisted simulation scenarios when present, otherwise explicit fixture evidence linked to projection node ids and the current artifact hash.",
         "Use to compare the user's intended behavior with the behavior Wardwright can demonstrate.",
-        "Read-only. Simulation evidence explains behavior but does not prove every possible input.",
+        "Read-only. Simulation results explain behavior but do not prove every possible input.",
         "/agent-authoring.html#simulate-before-you-activate"
       ),
       tool(

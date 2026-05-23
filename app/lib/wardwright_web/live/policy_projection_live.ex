@@ -130,7 +130,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       )
 
     socket
-    |> assign(:page_title, "Legacy Workbench")
+    |> assign(:page_title, "Example Library")
     |> assign(:modes, @modes)
     |> assign(:recipe_sources, recipe_sources())
     |> assign(:available_models, available_models)
@@ -888,7 +888,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         <span class="mark">W</span>
         <div>
           <strong>Wardwright</strong>
-          <span>Legacy policy workbench</span>
+          <span>Model behavior workbench</span>
         </div>
       </div>
 
@@ -899,8 +899,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           <span>Run and inspect registered models.</span>
         </a>
         <a class="active" href={~p"/policies"}>
-          <strong>Legacy Workbench</strong>
-          <span>Use the previous policy projection view.</span>
+          <strong>Example Library</strong>
+          <span>Browse and simulate example model behavior.</span>
         </a>
         <a href={~p"/admin?view=model_access"}>
           <strong>Model Management</strong>
@@ -908,10 +908,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         </a>
 
         <form class="workbench_model_selector" phx-change="select-workbench-model">
-          <label for="workbench_model">Registered model workbench</label>
+          <label for="workbench_model">Live model</label>
           <select id="workbench_model" name="workbench_model" phx-change="select-workbench-model">
             <option :if={@explicit_recipe?} value="" selected disabled>
-              Choose a registered model
+              Select live model
             </option>
             <option
               :for={model <- @available_models}
@@ -922,8 +922,8 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             </option>
           </select>
           <small>
-            Selecting a model leaves example preview and opens that model's
-            current policy, routes, and scenarios.
+            Select a live model to inspect its current rules, routes, and
+            scenarios.
           </small>
         </form>
 
@@ -943,10 +943,10 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           <span class="recipe_source_status"><%= recipe_catalog_status(@recipe_catalog) %></span>
         </form>
 
-        <h2 class="nav_heading">Example scenarios</h2>
+        <h2 class="nav_heading">Example models</h2>
         <p class="nav_note">
-          Examples are read-only previews. Opening one clears the registered
-          model workbench selection until you choose a model again.
+          Examples are read-only previews. Opening one clears the live model
+          selection until you choose a model again.
         </p>
 
         <details :for={group <- @recipe_groups} class="recipe_group" open={group.open}>
@@ -995,23 +995,26 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     <section class="workspace">
       <header class="topbar">
         <div>
+          <span class={"mode_pill #{if @explicit_recipe?, do: "preview", else: "live"}"}>
+            <%= if @explicit_recipe?, do: "Example Preview", else: "Live Model" %>
+          </span>
           <h1><%= workbench_title(@selected_model_config, @selected_recipe, @selected_pattern, @explicit_recipe?) %></h1>
           <p><%= workbench_promise(@selected_model_config, @selected_recipe, @selected_pattern, @explicit_recipe?) %></p>
           <small class="editing_target_summary">
             <%= if @explicit_recipe? do %>
-              Example preview:
+              Previewing example:
               <strong><%= @selected_recipe["title"] || @selected_pattern["title"] %></strong>.
-              Choose a registered model from the left rail to leave preview mode.
+              Select a live model to inspect real local behavior.
             <% else %>
-              Registered model workbench:
+              Inspecting live model:
               <strong><%= @selected_model_id %></strong>.
             <% end %>
           </small>
         </div>
         <div class="engine_card">
           <.badge value={@projection["engine"]["language"]} />
-          <strong><%= @projection["engine"]["engine_id"] %></strong>
-          <span><%= @selected_pattern["title"] %></span>
+          <strong><%= @selected_pattern["title"] %></strong>
+          <span><%= @projection["engine"]["engine_id"] %></span>
           <span><%= @projection["artifact"]["policy_version"] %></span>
         </div>
       </header>
@@ -1019,7 +1022,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       <section :if={@explicit_recipe? and rich_recipe?(@selected_recipe)} class="recipe_context">
         <div class="recipe_context_header">
           <div>
-            <span>Example story</span>
+            <span>Model behavior</span>
             <strong><%= @selected_recipe["management_area"] || @selected_recipe["collection_title"] %></strong>
           </div>
           <.badge value={@selected_recipe["recipe_kind"] || "policy recipe"} />
@@ -1031,42 +1034,60 @@ defmodule WardwrightWeb.PolicyProjectionLive do
             <small><%= @selected_recipe["old_behavior"] %></small>
           </article>
           <article :if={@selected_recipe["wardwright_behavior"]}>
-            <span>With Wardwright</span>
+            <span>Wardwright behavior</span>
             <small><%= @selected_recipe["wardwright_behavior"] %></small>
           </article>
           <article :if={@selected_recipe["composition"]}>
-            <span>Composition</span>
+            <span>How it works</span>
             <small><%= @selected_recipe["composition"] %></small>
           </article>
         </div>
-        <div :if={@selected_recipe["primitives"]} class="primitive_chips">
-          <span :for={primitive <- @selected_recipe["primitives"]}><%= primitive %></span>
+        <details :if={@selected_recipe["primitives"]} class="technical_names">
+          <summary>Technical rule names</summary>
+          <div class="primitive_chips">
+            <span :for={primitive <- @selected_recipe["primitives"]}><%= primitive %></span>
+          </div>
+        </details>
+      </section>
+
+      <section :if={!@model_workbench? and @selected_simulation} class="run_summary" aria-label="Latest simulated run">
+        <div>
+          <span>Latest simulated run</span>
+          <strong><%= @selected_simulation["title"] || "Selected scenario" %></strong>
+          <p><%= @selected_simulation["input_summary"] %></p>
         </div>
+        <ol class="run_path">
+          <li :for={event <- Enum.take(@selected_simulation["trace"] || [], 5)}>
+            <.badge value={event["kind"] || "step"} />
+            <strong><%= event["label"] || "Policy step" %></strong>
+            <small><%= event["detail"] || event["phase"] %></small>
+          </li>
+        </ol>
       </section>
 
       <section :if={!@model_workbench?} class="scan_strip" aria-label="Policy authoring summary">
         <article>
-          <span>Authority</span>
+          <span>Source</span>
           <strong>Artifact first</strong>
           <small><%= @projection["artifact"]["policy_version"] %></small>
         </article>
         <article>
-          <span>Policy nodes</span>
+          <span>Rules</span>
           <strong><%= @projection_stats.node_count %></strong>
           <small><%= @projection_stats.exact_count %> exact, <%= @projection_stats.opaque_count %> opaque</small>
         </article>
         <article>
-          <span>Simulation evidence</span>
+          <span>Simulation</span>
           <strong><%= @projection_stats.simulation_count %> runs</strong>
           <small><%= @projection_stats.trace_event_count %> trace events</small>
         </article>
         <article>
-          <span>State model</span>
+          <span>State</span>
           <strong><%= @projection_stats.state_count %> states</strong>
           <small><%= @projection_stats.transition_count %> transitions</small>
         </article>
         <article>
-          <span>Review load</span>
+          <span>Needs review</span>
           <strong><%= @projection_stats.review_count %></strong>
           <small>conflicts, warnings, opaque regions</small>
         </article>
@@ -1588,9 +1609,9 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     ~H"""
     <div class="model_simulation_notice" aria-label="Registered model simulation status">
       <div>
-        <strong>Registered model selected</strong>
+        <strong>Live model selected</strong>
         <p>
-          <%= @selected_model_id %> is loaded as the current model workbench target. Example
+          <%= @selected_model_id %> is loaded as the current live model. Example
           state machines, stream traces, and receipt previews are hidden here because they belong
           to demo examples, not this registered model.
         </p>
@@ -1655,7 +1676,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
         </div>
         <div class={boundary_pair_class(@simulation_boundary.output_changed)}>
           <label>
-            <span>Raw model output / stream</span>
+            <span>Model stream</span>
             <textarea id="model-simulation-model-response" name="model_simulation[model_response]" rows="4" phx-debounce="300"><%= @simulation_model_response %></textarea>
             <small :if={!@simulation_boundary.output_changed} class="boundary_status">
               Released unchanged. The user receives this raw model output.
@@ -1712,16 +1733,16 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     <div class="diagram_shell">
       <div class="diagram_header">
         <div>
-          <strong>Policy run map</strong>
+          <strong>Run path</strong>
           <span>Follow one simulated request through input handling, routing, model output, tool/output policy, and receipt recording.</span>
         </div>
         <details class="diagram_legend">
           <summary>Legend</summary>
           <span><i class="legend_shape primitive"></i>direct rule</span>
-          <span><i class="legend_shape arbiter"></i>choice point</span>
+          <span><i class="legend_shape arbiter"></i>choice</span>
           <span><i class="legend_shape rule"></i>policy check</span>
           <span><i class="legend_shape receipt"></i>audit record</span>
-          <span><i class="legend_dot exact"></i>implemented check</span>
+          <span><i class="legend_dot exact"></i>checked</span>
           <span><i class="legend_dot inferred"></i>declared intent</span>
           <span><i class="legend_line trace_future"></i>possible route for this input</span>
           <span><i class="legend_line trace"></i>already played</span>
@@ -1801,7 +1822,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
           </div>
           <div class={boundary_pair_class(@simulation_boundary.output_changed)}>
             <label>
-              <span>Raw model output / stream</span>
+              <span>Model stream</span>
               <textarea id="simulation-model-response" name="simulation[model_response]" rows="5" phx-debounce="300"><%= @simulation_model_response %></textarea>
               <small :if={!@simulation_boundary.output_changed} class="boundary_status">
                 Released unchanged. The user receives this raw model output.
@@ -2264,6 +2285,9 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
     .topbar > div:first-child, .panel_header > div { min-width: 0; flex: 1 1 auto; }
     .topbar h1, .topbar p, .panel_header h2, .panel_header p { overflow-wrap: anywhere; }
+    .mode_pill { display: inline-flex; width: fit-content; margin-bottom: 8px; padding: 3px 8px; border: 1px solid #cad4dc; border-radius: 999px; color: #33414c; background: #f5f7f9; font-size: 11px; font-weight: 900; letter-spacing: 0; text-transform: uppercase; }
+    .mode_pill.preview { border-color: #d9bd72; color: #73570d; background: #fff7df; }
+    .mode_pill.live { border-color: #94c7b5; color: #1c654f; background: #edf8f3; }
     .eyebrow { margin: 0 0 4px; color: #5e6b76; font-size: 12px; font-weight: 800; text-transform: uppercase; }
     h1, h2, h3, p { margin-top: 0; }
     h1 { margin-bottom: 6px; font-size: 28px; line-height: 1.15; }
@@ -2282,17 +2306,30 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     .engine_card span:last-child { color: #66727c; font-size: 12px; }
     .editing_target_summary { display: block; margin-top: 10px; color: #5e6b76; font-size: 13px; line-height: 1.35; }
     .editing_target_summary strong { color: #17202a; }
-    .recipe_context { display: grid; gap: 10px; margin-bottom: 18px; padding: 16px; border: 1px solid #d3dbe2; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgb(16 24 40 / 4%); }
+    .recipe_context { display: grid; gap: 10px; margin-bottom: 14px; padding: 16px; border: 1px solid #d3dbe2; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgb(16 24 40 / 4%); }
     .recipe_context_header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
     .recipe_context_header > div { display: grid; gap: 3px; min-width: 0; }
     .recipe_context_header span, .recipe_context_grid span { color: #66727c; font-size: 11px; font-weight: 900; text-transform: uppercase; }
     .recipe_context_header strong { color: #17202a; font-size: 16px; }
     .recipe_context p { margin-bottom: 0; }
     .recipe_context_grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 9px; }
-    .recipe_context_grid article { display: grid; gap: 5px; min-width: 0; padding: 10px; border: 1px solid #e1e7ed; border-radius: 7px; background: #fbfcfd; }
+    .recipe_context_grid article { display: grid; gap: 5px; min-width: 0; padding: 10px 0; border-top: 1px solid #edf1f5; background: transparent; }
     .recipe_context_grid small { color: #4e5b66; line-height: 1.38; }
+    .technical_names summary { width: fit-content; cursor: pointer; color: #5e6b76; font-size: 12px; font-weight: 800; }
     .primitive_chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .technical_names .primitive_chips { margin-top: 8px; }
     .primitive_chips span { padding: 3px 7px; border: 1px solid #cbd7e1; border-radius: 999px; color: #34566f; background: #f2f7fb; font-size: 11px; font-weight: 800; }
+    .run_summary { display: grid; grid-template-columns: minmax(240px, 0.75fr) minmax(0, 1.25fr); gap: 14px; margin-bottom: 14px; padding: 14px; border: 1px solid #cad8e4; border-radius: 8px; background: #f8fbfd; }
+    .run_summary > div { display: grid; gap: 5px; align-content: start; min-width: 0; }
+    .run_summary span { color: #66727c; font-size: 11px; font-weight: 900; text-transform: uppercase; }
+    .run_summary strong { color: #17202a; font-size: 16px; }
+    .run_summary p { margin: 0; color: #4e5b66; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+    .run_path { display: grid; gap: 7px; min-width: 0; margin: 0; padding: 0; list-style: none; }
+    .run_path li { display: grid; grid-template-columns: max-content minmax(0, 0.7fr) minmax(0, 1fr); gap: 8px; align-items: center; min-width: 0; padding: 8px 0; border-top: 1px solid #e0e8ef; }
+    .run_path li:first-child { border-top: 0; }
+    .run_path strong, .run_path small { min-width: 0; overflow-wrap: anywhere; }
+    .run_path strong { color: #17202a; font-size: 13px; }
+    .run_path small { color: #5e6b76; font-size: 12px; line-height: 1.3; }
     .scan_strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
     .scan_strip article { display: grid; gap: 4px; min-width: 0; padding: 12px; border: 1px solid #d3dbe2; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgb(16 24 40 / 4%); }
     .scan_strip span { color: #66727c; font-size: 12px; font-weight: 800; text-transform: uppercase; }
@@ -2607,7 +2644,7 @@ defmodule WardwrightWeb.PolicyProjectionLive do
       .shell > [data-phx-main] { display: block; min-height: 100vh; }
       .sidebar { position: static; overflow: visible; gap: 16px; padding: 18px 16px; }
       .workspace { padding: 18px 16px; }
-      .split, .scan_strip, .access_grid, .config_fact_grid, .model_simulation_notice dl, .provider_model_card, .model_key_grid, .metrics, .inline_form, .state_columns, .simulation_player, .player_event, .turn_editor_grid, .boundary_pair.changed, .attempt_step, .state_run_strip, .scenario_save_form { grid-template-columns: 1fr; }
+      .split, .scan_strip, .run_summary, .run_path li, .access_grid, .config_fact_grid, .model_simulation_notice dl, .provider_model_card, .model_key_grid, .metrics, .inline_form, .state_columns, .simulation_player, .player_event, .turn_editor_grid, .boundary_pair.changed, .attempt_step, .state_run_strip, .scenario_save_form { grid-template-columns: 1fr; }
       .topbar, .panel_header, .state_machine_summary, .assistant_boundary, .diagram_header, .turn_editor_header { display: grid; }
       .topbar { gap: 12px; }
       .sidebar_footer { margin-top: 0; }
@@ -3365,28 +3402,28 @@ defmodule WardwrightWeb.PolicyProjectionLive do
     recipe["promise"] || pattern["promise"]
   end
 
-  defp workbench_title("diagram"), do: "Policy Simulator"
-  defp workbench_title(_mode), do: "Artifact Inspector"
+  defp workbench_title("diagram"), do: "Simulator"
+  defp workbench_title(_mode), do: "Advanced Details"
 
   defp workbench_description("diagram") do
-    "Edit a scenario, step through the run, and see which state, rule, action, and output boundary changed. The deterministic artifact remains the authority; this is evidence against it."
+    "Edit a scenario, step through the run, and see what changed: state, rules, actions, and user-visible output."
   end
 
   defp workbench_description(_mode) do
-    "Lower-level projection views for reviewing the compiled artifact behind the simulator. These are useful when the main run map does not explain enough."
+    "Lower-level views for reviewing the model behind the simulator. Use these when the run path does not explain enough."
   end
 
   defp mode_label("diagram"), do: "Simulate"
-  defp mode_label("phase_map"), do: "Compiled rules"
-  defp mode_label("state_machine"), do: "State model"
-  defp mode_label("effect_matrix"), do: "Effect table"
-  defp mode_label("trace_overlay"), do: "Trace details"
+  defp mode_label("phase_map"), do: "Rules"
+  defp mode_label("state_machine"), do: "State"
+  defp mode_label("effect_matrix"), do: "Effects"
+  defp mode_label("trace_overlay"), do: "Trace"
 
   defp mode_hint("diagram"), do: "primary workspace"
-  defp mode_hint("phase_map"), do: "artifact internals"
-  defp mode_hint("state_machine"), do: "all transitions"
+  defp mode_hint("phase_map"), do: "checks by phase"
+  defp mode_hint("state_machine"), do: "states and transitions"
   defp mode_hint("effect_matrix"), do: "writes and actions"
-  defp mode_hint("trace_overlay"), do: "raw run evidence"
+  defp mode_hint("trace_overlay"), do: "step evidence"
 
   defp phase_label("request.preparing"), do: "Before the model"
   defp phase_label("request.routing"), do: "Route choice"

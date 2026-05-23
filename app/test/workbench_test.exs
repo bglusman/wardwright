@@ -141,10 +141,10 @@ defmodule WardwrightWeb.WorkbenchTest do
              WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
 
     assert json =~ "Wardwright"
-    assert json =~ "Selected model turn simulator"
+    assert json =~ "Simulate a turn"
     assert json =~ "Model authoring"
     assert json =~ "Policy projection"
-    assert json =~ "Fixture"
+    assert json =~ "Scenario"
     assert json =~ "/admin"
     assert json =~ "/admin?view=model_access"
     assert json =~ "/admin?view=control_debugger"
@@ -669,7 +669,7 @@ defmodule WardwrightWeb.WorkbenchTest do
       )
 
     assert ok?
-    assert message =~ "Fixture saved"
+    assert message =~ "Scenario saved"
     assert fixture_id =~ "saved:"
 
     assert Enum.any?(

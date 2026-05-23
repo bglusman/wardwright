@@ -79,7 +79,7 @@ defmodule WardwrightWeb.LustreWorkbenchData do
 
       case Wardwright.PolicyScenarioStore.create(pattern_id, attrs) do
         {:ok, scenario} ->
-          {true, "Fixture saved for this projection. Source model recorded as #{model_id}.", "saved:#{scenario.id}"}
+          {true, "Scenario saved. Source model recorded as #{model_id}.", "saved:#{scenario.id}"}
 
         {:error, message} ->
           {false, message, ""}
