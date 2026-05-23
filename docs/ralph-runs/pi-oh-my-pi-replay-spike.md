@@ -74,6 +74,36 @@ tool scopes for edit/write/patch tool names, because OMP evaluates `condition`
 against streamed content while `scope` narrows which tool argument streams are
 eligible.
 
+### Runtime Equivalence Probe
+
+The next test is executable as:
+
+```bash
+OMP_BIN=/tmp/omp-darwin-arm64 node scripts/omp-ttsr-runtime-equivalence.mjs
+```
+
+Use `OMP_BIN=omp` when `omp` is installed on `PATH`.
+
+The probe extracts the current Wardwright OMP rule from
+`WardwrightWeb.AgentHarnessAdapters`, then creates an isolated OMP home,
+project, rule directory, and extension. The extension registers a fake
+`wardwright-runtime/tool-probe` model provider that streams actual OMP
+assistant `toolcall_delta` events without live model credentials. OMP then
+loads the exported Wardwright rule from `.omp/rules`, so the assertion runs
+through OMP's real session/TTSR runtime rather than a Wardwright-side matcher.
+
+Current observed result against OMP 15.2.4:
+
+- `edit` triggers `wardwright-read-before-edit`;
+- `edit_file` triggers `wardwright-read-before-edit`;
+- `write` triggers `wardwright-read-before-edit`;
+- `read` does not trigger.
+
+This proves the exported rule's OMP runtime shape for the core read-before-edit
+interruption. It still does not prove full replay equivalence: the separate
+state-fidelity probe must compare imported session/tool-result evidence before
+the adapter can claim more than best-effort continuation.
+
 ### OpenCode Plugin
 
 The OpenCode plugin spike keeps the current import result conservative. A
