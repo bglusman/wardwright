@@ -10,21 +10,29 @@ defmodule Wardwright.AgentAdapters.OmpInstaller do
   @key_gateway_url "gateway_url"
   @key_paired "paired"
   @key_runtime "runtime"
+  @key_runtime_probe "runtime_probe"
   @key_schema "schema"
+  @key_status "status"
   @key_target "target"
   @runtime "omp"
+  @runtime_probe_name "omp_ttsr_runtime_equivalence"
+  @runtime_probe_schema "wardwright.omp_runtime_probe.v0"
   @schema "wardwright.adapter_config.v0"
+  @status_passed "passed"
 
   def status(workspace_root, opts \\ []) when is_binary(workspace_root) do
     files =
       OmpPack.expected_files()
       |> Enum.map(&file_status(workspace_root, &1, opts))
 
+    config = adapter_config(workspace_root)
+
     %{
       files: files,
       identity_verified: Enum.any?(files, &Map.get(&1, :identity_verified?, false)),
       installed_files_present: Enum.any?(files, & &1.present?),
-      installed_manifest_matches: Enum.all?(files, & &1.matches?)
+      installed_manifest_matches: Enum.all?(files, & &1.matches?),
+      runtime_probe_passed: runtime_probe_passed?(config)
     }
   end
 
@@ -79,6 +87,83 @@ defmodule Wardwright.AgentAdapters.OmpInstaller do
         File.write!(path, OmpPack.adapter_config_content(identity))
         {:ok, %{path: OmpPack.config_path()}}
     end
+  end
+
+  def probe(workspace_root, opts \\ []) when is_binary(workspace_root) do
+    inspection = status(workspace_root, opts)
+
+    cond do
+      not inspection.installed_files_present ->
+        {:error, :not_installed, inspection}
+
+      not inspection.installed_manifest_matches ->
+        {:error, :repair_required, inspection}
+
+      true ->
+        with {:ok, config} <- adapter_config(workspace_root),
+             :ok <- require_paired_identity(config),
+             {:ok, output} <- run_runtime_probe(workspace_root, opts),
+             {:ok, evidence} <- record_runtime_probe(workspace_root, config, output, opts) do
+          {:ok, %{config_path: OmpPack.config_path(), evidence: evidence}}
+        end
+    end
+  end
+
+  defp run_runtime_probe(workspace_root, opts) do
+    request = %{
+      config_path: Path.join(workspace_root, OmpPack.config_path()),
+      node_bin: Keyword.get(opts, :node_bin, "node"),
+      omp_bin: Keyword.get(opts, :omp_bin, "omp"),
+      rule_path: Path.join(workspace_root, ".omp/rules/wardwright-read-before-edit.md"),
+      script_path: Keyword.get(opts, :probe_script_path, default_probe_script_path()),
+      workspace_root: workspace_root
+    }
+
+    probe_runner = Keyword.get(opts, :probe_runner, &run_probe_command/1)
+    probe_runner.(request)
+  end
+
+  defp run_probe_command(request) do
+    env = [
+      {"OMP_BIN", request.omp_bin},
+      {"WARDWRIGHT_OMP_CONFIG_PATH", request.config_path},
+      {"WARDWRIGHT_OMP_RULE_PATH", request.rule_path}
+    ]
+
+    case System.cmd(request.node_bin, [request.script_path],
+           cd: request.workspace_root,
+           env: env,
+           stderr_to_stdout: true
+         ) do
+      {output, 0} -> {:ok, output}
+      {output, status} -> {:error, :probe_failed, %{output: output, status: status}}
+    end
+  rescue
+    error in ErlangError -> {:error, :probe_failed, %{output: Exception.message(error), status: nil}}
+  end
+
+  defp record_runtime_probe(workspace_root, config, output, opts) do
+    evidence = %{
+      adapter_id: OmpPack.adapter_id(),
+      adapter_version: OmpPack.adapter_version(),
+      output_sha256: sha256(output),
+      probe: @runtime_probe_name,
+      probed_at: DateTime.to_iso8601(Keyword.get(opts, :now, DateTime.utc_now())),
+      runtime: @runtime,
+      schema: @runtime_probe_schema,
+      status: @status_passed,
+      target: @runtime
+    }
+
+    path = Path.join(workspace_root, OmpPack.config_path())
+
+    config
+    |> Map.put(@key_runtime_probe, evidence)
+    |> JSON.encode!()
+    |> Kernel.<>("\n")
+    |> then(&File.write!(path, &1))
+
+    {:ok, evidence}
   end
 
   defp file_status(workspace_root, file, opts) do
@@ -147,8 +232,50 @@ defmodule Wardwright.AgentAdapters.OmpInstaller do
       Map.get(config, @key_runtime) == @runtime and
       is_boolean(Map.get(config, @key_paired)) and
       (Map.get(config, @key_gateway_identity) == nil or is_map(Map.get(config, @key_gateway_identity))) and
+      (Map.get(config, @key_runtime_probe) == nil or is_map(Map.get(config, @key_runtime_probe))) and
       is_binary(Map.get(config, @key_gateway_url))
   end
+
+  defp adapter_config(workspace_root) do
+    workspace_root
+    |> Path.join(OmpPack.config_path())
+    |> File.read()
+    |> case do
+      {:ok, content} ->
+        case JSON.decode(content) do
+          {:ok, config} when is_map(config) -> {:ok, config}
+          _result -> {:error, :invalid_config}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp require_paired_identity(config) do
+    if Map.get(config, @key_paired) == true and is_map(Map.get(config, @key_gateway_identity)) do
+      :ok
+    else
+      {:error, :not_paired, config}
+    end
+  end
+
+  defp runtime_probe_passed?({:ok, config}) do
+    case Map.get(config, @key_runtime_probe) do
+      probe when is_map(probe) ->
+        Map.get(probe, @key_schema) == @runtime_probe_schema and
+          Map.get(probe, @key_status) == @status_passed and
+          Map.get(probe, @key_adapter_id) == OmpPack.adapter_id() and
+          Map.get(probe, @key_adapter_version) == OmpPack.adapter_version() and
+          Map.get(probe, @key_runtime) == @runtime and
+          Map.get(probe, @key_target) == @runtime
+
+      _probe ->
+        false
+    end
+  end
+
+  defp runtime_probe_passed?(_config), do: false
 
   defp adapter_identity_verified?(workspace_root, config, opts) do
     case Map.get(config, @key_gateway_identity) do
@@ -196,5 +323,30 @@ defmodule Wardwright.AgentAdapters.OmpInstaller do
         {:error, _reason} -> :ok
       end
     end)
+  end
+
+  defp default_probe_script_path do
+    case :code.priv_dir(:wardwright) do
+      priv_dir when is_list(priv_dir) ->
+        priv_path = Path.join([to_string(priv_dir), "agent_adapters", "omp-ttsr-runtime-equivalence.mjs"])
+
+        if File.regular?(priv_path) do
+          priv_path
+        else
+          source_probe_script_path()
+        end
+
+      _error ->
+        source_probe_script_path()
+    end
+  end
+
+  defp source_probe_script_path do
+    Path.expand("../../../../scripts/omp-ttsr-runtime-equivalence.mjs", __DIR__)
+  end
+
+  defp sha256(content) do
+    :crypto.hash(:sha256, content)
+    |> Base.encode16(case: :lower)
   end
 end

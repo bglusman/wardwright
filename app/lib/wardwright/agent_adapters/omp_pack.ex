@@ -105,7 +105,7 @@ defmodule Wardwright.AgentAdapters.OmpPack do
     """
   end
 
-  def adapter_config_content(identity \\ nil) do
+  def adapter_config_content(identity \\ nil, runtime_probe \\ nil) do
     %{
       adapter_id: @adapter_id,
       adapter_version: @adapter_version,
@@ -113,6 +113,7 @@ defmodule Wardwright.AgentAdapters.OmpPack do
       gateway_url: gateway_url(identity),
       paired: is_map(identity),
       runtime: "omp",
+      runtime_probe: runtime_probe,
       schema: "wardwright.adapter_config.v0",
       target: "omp"
     }

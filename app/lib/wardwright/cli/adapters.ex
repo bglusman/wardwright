@@ -90,6 +90,9 @@ defmodule Wardwright.CLI.Adapters do
       ["pair", target | rest] ->
         pair(target, rest, write_fun, opts)
 
+      ["probe", target | rest] ->
+        probe(target, rest, write_fun, opts)
+
       _ ->
         write_fun.(help())
         2
@@ -199,6 +202,50 @@ defmodule Wardwright.CLI.Adapters do
     2
   end
 
+  def probe(target, argv, write_fun, opts \\ [])
+
+  def probe("omp", argv, write_fun, opts) do
+    with {:ok, parsed} <- parse_scope_args(argv),
+         :ok <- ensure_project_scope(parsed.scope),
+         {:ok, omp_bin} <- detected_runtime_path("omp", opts, "probe") do
+      probe_opts =
+        opts
+        |> Keyword.put(:omp_bin, omp_bin)
+        |> Keyword.take([:identity_secret, :node_bin, :now, :omp_bin, :probe_runner, :probe_script_path])
+
+      case OmpInstaller.probe(Keyword.get(opts, :workspace_root, File.cwd!()), probe_opts) do
+        {:ok, result} ->
+          write_fun.(probe_success_human(result))
+          0
+
+        {:error, :not_installed, _inspection} ->
+          write_fun.("Cannot probe OMP adapter: run `wardwright adapters install omp` first.")
+          1
+
+        {:error, :repair_required, _inspection} ->
+          write_fun.("Cannot probe OMP adapter: installed files are drifted; repair them before probing.")
+          1
+
+        {:error, :not_paired, _config} ->
+          write_fun.("Cannot probe OMP adapter: run `wardwright adapters pair omp` first.")
+          1
+
+        {:error, :probe_failed, result} ->
+          write_fun.(probe_failed_human(result))
+          1
+      end
+    else
+      {:error, message} ->
+        write_fun.(message)
+        2
+    end
+  end
+
+  def probe(_target, _argv, write_fun, _opts) do
+    write_fun.("Only `wardwright adapters probe omp` is implemented in this loop.")
+    2
+  end
+
   defp list_human(opts) do
     rows =
       opts
@@ -257,7 +304,7 @@ defmodule Wardwright.CLI.Adapters do
         installation.installed_files_present,
         installation.installed_manifest_matches,
         installation.identity_verified,
-        false
+        installation.runtime_probe_passed
       )
 
     %{
@@ -290,10 +337,8 @@ defmodule Wardwright.CLI.Adapters do
       identity_verified: inspection.identity_verified,
       installed_files_present: inspection.installed_files_present,
       installed_manifest_matches: inspection.installed_manifest_matches,
-      installed_paths:
-        inspection.files
-        |> Enum.filter(& &1.present?)
-        |> Enum.map(& &1.path)
+      installed_paths: inspection.files |> Enum.filter(& &1.present?) |> Enum.map(& &1.path),
+      runtime_probe_passed: inspection.runtime_probe_passed
     }
   end
 
@@ -302,7 +347,8 @@ defmodule Wardwright.CLI.Adapters do
       identity_verified: false,
       installed_files_present: false,
       installed_manifest_matches: true,
-      installed_paths: []
+      installed_paths: [],
+      runtime_probe_passed: false
     }
   end
 
@@ -346,12 +392,18 @@ defmodule Wardwright.CLI.Adapters do
   end
 
   defp ensure_runtime_detected(target, opts) do
-    target = Enum.find(@targets, &(&1.target == target))
+    case detected_runtime_path(target, opts, "install") do
+      {:ok, _path} -> :ok
+      error -> error
+    end
+  end
 
-    if detected_path(target, opts) do
-      :ok
-    else
-      {:error, "Cannot install OMP adapter: install omp or oh-my-pi first."}
+  defp detected_runtime_path(target_name, opts, action) do
+    target = Enum.find(@targets, &(&1.target == target_name))
+
+    case detected_path(target, opts) do
+      path when is_binary(path) -> {:ok, path}
+      _path -> {:error, "Cannot #{action} OMP adapter: install omp or oh-my-pi first."}
     end
   end
 
@@ -437,6 +489,37 @@ defmodule Wardwright.CLI.Adapters do
       adapter: #{Map.get(identity, @key_adapter_id)}
       expires_at: #{Map.get(identity, @key_expires_at)}
     """
+  end
+
+  defp probe_success_human(result) do
+    """
+    OMP runtime probe passed.
+      config: #{result.config_path}
+      probe: #{result.evidence.probe}
+      status: #{result.evidence.status}
+      probed_at: #{result.evidence.probed_at}
+    """
+  end
+
+  defp probe_failed_human(result) do
+    output =
+      result.output
+      |> to_string()
+      |> String.trim()
+
+    """
+    OMP runtime probe failed.
+      status: #{inspect(result.status)}
+    #{indent_output(output)}
+    """
+  end
+
+  defp indent_output(""), do: "  output: none"
+
+  defp indent_output(output) do
+    output
+    |> String.split("\n")
+    |> Enum.map_join("\n", &"  #{&1}")
   end
 
   defp runtime_for(target, nil, _opts), do: target.default_runtime || "unknown"
@@ -559,6 +642,7 @@ defmodule Wardwright.CLI.Adapters do
       wardwright adapters install omp [--scope project] [--repair]
       wardwright adapters uninstall omp [--scope project]
       wardwright adapters pair omp [--scope project]
+      wardwright adapters probe omp [--scope project]
     """
   end
 end

@@ -71,6 +71,7 @@ defmodule Wardwright.CLI do
       wardwright adapters install  Install project-local adapter files
       wardwright adapters uninstall  Remove Wardwright-owned adapter files
       wardwright adapters pair     Pair installed adapter files with the gateway
+      wardwright adapters probe    Run adapter runtime validation probes
       wardwright tools          Print policy-authoring MCP/API help for agents
       wardwright tools --json   Print machine-readable authoring tool metadata
       wardwright --version      Print the packaged app version

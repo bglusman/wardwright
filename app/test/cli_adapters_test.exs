@@ -319,6 +319,112 @@ defmodule Wardwright.CLIAdaptersTest do
     assert omp.next_actions == ["run `wardwright adapters probe omp` for stronger replay affordances"]
   end
 
+  test "probe omp runs against the installed rule and paired adapter identity before marking probe verified" do
+    workspace = tmp_workspace("wardwright-omp-probe")
+    secret = String.duplicate("probe-secret", 4)
+    now = ~U[2026-05-23 21:00:00Z]
+    test_pid = self()
+
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    assert 0 =
+             Adapters.run(["install", "omp"], collector(),
+               find_executable: fake_omp_finder(),
+               workspace_root: workspace
+             )
+
+    pair_request_fun = fn "http://127.0.0.1:8787", "gateway-token", payload ->
+      Identity.issue(payload, secret: secret, now: now)
+    end
+
+    assert 0 =
+             Adapters.run(["pair", "omp"], collector(),
+               find_executable: fake_omp_finder(),
+               gateway_token: "gateway-token",
+               identity_secret: secret,
+               now: now,
+               pair_request_fun: pair_request_fun,
+               workspace_root: workspace
+             )
+
+    probe_runner = fn request ->
+      send(test_pid, {:probe_request, request})
+
+      assert request.omp_bin == "/tmp/fake-bin/omp"
+      assert File.read!(request.rule_path) =~ "Wardwright read-before-edit replay guard"
+
+      config = JSON.decode!(File.read!(request.config_path))
+      assert config["paired"] == true
+      assert get_in(config, ["gateway_identity", "adapter_id"]) == "wardwright-omp"
+
+      {:ok, "PASS edit: expected trigger\nPASS read: expected not trigger\n"}
+    end
+
+    collector = collector()
+
+    assert 0 =
+             Adapters.run(["probe", "omp"], collector,
+               find_executable: fake_omp_finder(),
+               identity_secret: secret,
+               now: DateTime.add(now, 60, :second),
+               probe_runner: probe_runner,
+               workspace_root: workspace
+             )
+
+    assert_receive {:probe_request, request}
+    output = collected()
+    assert output =~ "OMP runtime probe passed"
+    assert output =~ "omp_ttsr_runtime_equivalence"
+    refute output =~ get_in(JSON.decode!(File.read!(request.config_path)), ["gateway_identity", "token"])
+
+    config = JSON.decode!(File.read!(Path.join(workspace, OmpPack.config_path())))
+    assert get_in(config, ["runtime_probe", "status"]) == "passed"
+    assert get_in(config, ["runtime_probe", "probe"]) == "omp_ttsr_runtime_equivalence"
+    assert get_in(config, ["runtime_probe", "output_sha256"]) =~ ~r/^[0-9a-f]{64}$/
+    refute inspect(config["runtime_probe"]) =~ get_in(config, ["gateway_identity", "token"])
+
+    results =
+      Adapters.doctor(
+        find_executable: fake_omp_finder(),
+        identity_secret: secret,
+        now: DateTime.add(now, 120, :second),
+        workspace_root: workspace
+      )
+
+    omp = Enum.find(results, &(&1.target == "omp"))
+    assert omp.state == "verified_with_probe"
+    assert omp.install_plan == "already_verified_with_probe"
+    assert omp.next_actions == ["adapter identity and runtime probe are verified"]
+  end
+
+  test "probe omp refuses to run before the installed adapter is paired" do
+    workspace = tmp_workspace("wardwright-omp-probe-unpaired")
+    test_pid = self()
+
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    assert 0 =
+             Adapters.run(["install", "omp"], collector(),
+               find_executable: fake_omp_finder(),
+               workspace_root: workspace
+             )
+
+    collector = collector()
+
+    assert 1 =
+             Adapters.run(["probe", "omp"], collector,
+               find_executable: fake_omp_finder(),
+               probe_runner: fn request ->
+                 send(test_pid, {:unexpected_probe, request})
+                 {:ok, "PASS\n"}
+               end,
+               workspace_root: workspace
+             )
+
+    assert collected() =~ "run `wardwright adapters pair omp` first"
+    refute_receive {:unexpected_probe, _request}
+  end
+
   test "doctor human output explains unsupported detected runtime without overclaiming install support" do
     collector = collector()
 
