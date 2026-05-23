@@ -77,7 +77,7 @@ mise exec -- mix test --only counterfactual_replay_acceptance
 - `GET /admin/storage`
 - `GET /admin/runtime`
 - `GET /admin/wardwright-models`
-- `GET /policies` legacy workbench route retained during the Lustre transition.
+- `GET /policies` legacy links redirect to the Lustre admin workbench.
 
 The public Wardwright model is available as both `coding-balanced` and
 `wardwright/coding-balanced`. Requests are routed by a simple prompt-length
