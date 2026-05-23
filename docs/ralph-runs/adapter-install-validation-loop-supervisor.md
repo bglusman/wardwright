@@ -105,3 +105,55 @@ execution constraints for the loop are:
 - Follow-up: the installed `codex exec` does not accept
   `--ask-for-approval`; the runner uses the supported unattended
   `--dangerously-bypass-approvals-and-sandbox` flag instead.
+
+### Loop 1 - Typed Adapter Decision Core
+
+- Timestamp: 2026-05-23T16:54:20-04:00.
+- Starting commit: `1f736f0`.
+- Ending implementation commit: `d58a7a1`.
+- Scope: added `wardwright/adapter_core.gleam` as the typed pure decision core
+  for adapter install validation. The slice covers adapter state
+  classification, runtime-to-adapter resolution, install-plan classification,
+  and adapter-scoped recording policy decisions. Added direct behavior tests in
+  `app/test/gleam_adapter_core_test.exs`.
+- Validation:
+  - `cd app && mise exec -- gleam format --check src`
+  - `cd app && mise exec -- gleam check --target erlang`
+  - `cd app && mise exec -- gleam run -m glinter`
+  - `cd app && MIX_ENV=test mise exec -- mix format --check-formatted`
+  - `cd app && MIX_ENV=test mise exec -- mix compile`
+  - `cd app && MIX_ENV=test mise exec -- mix test --no-compile test/gleam_adapter_core_test.exs`
+  - `mise run check:types`
+  - Commit hook reran app format/test and gitleaks: `364 passed (21
+    properties, 343 tests), 6 excluded`; staged gitleaks clean.
+- Adversarial review:
+  - Architecture: the pure decision logic is now in Gleam union types, while the
+    exported functions still return string labels and tuples for Elixir/CLI
+    boundaries. That is acceptable for this bridge slice, but the next CLI
+    loop should keep JSON/human rendering in Elixir and avoid duplicating these
+    state labels outside the core.
+  - Architecture blocker fixed before ending: the first commit treated
+    OpenClaw `claude-cli` as installable via a Claude identity path even though
+    that adapter is not implemented in this loop. The amended commit now
+    returns `unsupported_runtime` / `no_install` and tests the regression.
+  - Code quality/comments: no comments were added because the typed variants
+    and label helpers describe the decision vocabulary directly. The main
+    remaining risk is positional boolean input to `adapter_state/7`; the next
+    Elixir boundary should assemble those booleans from named runtime/install
+    facts, not expose the positional shape to users.
+  - Code quality blocker fixed before ending: the first push attempt exposed
+    Dialyzer/Assay warnings from impossible generated Gleam match branches for
+    unsupported install-plan labels. Unsupported resolution is now represented
+    outside the install-plan union, and `mise run check:types` is clean.
+  - Test quality: tests assert user-visible state labels, runtime resolution,
+    scope guardrails, and recording policy isolation rather than private helper
+    branches. The generic-client negative case proves adapted-agent auto
+    recording cannot leak to generic clients. Integration coverage remains open
+    for CLI list/doctor output and filesystem install behavior.
+- Skipped probes: OMP runtime probe, OpenCode surface probe, OpenClaw runtime
+  probes, and Claude gateway identity probe were skipped because this loop only
+  introduced the pure core and did not wire the packaged CLI, adapter files, or
+  gateway pairing surface.
+- Next open item: backlog item 2, add `wardwright adapters list` and
+  `wardwright adapters doctor` with stable human and JSON output backed by this
+  core.
