@@ -21,7 +21,7 @@ loop. The build target is
 - Runner: `scripts/run-adapter-ralph-loop.sh`.
 - Interval: 15 minutes between completed iterations.
 - Completion sentinel:
-  `.git/ralph-runs/adapter-install-validation/complete`.
+  `$(git rev-parse --git-path ralph-runs/adapter-install-validation/complete)`.
 - The loop should stop only after the exit criteria in the requirements file
   are implemented, validated, and recorded here.
 

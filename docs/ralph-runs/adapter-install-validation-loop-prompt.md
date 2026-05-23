@@ -53,7 +53,7 @@ validated, and recorded in the supervisor:
 
 1. Mark the supervisor status as complete.
 2. Create the local sentinel file:
-   `.git/ralph-runs/adapter-install-validation/complete`
+   `$(git rev-parse --git-path ralph-runs/adapter-install-validation/complete)`
 3. Push the final branch state.
 
 If the loop cannot make progress, record the blocker and stop without touching

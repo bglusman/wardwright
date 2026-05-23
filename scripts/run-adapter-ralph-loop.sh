@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 interval_seconds="${RALPH_INTERVAL_SECONDS:-900}"
-state_dir="$repo_root/.git/ralph-runs/adapter-install-validation"
+state_dir="$(cd "$repo_root" && git rev-parse --git-path ralph-runs/adapter-install-validation)"
 sentinel="$state_dir/complete"
 log_file="$state_dir/runner.log"
 prompt_file="docs/ralph-runs/adapter-install-validation-loop-prompt.md"
