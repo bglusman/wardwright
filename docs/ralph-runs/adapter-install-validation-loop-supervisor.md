@@ -8,6 +8,9 @@ This file is the durable tracker for the adapter install and validation Ralph
 loop. The build target is
 [`adapter-install-validation-requirements.md`](adapter-install-validation-requirements.html).
 
+Status: complete as of loop 14. The local completion sentinel exists at
+`$(git rev-parse --git-path ralph-runs/adapter-install-validation/complete)`.
+
 ## Branch Policy
 
 - Continue on `codex/pi-replay-spike` / PR #71.
@@ -806,3 +809,92 @@ execution constraints for the loop are:
   `PATH`, rerun `OMP_BIN=omp node scripts/omp-ttsr-runtime-equivalence.mjs`,
   then rerun the packaged `wardwright adapters probe omp` lifecycle before
   considering the completion sentinel.
+
+### Loop 14 - Real OMP Probe And Completion
+
+- Timestamp: 2026-05-23T19:05:21-04:00.
+- Starting commit: `a01e075`.
+- Ending implementation commit: `a01e075` (validation/completion loop; no
+  product code or docs content changed before this supervisor record).
+- Scope: completed the remaining OMP runtime blocker by running the required
+  TTSR equivalence probe against a real `@oh-my-pi/pi-coding-agent@15.2.4`
+  `omp` CLI through an isolated temporary wrapper. Then reran the packaged
+  Wardwright adapter lifecycle against a temporary local gateway and workspace:
+  doctor, install, pair, probe, doctor, and uninstall. Marked the supervisor
+  complete and wrote the local completion sentinel.
+- Validation:
+  - `command -v omp || true; command -v oh-my-pi || true; command -v pi || true;
+    command -v opencode || true; command -v openclaw || true; command -v claude
+    || true`: detected `/opt/homebrew/bin/opencode`,
+    `/opt/homebrew/bin/openclaw`, and `/Users/admin/.local/bin/claude`; no
+    global `omp`, `oh-my-pi`, or Pi coding-agent binary was already on `PATH`.
+  - `OMP_BIN=omp node scripts/omp-ttsr-runtime-equivalence.mjs`: failed with
+    `spawn omp ENOENT`, confirming the old global-PATH blocker before using an
+    isolated package wrapper.
+  - `npm view @oh-my-pi/pi-coding-agent name version bin description
+    repository --json`: confirmed the current package exposes `omp` from
+    `src/cli.ts`; the legacy `oh-my-pi` npm package name is unpublished and
+    the bare `pi` package is unrelated.
+  - `mise x bun@1.3.14 -- bun --version`: installed/verified a local mise Bun
+    runtime because the packaged OMP CLI rejects the preexisting Bun `1.3.13`.
+  - `NPM_CONFIG_CACHE=<temp> OMP_BIN=<temp>/omp OMP_TTSR_TIMEOUT_MS=120000 node
+    scripts/omp-ttsr-runtime-equivalence.mjs`: passed all required cases:
+    `edit`, `edit_file`, and `write` triggered
+    `wardwright-read-before-edit`; `read` did not trigger; the probe completed
+    through the OMP retry path and printed
+    `OMP TTSR runtime equivalence probe matched Wardwright read-before-edit
+    expectations.`
+  - Packaged lifecycle with
+    `app/burrito_out/wardwright_darwin_arm64`, isolated `HOME`, XDG dirs, npm
+    cache, workspace, temporary gateway on `127.0.0.1:18787`, and temporary
+    OMP wrapper: passed. The packaged CLI reached `installable`,
+    `installed_unverified`, `verified`, and `verified_with_probe`; pair/probe
+    output and `.omp` adapter files did not contain the generated admin token
+    or adapter signing secret.
+  - Packaged uninstall check: passed. `wardwright adapters uninstall omp`
+    removed Wardwright-owned OMP files and preserved an unrelated
+    `.omp/local-note.txt`.
+  - Live packaged `adapters doctor --json`: OMP and Pi reported
+    `not_detected`; OpenCode and OpenClaw binaries were detected but reported
+    `unsupported_runtime` with runtime `unknown`; Claude Code was detected as
+    `claude-cli` but reported `unsupported_runtime`.
+  - Final documentation pass: reviewed `docs/agent-adapters.md` for install,
+    doctor, pair, probe, uninstall, privacy, cleanup, fallback behavior,
+    adapter-state wording, and fidelity limits for OMP/Pi/OpenCode/OpenClaw
+    and Claude Code. No wording changes were needed.
+  - `mise run check:docs`: passed.
+  - Created the local sentinel:
+    `$(git rev-parse --git-path
+    ralph-runs/adapter-install-validation/complete)`.
+- Adversarial review:
+  - Architecture: no product architecture changed. The validation preserves
+    the established boundary split: pure state/fidelity decisions remain in
+    Gleam, filesystem/process behavior stays in Elixir adapter boundaries, and
+    OMP runtime equivalence is now backed by a real current OMP CLI rather than
+    a fake subprocess. The temporary npm wrapper is validation scaffolding only
+    and was not committed as a product dependency or install shortcut.
+  - Architecture concern reviewed: the real OMP CLI required a newer Bun than
+    the global runtime. Using `mise` for Bun `1.3.14` is acceptable for this
+    local validation loop, but release docs should continue to say the OMP
+    runtime must be installed and runnable on `PATH` instead of promising that
+    Wardwright installs OMP itself.
+  - Code/comment quality: no source code or code comments changed. The
+    supervisor now records the package-name discovery because `oh-my-pi` being
+    unpublished is an operator-relevant trap for reproducing this validation.
+    No secrets, private endpoints, or real user content were committed.
+  - Test quality: the real OMP probe is behavior-focused and capable of
+    failing for the safety property under review: edit-like tools must trigger
+    the read-before-edit rule, read must not trigger, and positive cases must
+    complete through the runtime retry path. The packaged lifecycle demo
+    separately proves install/pair/probe/uninstall behavior, secret
+    non-disclosure, and cleanup boundaries. It does not claim OpenCode surface
+    verification, OpenClaw support, or Claude native state fidelity.
+- Skipped probes: OpenCode surface probe skipped because the live packaged
+  doctor resolved OpenCode runtime as `unknown` / `unsupported_runtime`;
+  OpenClaw runtime probes skipped because live OpenClaw also resolved as
+  `unknown` / `unsupported_runtime`; Claude gateway identity probe skipped
+  because Claude Code pairing is not packaged in this RC and doctor reports
+  `unsupported_runtime`.
+- Next open item: none for the adapter install validation loop. Claude Code,
+  OpenClaw polish, and stronger OpenCode surface verification remain follow-up
+  release work, not blockers for this recorded completion.
