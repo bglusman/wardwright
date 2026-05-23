@@ -18,11 +18,24 @@ if ! command -v codex >/dev/null 2>&1; then
 fi
 
 if ! mkdir "$lock_dir" 2>/dev/null; then
+  existing_pid="$(cat "$lock_dir/pid" 2>/dev/null || true)"
+  if [[ -z "$existing_pid" ]] || ! kill -0 "$existing_pid" 2>/dev/null; then
+    rm -rf "$lock_dir"
+    mkdir "$lock_dir"
+  else
+    echo "adapter Ralph loop already appears to be running: $lock_dir" >&2
+    exit 75
+  fi
+fi
+
+if [[ ! -d "$lock_dir" ]]; then
   echo "adapter Ralph loop already appears to be running: $lock_dir" >&2
   exit 75
 fi
+echo "$$" >"$lock_dir/pid"
 
 cleanup() {
+  rm -f "$lock_dir/pid" 2>/dev/null || true
   rmdir "$lock_dir" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
