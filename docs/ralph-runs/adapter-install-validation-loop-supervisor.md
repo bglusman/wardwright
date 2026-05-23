@@ -102,3 +102,6 @@ execution constraints for the loop are:
 - Tweak: run future iterations with `codex exec` from this worktree. The loop
   remains focused on packaging, installing, testing, and documenting Wardwright
   agent adapters.
+- Follow-up: the installed `codex exec` does not accept
+  `--ask-for-approval`; the runner uses the supported unattended
+  `--dangerously-bypass-approvals-and-sandbox` flag instead.

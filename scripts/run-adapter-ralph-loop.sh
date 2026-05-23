@@ -40,7 +40,7 @@ while [[ ! -f "$sentinel" ]]; do
   } | codex exec \
     --cd "$repo_root" \
     --sandbox danger-full-access \
-    --ask-for-approval never \
+    --dangerously-bypass-approvals-and-sandbox \
     - >>"$log_file" 2>&1; then
     echo "[$(date -Iseconds)] iteration completed" >>"$log_file"
   else
