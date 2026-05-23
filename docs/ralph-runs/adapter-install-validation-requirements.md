@@ -23,6 +23,27 @@ continuation remains best-effort until state-fidelity probes prove otherwise.
 
 ## Product Requirements
 
+### Implementation Bias
+
+New adapter decision logic should bias toward typed Gleam modules. Elixir
+should remain the boundary for filesystem access, process execution, HTTP
+request handling, JSON shaping, and integration with existing Phoenix surfaces.
+
+Prefer Gleam for pure, testable logic such as:
+
+- adapter state transitions;
+- runtime detection result classification;
+- product-to-runtime-to-adapter resolution;
+- install-plan classification;
+- recording-policy decisions;
+- fidelity labels and resume-claim predicates;
+- drift status classification from normalized file manifests.
+
+When touching existing Elixir decision code in these areas, the loop should
+consider moving that logic into Gleam instead of expanding the Elixir surface.
+The migration should stay incremental: do not move impure boundaries into
+Gleam just to satisfy this preference.
+
 ### Adapter CLI
 
 Packaged Wardwright must provide:
@@ -216,6 +237,10 @@ Required negative cases:
 - wrong workspace identity is rejected;
 - stale adapter version reports `drifted`.
 
+Pure adapter-state, runtime-resolution, install-plan, and recording-policy
+tests should exercise the Gleam implementation directly where practical, with
+Elixir tests covering only boundary translation and integration.
+
 ### CLI Integration Tests
 
 Use temp homes, temp config dirs, and fake agent binaries/configs. Tests must
@@ -309,6 +334,8 @@ The loop should keep iterating until:
 - OpenCode Pi/OMP-backed mode reuses the Pi/OMP adapter correctly;
 - OpenCode-native mode is explicitly lower fidelity;
 - gateway auto-recording is adapter-scoped and opt-in;
+- touched pure adapter decision logic has been moved into or added in Gleam
+  unless there is a concrete boundary reason to keep it in Elixir;
 - install, doctor, pair, probe, uninstall are covered by automated tests;
 - docs explain setup, privacy, cleanup, and fallback behavior for non-expert
   users;
