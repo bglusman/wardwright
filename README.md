@@ -124,6 +124,8 @@ Wardwright exposes:
 
 See [Agent Authoring](docs/agent-authoring.md) for the review loop external
 agents should follow before activating a model.
+Release-candidate adapter install, doctor, pair, probe, privacy, cleanup, and
+fallback behavior is documented in [Agent Adapters](docs/agent-adapters.md).
 
 `wardwright admin` opens the workbench in your browser. If nothing is listening
 on the configured `WARDWRIGHT_BIND` port, it starts a local background service
