@@ -648,3 +648,70 @@ execution constraints for the loop are:
   with `omp` or `oh-my-pi`, then decide whether to add adapter-status-specific
   UI smoke or explicitly mark that browser requirement non-blocking for this RC
   before writing the completion sentinel.
+
+### Loop 11 - Adapter Status Browser Smoke
+
+- Timestamp: 2026-05-23T18:46:10-04:00.
+- Starting commit: `1f5919c`.
+- Ending implementation commit: `acd04f4`.
+- Scope: added a read-only adapter install status panel to the control debugger
+  admin surface, backed by live `wardwright adapters doctor` rows at runtime
+  and an explicit browser-smoke fixture flag for deterministic UI coverage.
+  Extended browser smoke to assert that `installable`, `verified`,
+  `verified_with_probe`, and `drifted` states render with distinct visual
+  treatment, that OpenCode through OMP and OpenCode-native lower-fidelity
+  wording are visible, that adapter-scoped recording policy is visible, and
+  that the control debugger page still has no responsive overflow.
+- Validation:
+  - `cd app && mise exec -- gleam format --check src`
+  - `cd app && MIX_ENV=test mise exec -- mix format --check-formatted`
+  - `cd app && mise exec -- gleam check --target erlang`
+  - `cd app && mise exec -- gleam run -m glinter`
+  - `python3 /Users/admin/.codex/skills/gleam-lustre/scripts/check_lustre_controlled_inputs.py /Users/admin/projects/wardwright.pi-replay-spike/app/src`
+  - `cd app && MIX_ENV=test mise exec -- sh -lc 'mix compile && mix test --no-compile test/workbench_test.exs'`
+  - `mise run check:maps`
+  - `node --check scripts/browser-smoke/lustre-workbench.mjs`
+  - `git diff --check`
+  - `mise run check:browser`
+  - `mise run check:types` after rerunning without the browser-smoke build
+    directory contention from the first parallel attempt.
+  - `gitleaks protect --staged --config .gitleaks.toml --verbose`
+  - Commit hook reran app format/test and staged gitleaks:
+    `392 passed (21 properties, 371 tests), 6 excluded`; staged gitleaks
+    clean.
+- Adversarial review:
+  - Architecture: the panel is a read-only projection. Filesystem/process
+    detection remains in the existing Elixir CLI doctor boundary, while the
+    Lustre code only renders rows and does not mutate adapter state. The browser
+    fixture is gated by `WARDWRIGHT_BROWSER_ADAPTER_STATUS_FIXTURE=1` and is
+    used only by the smoke server process, so normal admin rendering reports
+    live doctor rows instead of canned adapter states.
+  - Architecture concern reviewed: the web panel reports the gateway process
+    workspace/cwd that `Adapters.doctor/1` sees. That is acceptable for this
+    smoke slice because it is read-only and does not claim a separate selected
+    workspace, but a later install-management UI should make the workspace root
+    explicit before allowing any install, repair, pair, probe, or uninstall
+    action from the browser.
+  - Code quality/comments: no comments were added. The new CSS uses stable
+    state classes for the product-visible state vocabulary and keeps text
+    wrapping/one-column fallback explicit to avoid the overflow regressions this
+    smoke covers. The Gleam external shape is still an eight-field tuple; that
+    is tolerable for a small display boundary, but a future editable adapter UI
+    should use a named Gleam record type rather than expanding positional
+    fields.
+  - Test quality: the ExUnit regression asserts the user-visible recording
+    policy text on the control debugger. Browser smoke exercises the actual
+    rendered server component, including shadow-DOM traversal, distinct state
+    styling, OpenCode runtime/fidelity explanations, recording-policy wording,
+    and responsive overflow checks. The test would fail for missing status rows,
+    indistinguishable state styling, lower-fidelity OpenCode overclaims, or
+    layout overflow. It intentionally does not substitute for the real OMP TTSR
+    runtime probe.
+- Skipped probes: real OMP TTSR runtime equivalence probe remains skipped
+  because neither `omp` nor `oh-my-pi` is installed. OpenCode surface probe,
+  OpenClaw runtime probes, and Claude gateway identity probe remain skipped
+  because this loop only adds adapter-status UI/smoke coverage and does not add
+  new runtime probe or adapter pairing surfaces.
+- Next open item: run the real OMP runtime equivalence probe in an environment
+  with `omp` or `oh-my-pi`; completion sentinel remains blocked until that
+  blocking probe is observed or the requirements are explicitly changed.
