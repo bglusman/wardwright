@@ -11,8 +11,8 @@ lock_dir="$state_dir/lock"
 
 mkdir -p "$state_dir"
 
-if ! command -v opencode >/dev/null 2>&1; then
-  echo "opencode is required for the adapter Ralph loop" >&2
+if ! command -v codex >/dev/null 2>&1; then
+  echo "codex is required for the adapter Ralph loop" >&2
   exit 127
 fi
 
@@ -34,12 +34,14 @@ while [[ ! -f "$sentinel" ]]; do
   started_at="$(date -Iseconds)"
   echo "[$started_at] starting iteration" >>"$log_file"
 
-  if opencode run \
-    --dir "$repo_root" \
-    --title "Wardwright adapter install validation Ralph loop" \
-    --file "$repo_root/$prompt_file" \
-    --dangerously-skip-permissions \
-    "Run one iteration using the attached Ralph loop prompt." >>"$log_file" 2>&1; then
+  if {
+    cat "$repo_root/$prompt_file"
+    printf '\n\nRun one iteration using the Ralph loop prompt above.\n'
+  } | codex exec \
+    --cd "$repo_root" \
+    --sandbox danger-full-access \
+    --ask-for-approval never \
+    - >>"$log_file" 2>&1; then
     echo "[$(date -Iseconds)] iteration completed" >>"$log_file"
   else
     status=$?

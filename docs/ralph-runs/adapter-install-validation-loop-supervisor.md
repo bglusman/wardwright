@@ -89,6 +89,16 @@ execution constraints for the loop are:
   retry delay after failed iterations, not a delay between successful
   iterations.
 - Validation target: next runner launch should start each new iteration
-  immediately after the previous `opencode run` exits successfully.
+  immediately after the previous `codex exec` iteration exits successfully.
 - Documentation gate: completion requires a final docs pass before writing the
   sentinel.
+
+### Runtime Correction
+
+- Timestamp: 2026-05-23T16:43-04:00.
+- Finding: the first corrected runner launch used OpenCode machinery from the
+  earlier harness-resume trial, but this is the packaged Wardwright adapter
+  install loop. That made progress depend on an unrelated OpenCode provider.
+- Tweak: run future iterations with `codex exec` from this worktree. The loop
+  remains focused on packaging, installing, testing, and documenting Wardwright
+  agent adapters.
