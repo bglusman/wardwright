@@ -542,7 +542,7 @@ fn reset_harness_export_results(model: Model) -> Model {
 pub fn view(model: Model) -> Element(Msg) {
   html.div([class("control-debugger-app")], [
     html.style([], styles()),
-    lustre_shell.sidebar(lustre_shell.ControlDebugger, "Control Debugger", []),
+    lustre_shell.sidebar(lustre_shell.ControlDebugger, "Session replay", []),
     workspace(model),
   ])
 }
@@ -551,7 +551,7 @@ pub fn workspace(model: Model) -> Element(Msg) {
   html.main([class("workspace control-debugger-workspace")], [
     html.header([class("topbar")], [
       html.div([], [
-        html.h1([], [text("Control debugger")]),
+        html.h1([], [text("Session replay")]),
         html.p([], [
           text(
             "Inspect recorded model sessions, explain what Wardwright decided, and save useful failures as simulator cases.",
@@ -583,7 +583,7 @@ fn receipt_picker(model: Model) -> Element(Msg) {
         html.span([], [text("Recorded receipt")]),
         html.strong([], [text(blank_default(model.receipt_id, "none selected"))]),
       ]),
-      badge.badge([badge.variant(badge.Outline)], [text("receipt VCR")]),
+      badge.badge([badge.variant(badge.Outline)], [text("recorded run")]),
     ]),
     labeled_select(
       "Recent receipt",
@@ -621,7 +621,7 @@ fn import_card(model: Model) -> Element(Msg) {
       badge.badge([badge.variant(badge.Secondary)], [text("scenario")]),
     ]),
     labeled_select(
-      "Workbench pattern",
+      "Simulator target",
       "control_pattern_id",
       model.pattern_id,
       pattern_options(model.pattern_id),
@@ -658,7 +658,7 @@ fn replay_card(model: Model) -> Element(Msg) {
   html.article([class("panel debugger-card")], [
     html.div([class("panel-heading")], [
       html.div([], [
-        html.span([], [text("VCR replay")]),
+        html.span([], [text("Replay summary")]),
         html.strong([], [text("Explain what happened")]),
       ]),
       badge.badge([badge.variant(badge.Outline)], [text("no provider call")]),
@@ -685,10 +685,10 @@ fn counterfactual_card(model: Model) -> Element(Msg) {
   html.article([class("panel debugger-card counterfactual-card")], [
     html.div([class("panel-heading")], [
       html.div([], [
-        html.span([], [text("Counterfactual fork")]),
+        html.span([], [text("What-if replay")]),
         html.strong([], [text("Replay, change policy, continue")]),
       ]),
-      badge.badge([badge.variant(badge.Secondary)], [text("contract")]),
+      badge.badge([badge.variant(badge.Secondary)], [text("planned")]),
     ]),
     html.ol([class("debugger-steps")], [
       html.li([], [

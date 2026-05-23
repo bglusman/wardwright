@@ -138,7 +138,7 @@ wardwright tools --json
 
 `wardwright admin` opens the operator workbench in the default browser. If the
 configured bind port is not responding, it starts `wardwright serve` in the
-background first. `wardwright admin access` opens Model Management
+background first. `wardwright admin access` opens Models & access
 directly. Homebrew users can still run Wardwright as a service with
 `brew services start wardwright`; the admin helper just removes the need to
 remember the local URL.

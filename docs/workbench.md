@@ -19,15 +19,15 @@ Loopback access is allowed by default. If the workbench is exposed beyond local
 operator access, set `BASIC_AUTH_PASSWORD`; the Basic Auth username is always
 `admin`.
 
-The Model Management view is part of the same protected `/admin` shell. It can
+The Models & access view is part of the same protected `/admin` shell. It can
 select any registered model, generate and revoke model-scoped API keys for it,
-edit whether that model is keyed or unkeyed, and choose the model-scoped VCR
-recording mode. Those keys authorize model calls only when the model artifact
+edit whether that model is keyed or unkeyed, and choose the model-scoped replay
+capture mode. Those keys authorize model calls only when the model artifact
 sets `requires_api_key` to `true`; unkeyed models remain public or
-composition-only according to `auth.unkeyed_model_access`. VCR recording is
+composition-only according to `auth.unkeyed_model_access`. Replay capture is
 metadata-only by default; `vcr.mode: full_session` is an explicit debugging mode
 that stores full request and provider response payloads in receipts.
-Model Management can also archive a registered model, which removes it from
+Models & access can also archive a registered model, which removes it from
 model discovery and routing while preserving the model artifact in SQLite.
 Archived models live behind a collapsed section where operators can restore the
 artifact or hard-delete it when recovery should no longer be possible.
@@ -57,23 +57,22 @@ fixture selector loads reusable user/model output pairs into controlled fields
 so the visible inputs always match the selected fixture. Editing any field marks
 the turn custom until it is reset or another fixture is selected.
 
-The policy projection selector lives with the state-machine graph because it
-controls the projection, possible transitions, trace evidence, and fixture list
-for the selected model.
+The diagram focus selector lives with the behavior map because it controls the
+possible states, trace evidence, and scenario list for the selected model.
 
-## Model Management
+## Models & Access
 
-The Model Management page uses the same operator shell. It is intentionally
+The Models & access page uses the same operator shell. It is intentionally
 paired with the workbench because it controls whether a registered model can be
 called directly without a model-scoped API key and whether receipts capture
-metadata-only or full-session VCR payloads. It also owns model lifecycle:
+metadata-only or full-session replay payloads. It also owns model lifecycle:
 archive removes a model from `/v1/models` and active routing, restore re-enables
 the archived SQLite artifact, and hard delete removes the archived artifact and
 its model-scoped keys from SQLite.
 
 <figure>
   <img src="assets/workbench/model-access-controls.png" alt="Wardwright model access page showing keyed and unkeyed access controls for a selected model">
-  <figcaption>Model Management separates keyed model calls from unkeyed public or composition-only access, exposes model-scoped key creation and revocation, makes full-session VCR capture an explicit opt-in, and keeps archived models out of the active registry until restored.</figcaption>
+  <figcaption>Models & access separates keyed model calls from unkeyed public or composition-only access, exposes model-scoped key creation and revocation, makes full-session replay capture an explicit opt-in, and keeps archived models out of the active registry until restored.</figcaption>
 </figure>
 
 ## Local Models
@@ -102,7 +101,7 @@ wardwright tools --json
 
 `wardwright admin` opens the workbench and starts a local background service
 first if the configured bind port is not already responding. `wardwright admin
-access` opens Model Management directly. The default workbench includes a Model
+access` opens Models & access directly. The default workbench includes a Model
 authoring panel that sends the current model and projection context through the
 same assistant boundary used by the protected policy-authoring API and the MCP
 endpoint mounted at `/mcp`. Point a local agent at the Wardwright service, let

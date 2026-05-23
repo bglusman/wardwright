@@ -143,8 +143,8 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert json =~ "Wardwright"
     assert json =~ "Simulate a turn"
     assert json =~ "Model authoring"
-    assert json =~ "Behavior view"
-    assert json =~ "Example model library"
+    assert json =~ "Diagram focus"
+    assert json =~ "Example models"
     assert json =~ "Scenario"
     assert json =~ "/admin"
     assert json =~ "/admin?view=model_access"
@@ -174,7 +174,7 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert {:push, {:text, json}, _state} =
              WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
 
-    assert json =~ "Model Management"
+    assert json =~ "Models & access"
     assert json =~ "Access Policy"
     assert json =~ "Debug recording"
     assert json =~ "Receipt store"
@@ -198,12 +198,12 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert {:push, {:text, json}, _state} =
              WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
 
-    assert json =~ "Control debugger"
+    assert json =~ "Session replay"
     assert json =~ "Create simulator case"
     assert json =~ "Save scenario"
     assert json =~ "Receipts:"
     assert json =~ "Simulator cases:"
-    assert json =~ "VCR replay"
+    assert json =~ "Replay summary"
     assert json =~ "Explain receipt"
     assert json =~ "/admin"
     assert json =~ "/admin?view=model_access"
@@ -256,7 +256,7 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert {:push, {:text, json}, _state} =
              WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
 
-    assert json =~ "Control debugger"
+    assert json =~ "Session replay"
     assert json =~ "/admin?model=debugger-selected-model"
     assert json =~ "/admin?view=model_access&model=debugger-selected-model"
     assert json =~ "/admin?view=control_debugger&model=debugger-selected-model"
@@ -314,7 +314,7 @@ defmodule WardwrightWeb.WorkbenchTest do
   test "Lustre UI derives projection state in Gleam" do
     assert :wardwright@lustre_workbench_test_support.selecting_policy_slice_updates_heading(
              "tts-retry",
-             "Final: recording"
+             "Ends in: recording"
            )
   end
 
@@ -720,7 +720,7 @@ defmodule WardwrightWeb.WorkbenchTest do
   end
 
   test "control debugger exposes counterfactual fork workflow and runtime readiness" do
-    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Counterfactual fork")
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("What-if replay")
 
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Replay, change policy, continue")
 

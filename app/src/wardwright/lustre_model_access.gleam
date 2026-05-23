@@ -247,7 +247,7 @@ pub fn workspace(model: Model) -> Element(Msg) {
     html.header([class("topbar")], [
       html.div([], [
         html.p([class("eyebrow")], [text("Model control")]),
-        html.h1([], [text("Model Management")]),
+        html.h1([], [text("Models & access")]),
         html.p([], [
           text(
             "Choose a Wardwright model, then configure access and debugging capture.",
@@ -279,7 +279,7 @@ pub fn sidebar_controls(model: Model) -> List(Element(Msg)) {
           False -> model.unkeyed_access
         }),
       ]),
-      html.span([], [text("VCR")]),
+      html.span([], [text("Replay capture")]),
       html.code([], [text(vcr_mode_label(model.vcr_mode))]),
     ]),
   ]
@@ -288,7 +288,7 @@ pub fn sidebar_controls(model: Model) -> List(Element(Msg)) {
 fn sidebar(model: Model) -> Element(Msg) {
   lustre_shell.sidebar(
     lustre_shell.ModelAccess,
-    "Model management",
+    "Models & access",
     sidebar_controls(model),
   )
 }
@@ -366,7 +366,7 @@ fn model_summary(model: Model) -> Element(Msg) {
         False -> "Unkeyed"
       }),
       metric("Unkeyed access", model.unkeyed_access),
-      metric("VCR", vcr_mode_label(model.vcr_mode)),
+      metric("Replay capture", vcr_mode_label(model.vcr_mode)),
       metric("Receipt store", model.receipt_storage_note),
       metric("Keys", int.to_string(list.length(model.keys))),
     ]),
@@ -549,7 +549,7 @@ fn debug_recording_options(model: Model) -> Element(Msg) {
       "metadata_only",
       model.vcr_mode == "metadata_only",
       "Metadata only",
-      "Default receipt VCR. Stores roles, lengths, policy facts, and route facts without prompt or completion text.",
+      "Default debug capture. Stores roles, lengths, policy facts, and route facts without prompt or completion text.",
       VcrModeChanged,
     ),
     radio_card(
@@ -808,7 +808,8 @@ pub fn styles() -> String {
   dd {
     margin: 0;
     font-weight: 800;
-    overflow-wrap: normal;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   p code {
     overflow-wrap: anywhere;

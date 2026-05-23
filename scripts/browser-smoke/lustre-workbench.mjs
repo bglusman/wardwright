@@ -161,8 +161,8 @@ async function assertSelectedModelWorkbench() {
           "Legacy workbench"
         ].filter((label) => text.includes(label));
         return {
-          hasExamples: text.includes("Example model library"),
-          hasTrace: text.includes("Trace playback"),
+          hasExamples: text.includes("Example models"),
+          hasTrace: text.includes("Step playback"),
           forbidden
         };
       })()`
@@ -196,7 +196,7 @@ async function assertControlDebuggerSaveScenario() {
 
     await cdp.send("Page.navigate", { url: `${appUrl}/admin?view=control_debugger` });
     await cdp.waitFor("Page.loadEventFired");
-    await waitForEval(cdp, `pageText(document.body).includes("Control debugger")`);
+    await waitForEval(cdp, `pageText(document.body).includes("Session replay")`);
     await waitForEval(cdp, `!document.documentElement.classList.contains("phx-loading")`);
 
     await clickButtonByText(cdp, "Record example session");
@@ -306,8 +306,8 @@ async function runViewportSmoke(viewport) {
 
     await cdp.send("Page.navigate", { url: `${appUrl}/admin?model=demo-retry-guard` });
     await cdp.waitFor("Page.loadEventFired");
-    await waitForEval(cdp, `pageText(document.body).includes("Trace playback")`);
-    await waitForEval(cdp, `pageText(document.body).includes("Example model library")`);
+    await waitForEval(cdp, `pageText(document.body).includes("Step playback")`);
+    await waitForEval(cdp, `pageText(document.body).includes("Example models")`);
 
     await assertClickableControl(cdp, viewport.name, "Next step");
     await clickControlAndWait(

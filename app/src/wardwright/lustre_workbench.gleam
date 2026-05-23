@@ -846,16 +846,16 @@ pub fn workspace(model: Model) -> Element(Msg) {
       )),
     ]),
     simulator_form(model),
-    authoring_panel(model),
     results_grid(model),
     trace_panel(model),
+    authoring_panel(model),
   ])
 }
 
 pub fn sidebar_controls(model: Model) -> List(Element(Msg)) {
   [
     labeled_select(
-      "Current model",
+      "Model to inspect",
       "model_id",
       model.model_id,
       model_options(model.model_id),
@@ -937,10 +937,10 @@ fn model_options(selected_id: String) -> List(Element(Msg)) {
 
 fn example_library(selected_id: String) -> Element(Msg) {
   html.details([class("example-library"), attribute("open", "")], [
-    html.summary([], [text("Example model library")]),
+    html.summary([], [text("Example models")]),
     html.p([], [
       text(
-        "Load a toy model to inspect policy behavior, route composition, and scenarios without changing local configuration.",
+        "Open a prepared model to see routing, rewriting, retries, and composed models in the simulator.",
       ),
     ]),
     html.div(
@@ -1003,13 +1003,13 @@ fn fixture_options(
 fn policy_projection_select(model: Model) -> Element(Msg) {
   html.label([class("field projection-field"), attribute("for", "pattern_id")], [
     html.span([], [
-      text("Behavior view"),
+      text("Diagram focus"),
       html.span(
         [
           class("help-dot"),
           attribute(
             "title",
-            "Choose the behavior view for this model. The graph shows possible transitions, then highlights the path driven by the current scenario and edits.",
+            "Choose which part of this model to visualize. The map shows possible states, then highlights the path driven by the current scenario and edits.",
           ),
         ],
         [text("?")],
@@ -1118,7 +1118,7 @@ fn authoring_panel(model: Model) -> Element(Msg) {
         html.strong([], [text("Model authoring")]),
         html.p([], [
           text(
-            "Draft and review model changes against the current model and behavior view.",
+            "Draft and review model changes against the current model and diagram focus.",
           ),
         ]),
       ]),
@@ -1362,7 +1362,39 @@ fn retry_response_fields(model: Model) -> Element(Msg) {
   case model.retry_responses {
     [] -> html.div([], [])
     responses ->
-      html.div([class("retry-grid")], list.map(responses, retry_response_field))
+      html.details(
+        retry_details_attributes(retry_responses_have_content(responses)),
+        [
+          html.summary([], [text("Retry attempts")]),
+          html.small([], [
+            text(
+              "Optional provider outputs for later attempts. Fill these when a policy retries generation.",
+            ),
+          ]),
+          html.div(
+            [class("retry-grid")],
+            list.map(responses, retry_response_field),
+          ),
+        ],
+      )
+  }
+}
+
+fn retry_details_attributes(open: Bool) {
+  case open {
+    True -> [class("retry-fields"), attribute("open", "")]
+    False -> [class("retry-fields")]
+  }
+}
+
+fn retry_responses_have_content(responses: List(RetryResponse)) -> Bool {
+  case responses {
+    [] -> False
+    [response, ..rest] -> {
+      let #(_, content) = response
+
+      string.trim(content) != "" || retry_responses_have_content(rest)
+    }
   }
 }
 
@@ -1515,38 +1547,47 @@ fn results_grid(model: Model) -> Element(Msg) {
   html.section([class("results")], [
     html.article([class(changed_class(simulation.input_changed))], [
       html.div([class("panel-heading")], [
-        html.span([], [text("Provider input after policy")]),
+        html.span([], [text("Sent to provider")]),
         badge.badge([badge.variant(status_variant(simulation.input_changed))], [
           text(change_label(simulation.input_changed)),
         ]),
       ]),
-      html.pre([], [text(simulation.model_received_input)]),
+      result_block(
+        simulation.model_received_input,
+        "No provider input recorded for this simulated turn.",
+      ),
     ]),
     html.article([class(changed_class(simulation.output_changed))], [
       html.div([class("panel-heading")], [
-        html.span([], [text("User output after policy")]),
+        html.span([], [text("Returned to user")]),
         badge.badge([badge.variant(status_variant(simulation.output_changed))], [
           text(change_label(simulation.output_changed)),
         ]),
       ]),
-      html.pre([], [text(simulation.user_received_output)]),
+      result_block(
+        simulation.user_received_output,
+        "No user-visible output is released in this simulated turn.",
+      ),
     ]),
     html.article([class("panel facts")], [
       html.div([class("fact")], [
-        html.span([], [text("Selected upstream")]),
+        html.span([], [text("Provider used")]),
         html.strong([], [text(blank_default(simulation.selected_model, "none"))]),
       ]),
       html.div([class("fact")], [
-        html.span([], [text("Engine")]),
-        html.strong([], [text(simulation.engine_id)]),
-      ]),
-      html.div([class("fact")], [
-        html.span([], [text("Policy artifact")]),
-        html.code([], [text(simulation.artifact_label)]),
-      ]),
-      html.div([class("fact")], [
-        html.span([], [text("Verdict")]),
+        html.span([], [text("Run result")]),
         html.strong([], [text(simulation.verdict)]),
+      ]),
+      html.details([class("technical-details")], [
+        html.summary([], [text("Technical details")]),
+        html.div([class("fact")], [
+          html.span([], [text("Engine")]),
+          html.strong([], [text(simulation.engine_id)]),
+        ]),
+        html.div([class("fact")], [
+          html.span([], [text("Artifact")]),
+          html.code([], [text(simulation.artifact_label)]),
+        ]),
       ]),
     ]),
     policy_action_table(simulation.policy_actions),
@@ -1555,13 +1596,20 @@ fn results_grid(model: Model) -> Element(Msg) {
   ])
 }
 
+fn result_block(content: String, empty_message: String) -> Element(Msg) {
+  case string.trim(content) {
+    "" -> html.pre([class("empty-result")], [text(empty_message)])
+    _ -> html.pre([], [text(content)])
+  }
+}
+
 fn policy_action_table(actions: List(PolicyAction)) -> Element(Msg) {
   table.table([class("policy-table")], [
     table.table_header([], [
       table.table_header_row([], [
-        table.table_column_header([], [text("Rule")]),
-        table.table_column_header([], [text("Action")]),
-        table.table_column_header([], [text("Message")]),
+        table.table_column_header([], [text("Check")]),
+        table.table_column_header([], [text("Result")]),
+        table.table_column_header([], [text("Reason")]),
       ]),
     ]),
     table.table_body([], action_rows(actions)),
@@ -1573,7 +1621,7 @@ fn action_rows(actions: List(PolicyAction)) -> List(Element(Msg)) {
     [] -> [
       table.table_row([], [
         table.table_cell([attribute("colspan", "3")], [
-          text("No request policy action changed this turn."),
+          text("No checks changed this turn."),
         ]),
       ]),
     ]
@@ -1598,7 +1646,7 @@ fn state_machine_graph(model: Model) -> Element(Msg) {
   html.article([class("panel state-graph")], [
     html.div([class("panel-heading")], [
       html.div([class("status-stack")], [
-        html.span([], [text("State machine")]),
+        html.span([], [text("Behavior map")]),
         badge.badge([badge.variant(badge.Outline)], [
           text(blank_default(replay.status, "unknown")),
         ]),
@@ -1633,7 +1681,7 @@ fn state_machine_graph(model: Model) -> Element(Msg) {
       [],
     ),
     html.details([class("state-evidence")], [
-      html.summary([], [text("Transition evidence")]),
+      html.summary([], [text("Why this path happened")]),
       html.div(
         [class("edge-list")],
         state_edge_rows(replay.transitions, active_state),
@@ -1810,8 +1858,8 @@ fn state_edge_rows(
   case transitions {
     [] -> [
       html.div([class("state-edge")], [
-        html.strong([], [text("Default projection")]),
-        html.span([], [text("No transition table is needed for this policy.")]),
+        html.strong([], [text("Single-state model")]),
+        html.span([], [text("This model does not need extra states.")]),
       ]),
     ]
     _ ->
@@ -1843,19 +1891,19 @@ fn state_machine_table(replay: StateReplay) -> Element(Msg) {
   table.table([class("state-table")], [
     table.table_header([], [
       table.table_header_row([], [
-        table.table_column_header([], [text("Replay")]),
+        table.table_column_header([], [text("Path")]),
         table.table_column_header([], [
           text(blank_default(replay.status, "unknown")),
         ]),
         table.table_column_header([], [
-          text("Final: " <> blank_default(replay.final_state, "none")),
+          text("Ends in: " <> blank_default(replay.final_state, "none")),
         ]),
       ]),
       table.table_header_row([], [
-        table.table_column_header([], [text("Event")]),
-        table.table_column_header([], [text("From -> to")]),
+        table.table_column_header([], [text("Trigger")]),
+        table.table_column_header([], [text("State change")]),
         table.table_column_header([], [
-          text(int.to_string(replay.transition_count) <> " transitions"),
+          text(int.to_string(replay.transition_count) <> " possible changes"),
         ]),
       ]),
     ]),
@@ -1868,7 +1916,7 @@ fn state_rows(transitions: List(StateReplayStep)) -> List(Element(Msg)) {
     [] -> [
       table.table_row([], [
         table.table_cell([attribute("colspan", "3")], [
-          text("Default single-state policy."),
+          text("Single-state model: no state changes for this scenario."),
         ]),
       ]),
     ]
@@ -1906,7 +1954,7 @@ fn trace_panel(model: Model) -> Element(Msg) {
   html.section([class("trace-panel")], [
     html.div([class("trace-header")], [
       html.div([], [
-        html.strong([], [text("Trace playback")]),
+        html.strong([], [text("Step playback")]),
         html.span([], [text(step_label(model))]),
       ]),
       playback_actions(model),
@@ -2133,6 +2181,8 @@ pub fn styles() -> String {
     border: 1px solid #dde4ea;
     border-radius: 8px;
     background: #fbfcfd;
+    color: inherit;
+    text-decoration: none;
     text-align: left;
   }
   .example-model:hover, .example-model.active {
@@ -2248,6 +2298,31 @@ pub fn styles() -> String {
     gap: 10px;
     align-items: end;
     padding-top: 4px;
+  }
+  .retry-fields {
+    display: grid;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid #dbe5ed;
+    border-radius: 8px;
+    background: #fbfcfd;
+  }
+  .retry-fields summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 850;
+  }
+  .retry-fields small {
+    color: var(--muted-foreground);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .retry-fields textarea {
+    min-height: 96px;
+  }
+  .retry-grid {
+    display: grid;
+    gap: 12px;
   }
   .fixture-note, .fixture-status, .fixture-error {
     align-self: center;
@@ -2449,6 +2524,11 @@ pub fn styles() -> String {
     font-size: 13px;
     line-height: 1.5;
   }
+  pre.empty-result {
+    background: #f7faf9;
+    border: 1px dashed #c8d5d1;
+    color: #56636f;
+  }
   .facts {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2461,6 +2541,20 @@ pub fn styles() -> String {
   }
   .fact code, .fact strong {
     overflow-wrap: anywhere;
+  }
+  .technical-details {
+    grid-column: 1 / -1;
+    border-top: 1px solid #e5eaee;
+    padding-top: 10px;
+  }
+  .technical-details summary {
+    cursor: pointer;
+    color: #46525f;
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .technical-details .fact {
+    margin-top: 10px;
   }
   .state-graph {
     grid-column: 1 / -1;
