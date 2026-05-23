@@ -52,9 +52,14 @@ If all exit criteria in
 validated, and recorded in the supervisor:
 
 1. Mark the supervisor status as complete.
-2. Create the local sentinel file:
+2. Run a final documentation pass. Confirm the docs accurately cover install,
+   doctor, pair, probe, uninstall, privacy, cleanup, fallback behavior,
+   adapter-state wording, and fidelity limits for OMP/Pi/OpenCode/OpenClaw and
+   Claude Code where applicable.
+3. Run and record `mise run check:docs`.
+4. Create the local sentinel file:
    `$(git rev-parse --git-path ralph-runs/adapter-install-validation/complete)`
-3. Push the final branch state.
+5. Push the final branch state.
 
 If the loop cannot make progress, record the blocker and stop without touching
 the completion sentinel.

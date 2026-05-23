@@ -19,11 +19,13 @@ loop. The build target is
 ## Cadence
 
 - Runner: `scripts/run-adapter-ralph-loop.sh`.
-- Interval: 15 minutes between completed iterations.
+- Successful iterations chain immediately into the next iteration.
+- Retry delay after a failed iteration: 15 minutes by default, configurable via
+  `RALPH_RETRY_DELAY_SECONDS`.
 - Completion sentinel:
   `$(git rev-parse --git-path ralph-runs/adapter-install-validation/complete)`.
 - The loop should stop only after the exit criteria in the requirements file
-  are implemented, validated, and recorded here.
+  are implemented, validated, documented, and recorded here.
 
 ## Requirements Review
 
@@ -63,7 +65,10 @@ execution constraints for the loop are:
 7. Add OpenCode runtime resolution and ensure Pi/OMP-backed, OpenCode-native,
    and Codex-backed modes get distinct fidelity labels.
 8. Add user-facing install, privacy, cleanup, and fallback docs.
-9. Run the release-candidate validation matrix from the requirements file.
+9. Run a final docs pass for completeness and accuracy, including setup,
+   privacy, cleanup, fallback behavior, fidelity claims, and adapter-state
+   wording.
+10. Run the release-candidate validation matrix from the requirements file.
 
 ## Continuation Log
 
@@ -76,3 +81,14 @@ execution constraints for the loop are:
 - Validation target: future loops should update this log with their commit,
   validation commands, skipped probes, and adversarial review result.
 - Current status: ready to start loop 1.
+
+### Scheduler Correction
+
+- Timestamp: 2026-05-23T15:15-04:00.
+- Scope: corrected the runner contract after kickoff. The 15-minute value is a
+  retry delay after failed iterations, not a delay between successful
+  iterations.
+- Validation target: next runner launch should start each new iteration
+  immediately after the previous `opencode run` exits successfully.
+- Documentation gate: completion requires a final docs pass before writing the
+  sentinel.
