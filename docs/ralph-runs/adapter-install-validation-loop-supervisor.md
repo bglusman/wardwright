@@ -540,3 +540,40 @@ execution constraints for the loop are:
 - Next open item: backlog item 9, run a final docs pass for completeness and
   accuracy, including setup, privacy, cleanup, fallback behavior, fidelity
   claims, and adapter-state wording.
+
+### Loop 9 - Adapter Docs Accuracy Pass
+
+- Timestamp: 2026-05-23T18:27:40-04:00.
+- Starting commit: `93ae9ac`.
+- Ending implementation commit: `eda8596`.
+- Scope: tightened the user-facing adapter guide around the actual packaged
+  CLI and gateway behavior. The docs now call out the required project
+  workspace context, `doctor` versus `list`, `doctor --json` machine-readable
+  fields, gateway signing-secret setup for pairing, admin-token handling
+  without argv exposure, workspace-bound verification, and the requirement that
+  a real `omp` or `oh-my-pi` binary be available before the OMP probe can pass.
+- Validation:
+  - `mise run check:docs`
+  - `git diff --check`
+  - Commit hook reran docs-site checks and staged gitleaks; both passed.
+- Adversarial review:
+  - Architecture: this is documentation-only and does not alter adapter
+    runtime behavior. The added setup text matches the current boundary split:
+    CLI/docs handle operator guidance, the gateway mints signed identities,
+    and runtime probe success remains evidence rather than product truth by
+    assertion.
+  - Code/comment quality: no code comments were changed. The new wording is
+    intentionally operator-facing and avoids private endpoints, real
+    deployment identifiers, or example credentials.
+  - Test quality: no behavior tests were added because this loop only changes
+    docs. The relevant checks are the docs-site checker, whitespace diff check,
+    pre-commit docs gate, and staged gitleaks. Post-commit review found no
+    blocker or overclaim: Pi/OpenCode/OpenClaw/Claude remain explicitly
+    fidelity-limited where they are not packaged install/probe surfaces.
+- Skipped probes: OMP runtime probe, OpenCode surface probe, OpenClaw runtime
+  probes, Claude gateway identity probe, browser smoke, and packaged
+  clean-temp-home demos were skipped because this loop was the final docs
+  accuracy pass and did not change runtime behavior. Completion sentinel was
+  not written because the release-candidate validation matrix remains open.
+- Next open item: backlog item 10, run the release-candidate validation matrix
+  from the requirements file.
