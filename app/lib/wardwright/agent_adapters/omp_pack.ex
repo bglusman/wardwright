@@ -3,10 +3,14 @@ defmodule Wardwright.AgentAdapters.OmpPack do
 
   @adapter_id "wardwright-omp"
   @adapter_version "0.1.0-rc.1"
+  @config_path ".omp/wardwright-adapter.json"
+  @default_gateway_url "http://127.0.0.1:8787"
+  @key_gateway_url "gateway_url"
   @manifest_path ".omp/wardwright-adapter-manifest.json"
 
   def adapter_id, do: @adapter_id
   def adapter_version, do: @adapter_version
+  def config_path, do: @config_path
   def manifest_path, do: @manifest_path
 
   def expected_files do
@@ -33,7 +37,8 @@ defmodule Wardwright.AgentAdapters.OmpPack do
       },
       %{
         content: adapter_config_content(),
-        path: ".omp/wardwright-adapter.json"
+        dynamic?: true,
+        path: @config_path
       }
     ]
   end
@@ -100,12 +105,13 @@ defmodule Wardwright.AgentAdapters.OmpPack do
     """
   end
 
-  def adapter_config_content do
+  def adapter_config_content(identity \\ nil) do
     %{
       adapter_id: @adapter_id,
       adapter_version: @adapter_version,
-      gateway_url: "http://127.0.0.1:8787",
-      paired: false,
+      gateway_identity: identity,
+      gateway_url: gateway_url(identity),
+      paired: is_map(identity),
       runtime: "omp",
       schema: "wardwright.adapter_config.v0",
       target: "omp"
@@ -133,6 +139,9 @@ defmodule Wardwright.AgentAdapters.OmpPack do
       sha256: sha256(file.content)
     }
   end
+
+  defp gateway_url(identity) when is_map(identity), do: Map.get(identity, @key_gateway_url, @default_gateway_url)
+  defp gateway_url(_identity), do: @default_gateway_url
 
   defp sha256(content) do
     :crypto.hash(:sha256, content)

@@ -1,6 +1,7 @@
 defmodule Wardwright.CLIAdaptersTest do
   use ExUnit.Case, async: true
 
+  alias Wardwright.AgentAdapters.Identity
   alias Wardwright.AgentAdapters.OmpPack
   alias Wardwright.CLI.Adapters
 
@@ -236,6 +237,86 @@ defmodule Wardwright.CLIAdaptersTest do
     assert File.read!(rule_path) == "local project edit\n"
     refute File.exists?(Path.join(workspace, ".omp/extensions/wardwright-state-fidelity.ts"))
     refute File.exists?(Path.join(workspace, ".omp/wardwright-adapter-manifest.json"))
+  end
+
+  test "pair omp requires a gateway token and does not mark installed files verified implicitly" do
+    workspace = tmp_workspace("wardwright-omp-pair-token")
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    assert 0 =
+             Adapters.run(["install", "omp"], collector(),
+               find_executable: fake_omp_finder(),
+               workspace_root: workspace
+             )
+
+    collector = collector()
+
+    assert 2 =
+             Adapters.run(["pair", "omp"], collector,
+               find_executable: fake_omp_finder(),
+               gateway_token: "",
+               workspace_root: workspace
+             )
+
+    assert collected() =~ "set WARDWRIGHT_ADMIN_TOKEN"
+
+    config = JSON.decode!(File.read!(Path.join(workspace, OmpPack.config_path())))
+    assert config["paired"] == false
+    assert config["gateway_identity"] == nil
+  end
+
+  test "pair omp writes a gateway identity and doctor reports verified only when it validates for this workspace" do
+    workspace = tmp_workspace("wardwright-omp-pair")
+    secret = String.duplicate("pair-secret", 4)
+    now = ~U[2026-05-23 20:00:00Z]
+
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    assert 0 =
+             Adapters.run(["install", "omp"], collector(),
+               find_executable: fake_omp_finder(),
+               workspace_root: workspace
+             )
+
+    pair_request_fun = fn "http://127.0.0.1:8787", "gateway-token", payload ->
+      assert payload["workspace_fingerprint"] == Identity.workspace_fingerprint(workspace)
+      Identity.issue(payload, secret: secret, now: now)
+    end
+
+    collector = collector()
+
+    assert 0 =
+             Adapters.run(["pair", "omp"], collector,
+               find_executable: fake_omp_finder(),
+               gateway_token: "gateway-token",
+               identity_secret: secret,
+               now: now,
+               pair_request_fun: pair_request_fun,
+               workspace_root: workspace
+             )
+
+    output = collected()
+    assert output =~ "Paired OMP adapter with Wardwright gateway"
+    assert output =~ ".omp/wardwright-adapter.json"
+    refute output =~ "gateway-token"
+
+    config = JSON.decode!(File.read!(Path.join(workspace, OmpPack.config_path())))
+    assert config["paired"] == true
+    assert get_in(config, ["gateway_identity", "adapter_id"]) == "wardwright-omp"
+    assert is_binary(get_in(config, ["gateway_identity", "token"]))
+
+    results =
+      Adapters.doctor(
+        find_executable: fake_omp_finder(),
+        identity_secret: secret,
+        now: DateTime.add(now, 60, :second),
+        workspace_root: workspace
+      )
+
+    omp = Enum.find(results, &(&1.target == "omp"))
+    assert omp.state == "verified"
+    assert omp.install_plan == "probe_for_stronger_verification"
+    assert omp.next_actions == ["run `wardwright adapters probe omp` for stronger replay affordances"]
   end
 
   test "doctor human output explains unsupported detected runtime without overclaiming install support" do

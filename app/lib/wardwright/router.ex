@@ -3,6 +3,8 @@ defmodule Wardwright.Router do
 
   use Plug.Router
 
+  alias Wardwright.AgentAdapters.Identity
+  alias Wardwright.AgentAdapters.OmpPack
   alias Wardwright.Policy.AlertDelivery
   alias Wardwright.Policy.History
   alias Wardwright.Policy.Plan
@@ -12,6 +14,15 @@ defmodule Wardwright.Router do
   @max_unpinned_key "max_unpinned"
   @regression_format_key "format"
   @json_format "json"
+  @adapter_key_adapter_id "adapter_id"
+  @adapter_key_adapter_version "adapter_version"
+  @adapter_key_expires_at "expires_at"
+  @adapter_key_identity "identity"
+  @adapter_key_runtime "runtime"
+  @adapter_key_target "target"
+  @adapter_key_verified "verified"
+  @adapter_key_workspace_fingerprint "workspace_fingerprint"
+  @adapter_runtime_omp "omp"
 
   plug(Plug.Logger)
 
@@ -339,6 +350,62 @@ defmodule Wardwright.Router do
 
       {:error, message} ->
         error(conn, 400, message, "invalid_request", "invalid_policy_cache_event")
+    end
+  end
+
+  post "/v1/agent-adapters/pair" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         :ok <- require_omp_pair_request(body),
+         {:ok, identity} <- Identity.issue(body) do
+      json(conn, 200, Map.new([{@adapter_key_identity, identity}]))
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, :missing_secret} ->
+        error(
+          conn,
+          503,
+          "adapter identity signing secret is not configured",
+          "server_error",
+          "adapter_identity_secret_missing"
+        )
+
+      {:error, _reason} ->
+        error(conn, 400, "adapter pairing request is malformed", "invalid_request", "invalid_adapter_pairing")
+    end
+  end
+
+  post "/v1/agent-adapters/identity/verify" do
+    with {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, identity} <- required_body_map(body, "identity"),
+         {:ok, workspace_fingerprint} <- required_body_string(body, "workspace_fingerprint"),
+         {:ok, claims} <-
+           Identity.validate(identity,
+             adapter_id: OmpPack.adapter_id(),
+             runtime: "omp",
+             target: "omp",
+             workspace_fingerprint: workspace_fingerprint
+           ) do
+      json(conn, 200, %{
+        @adapter_key_identity =>
+          Map.new([
+            {@adapter_key_adapter_id, Map.get(claims, @adapter_key_adapter_id)},
+            {@adapter_key_adapter_version, Map.get(claims, @adapter_key_adapter_version)},
+            {@adapter_key_expires_at, Map.get(claims, @adapter_key_expires_at)},
+            {@adapter_key_runtime, Map.get(claims, @adapter_key_runtime)},
+            {@adapter_key_target, Map.get(claims, @adapter_key_target)},
+            {@adapter_key_workspace_fingerprint, Map.get(claims, @adapter_key_workspace_fingerprint)}
+          ]),
+        @adapter_key_verified => true
+      })
+    else
+      {:error, reason} when reason in [:expired, :invalid_signature, :malformed, :missing_secret, :wrong_workspace] ->
+        adapter_identity_error(conn, reason)
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_adapter_identity")
     end
   end
 
@@ -1091,6 +1158,39 @@ defmodule Wardwright.Router do
 
       {:error, :protected, message}
     end
+  end
+
+  defp require_omp_pair_request(body) do
+    if Map.get(body, @adapter_key_adapter_id) == OmpPack.adapter_id() and
+         Map.get(body, @adapter_key_adapter_version) == OmpPack.adapter_version() and
+         Map.get(body, @adapter_key_runtime) == @adapter_runtime_omp and
+         Map.get(body, @adapter_key_target) == @adapter_runtime_omp do
+      :ok
+    else
+      {:error, :malformed}
+    end
+  end
+
+  defp adapter_identity_error(conn, :expired) do
+    error(conn, 401, "adapter identity is expired", "unauthorized", "adapter_identity_expired")
+  end
+
+  defp adapter_identity_error(conn, :wrong_workspace) do
+    error(conn, 403, "adapter identity is for a different workspace", "forbidden", "adapter_identity_wrong_workspace")
+  end
+
+  defp adapter_identity_error(conn, :missing_secret) do
+    error(
+      conn,
+      503,
+      "adapter identity signing secret is not configured",
+      "server_error",
+      "adapter_identity_secret_missing"
+    )
+  end
+
+  defp adapter_identity_error(conn, _reason) do
+    error(conn, 401, "adapter identity is invalid", "unauthorized", "adapter_identity_invalid")
   end
 
   defp bearer_token("Bearer " <> token), do: WardwrightWeb.RequestContext.blank_to_nil(token)

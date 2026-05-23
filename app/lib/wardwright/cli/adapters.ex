@@ -1,7 +1,18 @@
 defmodule Wardwright.CLI.Adapters do
   @moduledoc false
 
+  alias Wardwright.AgentAdapters.GatewayPairing
+  alias Wardwright.AgentAdapters.Identity
   alias Wardwright.AgentAdapters.OmpInstaller
+  alias Wardwright.AgentAdapters.OmpPack
+
+  @key_adapter_id "adapter_id"
+  @key_adapter_version "adapter_version"
+  @key_expires_at "expires_at"
+  @key_gateway_url "gateway_url"
+  @key_runtime "runtime"
+  @key_target "target"
+  @key_workspace_fingerprint "workspace_fingerprint"
 
   @targets [
     %{
@@ -75,6 +86,9 @@ defmodule Wardwright.CLI.Adapters do
 
       ["uninstall", target | rest] ->
         uninstall(target, rest, write_fun, opts)
+
+      ["pair", target | rest] ->
+        pair(target, rest, write_fun, opts)
 
       _ ->
         write_fun.(help())
@@ -154,6 +168,37 @@ defmodule Wardwright.CLI.Adapters do
     2
   end
 
+  def pair(target, argv, write_fun, opts \\ [])
+
+  def pair("omp", argv, write_fun, opts) do
+    with {:ok, parsed} <- parse_scope_args(argv),
+         :ok <- ensure_project_scope(parsed.scope),
+         :ok <- ensure_runtime_detected("omp", opts),
+         {:ok, gateway_token} <- gateway_token(opts),
+         {:ok, identity} <- request_pairing_identity(gateway_token, opts),
+         {:ok, result} <- OmpInstaller.pair(Keyword.get(opts, :workspace_root, File.cwd!()), identity) do
+      write_fun.(pair_success_human(result, identity))
+      0
+    else
+      {:error, :not_installed, _inspection} ->
+        write_fun.("Cannot pair OMP adapter: run `wardwright adapters install omp` first.")
+        1
+
+      {:error, :repair_required, _inspection} ->
+        write_fun.("Cannot pair OMP adapter: installed files are drifted; repair them before pairing.")
+        1
+
+      {:error, message} ->
+        write_fun.(message)
+        2
+    end
+  end
+
+  def pair(_target, _argv, write_fun, _opts) do
+    write_fun.("Only `wardwright adapters pair omp` is implemented in this loop.")
+    2
+  end
+
   defp list_human(opts) do
     rows =
       opts
@@ -211,7 +256,7 @@ defmodule Wardwright.CLI.Adapters do
         supported?,
         installation.installed_files_present,
         installation.installed_manifest_matches,
-        false,
+        installation.identity_verified,
         false
       )
 
@@ -234,9 +279,15 @@ defmodule Wardwright.CLI.Adapters do
 
   defp installation_for(%{target: "omp"}, opts) do
     workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
-    inspection = OmpInstaller.status(workspace_root)
+
+    inspection =
+      OmpInstaller.status(workspace_root,
+        identity_secret: Keyword.get(opts, :identity_secret),
+        now: Keyword.get(opts, :now, DateTime.utc_now())
+      )
 
     %{
+      identity_verified: inspection.identity_verified,
       installed_files_present: inspection.installed_files_present,
       installed_manifest_matches: inspection.installed_manifest_matches,
       installed_paths:
@@ -248,6 +299,7 @@ defmodule Wardwright.CLI.Adapters do
 
   defp installation_for(_target, _opts) do
     %{
+      identity_verified: false,
       installed_files_present: false,
       installed_manifest_matches: true,
       installed_paths: []
@@ -378,6 +430,15 @@ defmodule Wardwright.CLI.Adapters do
     """
   end
 
+  defp pair_success_human(result, identity) do
+    """
+    Paired OMP adapter with Wardwright gateway.
+      config: #{result.path}
+      adapter: #{Map.get(identity, @key_adapter_id)}
+      expires_at: #{Map.get(identity, @key_expires_at)}
+    """
+  end
+
   defp runtime_for(target, nil, _opts), do: target.default_runtime || "unknown"
 
   defp runtime_for(target, _detected_path, opts) do
@@ -403,6 +464,47 @@ defmodule Wardwright.CLI.Adapters do
   defp runtime_source(%{runtime_source: "hint"}), do: " via runtime hint"
   defp runtime_source(%{runtime_source: "default"}), do: " via default"
   defp runtime_source(_row), do: ""
+
+  defp request_pairing_identity(gateway_token, opts) do
+    workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
+    gateway_url = gateway_url(opts)
+
+    payload =
+      Map.new([
+        {@key_adapter_id, OmpPack.adapter_id()},
+        {@key_adapter_version, OmpPack.adapter_version()},
+        {@key_gateway_url, gateway_url},
+        {@key_runtime, "omp"},
+        {@key_target, "omp"},
+        {@key_workspace_fingerprint, Identity.workspace_fingerprint(workspace_root)}
+      ])
+
+    pair_request_fun = Keyword.get(opts, :pair_request_fun, &GatewayPairing.request/3)
+    pair_request_fun.(gateway_url, gateway_token, payload)
+  end
+
+  defp gateway_url(opts) do
+    Keyword.get(opts, :gateway_url) ||
+      System.get_env("WARDWRIGHT_GATEWAY_URL") ||
+      "http://127.0.0.1:8787"
+  end
+
+  defp gateway_token(opts) do
+    token =
+      if Keyword.has_key?(opts, :gateway_token) do
+        Keyword.get(opts, :gateway_token)
+      else
+        System.get_env("WARDWRIGHT_ADMIN_TOKEN")
+      end
+
+    case token do
+      token when is_binary(token) and token != "" ->
+        {:ok, token}
+
+      _token ->
+        {:error, "Cannot pair OMP adapter: set WARDWRIGHT_ADMIN_TOKEN for the local gateway."}
+    end
+  end
 
   defp next_actions("not_detected", target, _resolution), do: ["install #{Enum.join(target.binaries, " or ")} first"]
 
@@ -456,6 +558,7 @@ defmodule Wardwright.CLI.Adapters do
       wardwright adapters doctor --json Print machine-readable doctor output
       wardwright adapters install omp [--scope project] [--repair]
       wardwright adapters uninstall omp [--scope project]
+      wardwright adapters pair omp [--scope project]
     """
   end
 end
