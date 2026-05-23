@@ -577,3 +577,74 @@ execution constraints for the loop are:
   not written because the release-candidate validation matrix remains open.
 - Next open item: backlog item 10, run the release-candidate validation matrix
   from the requirements file.
+
+### Loop 10 - Release-Candidate Validation Matrix
+
+- Timestamp: 2026-05-23T18:35:41-04:00.
+- Starting commit: `2ecc605`.
+- Ending implementation commit: `2ecc605` (validation-only loop; no product
+  code or docs content changed before this supervisor record).
+- Scope: ran the release-candidate validation matrix that was still open after
+  the docs pass. This loop validated the baseline checks, packaged Burrito
+  binary smoke, packaged adapter CLI lifecycle from a clean temp home, live
+  local adapter detection status, and staged secret scan. The completion
+  sentinel was not written because the real OMP runtime probe cannot run on
+  this machine without `omp` or `oh-my-pi`, and live OpenCode/OpenClaw/Claude
+  surfaces still do not have packaged surface probes or installable adapter
+  support beyond the documented fallback states.
+- Validation:
+  - `mise run check`: passed. App tests reported `391 passed (21 properties,
+    370 tests), 6 excluded`; docs, map, style, type, and browser smoke checks
+    also passed.
+  - `mise run package:smoke:darwin-arm64`: passed; built
+    `app/burrito_out/wardwright_darwin_arm64` and the smoke script reported
+    `Burrito smoke passed for app/burrito_out/wardwright_darwin_arm64`.
+  - Packaged clean-temp adapter lifecycle demo: passed with isolated `HOME`,
+    XDG directories, temp workspace, temp gateway service, and fake `omp`
+    binary. The packaged CLI reached `installable`, `installed_unverified`,
+    `verified`, and `verified_with_probe`; pair/probe output and adapter config
+    did not contain the generated admin token or adapter signing secret;
+    uninstall removed Wardwright-owned files while preserving an unrelated
+    `.omp/local-note.txt`.
+  - Real OMP runtime probe check:
+    `if command -v omp ...; else echo 'skip OMP runtime probe: neither omp nor oh-my-pi is installed'; fi`.
+    Result: skipped because neither `omp` nor `oh-my-pi` is installed.
+  - Live packaged `adapters doctor --json`: OMP and Pi reported
+    `not_detected`; OpenCode and OpenClaw binaries were detected but reported
+    `unsupported_runtime` with runtime `unknown`; Claude Code was detected as
+    `claude-cli` but reported `unsupported_runtime`.
+  - `gitleaks protect --staged --config .gitleaks.toml --verbose`: passed with
+    no leaks found.
+- Adversarial review:
+  - Architecture: this loop does not change architecture. The validation
+    evidence supports the current boundary split: pure decisions remain behind
+    the Gleam core, filesystem/process behavior stays in Elixir adapter
+    boundaries, and the packaged binary can run the OMP lifecycle when an OMP
+    runtime path is available. The completion blocker is environmental/product
+    coverage, not a new architecture defect: real OMP runtime equivalence still
+    must be observed before claiming the loop complete.
+  - Code quality/comments: no code comments or implementation files changed.
+    The temp lifecycle demo intentionally used an isolated fake `omp` binary
+    only to validate packaging, CLI wiring, pairing, probe evidence recording,
+    and cleanup behavior; it is not recorded as real OMP TTSR fidelity.
+  - Test quality: automated tests and the packaged demo cover behavior visible
+    to users and operators, including secret non-disclosure and cleanup
+    boundaries. The fake-runtime demo is capable of failing the packaged CLI
+    path but cannot replace the required real OMP probe. Browser smoke passed
+    for the existing workbench routes, but adapter-status-specific UI smoke
+    remains limited to the current non-adapter workbench coverage unless a
+    future loop adds an adapter status page or fixture route.
+  - Completion review: exit criteria are not fully complete because OMP has
+    not reached real `verified_with_probe` in this environment, OpenCode
+    surface verification remains unimplemented/skipped, and OpenClaw/Claude
+    remain documented follow-up surfaces. No completion sentinel was created.
+- Skipped probes: real OMP TTSR runtime equivalence probe skipped because
+  neither `omp` nor `oh-my-pi` is installed; OpenCode surface probe skipped
+  because the live runtime resolved as `unknown` and no packaged surface probe
+  exists yet; OpenClaw runtime probes skipped because the live runtime resolved
+  as `unknown` and support is follow-up; Claude gateway identity probe skipped
+  because Claude Code adapter pairing is not packaged.
+- Next open item: run the real OMP runtime equivalence probe in an environment
+  with `omp` or `oh-my-pi`, then decide whether to add adapter-status-specific
+  UI smoke or explicitly mark that browser requirement non-blocking for this RC
+  before writing the completion sentinel.
