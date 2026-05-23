@@ -267,3 +267,59 @@ execution constraints for the loop are:
   OpenCode/OpenClaw/Claude integration.
 - Next open item: backlog item 4, wire OMP pairing and gateway adapter identity
   validation.
+
+### Loop 4 - OMP Gateway Pairing And Identity Validation
+
+- Timestamp: 2026-05-23T17:38:45-04:00.
+- Starting commit: `4cd18d6`.
+- Ending implementation commit: `b87a0bd`.
+- Scope: added `wardwright adapters pair omp`, a gateway pairing request
+  client, signed short-lived adapter identities, OMP config refresh during
+  pairing, and gateway pair/verify endpoints. The gateway now mints only OMP
+  identities for this slice and rejects malformed, expired, wrong-workspace, or
+  unsupported-target identities. Doctor can report an installed OMP adapter as
+  `verified` when the paired identity validates for the current workspace.
+- Validation:
+  - `cd app && MIX_ENV=test mise exec -- sh -lc 'mix compile && mix test --no-compile test/cli_adapters_test.exs test/agent_adapter_identity_test.exs test/cli_test.exs'`
+  - `cd app && mise exec -- mix format --check-formatted`
+  - `mise run check:maps`
+  - `cd app && MIX_ENV=test mise exec -- mix test --no-compile`
+  - `mise run check:types`
+  - `gitleaks protect --staged --config .gitleaks.toml --verbose`
+  - Commit hook reran app format/test and staged gitleaks:
+    `381 passed (21 properties, 360 tests), 6 excluded`; staged gitleaks
+    clean.
+- Adversarial review:
+  - Architecture: signing and validation live in a focused adapter identity
+    boundary, HTTP pairing stays in an impure Elixir gateway client, filesystem
+    mutation remains in `OmpInstaller`, and CLI rendering stays in
+    `Wardwright.CLI.Adapters`. This keeps pure adapter state classification in
+    the existing Gleam core while avoiding a broader CLI installer dispatcher in
+    this loop.
+  - Architecture blocker fixed before commit: the first pair endpoint shape
+    would have minted identities for arbitrary adapter targets. The committed
+    version restricts this loop to OMP identities and tests that unsupported
+    OpenCode-native pairing is rejected.
+  - Code quality/comments: the JSON-shaped identity code uses named key
+    constants to satisfy the Elixir map-boundary ratchet without increasing the
+    baseline. No inline comments were added; function names and error codes
+    carry the contract. Residual design concern: local `doctor` marks
+    `verified` only when it can validate the signed identity with the configured
+    signing secret. A later loop should decide whether doctor should call the
+    gateway verify endpoint instead of requiring shared local secret context.
+  - Test quality: tests exercise product behavior rather than private helper
+    branches: missing gateway token leaves config unpaired, pairing writes an
+    identity without printing the token, doctor only reports `verified` for a
+    valid current-workspace identity, the gateway accepts a minted identity,
+    and the gateway rejects wrong-workspace, expired, malformed, and
+    unsupported-target identities. The tests would fail for silent token leaks,
+    unsigned/unchecked config trust, or overbroad pair minting.
+  - Post-commit review of `b87a0bd` found no additional blockers.
+- Skipped probes: the blocking OMP runtime probe was skipped because neither
+  `omp` nor `oh-my-pi` is installed in this environment. OpenCode surface
+  probe, OpenClaw runtime probes, and Claude gateway identity probe remain
+  skipped because this loop only wires OMP pairing/identity validation and does
+  not implement probe invocation or runtime-specific OpenCode/OpenClaw/Claude
+  integration.
+- Next open item: backlog item 5, connect adapter-scoped auto-recording to
+  verified adapter identity while keeping generic clients manual by default.
