@@ -69,9 +69,18 @@ defmodule Wardwright.Router do
          {:ok, model} <- Wardwright.normalize_model(Map.get(request, "model")),
          {:ok, config} <- Wardwright.model_config(model),
          :ok <- require_model_access(conn, model, config),
+         {:ok, adapter_context} <- WardwrightWeb.AdapterRequestContext.from_conn(conn, config),
          :ok <- require_messages(request) do
       request = apply_prompt_transforms(request, config)
-      caller = WardwrightWeb.RequestContext.caller(conn, Map.get(request, "metadata", %{}))
+      config = WardwrightWeb.AdapterRequestContext.apply_recording(config, adapter_context)
+
+      caller =
+        conn
+        |> WardwrightWeb.RequestContext.caller(Map.get(request, "metadata", %{}))
+        |> WardwrightWeb.RequestContext.put_adapter(
+          WardwrightWeb.AdapterRequestContext.caller_adapter(adapter_context.adapter, adapter_context)
+        )
+
       tool_context_opts = WardwrightWeb.RequestContext.tool_context_opts(conn)
       History.record_request(caller, request, tool_context_opts)
       {request, policy} = apply_request_policies(request, caller, tool_context_opts, config)
@@ -132,6 +141,9 @@ defmodule Wardwright.Router do
 
       {:error, :model_auth, status, message, code} ->
         error(conn, status, message, model_auth_error_type(status), code)
+
+      {:error, :adapter_identity, status, message, code} ->
+        error(conn, status, message, adapter_identity_error_type(status), code)
     end
   end
 
@@ -1128,6 +1140,11 @@ defmodule Wardwright.Router do
 
   defp model_auth_error_type(401), do: "unauthorized"
   defp model_auth_error_type(403), do: "forbidden"
+
+  defp adapter_identity_error_type(400), do: "invalid_request"
+  defp adapter_identity_error_type(403), do: "forbidden"
+  defp adapter_identity_error_type(503), do: "server_error"
+  defp adapter_identity_error_type(_status), do: "unauthorized"
 
   defp request_model_api_key(conn) do
     conn
