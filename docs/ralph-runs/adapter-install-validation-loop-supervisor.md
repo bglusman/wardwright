@@ -214,3 +214,56 @@ execution constraints for the loop are:
 - Next open item: backlog item 3, add project-scoped OMP install, drift
   detection, repair refusal, uninstall, and focused CLI tests using temp
   homes/configs.
+
+### Loop 3 - Project OMP Install Lifecycle
+
+- Timestamp: 2026-05-23T17:21:54-04:00.
+- Starting commit: `8c0f8e0`.
+- Ending implementation commit: `0e4cc65`.
+- Scope: added the project-scoped OMP adapter file pack and installer boundary,
+  wired `wardwright adapters install omp` and
+  `wardwright adapters uninstall omp`, and taught doctor to report installed
+  OMP files as `installed_unverified` or `drifted` based on the packaged file
+  manifest. The OMP read-before-edit rule and state-fidelity extension are now
+  shared between harness exports, project install, and the runtime probe source.
+- Validation:
+  - `cd app && MIX_ENV=test mise exec -- sh -lc 'mix compile && mix test --no-compile test/cli_adapters_test.exs test/cli_test.exs test/agent_harness_adapters_test.exs'`
+  - `cd app && MIX_ENV=test mise exec -- mix format --check-formatted`
+  - `mise run check:maps`
+  - `mise exec -- node --check scripts/omp-ttsr-runtime-equivalence.mjs`
+  - `mise run check:types` after rerunning without concurrent build-directory
+    work.
+  - `gitleaks protect --staged --config .gitleaks.toml --verbose`
+  - Commit hook reran app format/test and staged gitleaks:
+    `376 passed (21 properties, 355 tests), 6 excluded`; staged gitleaks
+    clean.
+- Adversarial review:
+  - Architecture: filesystem mutation is isolated in
+    `Wardwright.AgentAdapters.OmpInstaller`, while packaged adapter content and
+    hashes live in `Wardwright.AgentAdapters.OmpPack`. The CLI still owns option
+    parsing and human output. This keeps impure filesystem work in Elixir and
+    continues to use the Gleam adapter core for state labels. The main residual
+    limitation is intentional: `install omp` writes an unpaired local config
+    with a safe localhost gateway placeholder, so gateway identity, trust-link
+    refresh, and token validation remain backlog item 4.
+  - Code quality/comments: no comments were needed; the module names and return
+    fields describe the install boundary. The CLI module grew again but did not
+    absorb manifest hashing or file mutation. A future multi-adapter install
+    loop should avoid adding more target-specific branches to this CLI module
+    and should route through per-target installers or a small dispatcher.
+  - Test quality: tests use temp workspaces and fake executable detection, so
+    they do not inspect or mutate real OMP/Pi/OpenCode state. They assert
+    product behavior: project-local file writes, `installed_unverified` doctor
+    state before pair/probe evidence, drift detection after local edits, repair
+    refusal without `--repair`, explicit repair replacement, and uninstall that
+    removes only matching Wardwright-owned files while leaving edited files.
+    The tests would fail for silent generic overwrites, missing manifest files,
+    incorrect state classification, or unsafe uninstall behavior.
+- Skipped probes: the blocking OMP runtime probe was skipped because neither
+  `omp` nor `oh-my-pi` is installed in this environment. OpenCode surface
+  probe, OpenClaw runtime probes, and Claude gateway identity probe remain
+  skipped because this loop only installs/uninstalls the OMP project files and
+  does not implement gateway pairing, probe invocation, or runtime-specific
+  OpenCode/OpenClaw/Claude integration.
+- Next open item: backlog item 4, wire OMP pairing and gateway adapter identity
+  validation.
