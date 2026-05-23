@@ -439,3 +439,62 @@ execution constraints for the loop are:
 - Next open item: backlog item 7, add OpenCode runtime resolution and ensure
   Pi/OMP-backed, OpenCode-native, and Codex-backed modes get distinct fidelity
   labels.
+
+### Loop 7 - OpenCode Runtime Resolution
+
+- Timestamp: 2026-05-23T18:16:36-04:00.
+- Starting commit: `c6a0702`.
+- Ending implementation commit: `d75023b`.
+- Scope: added a focused OpenCode runtime detection boundary,
+  `Wardwright.AgentAdapters.OpenCodeRuntime`, that reads the normalized
+  project-local `.opencode/wardwright-runtime.json` marker and resolves
+  Pi/OMP bridge runtimes, OpenCode-native, Codex-backed, and unsupported
+  runtime ids. `wardwright adapters doctor` now reports OpenCode coverage,
+  fidelity, install strategy, and next actions from that runtime resolution:
+  Pi/OMP-backed OpenCode is covered through the runtime adapter,
+  OpenCode-native stays `session_import_best_effort`, and Codex-backed
+  OpenCode stays gateway-identity/prompt-handoff without OMP probe claims.
+- Validation:
+  - `cd app && mise exec -- gleam format --check src`
+  - `cd app && mise exec -- gleam check --target erlang`
+  - `cd app && mise exec -- gleam run -m glinter`
+  - `cd app && MIX_ENV=test mise exec -- mix format --check-formatted`
+  - `cd app && MIX_ENV=test mise exec -- sh -lc 'mix compile && mix test --no-compile test/cli_adapters_test.exs test/gleam_adapter_core_test.exs'`
+  - `mise run check:maps`
+  - `mise run check:types`
+  - `gitleaks protect --staged --config .gitleaks.toml --verbose`
+  - Commit hook reran app format/test and staged gitleaks:
+    `391 passed (21 properties, 370 tests), 6 excluded`; staged gitleaks
+    clean.
+- Adversarial review:
+  - Architecture: runtime config parsing is isolated in an adapter boundary
+    module, while CLI doctor still owns executable detection, row rendering,
+    and next-action wording. Pure product-to-runtime-to-adapter decisions
+    continue to come from the typed Gleam adapter core. The deliberate
+    limitation is that this loop reads Wardwright's normalized project marker
+    or injected runtime hints; it does not yet inspect every upstream OpenCode
+    provider/config format.
+  - Architecture concern reviewed: the CLI module gained OpenCode-specific
+    next-action clauses. This is acceptable for one doctor slice, but future
+    install/probe work should not keep growing the CLI module with per-target
+    lifecycle behavior; that should move behind per-target adapter modules.
+  - Code quality/comments: no comments were added. The new parser uses named
+    key constants and atom-keyed return data, so `mise run check:maps` stays
+    clean without expanding the string-map baseline. Unsupported runtime ids
+    are preserved as unsupported labels instead of being collapsed into
+    `unknown`.
+  - Test quality: tests use temp workspaces and fake executable detection, so
+    they do not inspect or mutate the user's real OpenCode state. They assert
+    product-visible doctor behavior for OMP hints, Pi bridge config,
+    OpenCode-native lower fidelity, and Codex-backed gateway identity. The
+    negative coverage would fail if OpenCode-native claimed Pi/OMP runtime
+    verification or if Codex-backed OpenCode directed users to the OMP probe.
+  - Post-commit review of `d75023b` found no blockers.
+- Skipped probes: the real OMP TTSR subprocess probe remains skipped because
+  neither `omp` nor `oh-my-pi` is installed in this environment. OpenCode
+  surface verification is skipped because this loop resolves the runtime and
+  labels the fidelity but does not invoke OpenCode through the resolved
+  runtime. OpenClaw runtime probes and Claude gateway identity probe remain
+  skipped because this loop only covers OpenCode doctor resolution.
+- Next open item: backlog item 8, add user-facing install, privacy, cleanup,
+  and fallback docs.
