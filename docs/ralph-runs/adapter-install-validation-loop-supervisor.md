@@ -498,3 +498,45 @@ execution constraints for the loop are:
   skipped because this loop only covers OpenCode doctor resolution.
 - Next open item: backlog item 8, add user-facing install, privacy, cleanup,
   and fallback docs.
+
+### Loop 8 - User-Facing Adapter Lifecycle Docs
+
+- Timestamp: 2026-05-23T18:23:13-04:00.
+- Starting commit: `da024b4`.
+- Ending implementation commit: `363fa1c`.
+- Scope: added `docs/agent-adapters.md` as the user-facing adapter lifecycle
+  guide and linked it from the public docs index, site nav, and README. The
+  guide covers adapter commands, project-scope behavior, adapter states, OMP
+  install/pair/probe/uninstall, repair refusal, privacy and recording
+  boundaries, generic fallback behavior, cleanup, and fidelity limits for OMP,
+  Pi, OpenCode, OpenClaw, and Claude Code.
+- Validation:
+  - `mise run check:docs`
+  - `git diff --check`
+  - `gitleaks protect --staged --config .gitleaks.toml --verbose`
+  - Commit hook reran docs-site checks and staged gitleaks; both passed.
+- Adversarial review:
+  - Architecture: this is intentionally documentation-only. The new page
+    reflects the current boundary split instead of adding product logic: OMP is
+    the only packaged install/pair/probe lifecycle, OpenCode is currently
+    runtime-resolution and fidelity labeling, and missing or unsupported
+    adapters fall back to generic gateway/export behavior.
+  - Architecture concern reviewed: the page is linked from the public site even
+    though the published `v0.0.10` release may not include every adapter
+    command. The page now opens with release-candidate status wording so it does
+    not overstate published package capability.
+  - Code/comment quality: no code comments were touched. Post-commit review
+    found one security wording blocker: the first OMP pairing example showed
+    `WARDWRIGHT_ADMIN_TOKEN` inline with the command. The amended commit removes
+    that pattern and tells users to set the token in the shell or service
+    environment instead of passing tokens as command arguments.
+  - Test quality: no behavior tests were added because this slice changes only
+    docs and navigation. The relevant failing check is `mise run check:docs`,
+    which would fail for missing front matter, broken local docs links, or
+    source-Markdown links inside the docs site.
+- Skipped probes: OMP runtime probe, OpenCode surface probe, OpenClaw runtime
+  probes, and Claude gateway identity probe were skipped because this loop only
+  documents the lifecycle and does not change adapter runtime behavior.
+- Next open item: backlog item 9, run a final docs pass for completeness and
+  accuracy, including setup, privacy, cleanup, fallback behavior, fidelity
+  claims, and adapter-state wording.
