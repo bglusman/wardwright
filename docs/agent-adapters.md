@@ -33,6 +33,19 @@ adapter installation must be explicit in the CLI contract, but user scope is not
 implemented yet; `--scope user` is rejected rather than silently writing outside
 the project.
 
+## Setup
+
+Run adapter commands from the project workspace whose agent state you want
+Wardwright to inspect. `list` is a static catalog. `doctor` checks local agent
+binaries, installed Wardwright-owned files, paired identity state, and probe
+evidence for that workspace.
+
+Pairing requires a running Wardwright gateway. The gateway must have
+`WARDWRIGHT_ADAPTER_IDENTITY_SECRET` set to a stable value of at least 16 bytes,
+and the pairing shell must have `WARDWRIGHT_ADMIN_TOKEN` set so it can call the
+protected pair endpoint. Use `WARDWRIGHT_GATEWAY_URL` when the gateway is not
+listening at `http://127.0.0.1:8787`.
+
 ## Adapter States
 
 `doctor` reports the state that Wardwright is willing to act on:
@@ -49,6 +62,11 @@ the project.
 
 Only `verified` and `verified_with_probe` may enable adapter-scoped recording
 defaults. Stronger replay affordances require `verified_with_probe`.
+
+`doctor --json` is the stable machine-readable form. It includes each target's
+state, detected runtime, runtime source, installed paths, install plan, fidelity
+label, and next actions. Human output is for operators and may add explanatory
+wording.
 
 ## OMP / oh-my-pi
 
@@ -82,10 +100,19 @@ service environment before pairing; do not pass tokens as command arguments.
 Pairing uses `WARDWRIGHT_GATEWAY_URL` when set, defaulting to
 `http://127.0.0.1:8787`.
 
+After pairing, `doctor` reports `verified` only when the signed identity still
+validates for the current workspace. An expired identity, a missing gateway
+signing secret, or a workspace mismatch leaves the adapter below verified state
+or causes the gateway to reject adapter-scoped requests.
+
 `probe omp` runs the packaged OMP TTSR runtime equivalence probe against the
 installed rule and paired config. On success it stores sanitized probe evidence:
 probe name, status, timestamp, runtime, adapter version, and an output digest.
 It does not store the raw probe output or gateway token in the adapter config.
+
+The probe requires the `omp` or `oh-my-pi` runtime to be installed and available
+on `PATH`. If that binary is missing, Wardwright should report the missing
+runtime rather than manufacturing probe success.
 
 ## Uninstall And Cleanup
 
