@@ -29,6 +29,9 @@ type ExampleOption =
 type HarnessAdapterOption =
   #(String, String, String, String)
 
+type AdapterStatusRow =
+  #(String, String, String, String, String, String, String, String)
+
 type ReplayFact =
   #(String, String)
 
@@ -131,6 +134,9 @@ fn external_harness_adapter_options() -> List(HarnessAdapterOption)
 
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "default_harness_adapter_id")
 fn external_default_harness_adapter_id() -> String
+
+@external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "adapter_status_rows")
+fn external_adapter_status_rows() -> List(AdapterStatusRow)
 
 @external(erlang, "Elixir.WardwrightWeb.ControlDebuggerData", "export_harness_trace")
 fn external_export_harness_trace(
@@ -572,6 +578,7 @@ pub fn panel(model: Model) -> Element(Msg) {
       counterfactual_card(model),
       harness_adapter_card(model),
     ]),
+    adapter_status_card(),
     transcript_card(model),
   ])
 }
@@ -771,6 +778,68 @@ fn harness_adapter_card(model: Model) -> Element(Msg) {
     status_text(model.harness_export_status, model.harness_export_error),
     harness_export_facts(model),
   ])
+}
+
+fn adapter_status_card() -> Element(Msg) {
+  html.article([class("panel debugger-card adapter-status-card")], [
+    html.div([class("panel-heading")], [
+      html.div([], [
+        html.span([], [text("Adapter install status")]),
+        html.strong([], [text("Recording and runtime visibility")]),
+      ]),
+      badge.badge([badge.variant(badge.Outline)], [text("doctor")]),
+    ]),
+    html.div([class("adapter-status-list")], adapter_status_rows()),
+    html.small([class("debugger-note")], [
+      text(
+        "Auto-recording applies only to verified adapters. Generic OpenAI-compatible clients stay manual; disable adapter auto-recording by setting recording.adapted_agents to manual.",
+      ),
+    ]),
+  ])
+}
+
+fn adapter_status_rows() -> List(Element(Msg)) {
+  case external_adapter_status_rows() {
+    [] -> [
+      html.div([class("adapter-status-empty")], [
+        text("No adapter status rows are available from doctor."),
+      ]),
+    ]
+    rows ->
+      rows
+      |> list.map(adapter_status_row)
+  }
+}
+
+fn adapter_status_row(row: AdapterStatusRow) -> Element(Msg) {
+  let #(target, label, state, runtime, adapter_id, fidelity, coverage, action) =
+    row
+
+  html.div(
+    [
+      class("adapter-status-row adapter-state-" <> adapter_state_class(state)),
+      attribute("data-adapter-state", state),
+    ],
+    [
+      html.div([class("adapter-status-main")], [
+        html.strong([], [text(label)]),
+        html.span([], [text(target <> " / " <> runtime)]),
+      ]),
+      html.div([class("adapter-status-badges")], [
+        html.span([class("adapter-state-pill")], [text(state)]),
+        html.span([], [text(blank_default(adapter_id, "no adapter"))]),
+        html.span([], [text(fidelity)]),
+        html.span([], [text(coverage)]),
+      ]),
+      html.small([], [text(action)]),
+    ],
+  )
+}
+
+fn adapter_state_class(state: String) -> String {
+  state
+  |> string.replace("_", "-")
+  |> string.replace(" ", "-")
 }
 
 fn transcript_card(model: Model) -> Element(Msg) {
@@ -1351,6 +1420,87 @@ pub fn styles() -> String {
     font-weight: 700;
     line-height: 1.35;
   }
+  .adapter-status-card {
+    gap: 14px;
+  }
+  .adapter-status-list {
+    display: grid;
+    gap: 8px;
+  }
+  .adapter-status-row {
+    display: grid;
+    grid-template-columns: minmax(160px, 0.9fr) minmax(0, 1.35fr);
+    gap: 8px 12px;
+    align-items: start;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-left-width: 5px;
+    border-radius: 8px;
+    background: #fff;
+  }
+  .adapter-status-main,
+  .adapter-status-row small {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .adapter-status-main {
+    display: grid;
+    gap: 3px;
+  }
+  .adapter-status-main span,
+  .adapter-status-row small {
+    color: var(--muted-foreground);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+  .adapter-status-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+  }
+  .adapter-status-badges span {
+    max-width: 100%;
+    padding: 4px 7px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: #f8faf9;
+    font-size: 11px;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+  }
+  .adapter-status-row small {
+    grid-column: 1 / -1;
+  }
+  .adapter-state-pill {
+    color: #0f3f3b;
+    background: #dff3ef !important;
+  }
+  .adapter-state-installable {
+    border-left-color: #1d6f68;
+  }
+  .adapter-state-verified {
+    border-left-color: #2f6f37;
+  }
+  .adapter-state-verified-with-probe {
+    border-left-color: #14532d;
+  }
+  .adapter-state-drifted {
+    border-left-color: #b45309;
+  }
+  .adapter-state-not-detected,
+  .adapter-state-unsupported-runtime {
+    border-left-color: #64748b;
+  }
+  .adapter-status-empty {
+    padding: 12px;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    color: var(--muted-foreground);
+    font-size: 13px;
+    font-weight: 700;
+  }
   .transcript-empty {
     padding: 14px;
     border: 1px dashed var(--border);
@@ -1547,7 +1697,8 @@ pub fn styles() -> String {
     .fork-action-grid,
     .fork-workbench-heading,
     .selected-event-context,
-    .transcript-overview {
+    .transcript-overview,
+    .adapter-status-row {
       grid-template-columns: 1fr;
     }
     .transcript-event {

@@ -131,6 +131,15 @@ pub fn opencode_harness_export_shows_fidelity_warning() -> Bool {
   && view_contains(simulation, "verify_harness_state_fidelity")
 }
 
+pub fn adapter_status_panel_explains_recording_policy() -> Bool {
+  start()
+  |> view_contains("Adapter install status")
+  && initial_view_contains("Recording and runtime visibility")
+  && initial_view_contains("Auto-recording applies only to verified adapters")
+  && initial_view_contains("Generic OpenAI-compatible clients stay manual")
+  && initial_view_contains("recording.adapted_agents")
+}
+
 pub fn fork_actions_are_contextual_to_loaded_event() -> Bool {
   let initial = start()
 
