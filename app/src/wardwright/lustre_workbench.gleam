@@ -25,6 +25,9 @@ type PatternOption =
 type ModelOption =
   #(String, String, String, String)
 
+type ExampleModelOption =
+  #(String, String, String, String)
+
 type FixtureOption =
   #(String, String, String, String, String, List(RetryResponse))
 
@@ -126,6 +129,9 @@ fn external_pattern_options(model_id: String) -> List(PatternOption)
 
 @external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "model_options")
 fn external_model_options() -> List(ModelOption)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "example_model_options")
+fn external_example_model_options() -> List(ExampleModelOption)
 
 @external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "fixture_options")
 fn external_fixture_options(
@@ -810,15 +816,11 @@ fn add_unique(states: List(String), state: String) -> List(String) {
 pub fn view(model: Model) -> Element(Msg) {
   html.div([class("lustre-workbench")], [
     html.style([], styles()),
-    lustre_shell.sidebar(lustre_shell.Workbench, "Workbench", [
-      labeled_select(
-        "Registered model",
-        "model_id",
-        model.model_id,
-        model_options(model.model_id),
-        ModelChanged,
-      ),
-    ]),
+    lustre_shell.sidebar(
+      lustre_shell.Workbench,
+      "Live model workbench",
+      sidebar_controls(model),
+    ),
     workspace(model),
   ])
 }
@@ -853,12 +855,13 @@ pub fn workspace(model: Model) -> Element(Msg) {
 pub fn sidebar_controls(model: Model) -> List(Element(Msg)) {
   [
     labeled_select(
-      "Registered model",
+      "Current model",
       "model_id",
       model.model_id,
       model_options(model.model_id),
       ModelChanged,
     ),
+    example_library(model.model_id),
   ]
 }
 
@@ -932,6 +935,44 @@ fn model_options(selected_id: String) -> List(Element(Msg)) {
   })
 }
 
+fn example_library(selected_id: String) -> Element(Msg) {
+  html.details([class("example-library"), attribute("open", "")], [
+    html.summary([], [text("Example model library")]),
+    html.p([], [
+      text(
+        "Load a toy model to inspect policy behavior, route composition, and scenarios without changing local configuration.",
+      ),
+    ]),
+    html.div(
+      [class("example-model-list")],
+      external_example_model_options()
+        |> list.map(fn(option) {
+          let #(model_id, title, description, category) = option
+
+          element(
+            "a",
+            [
+              class(example_model_class(model_id == selected_id)),
+              attribute("href", "/admin?model=" <> model_id),
+            ],
+            [
+              html.span([], [text(category)]),
+              html.strong([], [text(title)]),
+              html.small([], [text(description)]),
+            ],
+          )
+        }),
+    ),
+  ])
+}
+
+fn example_model_class(active: Bool) -> String {
+  case active {
+    True -> "example-model active"
+    False -> "example-model"
+  }
+}
+
 fn fixture_options(
   pattern_id: String,
   model_id: String,
@@ -962,7 +1003,7 @@ fn fixture_options(
 fn policy_projection_select(model: Model) -> Element(Msg) {
   html.label([class("field projection-field"), attribute("for", "pattern_id")], [
     html.span([], [
-      text("Policy projection"),
+      text("Behavior view"),
       html.span(
         [
           class("help-dot"),
@@ -2059,6 +2100,58 @@ pub fn styles() -> String {
   }
   .field {
     gap: 8px;
+  }
+  .example-library {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+  }
+  .example-library summary {
+    cursor: pointer;
+    color: var(--foreground);
+    font-size: 13px;
+    font-weight: 850;
+  }
+  .example-library p {
+    color: var(--muted-foreground);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .example-model-list {
+    display: grid;
+    gap: 8px;
+  }
+  .example-model {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    min-height: 0;
+    padding: 10px;
+    border: 1px solid #dde4ea;
+    border-radius: 8px;
+    background: #fbfcfd;
+    text-align: left;
+  }
+  .example-model:hover, .example-model.active {
+    border-color: #9ec8c3;
+    background: #eef7f5;
+  }
+  .example-model span {
+    color: #66727f;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+  .example-model strong, .example-model small {
+    overflow-wrap: anywhere;
+  }
+  .example-model small {
+    color: var(--muted-foreground);
+    font-size: 12px;
+    line-height: 1.35;
   }
   .projection-field > span {
     display: inline-flex;

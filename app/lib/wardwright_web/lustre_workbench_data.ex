@@ -43,6 +43,18 @@ defmodule WardwrightWeb.LustreWorkbenchData do
     end)
   end
 
+  def example_model_options do
+    demo_model_configs()
+    |> Enum.map(fn config ->
+      {
+        config["model_id"] || "",
+        example_title(config),
+        config["description"] || "",
+        example_category(config)
+      }
+    end)
+  end
+
   def save_fixture(pattern_id, model_id, title, user_input, model_response, response_attempts) do
     title = title |> to_string() |> String.trim()
 
@@ -511,6 +523,22 @@ defmodule WardwrightWeb.LustreWorkbenchData do
   defp demo_model_summaries do
     Enum.map(demo_model_configs(), &Wardwright.model_summary/1)
   end
+
+  defp example_title(%{"model_id" => "demo-retry-guard"}), do: "Retry unsafe stream output"
+  defp example_title(%{"model_id" => "demo-rewrite-review"}), do: "Rewrite and escalate secrets"
+  defp example_title(%{"model_id" => "demo-context-cascade"}), do: "Route by context size"
+  defp example_title(%{"model_id" => "demo-composed-retry-router"}), do: "Compose retry guard"
+  defp example_title(%{"model_id" => "demo-composed-rewrite-router"}), do: "Compose rewrite reviewer"
+  defp example_title(%{"model_id" => "demo-nested-router"}), do: "Nested model DAG"
+  defp example_title(config), do: config["model_id"] || "Example model"
+
+  defp example_category(%{"model_id" => "demo-context-cascade"}), do: "routing"
+
+  defp example_category(%{"model_id" => model_id})
+       when model_id in ["demo-composed-retry-router", "demo-composed-rewrite-router", "demo-nested-router"],
+       do: "composition"
+
+  defp example_category(_config), do: "policy"
 
   defp demo_model_config(model_id) when is_binary(model_id) do
     model_id = String.replace_prefix(model_id, "wardwright/", "")

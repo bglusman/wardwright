@@ -240,6 +240,7 @@ pub fn styles() -> String {
   }
   @media (max-width: 860px) {
     .rail {
+      position: static;
       width: 100%;
       height: auto;
       max-width: 100vw;

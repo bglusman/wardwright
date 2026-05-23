@@ -702,7 +702,9 @@ pub fn styles() -> String {
   .model-access-app {
     min-height: 100vh;
     display: grid;
-    grid-template-columns: 320px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+    max-width: 100vw;
+    overflow-x: hidden;
   }
   .eyebrow, dt {
     color: var(--muted-foreground);
@@ -757,6 +759,8 @@ pub fn styles() -> String {
     display: flex;
     flex-direction: column;
     gap: 14px;
+    min-width: 0;
+    max-width: 100%;
     padding: 16px;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -822,8 +826,11 @@ pub fn styles() -> String {
   .stacked-form, fieldset {
     display: grid;
     gap: 8px;
+    min-width: 0;
   }
   fieldset {
+    min-inline-size: 0;
+    max-width: 100%;
     margin: 0;
     padding: 14px;
     border: 1px solid var(--border);
@@ -839,6 +846,7 @@ pub fn styles() -> String {
     display: flex;
     align-items: flex-start;
     gap: 10px;
+    min-width: 0;
     padding: 12px;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -856,6 +864,7 @@ pub fn styles() -> String {
   .radio-card span {
     display: grid;
     gap: 3px;
+    min-width: 0;
   }
   .nested-radio-group {
     display: grid;
@@ -871,6 +880,8 @@ pub fn styles() -> String {
     align-items: end;
   }
   button {
+    white-space: normal;
+    overflow-wrap: anywhere;
     min-height: 38px;
     border-radius: 8px;
     padding: 8px 12px;
@@ -937,7 +948,7 @@ pub fn styles() -> String {
   }
   @media (max-width: 860px) {
     .model-access-app, .model-key-grid, .inline-form {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
     .workspace {
       padding: 18px;

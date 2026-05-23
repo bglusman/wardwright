@@ -20,6 +20,19 @@ defmodule WardwrightWeb.LustreWorkbenchController do
     )
   end
 
+  def redirect_legacy_policies(conn, params) do
+    conn = fetch_query_params(conn)
+    model = Map.get(conn.query_params, "model") || Map.get(params, "model") || ""
+
+    target =
+      case String.trim(to_string(model)) do
+        "" -> "/admin"
+        model_id -> "/admin?" <> URI.encode_query(%{"model" => model_id})
+      end
+
+    redirect(conn, to: target)
+  end
+
   defp page_html(csrf_token, page, model) do
     socket_route =
       "/admin/socket/websocket?" <>
@@ -68,7 +81,12 @@ defmodule WardwrightWeb.LustreWorkbenchController do
             color: var(--foreground);
             font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
           }
-          lustre-server-component { display: block; min-height: 100vh; }
+          lustre-server-component {
+            display: block;
+            min-height: 100vh;
+            max-width: 100vw;
+            overflow-x: clip;
+          }
         </style>
       </head>
       <body>

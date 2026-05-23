@@ -28,8 +28,8 @@ Elixir until the surrounding integration is also ready to move.
 - Moved the Lustre-facing projection summary into `wardwright/projection_core`.
   Elixir now supplies raw model/config evidence plus policy simulation results;
   Gleam derives the workbench projection facts and state-machine replay.
-- Linked the Lustre workbench from the main admin UI so it can ship beside the
-  LiveView workbench while it evolves.
+- Linked the Lustre workbench from the main admin UI during the migration from
+  the earlier Phoenix workbench.
 - Added a first Lustre state-machine graph that labels transition edges with
   event/action/node evidence and highlights the active state during playback.
 - Added `/spikes/graph-renderer-lab` as a deliberately isolated comparison of

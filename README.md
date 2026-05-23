@@ -20,10 +20,9 @@ Today, Wardwright can run as a local or remote service, expose
 OpenAI-compatible endpoints, define Wardwright models, simulate policy behavior
 in the `/admin` workbench, record receipts, and exercise early policy examples
 such as routing decisions, stream governance, output checks, retries, and saved
-simulator test cases. The legacy `/policies` workbench is still present during
-the transition, but new operator workflows start from `/admin`. The admin
-surface currently supports basic auth, while individual models can be configured
-for API-key or open access.
+simulator test cases. Operator workflows start from `/admin`; old `/policies`
+links redirect there. The admin surface currently supports basic auth, while
+individual models can be configured for API-key or open access.
 
 ## Install
 
@@ -149,8 +148,9 @@ The installed service includes a registered-model workbench at `/admin`. It
 lets you choose the Wardwright model being simulated, load a fixture, edit caller
 input, backend model output, and retry attempts, then step through routing,
 state transitions, stream retries, rewrites, tool decisions, and receipt events.
-The older `/policies` workbench remains in the service during the transition,
-but new operator workflows should start from `/admin`.
+The workbench also includes an example model library for toy routing,
+composition, retry, and rewrite policies. Old `/policies` links redirect to
+`/admin`.
 
 ![Wardwright registered-model workbench showing a retry fixture](docs/assets/workbench/registered-model-workbench.png)
 

@@ -28,8 +28,8 @@ description = "Run incremental Dialyzer through Assay"
 run = "cd app && mix assay"
 
 [tasks."check:browser"]
-description = "Run headless Chrome smoke tests for responsive LiveView playback"
-run = "node scripts/browser-smoke/liveview-playback.mjs"
+description = "Run headless Chrome smoke tests for the responsive Lustre workbench"
+run = "node scripts/browser-smoke/lustre-workbench.mjs"
 
 [tasks.check]
 description = "Run all baseline checks"

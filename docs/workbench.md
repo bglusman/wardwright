@@ -11,8 +11,9 @@ surface for choosing a registered Wardwright model, loading a simulation
 fixture, editing caller input, backend model output, retry attempts, and then
 stepping through the resulting policy run.
 
-The older policy projection workbench remains available at `/policies` as a
-legacy fallback while the registered-model workbench becomes the default.
+The workbench includes an example model library for toy routing, composition,
+retry, and rewrite policies. Old `/policies` links now redirect to `/admin` so
+there is only one operator workbench surface.
 
 Loopback access is allowed by default. If the workbench is exposed beyond local
 operator access, set `BASIC_AUTH_PASSWORD`; the Basic Auth username is always

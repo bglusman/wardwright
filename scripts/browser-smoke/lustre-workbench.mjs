@@ -25,23 +25,21 @@ const overflowViewports = [
 ];
 
 const overflowPaths = [
-  "/policies",
   "/admin",
-  "/policies/tts-retry/diagram",
-  "/policies/tts-retry/diagram?model=browser-smoke-model",
-  "/policies/route-privacy/diagram",
-  "/policies/tool-governance/diagram"
+  "/admin?model=browser-smoke-model",
+  "/admin?view=model_access",
+  "/admin?view=control_debugger"
 ];
 
 if (!chromePath) {
   const message =
-    "Chrome or Chromium was not found. Set CHROME_PATH to run LiveView browser smoke tests.";
+    "Chrome or Chromium was not found. Set CHROME_PATH to run browser smoke tests.";
 
   if (process.env.WARDWRIGHT_BROWSER_REQUIRED === "1") {
     throw new Error(message);
   }
 
-  console.log(`skip LiveView browser smoke tests: ${message}`);
+  console.log(`skip browser smoke tests: ${message}`);
   process.exit(0);
 }
 
@@ -79,7 +77,7 @@ const chrome = spawn(
 );
 
 try {
-  await waitForHttp(`${appUrl}/policies/tts-retry/diagram`, "Wardwright", serverStartTimeoutMs);
+  await waitForHttp(`${appUrl}/admin`, "Wardwright", serverStartTimeoutMs);
   await waitForHttp(`http://127.0.0.1:${chromePort}/json/version`, "webSocketDebuggerUrl");
   await seedRegisteredModelWorkbench();
 
@@ -87,7 +85,7 @@ try {
     await runViewportSmoke(viewport);
   }
 
-  await assertRegisteredModelWorkbench();
+  await assertSelectedModelWorkbench();
   await assertControlDebuggerSaveScenario();
 
   for (const viewport of overflowViewports) {
@@ -115,7 +113,7 @@ async function seedRegisteredModelWorkbench() {
       stream_rules: [
         {
           id: "browser-smoke-redact",
-          pattern: "\\bmoo\\b",
+          regex: "\\bmoo\\b",
           action: "rewrite_chunk",
           replacement: "[cow]"
         }
@@ -131,7 +129,7 @@ async function seedRegisteredModelWorkbench() {
   }
 }
 
-async function assertRegisteredModelWorkbench() {
+async function assertSelectedModelWorkbench() {
   const target = await createChromeTarget();
   const cdp = await connectCdp(target.webSocketDebuggerUrl);
 
@@ -146,43 +144,37 @@ async function assertRegisteredModelWorkbench() {
     });
 
     await cdp.send("Page.navigate", {
-      url: `${appUrl}/policies/tts-retry/diagram?model=browser-smoke-model`
+      url: `${appUrl}/admin?model=browser-smoke-model`
     });
     await cdp.waitFor("Page.loadEventFired");
-    await waitForEval(
-      cdp,
-      `document.body && document.body.innerText.includes("Live model selected")`
-    );
-    await waitForEval(cdp, `!document.documentElement.classList.contains("phx-loading")`);
-    await waitForEval(cdp, `document.body.textContent.includes("browser-smoke-redact")`);
+    await waitForEval(cdp, `pageText(document.body).includes("browser-smoke-model")`);
+    await waitForEval(cdp, `pageText(document.body).includes("Simulate a turn")`);
+    await waitForEval(cdp, `pageText(document.body).includes("browser-smoke-redact")`);
 
     const result = await evaluate(
       cdp,
       `(() => {
-        const text = document.body.innerText;
+        const text = pageText(document.body);
         const forbidden = [
-          "Run path",
-          "State and turn model",
-          "Receipt Preview",
           "Selected Node",
           "Review Findings",
-          "retry arbiter"
+          "Legacy workbench"
         ].filter((label) => text.includes(label));
         return {
-          hasRuntime: text.includes("Runtime Visibility"),
-          hasCache: text.includes("History Cache"),
+          hasExamples: text.includes("Example model library"),
+          hasTrace: text.includes("Trace playback"),
           forbidden
         };
       })()`
     );
 
-    if (!result.hasRuntime || !result.hasCache || result.forbidden.length > 0) {
+    if (!result.hasExamples || !result.hasTrace || result.forbidden.length > 0) {
       throw new Error(
-        `registered model workbench rendered stale or missing panels: ${JSON.stringify(result)}`
+        `selected model workbench rendered stale or missing panels: ${JSON.stringify(result)}`
       );
     }
 
-    console.log("ok registered model workbench hides example simulation panels");
+    console.log("ok selected model workbench renders Lustre model surface");
   } finally {
     cdp.close();
   }
@@ -257,7 +249,7 @@ async function assertNoPageOverflow(viewport, path) {
       const widest = await evaluate(
         cdp,
         `(() => {
-          const elements = [];
+          const elements = [document.documentElement, document.body].filter(Boolean);
           const collect = (root) => {
             if (!root?.querySelectorAll) return;
             for (const element of root.querySelectorAll("*")) {
@@ -277,8 +269,12 @@ async function assertNoPageOverflow(viewport, path) {
               scrollWidth: element.scrollWidth
             };
           })
-          .filter((entry) => entry.right > document.documentElement.clientWidth + 1 || entry.width > document.documentElement.clientWidth + 1)
-          .sort((a, b) => b.right - a.right || b.width - a.width)
+          .filter((entry) =>
+            entry.right > document.documentElement.clientWidth + 1 ||
+            entry.width > document.documentElement.clientWidth + 1 ||
+            entry.scrollWidth > document.documentElement.clientWidth + 1
+          )
+          .sort((a, b) => b.scrollWidth - a.scrollWidth || b.right - a.right || b.width - a.width)
           .slice(0, 5);
         })()`
       );
@@ -308,49 +304,40 @@ async function runViewportSmoke(viewport) {
       mobile: viewport.mobile
     });
 
-    await cdp.send("Page.navigate", { url: `${appUrl}/policies/tts-retry/diagram` });
+    await cdp.send("Page.navigate", { url: `${appUrl}/admin?model=demo-retry-guard` });
     await cdp.waitFor("Page.loadEventFired");
-    await waitForEval(cdp, `document.body && document.body.innerText.includes("Playback")`);
-    await waitForEval(cdp, `!document.documentElement.classList.contains("phx-loading")`);
-    await waitForEval(cdp, `document.querySelector(".simulation_player button") !== null`);
-    await waitForLiveView(cdp);
+    await waitForEval(cdp, `pageText(document.body).includes("Trace playback")`);
+    await waitForEval(cdp, `pageText(document.body).includes("Example model library")`);
 
-    await assertClickableControl(cdp, viewport.name, "Step");
+    await assertClickableControl(cdp, viewport.name, "Next step");
     await clickControlAndWait(
       cdp,
-      "Step",
-      `document.querySelector(".player_status span")?.textContent.includes("Step 1 of 5")`
+      "Next step",
+      `pageText(document.body).includes("Step 2 of")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Back");
     await clickControlAndWait(
       cdp,
       "Back",
-      `document.querySelector(".player_status span")?.textContent.includes("Ready: 5")`
+      `pageText(document.body).includes("Step 1 of")`
     );
 
-    await assertClickableControl(cdp, viewport.name, "Step");
+    await assertClickableControl(cdp, viewport.name, "Next step");
     await clickControlAndWait(
       cdp,
-      "Step",
-      `document.querySelector(".player_status span")?.textContent.includes("Step 1 of 5")`
+      "Next step",
+      `pageText(document.body).includes("Step 2 of")`
     );
 
     await assertClickableControl(cdp, viewport.name, "Reset");
     await clickControlAndWait(
       cdp,
       "Reset",
-      `document.querySelector(".player_status span")?.textContent.includes("Ready: 5")`
+      `pageText(document.body).includes("Step 1 of")`
     );
 
-    await assertClickableControl(cdp, viewport.name, "Play");
-    await clickControlAndWait(
-      cdp,
-      "Play",
-      `[...document.querySelectorAll(".simulation_player button")].some((button) => button.textContent.trim() === "Pause")`
-    );
-
-    console.log(`ok ${viewport.name} LiveView playback controls`);
+    console.log(`ok ${viewport.name} Lustre playback controls`);
   } finally {
     cdp.close();
   }
@@ -367,7 +354,6 @@ async function clickControlAndWait(cdp, label, condition) {
       return;
     } catch (error) {
       lastError = error;
-      await waitForLiveView(cdp);
     }
   }
 
@@ -378,11 +364,24 @@ async function clickControl(cdp, label) {
   const result = await evaluate(
     cdp,
     `(() => {
-      const button = [...document.querySelectorAll(".simulation_player button")]
-        .find((candidate) => candidate.textContent.trim() === ${JSON.stringify(label)});
-      if (!button) return { error: "missing ${label} control" };
-      button.click();
-      return { clicked: true };
+      const candidates = allElements("button")
+        .filter((candidate) => candidate.textContent.trim() === ${JSON.stringify(label)});
+      if (candidates.length === 0) return { error: "missing ${label} control" };
+
+      for (const button of candidates) {
+        button.scrollIntoView({ block: "center", inline: "center" });
+        const rect = button.getBoundingClientRect();
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+        const root = button.getRootNode();
+        const covering = root.elementFromPoint ? root.elementFromPoint(x, y) : document.elementFromPoint(x, y);
+        if (covering === button || button.contains(covering)) {
+          button.click();
+          return { clicked: true };
+        }
+      }
+
+      return { error: "no clickable ${label} control" };
     })()`
   );
 
@@ -418,37 +417,52 @@ async function assertClickableControl(cdp, viewportName, label) {
 
   if (!result.clickable) {
     throw new Error(
-      `${viewportName}: ${label} control is covered by ${result.coveringTag}.${result.coveringClass}`
+      `${viewportName}: ${label} control is covered by ${result.coveringTag}.${result.coveringClass} ` +
+        `at ${JSON.stringify(result.rect)} text=${JSON.stringify(result.coveringText || "")}`
     );
   }
 }
 
-async function waitForLiveView(cdp) {
-  await waitForEval(
-    cdp,
-    `window.liveSocket && typeof window.liveSocket.isConnected === "function" && window.liveSocket.isConnected()`
-  );
-  await waitForEval(cdp, `document.querySelector("[data-phx-main]") !== null`);
-}
-
 function controlPointExpression(label) {
   return `(() => {
-    const button = [...document.querySelectorAll(".simulation_player button")]
-      .find((candidate) => candidate.textContent.trim() === ${JSON.stringify(label)});
-    if (!button) return { error: "missing ${label} control" };
-    button.scrollIntoView({ block: "center", inline: "center" });
-    const rect = button.getBoundingClientRect();
-    const x = rect.left + rect.width / 2;
-    const y = rect.top + rect.height / 2;
-    const covering = document.elementFromPoint(x, y);
-    const clickable = covering === button || button.contains(covering);
-    return {
-      x,
-      y,
-      clickable,
-      coveringTag: covering?.tagName || "none",
-      coveringClass: covering?.className || ""
-    };
+    const candidates = allElements("button")
+      .filter((candidate) => candidate.textContent.trim() === ${JSON.stringify(label)});
+    if (candidates.length === 0) return { error: "missing ${label} control" };
+
+    let blocked = null;
+
+    for (const button of candidates) {
+      button.scrollIntoView({ block: "center", inline: "center" });
+      const rect = button.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const root = button.getRootNode();
+      const covering = root.elementFromPoint ? root.elementFromPoint(x, y) : document.elementFromPoint(x, y);
+      const clickable = covering === button || button.contains(covering);
+
+      const result = {
+        x,
+        y,
+        clickable,
+        coveringTag: covering?.tagName || "none",
+        coveringClass: covering?.className || "",
+        coveringText: covering?.textContent?.trim()?.slice(0, 80) || "",
+        rect: {
+          left: Math.round(rect.left),
+          top: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height)
+        }
+      };
+
+      if (clickable) {
+        return result;
+      }
+
+      blocked = result;
+    }
+
+    return blocked || { error: "missing ${label} control" };
   })()`;
 }
 

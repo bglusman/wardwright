@@ -1,6 +1,6 @@
 defmodule WardwrightWeb.AuthoringAgent do
   @moduledoc """
-  Narrow policy-authoring assistant boundary for the LiveView workbench spike.
+  Narrow policy-authoring assistant boundary for the operator workbench.
 
   The first implementation keeps Jido integration behind a small interface so the
   UI, prompt contract, and configuration rules are testable without requiring
