@@ -157,3 +157,60 @@ execution constraints for the loop are:
 - Next open item: backlog item 2, add `wardwright adapters list` and
   `wardwright adapters doctor` with stable human and JSON output backed by this
   core.
+
+### Loop 2 - Adapter List And Doctor CLI
+
+- Timestamp: 2026-05-23T17:11:29-04:00.
+- Starting commit: `3be7712`.
+- Ending implementation commit: `a96c71d`.
+- Scope: added `Wardwright.CLI.Adapters` and wired
+  `wardwright adapters list`, `wardwright adapters list --json`,
+  `wardwright adapters doctor`, and `wardwright adapters doctor --json` into
+  the packaged CLI. The CLI boundary detects candidate binaries through an
+  injectable executable finder, accepts injectable runtime hints for tests and
+  later config resolution, and delegates adapter state/install labels to
+  `wardwright/adapter_core.gleam`. OpenCode and OpenClaw remain
+  runtime-dependent and unsupported until a supported runtime is actually
+  detected or supplied.
+- Validation:
+  - `cd app && mise exec -- mix format --check-formatted`
+  - `cd app && MIX_ENV=test mise exec -- sh -lc 'mix compile && mix test --no-compile test/cli_adapters_test.exs test/cli_test.exs test/gleam_adapter_core_test.exs'`
+  - `mise run check:maps`
+  - `cd app && MIX_ENV=test mise exec -- sh -lc 'mix compile && mix test --no-compile'`
+  - `mise run check:types` after rerunning without concurrent build-directory
+    work.
+  - Commit hook reran app format/test and staged gitleaks:
+    `371 passed (21 properties, 350 tests), 6 excluded`; staged gitleaks
+    clean.
+- Adversarial review:
+  - Architecture: the new CLI module is an Elixir boundary for executable
+    detection, option parsing, human rendering, and JSON rendering. It keeps
+    runtime/state/install decisions backed by the typed Gleam core and uses
+    atom-keyed internal rows so it does not increase the Elixir map-boundary
+    baseline. The main architectural limitation is intentional: real OpenCode
+    and OpenClaw runtime config inspection is not implemented in this loop, so
+    detected unknown runtimes report `unsupported_runtime` instead of claiming
+    install support.
+  - Architecture blocker fixed before ending: the first implementation used
+    string-keyed maps internally and failed `mise run check:maps`. The committed
+    version keeps string-keyed data at the JSON boundary and passes the ratchet.
+  - Code quality/comments: the module is larger than ideal for a CLI boundary
+    but still owns one concern: adapter CLI rendering/detection. No comments
+    were added because target definitions, output rows, and helper names carry
+    the contract directly. The next install loop should split filesystem
+    manifest ownership into a separate module instead of expanding this one
+    into an installer.
+  - Test quality: tests use injected executable/runtime facts, so they do not
+    inspect or mutate the user's real agent state. They assert stable human and
+    JSON output, empty-environment `not_detected`, OMP native installability,
+    OpenCode covered through OMP runtime, unsupported detected OpenCode runtime,
+    and main CLI routing. The post-commit review found that `doctor --json` was
+    not directly tested; the amended commit adds that machine-readable contract
+    regression.
+- Skipped probes: OMP runtime probe, OpenCode surface probe, OpenClaw runtime
+  probes, and Claude gateway identity probe were skipped because this loop only
+  added list/doctor detection output. It does not install adapter files, pair
+  with the gateway, or run runtime probes.
+- Next open item: backlog item 3, add project-scoped OMP install, drift
+  detection, repair refusal, uninstall, and focused CLI tests using temp
+  homes/configs.
