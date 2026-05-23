@@ -323,3 +323,61 @@ execution constraints for the loop are:
   integration.
 - Next open item: backlog item 5, connect adapter-scoped auto-recording to
   verified adapter identity while keeping generic clients manual by default.
+
+### Loop 5 - Adapter-Scoped Gateway Recording
+
+- Timestamp: 2026-05-23T17:54:58-04:00.
+- Starting commit: `12adb22`.
+- Ending implementation commit: `3146741`.
+- Scope: added the gateway request boundary for adapter identity and recording
+  policy. The chat completion path now classifies generic clients, declared
+  unverified adapters, and verified OMP adapter identities before receipt
+  creation. Verified adapters can trigger adapter-scoped full-session recording
+  through the existing Gleam recording-policy decision, while generic clients
+  remain metadata-only unless they explicitly request recording. Receipts record
+  sanitized adapter trace metadata without storing the signed identity token.
+- Validation:
+  - `cd app && MIX_ENV=test mise exec -- sh -lc 'mix compile && mix test --no-compile test/agent_adapter_recording_test.exs test/agent_adapter_identity_test.exs test/gleam_adapter_core_test.exs'`
+  - `cd app && MIX_ENV=test mise exec -- sh -lc 'mix compile && mix test --no-compile test/agent_adapter_recording_test.exs test/agent_adapter_identity_test.exs'`
+  - `cd app && mise exec -- mix format --check-formatted`
+  - `mise run check:maps`
+  - `mise run check:types`
+  - `cd app && MIX_ENV=test mise exec -- mix test --no-compile`
+  - `gitleaks protect --staged --config .gitleaks.toml --verbose`
+  - Commit hook reran app format/test and staged gitleaks:
+    `386 passed (21 properties, 365 tests), 6 excluded`; staged gitleaks
+    clean.
+- Adversarial review:
+  - Architecture: the new `WardwrightWeb.AdapterRequestContext` is an HTTP
+    boundary for headers, signed identity parsing, request-scoped recording
+    policy application, and sanitized caller metadata. Pure recording-mode
+    selection still delegates to `wardwright/adapter_core.gleam`, and receipt
+    construction continues to consume the existing config/VCR contract instead
+    of learning adapter-specific branches.
+  - Architecture blocker fixed before ending: the first committed version let a
+    request header provide the workspace fingerprint used to validate that same
+    identity. The amended implementation now prefers a gateway-configured
+    `:adapter_workspace_fingerprint` or `WARDWRIGHT_WORKSPACE_FINGERPRINT`, and
+    the test proves a wrong-workspace identity is rejected even when the request
+    header matches the identity.
+  - Code quality/comments: no inline comments were added; function and field
+    names carry the boundary contract. The central config normalization adds a
+    small recording policy map using module attributes so the map-boundary
+    ratchet stays flat. Residual design concern: only OMP identity is accepted
+    in this slice, and gateway URL binding is not yet enforced during request
+    verification.
+  - Test quality: tests assert product-visible behavior: generic clients do not
+    get adapted-agent auto-recording, verified adapters do get full-session
+    recording, unverified adapter declarations stay manual, wrong-workspace and
+    expired identities are rejected, explicit recording still works for generic
+    clients, and receipts do not contain the signed identity token. These tests
+    would fail for adapter auto-recording leaking to generic clients, accepting
+    wrong-workspace identities, or persisting adapter credentials in receipts.
+- Skipped probes: the blocking OMP runtime probe was skipped because neither
+  `omp` nor `oh-my-pi` is installed in this environment. OpenCode surface
+  probe, OpenClaw runtime probes, and Claude gateway identity probe remain
+  skipped because this loop only connects gateway recording policy to verified
+  OMP identity and does not implement probe invocation or additional adapter
+  surfaces.
+- Next open item: backlog item 6, extend `probe omp` to invoke the current
+  runtime equivalence probe from the packaged CLI path.
