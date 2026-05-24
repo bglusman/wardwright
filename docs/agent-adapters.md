@@ -203,6 +203,26 @@ identity so adapter-scoped recording can apply to verified Claude Code
 requests. It still remains a prompt or model-context handoff unless a future
 documented Claude Code state/import path proves stronger fidelity.
 
+## OpenClaw
+
+OpenClaw support is runtime resolution, not a separate rule engine. When
+`.openclaw/wardwright-runtime.json` describes a supported OpenClaw runtime,
+`doctor` chooses the matching Wardwright adapter:
+
+- `agentRuntime.id: pi` or `agentRuntime.id: auto` resolved to Pi uses the Pi
+  adapter path.
+- `agentRuntime.id: codex` or `openai-codex` reports Codex gateway-identity
+  support and does not run the OMP/Pi runtime probe.
+- `cliBackend.id: claude-cli` uses the Claude Code gateway-identity adapter and
+  keeps fidelity at `prompt_handoff`.
+- Unknown runtime ids stay `unsupported_runtime`.
+
+OpenClaw does not have packaged `install`, `pair`, `probe`, or `uninstall`
+commands of its own. Follow the next action from `wardwright adapters doctor`
+and install, pair, or probe the selected underlying adapter, such as `pi` or
+`claude-code`. This avoids claiming OpenClaw-native state fidelity or a separate
+OpenClaw TTSR path.
+
 ## Uninstall And Cleanup
 
 ```bash
@@ -276,7 +296,10 @@ gateway/export behavior:
 | OpenCode with Pi or OMP runtime | `doctor` can report coverage through the underlying runtime adapter. OMP-backed OpenCode can run `probe opencode` after the OMP runtime probe passes. | `runtime_verified` means the underlying runtime path is covered; `surface_verified` requires an explicit OpenCode surface probe. |
 | OpenCode-native | Packaged plugin install is not complete; use the current harness export scaffold. | `session_import_best_effort`; do not claim Pi/OMP runtime verification. |
 | OpenCode with Codex runtime | Gateway identity support is the intended path when packaged. | `prompt_handoff`; do not run or claim the OMP TTSR probe. |
-| OpenClaw | Runtime-driven support is planned for Pi, Codex, and supported CLI backends. | Unsupported or unknown runtimes report `unsupported_runtime`. |
+| OpenClaw with Pi runtime | `doctor` reports coverage through the packaged Pi adapter. | `runtime_verified` inherits the Pi adapter state; Pi replay remains export-only unless separately verified. |
+| OpenClaw with Codex runtime | `doctor` reports Codex gateway-identity support when the runtime config says `codex` or `openai-codex`. | `prompt_handoff`; do not run or claim the OMP/Pi runtime probe. |
+| OpenClaw with Claude CLI backend | `doctor` points operators to the packaged Claude Code gateway-identity adapter. | `prompt_handoff`; no OpenClaw-native or Claude native state/import parity is claimed. |
+| OpenClaw with unknown runtime | No adapter path is selected. | `unsupported_runtime`. |
 | Claude Code | Packaged install, pair, doctor, and uninstall for gateway identity metadata. | `prompt_handoff`; no native state/import or runtime-probe parity is claimed. |
 
 Use `wardwright adapters doctor --json` when another tool needs

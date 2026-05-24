@@ -8,10 +8,9 @@ This file is the durable tracker for the adapter install and validation Ralph
 loop. The build target is
 [`adapter-install-validation-requirements.md`](adapter-install-validation-requirements.html).
 
-Status: continuing after loop 18. The OMP release-candidate slice is complete,
-but the Ralph loop remains open for the follow-up adapter backlog below. The
-completion sentinel should stay absent until those continuation items are also
-implemented, validated, and recorded.
+Status: complete after loop 19. The OMP release-candidate slice and the
+follow-up adapter backlog below are implemented, validated, and recorded. The
+local completion sentinel may be present so the runner can idle.
 
 ## Branch Policy
 
@@ -1197,3 +1196,71 @@ execution constraints for the loop are:
   inspection is implemented.
 - Next open item: backlog item 15, add OpenClaw runtime config inspection and
   tests for Pi, Codex, Claude CLI, and unknown runtime resolution.
+
+### Loop 19 - OpenClaw Runtime Resolution And Completion
+
+- Timestamp: 2026-05-23T21:46-04:00.
+- Starting commit: `b7d555c`.
+- Ending implementation commit: `56acbc2`.
+- Scope: added `Wardwright.AgentAdapters.OpenClawRuntime` to parse the
+  project-local OpenClaw runtime marker, wired `doctor` to resolve OpenClaw Pi,
+  Codex, Claude CLI, and unknown runtime modes through the typed Gleam adapter
+  core, and updated the adapter docs to describe OpenClaw as runtime-driven
+  coverage rather than a separate packaged rule engine. OpenClaw Pi uses the Pi
+  adapter path, OpenClaw Codex keeps gateway-identity / `prompt_handoff`
+  wording, OpenClaw Claude CLI points to the Claude Code identity adapter, and
+  unknown runtimes remain `unsupported_runtime`.
+- Validation:
+  - `cd app && mise exec -- gleam format --check src`.
+  - `cd app && mise exec -- gleam check --target erlang`.
+  - `cd app && mise exec -- gleam run -m glinter`.
+  - `cd app && MIX_ENV=test mise exec -- mix format --check-formatted`.
+  - `cd app && MIX_ENV=test mise exec -- sh -lc 'mix compile && mix test --no-compile test/cli_adapters_test.exs test/gleam_adapter_core_test.exs'`:
+    `39 passed`.
+  - `mise run check:maps`.
+  - `mise run check:types`.
+  - `mise run check:docs`.
+  - `git diff --check`.
+  - `test -f .openclaw/wardwright-runtime.json && echo present || echo 'skip OpenClaw live runtime probe: no .openclaw/wardwright-runtime.json marker in this workspace'`:
+    skipped with the recorded no-marker reason.
+  - Commit hook reran app format/test and staged gitleaks:
+    `411 passed (21 properties, 390 tests), 6 excluded`; staged gitleaks
+    clean.
+- Adversarial review:
+  - Architecture: OpenClaw runtime JSON parsing is isolated in an Elixir
+    adapter boundary, while the product decision still flows through the typed
+    Gleam adapter core. The slice does not add OpenClaw-specific filesystem
+    mutation, pairing, or probe behavior; lifecycle actions remain owned by the
+    selected underlying adapter. Residual limitation: this reads Wardwright's
+    normalized project-local OpenClaw marker instead of depending on every
+    upstream OpenClaw config shape.
+  - Architecture blocker fixed before ending: the first committed version
+    normalized `auto` only when the value was lowercase. The amended commit
+    handles casing variants such as `Auto` before mapping `auto -> pi`.
+  - Code quality/comments: no comments were added. Runtime key names are module
+    constants so the map-boundary ratchet stays clean while keeping raw JSON
+    access local to the boundary parser. The CLI module still owns target
+    rendering and next-action wording; future editable adapter management
+    should extract a small dispatcher before adding more target lifecycle code.
+  - Test quality: tests use temp workspaces and fake OpenClaw detection, so
+    they do not inspect or mutate real OpenClaw state. They assert
+    product-visible doctor behavior for `auto -> pi`, Codex gateway identity,
+    Claude CLI prompt handoff, and unknown runtime rejection. The negative
+    assertions prove Codex-backed OpenClaw does not direct operators to OMP/Pi
+    probes.
+- Skipped probes: live OpenClaw Pi/Codex/Claude runtime probes were skipped
+  because this environment's live OpenClaw config is not configured with a
+  supported project-local runtime marker for this workspace. The slice uses
+  behavior tests over isolated runtime markers instead of probing private user
+  OpenClaw state. No completion-blocking OMP probe was rerun in this loop
+  because loop 14 already recorded the real OMP TTSR probe and this loop does
+  not change OMP probe behavior.
+- Completion review: the ordered adapter backlog is complete through item 15.
+  The final documentation pass covered install, doctor, pair, probe, uninstall,
+  privacy, cleanup, fallback behavior, adapter-state wording, and fidelity
+  limits for OMP, Pi, OpenCode, OpenClaw, and Claude Code. No adapter path now
+  claims stronger replay fidelity than the implemented tests and recorded
+  probes prove.
+- Next open item: none for the adapter install validation Ralph loop. Future
+  work should be opened outside this loop for direct upstream OpenClaw config
+  discovery or stronger Pi/OpenClaw state-fidelity probes.
