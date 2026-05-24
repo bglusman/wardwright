@@ -930,3 +930,67 @@ execution constraints for the loop are:
 - Next open item: backlog item 11, add OpenCode surface verification for
   Pi/OMP-backed runtimes so doctor and probes can distinguish
   `runtime_verified` from `surface_verified`.
+
+### Loop 15 - OpenCode Surface Probe Verification
+
+- Timestamp: 2026-05-23T20:57:34-04:00.
+- Starting commit: `cdd38f5`.
+- Ending implementation commit: `c84757f`.
+- Scope: added OpenCode surface-probe verification for OMP-backed OpenCode
+  runtimes. `doctor` now reuses the underlying OMP adapter state for
+  OpenCode-through-OMP, reports `surface_probe`, keeps fidelity at
+  `runtime_verified` until OpenCode-specific evidence exists, and upgrades the
+  OpenCode fidelity label to `surface_verified` only after
+  `wardwright adapters probe opencode` records a passing surface probe marker.
+  OpenCode-native and Codex-backed OpenCode explicitly refuse the OMP/Pi
+  surface probe path.
+- Validation:
+  - `cd app && mise exec -- gleam format --check src`
+  - `cd app && mise exec -- gleam check --target erlang`
+  - `cd app && mise exec -- gleam run -m glinter`
+  - `cd app && MIX_ENV=test mise exec -- mix format --check-formatted`
+  - `cd app && MIX_ENV=test mise exec -- sh -lc 'mix compile && mix test --no-compile test/cli_adapters_test.exs test/gleam_adapter_core_test.exs'`:
+    `28 passed`
+  - `mise run check:maps`
+  - `mise run check:types`
+  - `mise run check:docs`
+  - `git diff --check`
+  - `gitleaks protect --staged --config .gitleaks.toml --verbose`
+  - Commit hook reran app format/test, docs-site checks, and staged gitleaks:
+    `397 passed (21 properties, 376 tests), 6 excluded`; staged gitleaks
+    clean.
+- Adversarial review:
+  - Architecture: the pure fidelity upgrade rule lives in the typed Gleam
+    adapter core, while OpenCode marker parsing, command execution, JSON
+    evidence writing, and CLI rendering stay in Elixir boundary modules. The
+    slice deliberately gates OpenCode `surface_verified` behind both a probed
+    OMP runtime adapter and an explicit OpenCode surface marker, so it does not
+    turn runtime inheritance into a stronger surface claim.
+  - Architecture concern reviewed: `Wardwright.CLI.Adapters` grew again with
+    target-specific probe flow. This is still acceptable for the narrow
+    follow-up because the new filesystem/process behavior is delegated to
+    `OpenCodeRuntime`, but backlog items 12-15 should avoid continuing to grow
+    this CLI module and should move per-target lifecycle behavior behind
+    adapter modules or a small dispatcher.
+  - Code/comment quality: no inline comments were added. The review found one
+    security blocker before ending: failed OpenCode surface probes originally
+    printed raw probe output. The amended implementation now reports only an
+    output SHA-256 digest and adds a regression so a real OpenCode failure
+    cannot echo raw agent transcript text through the CLI.
+  - Test quality: tests assert behavior visible to operators and automation:
+    OpenCode-through-OMP stays `runtime_verified` until a surface probe passes,
+    `probe opencode` records sanitized evidence only after the OMP runtime
+    adapter is paired and probed, OpenCode-native refuses the probe without
+    invoking the runner, and failed OpenCode probe output is redacted to a
+    digest. The tests use temp workspaces and injected runners, so they do not
+    mutate real OpenCode or OMP state.
+- Skipped probes: real live OpenCode surface invocation was skipped because
+  this environment's live packaged doctor still resolves OpenCode as
+  `unknown` / `unsupported_runtime` without a project-local OMP-backed marker.
+  Pi-backed OpenCode surface verification remains blocked on packaged Pi
+  install/probe support. OpenClaw runtime probes and Claude gateway identity
+  probe remain skipped because this loop only covers OpenCode-through-OMP
+  surface evidence.
+- Next open item: backlog item 12, package the OpenCode-native plugin/import
+  scaffold lifecycle or downgrade its install plan until the packaged scaffold
+  is real.
