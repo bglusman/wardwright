@@ -339,6 +339,100 @@ That smoke proves:
 - `/v1/responses` parity, native Agents sessions, tools, and streaming support
   are deferred instead of implied.
 
+## Microsoft.Extensions.AI And Semantic Kernel
+
+Current support tier: `recipe_only`.
+
+Current fidelity label after the committed smoke passes:
+`framework_receipt_correlated`.
+
+The first Microsoft.Extensions.AI slice uses the `IChatClient` pipeline shape:
+configure the underlying OpenAI-compatible chat client with Wardwright as the
+`base_url`, pass caller provenance as request headers, and wrap the client with
+a delegating client that copies `x-wardwright-receipt-id` into
+`ChatResponse.AdditionalProperties`. It does not ship a NuGet package, does
+not execute the real Microsoft.Extensions.AI package in the default smoke, and
+does not claim streaming, tool-calling, Semantic Kernel planner behavior,
+native framework state, or exact replay fidelity.
+
+Install normal .NET dependencies in the framework project when using the
+recipe against real Microsoft.Extensions.AI or Semantic Kernel code:
+
+```bash
+dotnet add package Microsoft.Extensions.AI
+dotnet add package Microsoft.Extensions.AI.OpenAI
+dotnet add package OpenAI
+dotnet add package Microsoft.SemanticKernel
+```
+
+Use Wardwright as the governed OpenAI-compatible endpoint and keep receipt
+correlation in chat response metadata:
+
+```csharp
+using Microsoft.Extensions.AI;
+using OpenAI;
+using System.ClientModel;
+
+var apiKey = Environment.GetEnvironmentVariable("WARDWRIGHT_MODEL_API_KEY");
+ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
+
+var provenanceHeaders = new Dictionary<string, string>
+{
+    ["x-wardwright-tenant-id"] = "example-tenant",
+    ["x-wardwright-application-id"] = "example-app",
+    ["x-wardwright-agent-id"] = "example-agent",
+    ["x-wardwright-user-id"] = "example-user",
+    ["x-wardwright-session-id"] = "example-session",
+    ["x-wardwright-run-id"] = "example-run",
+    ["x-client-request-id"] = "example-request",
+};
+
+var openAI = new OpenAIClient(
+    credential: new ApiKeyCredential(apiKey),
+    options: new OpenAIClientOptions
+    {
+        Endpoint = new Uri("http://127.0.0.1:8787/v1"),
+    }
+);
+
+IChatClient client = openAI
+    .GetChatClient("coding-balanced")
+    .AsIChatClient();
+
+client = new WardwrightReceiptDelegatingChatClient(
+    client,
+    provenanceHeaders
+);
+
+ChatResponse response = await client.GetResponseAsync(
+    "Synthetic framework request."
+);
+
+Console.WriteLine(response.AdditionalProperties?["wardwright_receipt_id"]);
+```
+
+Semantic Kernel should sit on top of the same Wardwright-configured
+`IChatClient` path. Use `IFunctionInvocationFilter`, `IPromptRenderFilter`, or
+`IAutoFunctionInvocationFilter` only for Semantic Kernel-owned function or
+prompt visibility. Those filters do not make Wardwright a second planner and
+do not prove kernel state import.
+
+The committed helper source lives at
+`app/priv/framework_adapters/microsoft_extensions_ai/wardwright_microsoft_extensions_ai.py`.
+The default test suite runs a local Python smoke without downloading NuGet
+packages or requiring a `dotnet` runtime. That smoke proves:
+
+- a stable Wardwright model id is requested;
+- caller provenance reaches Wardwright as headers;
+- `x-wardwright-receipt-id` is captured in Microsoft.Extensions.AI-style
+  `ChatResponse.AdditionalProperties`;
+- Semantic Kernel is documented as guidance on the same `IChatClient` path,
+  not as separate planner or native-state support;
+- generic OpenAI-compatible fallback still works without claiming
+  framework-aware receipt propagation;
+- .NET package execution, streaming, tool calling, Semantic Kernel filters,
+  and native framework state are deferred instead of implied.
+
 ## Privacy
 
 Framework helpers must not persist raw prompts, completions, provider
@@ -349,6 +443,5 @@ provenance ids, fidelity label, framework metadata paths, and fallback status.
 
 ## Next Targets
 
-The remaining first-class framework targets are Microsoft.Extensions.AI with
-Semantic Kernel guidance and LlamaIndex. Each target needs its own runnable
-smoke before Wardwright claims framework-aware support.
+The remaining first-class framework target is LlamaIndex. It needs its own
+runnable smoke before Wardwright claims framework-aware support.

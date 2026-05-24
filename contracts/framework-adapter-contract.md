@@ -173,3 +173,15 @@ This proves `framework_receipt_correlated` for the tested non-streaming Chat
 Completions path. It does not claim an installed OpenAI Agents SDK package,
 `/v1/responses` parity, native Agents sessions, tool-call fidelity, streaming
 receipt propagation, native framework state import, or exact replay fidelity.
+
+Microsoft.Extensions.AI recipe-only support is backed by an adapter-owned
+Python smoke. It uses the `IChatClient`/delegating-client shape, maps caller
+provenance into Wardwright headers, and records the Wardwright receipt id into
+Microsoft.Extensions.AI-style `ChatResponse.AdditionalProperties`.
+
+This proves `framework_receipt_correlated` for the tested non-streaming path.
+It does not claim an installed .NET package, a `dotnet` runtime smoke,
+streaming receipt propagation, tool-call fidelity, Semantic Kernel planner
+behavior, native framework state import, or exact replay fidelity. Semantic
+Kernel remains guidance on top of the Wardwright-configured `IChatClient` path
+until a later slice proves a filter or plugin hook directly.

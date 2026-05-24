@@ -396,3 +396,69 @@ Execution constraints:
 - Next open item: add Microsoft.Extensions.AI support, then Semantic Kernel
   guidance or filter/plugin support, with a smoke proving
   provenance/receipt-correlation through the .NET client path.
+
+### Loop 6 - Microsoft.Extensions.AI Recipe Smoke
+
+- Timestamp: 2026-05-23T23:41-04:00.
+- Starting commit: `a144423`.
+- Intended ending commit: Microsoft.Extensions.AI recipe smoke with
+  post-commit review recorded.
+- Scope: add the fifth framework-specific implementation slice for
+  Microsoft.Extensions.AI with Semantic Kernel guidance without claiming
+  installed NuGet package support, `dotnet` runtime execution, Semantic Kernel
+  planner behavior, native framework state, streaming, tool-call fidelity, or
+  exact replay. The slice adds an adapter-owned Python helper that follows the
+  `IChatClient` and `DelegatingChatClient` integration shape, maps caller
+  provenance into Wardwright headers, captures `x-wardwright-receipt-id` into
+  Microsoft.Extensions.AI-style `ChatResponse.AdditionalProperties`,
+  documents Semantic Kernel as guidance on the same `IChatClient` path, and
+  adds a local Python smoke through a real Wardwright router.
+- Validation:
+  - `python3 -m py_compile app/priv/framework_adapters/microsoft_extensions_ai/wardwright_microsoft_extensions_ai.py app/priv/framework_adapters/microsoft_extensions_ai/smoke.py`:
+    passed.
+  - `MIX_ENV=test mise exec -- mix compile`: passed.
+  - `MIX_ENV=test mise exec -- mix test --no-compile test/microsoft_extensions_ai_adapter_smoke_test.exs`:
+    passed, 1 test.
+  - `MIX_ENV=test mise exec -- mix test --no-compile test/gleam_framework_adapter_test.exs test/vercel_ai_sdk_adapter_smoke_test.exs test/langchain_langgraph_adapter_smoke_test.exs test/pydantic_ai_adapter_smoke_test.exs test/openai_agents_sdk_adapter_smoke_test.exs test/microsoft_extensions_ai_adapter_smoke_test.exs`:
+    passed, 11 tests.
+  - `mise exec -- mix format --check-formatted`: passed.
+  - `mise run check:docs`: passed.
+  - `git diff --check`: passed.
+  - Commit hook full app/docs/gitleaks gate: passed, including 423 app tests
+    with 21 properties and 6 excluded tests.
+- Skipped probes: no NuGet packages were installed, no live
+  Microsoft.Extensions.AI or Semantic Kernel project was generated, and no
+  `dotnet` runtime smoke was executed because `dotnet` is not available in
+  this environment. The committed smoke avoids external package fetches and
+  proves the framework-visible metadata contract against Wardwright directly.
+  Streaming, tool calling, real `DelegatingChatClient` execution, Semantic
+  Kernel filters/plugins, and native framework state remain deferred rather
+  than implied.
+- Adversarial review:
+  - Architecture: no blocker found. The slice keeps .NET framework support in
+    the framework SDK lane and leaves OpenCode/OpenClaw/local coding-agent
+    adapters untouched. The helper models the current `IChatClient` plus
+    delegating-client receipt path and records Semantic Kernel as guidance on
+    top of that path rather than a second planner. The remaining architecture
+    gap is intentional for `recipe_only`: the smoke proves Wardwright metadata
+    behavior through direct HTTP, not real Microsoft.Extensions.AI package
+    lifecycle, DI ordering, streaming, tool invocation, or Semantic Kernel
+    filter execution.
+  - Code/comment quality: no blocker found. The Python helper stays at the
+    boundary: base URL normalization, provenance header mapping, receipt-header
+    capture, and sanitized metadata shaping. It does not store provider API
+    keys or raw response bodies in the smoke report. The C# docs show the
+    intended integration point, but a future helper package should provide a
+    compiled `WardwrightReceiptDelegatingChatClient` sample before claiming
+    more than recipe support.
+  - Test quality: the smoke is capable of failing for the missing product
+    behavior under review: wrong Wardwright model routing, dropped provenance,
+    missing receipt header capture, missing `ChatResponse.AdditionalProperties`
+    metadata, leaked API-key config, overclaimed Semantic Kernel support, or
+    overclaimed generic fallback. It uses a real local Wardwright router and
+    synthetic prompts. It does not prove installed .NET packages, a `dotnet`
+    runtime, Semantic Kernel filters/plugins, streaming, tool calling, or
+    native framework state; those are recorded as skipped/deferred probes.
+- Next open item: add LlamaIndex callback/recipe support with a smoke proving
+  Wardwright model routing, caller provenance, and receipt correlation without
+  duplicating retrieval/index internals.
