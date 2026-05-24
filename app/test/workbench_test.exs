@@ -799,6 +799,10 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert :wardwright@lustre_control_debugger_test_support.opencode_harness_export_shows_fidelity_warning()
   end
 
+  test "control debugger explains adapter recording scope on the status panel" do
+    assert :wardwright@lustre_control_debugger_test_support.adapter_status_panel_explains_recording_policy()
+  end
+
   test "control debugger validates editable policy overlays before forking" do
     assert :wardwright@lustre_control_debugger_test_support.invalid_policy_overlay_blocks_fork()
   end

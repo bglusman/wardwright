@@ -50,6 +50,7 @@ const server = spawn(serverCommand.command, [...serverCommand.args, "phx.server"
   env: {
     ...process.env,
     MIX_ENV: process.env.MIX_ENV || "dev",
+    WARDWRIGHT_BROWSER_ADAPTER_STATUS_FIXTURE: "1",
     WARDWRIGHT_BIND: `0.0.0.0:${appPort}`
   },
   stdio: ["ignore", "pipe", "pipe"]
@@ -87,6 +88,7 @@ try {
 
   await assertSelectedModelWorkbench();
   await assertControlDebuggerSaveScenario();
+  await assertAdapterStatusPanel();
 
   for (const viewport of overflowViewports) {
     for (const path of overflowPaths) {
@@ -126,6 +128,78 @@ async function seedRegisteredModelWorkbench() {
     throw new Error(
       `Could not seed registered model workbench fixture: ${response.status} ${await response.text()}`
     );
+  }
+}
+
+async function assertAdapterStatusPanel() {
+  const target = await createChromeTarget();
+  const cdp = await connectCdp(target.webSocketDebuggerUrl);
+
+  try {
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 1280,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false
+    });
+
+    await cdp.send("Page.navigate", { url: `${appUrl}/admin?view=control_debugger` });
+    await cdp.waitFor("Page.loadEventFired");
+    await waitForEval(cdp, `pageText(document.body).includes("Adapter install status")`);
+    await waitForEval(cdp, `pageText(document.body).includes("verified_with_probe")`);
+
+    const result = await evaluate(
+      cdp,
+      `(() => {
+        const states = [
+          "installable",
+          "verified",
+          "verified_with_probe",
+          "drifted"
+        ];
+        const rows = states.map((state) => {
+          const className = "adapter-state-" + state.replaceAll("_", "-");
+          const row = allElements("*").find((element) =>
+            String(element.className || "").split(/\\s+/).includes(className)
+          );
+          return {
+            state,
+            present: Boolean(row),
+            borderLeftColor: row ? getComputedStyle(row).borderLeftColor : ""
+          };
+        });
+        const text = pageText(document.body);
+        return {
+          rows,
+          distinctColors: new Set(rows.map((row) => row.borderLeftColor).filter(Boolean)).size,
+          hasOpenCodeRuntimeCoverage: text.includes("OpenCode through OMP") &&
+            text.includes("covered by the OMP runtime adapter"),
+          hasOpenCodeNativeLimit: text.includes("OpenCode native") &&
+            text.includes("session_import_best_effort") &&
+            text.includes("lower-fidelity plugin/import scaffold"),
+          hasRecordingPolicy: text.includes("Auto-recording applies only to verified adapters") &&
+            text.includes("Generic OpenAI-compatible clients stay manual") &&
+            text.includes("recording.adapted_agents")
+        };
+      })()`
+    );
+
+    const missing = result.rows.filter((row) => !row.present);
+    if (
+      missing.length > 0 ||
+      result.distinctColors < 4 ||
+      !result.hasOpenCodeRuntimeCoverage ||
+      !result.hasOpenCodeNativeLimit ||
+      !result.hasRecordingPolicy
+    ) {
+      throw new Error(`adapter status panel smoke failed: ${JSON.stringify(result)}`);
+    }
+
+    console.log("ok adapter status panel renders state, fidelity, and recording policy");
+  } finally {
+    cdp.close();
   }
 }
 

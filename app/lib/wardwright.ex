@@ -22,6 +22,12 @@ defmodule Wardwright do
   @message_key "message"
   @messages_key "messages"
   @name_key "name"
+  @recording_adapted_agents_key "adapted_agents"
+  @recording_auto_mode "auto"
+  @recording_default_key "default"
+  @recording_generic_clients_key "generic_clients"
+  @recording_key "recording"
+  @recording_manual_mode "manual"
   @refusal_key "refusal"
   @role_key "role"
   @delta_key "delta"
@@ -77,7 +83,12 @@ defmodule Wardwright do
       ],
       "vcr" => %{"mode" => "metadata_only"},
       "version" => @model_version,
-      @description_key => @default_description
+      @description_key => @default_description,
+      @recording_key => %{
+        @recording_adapted_agents_key => @recording_auto_mode,
+        @recording_default_key => @recording_manual_mode,
+        @recording_generic_clients_key => @recording_manual_mode
+      }
     }
   end
 
@@ -920,7 +931,8 @@ defmodule Wardwright do
           "" -> @model_version
           version -> version
         end),
-      @description_key => normalize_description(config)
+      @description_key => normalize_description(config),
+      @recording_key => normalize_recording(Map.get(config, @recording_key, %{}))
     }
   end
 
@@ -1005,6 +1017,28 @@ defmodule Wardwright do
   end
 
   defp normalize_policy_cache(_), do: %{"max_entries" => 64, "recent_limit" => 20}
+
+  defp normalize_recording(config) when is_map(config) do
+    %{
+      @recording_adapted_agents_key =>
+        normalize_recording_mode(Map.get(config, @recording_adapted_agents_key), @recording_auto_mode),
+      @recording_default_key =>
+        normalize_recording_mode(Map.get(config, @recording_default_key), @recording_manual_mode),
+      @recording_generic_clients_key =>
+        normalize_recording_mode(Map.get(config, @recording_generic_clients_key), @recording_manual_mode)
+    }
+  end
+
+  defp normalize_recording(_) do
+    %{
+      @recording_adapted_agents_key => @recording_auto_mode,
+      @recording_default_key => @recording_manual_mode,
+      @recording_generic_clients_key => @recording_manual_mode
+    }
+  end
+
+  defp normalize_recording_mode(mode, _fallback) when mode in [@recording_auto_mode, @recording_manual_mode], do: mode
+  defp normalize_recording_mode(_mode, fallback), do: fallback
 
   defp normalize_auth(config) when is_map(config) do
     access =

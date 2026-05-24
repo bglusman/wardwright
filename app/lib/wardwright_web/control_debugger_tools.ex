@@ -196,7 +196,7 @@ defmodule WardwrightWeb.ControlDebuggerTools do
     end
   end
 
-  defp selected_trace_events(_events, _cursor), do: {:error, "session_id and trace_cursor are required"}
+  defp selected_trace_events(_events, _cursor), do: {:error, "trace_cursor is required"}
 
   defp scenario_from_trace(pattern_id, session_id, cursor, selected, events, params) do
     scenario_id =
@@ -315,7 +315,17 @@ defmodule WardwrightWeb.ControlDebuggerTools do
 
   defp event_detail(_event), do: "recorded event"
 
-  defp compact_json(value), do: value |> JSON.encode!() |> String.slice(0, 180)
+  defp compact_json(value) do
+    value
+    |> safe_json()
+    |> String.slice(0, 180)
+  end
+
+  defp safe_json(value) do
+    JSON.encode!(value)
+  rescue
+    _error -> inspect(value)
+  end
 
   defp overlay_for_example(example_id) do
     example_id

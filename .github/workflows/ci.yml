@@ -51,10 +51,10 @@ jobs:
       - name: Run tests
         run: mix test
         working-directory: app
-      - name: Run LiveView browser smoke tests
+      - name: Run Lustre browser smoke tests
         env:
           WARDWRIGHT_BROWSER_REQUIRED: "1"
-        run: node scripts/browser-smoke/liveview-playback.mjs
+        run: node scripts/browser-smoke/lustre-workbench.mjs
 
   docs:
     name: docs

@@ -1,6 +1,8 @@
 defmodule WardwrightWeb.ControlDebuggerData do
   @moduledoc false
 
+  alias Wardwright.CLI.Adapters
+
   def pattern_options do
     Wardwright.PolicyProjection.patterns()
     |> Enum.map(fn pattern ->
@@ -131,6 +133,15 @@ defmodule WardwrightWeb.ControlDebuggerData do
 
   def default_harness_adapter_id, do: "opencode"
 
+  def adapter_status_rows do
+    if System.get_env("WARDWRIGHT_BROWSER_ADAPTER_STATUS_FIXTURE") == "1" do
+      browser_adapter_status_fixture()
+    else
+      Adapters.doctor()
+      |> Enum.map(&adapter_status_row/1)
+    end
+  end
+
   def export_harness_trace(session_id, adapter_id) do
     session_id = session_id |> to_string() |> String.trim()
     adapter_id = adapter_id |> to_string() |> String.trim() |> blank_fallback(default_harness_adapter_id())
@@ -190,6 +201,41 @@ defmodule WardwrightWeb.ControlDebuggerData do
 
   defp harness_verification_instruction(probe_file, _required) do
     "verify_harness_state_fidelity with #{probe_file} and observed imported-harness state"
+  end
+
+  defp adapter_status_row(row) do
+    next_action =
+      row.next_actions
+      |> Enum.join(" ")
+      |> blank_fallback("no next action")
+
+    {
+      row.target || "",
+      row.label || row.target || "",
+      row.state || "unknown",
+      row.runtime || "unknown",
+      row.adapter_id || "",
+      row.fidelity || "unknown",
+      row.coverage || "unknown",
+      next_action
+    }
+  end
+
+  defp browser_adapter_status_fixture do
+    [
+      {"omp", "OMP / oh-my-pi", "installable", "omp", "wardwright-omp", "runtime_verified", "native_runtime",
+       "run `wardwright adapters install omp`"},
+      {"omp-paired", "OMP paired workspace", "verified", "omp", "wardwright-omp", "runtime_verified", "native_runtime",
+       "run `wardwright adapters probe omp` for stronger replay affordances"},
+      {"omp-probed", "OMP probed workspace", "verified_with_probe", "omp", "wardwright-omp", "runtime_verified",
+       "native_runtime", "adapter identity and runtime probe are verified"},
+      {"omp-drifted", "OMP edited rule", "drifted", "omp", "wardwright-omp", "runtime_verified", "native_runtime",
+       "repair only after reviewing local edits"},
+      {"opencode-omp", "OpenCode through OMP", "installable", "omp", "wardwright-omp", "runtime_verified",
+       "covered_through_runtime", "covered by the OMP runtime adapter"},
+      {"opencode-native", "OpenCode native", "installable", "opencode-native", "wardwright-opencode",
+       "session_import_best_effort", "native_surface", "lower-fidelity plugin/import scaffold"}
+    ]
   end
 
   defp shell_quote(value) do
@@ -794,8 +840,14 @@ defmodule WardwrightWeb.ControlDebuggerData do
 
   defp compact_json(value) do
     value
-    |> JSON.encode!()
+    |> safe_json()
     |> String.slice(0, 180)
+  end
+
+  defp safe_json(value) do
+    JSON.encode!(value)
+  rescue
+    _error -> inspect(value)
   end
 
   defp counterfactual_example("output-contract") do
