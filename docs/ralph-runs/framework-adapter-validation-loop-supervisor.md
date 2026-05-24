@@ -462,3 +462,69 @@ Execution constraints:
 - Next open item: add LlamaIndex callback/recipe support with a smoke proving
   Wardwright model routing, caller provenance, and receipt correlation without
   duplicating retrieval/index internals.
+
+### Loop 7 - LlamaIndex Recipe Smoke
+
+- Timestamp: 2026-05-23T23:48-04:00.
+- Starting commit: `3378f76`.
+- Intended ending commit: `7fe7746` before post-review documentation amend.
+- Scope: add the sixth framework-specific implementation slice for LlamaIndex
+  without claiming installed package support, retrieval lineage ownership,
+  index durability, native framework state, tool-call fidelity, streaming
+  behavior, or exact replay. The slice adds an adapter-owned Python helper
+  that follows the `OpenAILike` OpenAI-compatible model path, maps caller
+  provenance into Wardwright headers, captures `x-wardwright-receipt-id` into
+  LlamaIndex-style LLM event metadata and retrieval-context metadata, documents
+  the recipe/status, and adds a local Python smoke through a real Wardwright
+  router.
+- Validation:
+  - `python3 -m py_compile app/priv/framework_adapters/llamaindex/wardwright_llamaindex.py app/priv/framework_adapters/llamaindex/smoke.py`:
+    passed.
+  - `MIX_ENV=test mise exec -- mix compile`: passed.
+  - `MIX_ENV=test mise exec -- mix test --no-compile test/llamaindex_adapter_smoke_test.exs`:
+    passed, 1 test.
+  - `MIX_ENV=test mise exec -- mix test --no-compile test/gleam_framework_adapter_test.exs test/vercel_ai_sdk_adapter_smoke_test.exs test/langchain_langgraph_adapter_smoke_test.exs test/pydantic_ai_adapter_smoke_test.exs test/openai_agents_sdk_adapter_smoke_test.exs test/microsoft_extensions_ai_adapter_smoke_test.exs test/llamaindex_adapter_smoke_test.exs`:
+    passed, 12 tests.
+  - `mise exec -- mix format --check-formatted`: passed.
+  - `mise exec -- gleam format --check src`: passed.
+  - `mise exec -- gleam check --target erlang`: passed.
+  - `mise run check:docs`: passed.
+  - `git diff --check`: passed.
+  - Commit hook full app/docs/gitleaks gate: passed, including 424 app tests
+    with 21 properties and 6 excluded tests.
+- Skipped probes: no Python packages were installed and no live LlamaIndex
+  project was generated in this default slice. The committed smoke avoids
+  external package fetches and proves the framework-visible metadata contract
+  against Wardwright directly. Real LlamaIndex execution, callback manager
+  wiring, retrieval/index persistence, streaming behavior, and tool-call
+  preservation remain deferred rather than implied.
+- Adversarial review:
+  - Architecture: no blocker found. The slice stays recipe-only and keeps
+    LlamaIndex in the framework SDK lane rather than mixing it with
+    OpenCode/OpenClaw/local coding-agent adapters. It records receipt
+    correlation in LlamaIndex-style LLM event metadata and retrieval-context
+    metadata, but explicitly refuses retrieval lineage ownership, index
+    durability, native framework state import, tool-call fidelity, streaming,
+    or exact replay. The remaining architecture gap is intentional for
+    `recipe_only`: direct stdlib HTTP proves the Wardwright metadata contract,
+    not the real LlamaIndex package callback lifecycle.
+  - Code/comment quality: initial post-commit review found a docs clarity issue
+    where the example imported `CallbackManager` even though the committed
+    helper is not a native LlamaIndex callback handler. The example now points
+    users to an owned LlamaIndex callback handler or HTTP wrapper for
+    `callback.capture(...)`. The helper itself stays small and boundary-owned:
+    base URL normalization, provenance headers, receipt capture, and sanitized
+    metadata shaping. It does not store provider API keys, raw prompts, or raw
+    response bodies in the smoke report.
+  - Test quality: the smoke is capable of failing for the missing product
+    behavior under review: wrong Wardwright model routing, dropped provenance,
+    missing receipt header capture, missing LLM event metadata, missing
+    retrieval-context receipt metadata, leaked API-key config, overclaimed
+    retrieval/index support, or overclaimed generic fallback. It uses a real
+    local Wardwright router and synthetic prompts. It does not prove the
+    installed LlamaIndex package, callback manager wiring, retrieval/index
+    persistence, streaming behavior, or tool-call preservation; those remain
+    explicitly skipped/deferred probes.
+- Next open item: promote reusable framework e2e smoke infrastructure without
+  requiring external package fetches in the default test suite, then run the
+  final docs/completion pass if the completion criteria are otherwise met.

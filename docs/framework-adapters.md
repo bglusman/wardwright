@@ -433,6 +433,93 @@ packages or requiring a `dotnet` runtime. That smoke proves:
 - .NET package execution, streaming, tool calling, Semantic Kernel filters,
   and native framework state are deferred instead of implied.
 
+## LlamaIndex
+
+Current support tier: `recipe_only`.
+
+Current fidelity label after the committed smoke passes:
+`framework_receipt_correlated`.
+
+The first LlamaIndex slice uses the OpenAI-compatible `OpenAILike` path:
+configure Wardwright as `api_base`, pass caller provenance as request headers,
+and attach `x-wardwright-receipt-id` to callback-style LLM event metadata and
+retrieval-context metadata. It does not ship a Python package, does not execute
+the real LlamaIndex package in the default smoke, and does not claim retrieval
+lineage ownership, index durability, native framework state, tool-call
+fidelity, streaming resume, or exact replay fidelity.
+
+Install normal LlamaIndex dependencies in the framework project when using the
+recipe against real LlamaIndex code:
+
+```bash
+pip install llama-index llama-index-llms-openai-like
+```
+
+Use Wardwright as the governed OpenAI-compatible endpoint and keep receipt
+correlation in callback-visible metadata:
+
+```python
+from llama_index.llms.openai_like import OpenAILike
+import os
+from wardwright_llamaindex import (
+    WardwrightLlamaIndexCallback,
+    WardwrightLlamaIndexContext,
+    wardwright_llamaindex_config,
+)
+
+context = WardwrightLlamaIndexContext(
+    tenant_id="example-tenant",
+    application_id="example-app",
+    consuming_agent_id="example-agent",
+    consuming_user_id="example-user",
+    session_id="example-query",
+    run_id="example-run",
+    client_request_id="example-request",
+)
+config = wardwright_llamaindex_config(
+    base_url="http://127.0.0.1:8787/v1",
+    model="coding-balanced",
+    context=context,
+)
+callback = WardwrightLlamaIndexCallback()
+
+llm_args = {
+    "model": config["llm"]["model"],
+    "api_base": config["llm"]["api_base"],
+    "is_chat_model": config["llm"]["is_chat_model"],
+    "is_function_calling_model": config["llm"]["is_function_calling_model"],
+    "context_window": config["llm"]["context_window"],
+    "default_headers": config["llm"]["default_headers"],
+}
+api_key = os.environ.get(config["llm"]["api_key_env"])
+if api_key:
+    llm_args["api_key"] = api_key
+
+llm = OpenAILike(**llm_args)
+llm_event_metadata = {"query_id": context.session_id}
+retrieval_context_metadata = {"query_id": context.session_id}
+
+# In real LlamaIndex code, call through the configured LLM and invoke
+# callback.capture(...) from a LlamaIndex callback handler or owned HTTP
+# wrapper when the Wardwright response headers are available.
+```
+
+The committed helper source lives at
+`app/priv/framework_adapters/llamaindex/wardwright_llamaindex.py`. The default
+test suite runs a local Python smoke without downloading packages. That smoke
+proves:
+
+- a stable Wardwright model id is requested;
+- caller provenance reaches Wardwright as headers;
+- `x-wardwright-receipt-id` is captured in LlamaIndex-style LLM event
+  metadata;
+- the same receipt id is available in retrieval-context metadata without
+  claiming retrieval lineage or index state ownership;
+- generic OpenAI-compatible fallback still works without claiming
+  framework-aware receipt propagation;
+- LlamaIndex package execution, streaming, tool calling, retrieval lineage,
+  and native framework state are deferred instead of implied.
+
 ## Privacy
 
 Framework helpers must not persist raw prompts, completions, provider
@@ -440,8 +527,3 @@ credentials, admin tokens, bearer tokens, adapter signing secrets, or full
 framework traces by default. The committed framework smokes use synthetic
 prompt content and return only sanitized evidence: model ids, receipt id,
 provenance ids, fidelity label, framework metadata paths, and fallback status.
-
-## Next Targets
-
-The remaining first-class framework target is LlamaIndex. It needs its own
-runnable smoke before Wardwright claims framework-aware support.

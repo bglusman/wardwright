@@ -185,3 +185,13 @@ streaming receipt propagation, tool-call fidelity, Semantic Kernel planner
 behavior, native framework state import, or exact replay fidelity. Semantic
 Kernel remains guidance on top of the Wardwright-configured `IChatClient` path
 until a later slice proves a filter or plugin hook directly.
+
+LlamaIndex recipe-only support is backed by an adapter-owned Python smoke. It
+uses the `OpenAILike` OpenAI-compatible model path, maps caller provenance into
+Wardwright headers, and records the Wardwright receipt id into
+LlamaIndex-style LLM event metadata plus retrieval-context metadata.
+
+This proves `framework_receipt_correlated` for the tested non-streaming path.
+It does not claim an installed LlamaIndex package, retrieval lineage ownership,
+index durability, native framework state import, tool-call fidelity, streaming
+receipt propagation, or exact replay fidelity.
