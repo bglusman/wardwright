@@ -110,3 +110,55 @@ Execution constraints:
   slice. The runner should start loop 1, which will pick the framework adapter
   contract foundation as the first implementation item.
 - Current status: ready to start loop 1.
+
+### Loop 1 - Framework Adapter Contract Foundation
+
+- Timestamp: 2026-05-23T22:51-04:00.
+- Starting commit: `d4e74e6`.
+- Intended ending commit: framework adapter contract foundation.
+- Scope: define the shared SDK/framework adapter contract before implementing
+  individual framework packages. The slice adds typed Gleam classification for
+  framework surface family, support tier, framework fidelity wording,
+  receipt-correlation readiness, and fail-closed smoke status. It
+  also documents the contract in `contracts/framework-adapter-contract.md`,
+  including provenance fields, receipt-id propagation, privacy rules, fallback
+  behavior, and the separation from OpenCode/OpenClaw/local coding-agent
+  tracks.
+- Validation:
+  - `mise exec -- mix format --check-formatted`: passed.
+  - `mise run check:docs`: passed.
+  - `git diff --check`: passed.
+  - `MIX_ENV=test mise exec -- mix compile`: passed.
+  - `MIX_ENV=test mise exec -- mix test --no-compile test/gleam_framework_adapter_test.exs`:
+    passed, 6 tests.
+  - Note: direct file-targeted `mise exec -- mix test ...` variants still hit
+    this repo/toolchain's known path parsing issue and treated the test path as
+    an unknown dependency; compiling in `MIX_ENV=test` and then using
+    `--no-compile` is the working focused invocation for this Gleam-backed test.
+  - Post-review rename validation repeated the focused compile/test, docs,
+    format, and whitespace checks above: passed.
+- Skipped probes: no Vercel AI SDK, LangChain, or other framework package was
+  installed or executed in this foundation slice. The contract intentionally
+  avoids claiming framework-specific support until a later loop adds a runnable
+  smoke.
+- Adversarial review:
+  - Architecture: initial review found one pre-push blocker in the pure Gleam
+    API name `framework_aware_recording_allowed`; it could imply automatic
+    recording permission from framework surface plus receipt correlation alone.
+    The function was renamed to `framework_receipt_correlation_ready` so future
+    recording policy stays separate from receipt propagation evidence. No other
+    architecture blocker found. The new contract keeps SDK/framework support
+    separate from OpenCode/OpenClaw/local coding-agent adapters and does not
+    claim native framework state or package support.
+  - Code/comment quality: the core logic is small, typed, and label-oriented.
+    There are no comments because the public function names and contract doc
+    carry the meaning. The string surface catalog is acceptable for this
+    foundation slice, but a later adapter package should avoid scattering these
+    ids across more modules.
+  - Test quality: tests are behavior-focused for the contract layer: they prove
+    framework/local-agent separation, strongest-proven-tier selection,
+    fail-closed fidelity wording, smoke failure reporting, and receipt
+    correlation preconditions. They do not prove any real framework SDK call;
+    that remains the next backlog item and is recorded as a skipped probe.
+- Next open item: add Vercel AI SDK support with a provider or middleware smoke
+  proving Wardwright model routing, caller provenance, and receipt-id capture.
