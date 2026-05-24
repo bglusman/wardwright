@@ -128,6 +128,8 @@ Execution constraints:
   - `mise exec -- mix format --check-formatted`: passed.
   - `mise run check:docs`: passed.
   - `git diff --check`: passed.
+  - Commit hook full app/docs/gitleaks gate: passed, including 419 app tests
+    with 21 properties and 6 excluded tests.
   - `MIX_ENV=test mise exec -- mix compile`: passed.
   - `MIX_ENV=test mise exec -- mix test --no-compile test/gleam_framework_adapter_test.exs`:
     passed, 6 tests.
@@ -162,3 +164,51 @@ Execution constraints:
     that remains the next backlog item and is recorded as a skipped probe.
 - Next open item: add Vercel AI SDK support with a provider or middleware smoke
   proving Wardwright model routing, caller provenance, and receipt-id capture.
+
+### Loop 2 - Vercel AI SDK Recipe Smoke
+
+- Timestamp: 2026-05-23T23:04-04:00.
+- Starting commit: `ed355c7`.
+- Intended ending commit: Vercel AI SDK recipe smoke.
+- Scope: add the first framework-specific implementation slice for Vercel AI
+  SDK without claiming a published package or native framework state. The slice
+  adds an adapter-owned Node helper that matches the AI SDK OpenAI-compatible
+  provider shape, maps caller provenance into Wardwright headers, captures
+  `x-wardwright-receipt-id` through a custom `fetch` wrapper, documents the
+  recipe/status, and adds a local Node smoke through a real Wardwright router.
+- Validation:
+  - `MIX_ENV=test mise exec -- mix compile`: passed.
+  - `node --check app/priv/framework_adapters/vercel_ai_sdk/wardwright-ai-sdk.mjs && node --check app/priv/framework_adapters/vercel_ai_sdk/smoke.mjs`: passed.
+  - `MIX_ENV=test mise exec -- mix test --no-compile test/vercel_ai_sdk_adapter_smoke_test.exs`: passed, 1 test.
+  - `MIX_ENV=test mise exec -- mix test --no-compile test/gleam_framework_adapter_test.exs test/vercel_ai_sdk_adapter_smoke_test.exs`: passed, 7 tests.
+  - `mise exec -- mix format --check-formatted`: passed after formatting the new test.
+  - `mise exec -- gleam format --check src`: passed.
+  - `mise exec -- gleam check --target erlang`: passed.
+  - `mise run check:docs`: passed.
+  - `git diff --check`: passed.
+- Skipped probes: no npm packages were installed and no live Vercel AI SDK
+  project was generated in this default slice. The committed smoke deliberately
+  avoids external package fetches and proves the provider options/fetch wrapper
+  contract against Wardwright directly. Streaming receipt propagation is
+  recorded as deferred rather than implied.
+- Adversarial review:
+  - Architecture: no blocker found after one fix. The slice stays recipe-only
+    and uses a provider-options/fetch-wrapper boundary rather than pretending to
+    own Vercel AI SDK internals. It keeps local coding-agent adapters out of the
+    framework path and records streaming as deferred. A future package should
+    move this helper out of `app/priv` into an explicit distribution boundary
+    before claiming `helper_package`.
+  - Code/comment quality: initial post-commit review found a real issue in the
+    default helper options: using a placeholder `apiKey` could teach users to
+    send a fake bearer token. That default was removed, and the docs now pass
+    `WARDWRIGHT_MODEL_API_KEY` only when present. No extra comments were needed;
+    the helper names and smoke report carry the behavior.
+  - Test quality: the smoke test is capable of failing for the missing product
+    behavior under review: wrong model route, missing provenance headers, lost
+    receipt capture, or overclaimed generic fallback. It uses a real local
+    Wardwright router and synthetic data. It does not prove the installed AI SDK
+    package's current runtime wiring or streaming behavior; those remain
+    explicitly skipped/deferred.
+- Next open item: add LangChain/LangGraph support, starting with Python unless
+  a smaller TypeScript slice gives better confidence, and prove receipt
+  correlation to framework-visible run or checkpoint metadata.

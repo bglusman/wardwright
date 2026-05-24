@@ -130,10 +130,15 @@ the receipt id, provenance fields, adapter version, framework name/version,
 model name, and sanitized status evidence unless a user explicitly opts into a
 broader recording mode.
 
-## Current Priority
+## Current Implementation Status
 
 The first implementation target after this contract is Vercel AI SDK. The
-minimum useful slice is a Node/TypeScript provider or middleware smoke that
-routes through Wardwright, injects caller provenance, and captures the
-Wardwright receipt id. Streaming can be explicitly deferred if the first slice
-records that limitation.
+current slice is recipe-only support backed by an adapter-owned Node smoke. It
+uses the AI SDK OpenAI-compatible provider shape: Wardwright is the `baseURL`,
+provenance is mapped into Wardwright headers, and a custom `fetch` wrapper
+captures `x-wardwright-receipt-id` in framework-visible adapter state.
+
+This proves `framework_receipt_correlated` for the tested non-streaming path.
+It does not claim a published npm package, AI SDK middleware ownership,
+streaming receipt propagation, Vercel chat UI state, native framework state, or
+exact replay fidelity.

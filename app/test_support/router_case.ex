@@ -289,6 +289,14 @@ defmodule Wardwright.RouterCase do
     "http://127.0.0.1:#{port}#{prefix}"
   end
 
+  def wardwright_router_base_url do
+    ref = :"wardwright_router_#{System.unique_integer([:positive])}"
+    {:ok, _pid} = Plug.Cowboy.http(Wardwright.Router, [], ref: ref, port: 0)
+    port = :ranch.get_port(ref)
+    on_exit(fn -> Plug.Cowboy.shutdown(ref) end)
+    "http://127.0.0.1:#{port}"
+  end
+
   def unit_policy_config do
     %{
       "governance" => [

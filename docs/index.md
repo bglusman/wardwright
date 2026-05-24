@@ -19,6 +19,7 @@ description: A governed model gateway for AI agents.
     <a class="button secondary" href="wardwright-models.html">Model Middleware</a>
     <a class="button secondary" href="agent-authoring.html">Agent Authoring</a>
     <a class="button secondary" href="agent-adapters.html">Agent Adapters</a>
+    <a class="button secondary" href="framework-adapters.html">Framework Adapters</a>
     <a class="button secondary" href="https://github.com/bglusman/wardwright">GitHub</a>
   </div>
 </section>
@@ -119,6 +120,8 @@ agents can use `wardwright tools`, `/mcp`, and the protected authoring APIs; see
 [Agent Authoring](agent-authoring.html) for the review workflow.
 Adapter install and validation commands are covered in
 [Agent Adapters](agent-adapters.html).
+SDK and application-framework recipes are tracked separately in
+[Framework Adapters](framework-adapters.html).
 
 ## Provider Credentials
 
