@@ -1364,3 +1364,58 @@ execution constraints for the loop are:
 - Next open item: ecosystem-priority research, then choose between
   OpenCode-native scaffold, OpenClaw upstream config/native Codex support, or a
   broader SDK/framework adapter track.
+
+### Post-Loop Framework Priority Review
+
+- Timestamp: 2026-05-23T22:37-04:00.
+- Starting commit: `48afc58`.
+- Scope: reviewed the user's top agent-framework list with parallel ecosystem
+  probes across Python, TypeScript/Node/platforms, .NET/Java/Go, and local
+  coding-agent surfaces. Recorded the result in
+  [`adapter-framework-priority-review.md`](adapter-framework-priority-review.html)
+  so future Ralph cycles can choose from a concrete shortlist instead of a vague
+  "support more frameworks" note.
+- Key conclusion: the current local-agent adapter work does not yet touch most
+  of the broad top-adoption SDK/framework surfaces. The best modest-effort
+  first-class candidates are LangChain/LangGraph, Vercel AI SDK, Pydantic AI,
+  OpenAI Agents SDK, Microsoft.Extensions.AI/Semantic Kernel, and LlamaIndex.
+- Local-agent correction preserved: OpenCode remains first-class as its own
+  surface, and OpenClaw remains first-class but distinct from OpenCode. OpenClaw
+  follow-up work should prove Pi and native Codex paths separately and preserve
+  accurate runtime provenance.
+- Recommended Ralph-cycle order:
+  1. Define the framework adapter contract foundation: SDK adapter tiers,
+     caller provenance metadata, receipt-id propagation, versioned recipe
+     shape, and smoke-test requirements.
+  2. Add Vercel AI SDK support with provider/middleware or generated examples.
+  3. Add LangChain/LangGraph support, including receipt correlation for graph
+     run or checkpoint metadata.
+  4. Add Pydantic AI and OpenAI Agents SDK recipes/adapters, starting with
+     Chat Completions and tracing/provider hooks.
+  5. Add .NET support through Microsoft.Extensions.AI, with Semantic Kernel
+     filter/plugin guidance.
+  6. Add LlamaIndex callback/recipe support without duplicating index internals.
+  7. Continue local coding-agent tracks separately: OpenCode-native scaffold,
+     OpenClaw upstream config/native Codex support, and Aider config handoff.
+- Validation target: documentation-only scope; run `mise run check:docs` before
+  committing.
+- Validation:
+  - `mise run check:docs`: passed.
+- Adversarial review:
+  - Architecture: no blocker found. The review keeps framework adapters
+    separate from local coding-agent adapters and does not reopen the completed
+    install-validation loop. It proposes a contract-foundation loop before
+    package work so individual SDK support does not become one-off snippets.
+  - Code/comment quality: docs are source-linked and decision-oriented rather
+    than a raw popularity table. The main quality risk is source drift in fast
+    SDKs; each implementation loop should re-check the official framework docs
+    before coding.
+  - Test quality: this is documentation-only, so no behavior tests were added.
+    The next implementation loop must add runnable smoke tests for whichever
+    framework adapter it selects instead of treating this review as proof of
+    compatibility.
+- Skipped probes: no candidate framework was installed or executed in this
+  scope. The review used current primary docs/repo sources and should be
+  followed by runnable smoke tests in each implementation loop.
+- Next open item: start a new Ralph loop track for framework adapter contract
+  foundation before implementing individual SDK packages.
