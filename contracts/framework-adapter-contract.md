@@ -162,3 +162,14 @@ It does not claim an installed Pydantic AI package, native state import,
 streaming receipt propagation, exact replay fidelity, or structured-output and
 tool-call fidelity beyond what Wardwright's model capability contract can prove
 in a later slice.
+
+OpenAI Agents SDK recipe-only support is backed by an adapter-owned Python
+smoke. It uses the Chat Completions model path with a Wardwright-configured
+OpenAI client, maps caller provenance into Wardwright headers, disables
+sensitive trace capture in the recipe metadata, and records the Wardwright
+receipt id into tracing-processor-style trace and generation span metadata.
+
+This proves `framework_receipt_correlated` for the tested non-streaming Chat
+Completions path. It does not claim an installed OpenAI Agents SDK package,
+`/v1/responses` parity, native Agents sessions, tool-call fidelity, streaming
+receipt propagation, native framework state import, or exact replay fidelity.

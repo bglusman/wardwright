@@ -128,6 +128,8 @@ Execution constraints:
   - `mise exec -- mix format --check-formatted`: passed.
   - `mise run check:docs`: passed.
   - `git diff --check`: passed.
+  - Post-review trace-privacy fix repeated the Python syntax check, focused
+    OpenAI Agents SDK smoke, and whitespace check above: passed.
   - Post-review credential-metadata fix repeated the Python syntax check,
     focused Pydantic smoke, combined framework smoke set, format check, docs
     check, and whitespace check above: passed.
@@ -335,3 +337,62 @@ Execution constraints:
     preservation; those are recorded as skipped/deferred probes.
 - Next open item: add OpenAI Agents SDK support on the Chat Completions path
   and record the `/v1/responses` gap unless implemented.
+
+### Loop 5 - OpenAI Agents SDK Recipe Smoke
+
+- Timestamp: 2026-05-23T23:29-04:00.
+- Starting commit: `0284546`.
+- Intended ending commit: OpenAI Agents SDK recipe smoke with post-commit
+  review recorded.
+- Scope: add the fourth framework-specific implementation slice for OpenAI
+  Agents SDK without claiming installed package support, `/v1/responses`
+  parity, native Agents sessions, tool-call fidelity, streaming behavior,
+  native framework state import, or exact replay. The slice adds an
+  adapter-owned Python helper that follows the Chat Completions model path,
+  maps caller provenance into Wardwright headers, captures
+  `x-wardwright-receipt-id` into tracing-processor-style trace and generation
+  metadata, documents the recipe/status, and adds a local Python smoke through
+  a real Wardwright router.
+- Validation:
+  - `python3 -m py_compile app/priv/framework_adapters/openai_agents_sdk/wardwright_openai_agents.py app/priv/framework_adapters/openai_agents_sdk/smoke.py`:
+    passed.
+  - `MIX_ENV=test mise exec -- mix compile`: passed.
+  - `MIX_ENV=test mise exec -- mix test --no-compile test/openai_agents_sdk_adapter_smoke_test.exs`:
+    passed, 1 test.
+  - `MIX_ENV=test mise exec -- mix test --no-compile test/gleam_framework_adapter_test.exs test/vercel_ai_sdk_adapter_smoke_test.exs test/langchain_langgraph_adapter_smoke_test.exs test/pydantic_ai_adapter_smoke_test.exs test/openai_agents_sdk_adapter_smoke_test.exs`:
+    passed, 10 tests.
+  - `mise exec -- mix format --check-formatted`: passed.
+  - `mise run check:docs`: passed.
+  - `git diff --check`: passed.
+- Skipped probes: no Python packages were installed and no live OpenAI Agents
+  SDK project was generated in this default slice. The committed smoke avoids
+  external package fetches and proves the framework-visible metadata contract
+  against Wardwright directly. Real Agents SDK execution, `/v1/responses`,
+  native sessions, tools, streaming behavior, and trace exporter integration
+  remain deferred rather than implied.
+- Adversarial review:
+  - Architecture: initial post-commit review found one pre-push blocker in the
+    trace processor boundary: the real SDK callback path could store an
+    exported trace object too broadly. The helper now records only allowlisted
+    trace fields and provenance/receipt metadata, and the smoke includes a
+    sensitive trace probe proving raw prompt/completion metadata is not
+    retained. No other architecture blocker found. The slice stays
+    recipe-only, keeps OpenAI Agents SDK in the framework SDK lane, and does
+    not claim `/v1/responses`, native sessions, tools, streaming, native state
+    import, or exact replay.
+  - Code/comment quality: the Python helper is boundary-oriented: base URL
+    normalization, provenance headers, Chat Completions request execution,
+    tracing-processor-style receipt capture, and safe trace metadata
+    allowlisting. No provider credentials are stored in adapter metadata; the
+    config reports only `WARDWRIGHT_MODEL_API_KEY`.
+  - Test quality: the smoke is capable of failing for the missing product
+    behavior under review: wrong Wardwright model routing, dropped provenance,
+    missing receipt header capture, missing trace/generation metadata, leaked
+    API-key config, raw trace payload retention, or overclaimed generic
+    fallback. It uses a real local Wardwright router and synthetic prompts. It
+    does not prove the installed OpenAI Agents SDK package, `/v1/responses`,
+    native sessions, tools, streaming behavior, or trace exporter integration;
+    those are recorded as skipped/deferred probes.
+- Next open item: add Microsoft.Extensions.AI support, then Semantic Kernel
+  guidance or filter/plugin support, with a smoke proving
+  provenance/receipt-correlation through the .NET client path.

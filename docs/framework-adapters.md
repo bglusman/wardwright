@@ -246,6 +246,99 @@ That smoke proves:
   recipe;
 - native state import and streaming support are deferred instead of implied.
 
+## OpenAI Agents SDK
+
+Current support tier: `recipe_only`.
+
+Current fidelity label after the committed smoke passes:
+`framework_receipt_correlated`.
+
+The first OpenAI Agents SDK slice uses the Chat Completions-compatible model
+path: configure an OpenAI client with Wardwright as `base_url`, pass caller
+provenance as request headers, and attach `x-wardwright-receipt-id` to
+tracing-processor-style trace metadata and generation span metadata. It does
+not ship a published Python package, and it does not claim `/v1/responses`
+parity, native Agents sessions, tool-call fidelity, streaming resume, native
+state import, or exact replay fidelity.
+
+Install the normal Agents SDK dependency in the framework project when using
+the recipe against real OpenAI Agents SDK code:
+
+```bash
+pip install openai-agents
+```
+
+Use Wardwright as the Chat Completions endpoint and keep receipt correlation
+in tracing metadata:
+
+```python
+from openai import AsyncOpenAI
+from agents import Agent, RunConfig, Runner, set_trace_processors
+from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
+import os
+from wardwright_openai_agents import (
+    WardwrightAgentsContext,
+    WardwrightAgentsTraceProcessor,
+    wardwright_openai_agents_config,
+)
+
+context = WardwrightAgentsContext(
+    tenant_id="example-tenant",
+    application_id="example-app",
+    consuming_agent_id="example-agent",
+    consuming_user_id="example-user",
+    session_id="example-session",
+    run_id="example-run",
+    client_request_id="example-request",
+)
+config = wardwright_openai_agents_config(
+    base_url="http://127.0.0.1:8787/v1",
+    model="coding-balanced",
+    context=context,
+)
+processor = WardwrightAgentsTraceProcessor()
+set_trace_processors([processor])
+
+client_args = {
+    "base_url": config["model"]["client"]["base_url"],
+    "default_headers": config["model"]["client"]["default_headers"],
+}
+api_key = os.environ.get(config["model"]["client"]["api_key_env"])
+if api_key:
+    client_args["api_key"] = api_key
+
+model = OpenAIChatCompletionsModel(
+    model=config["model"]["model"],
+    openai_client=AsyncOpenAI(**client_args),
+)
+agent = Agent(name=config["agent"]["name"], model=model)
+
+# In real Agents SDK code, run with tracing configured not to include sensitive
+# data, then call processor.capture_generation(...) from an owned tracing or
+# client wrapper when the Wardwright response headers are available.
+await Runner.run(
+    agent,
+    "Synthetic framework request.",
+    run_config=RunConfig(
+        trace_include_sensitive_data=config["run_config"]["trace_include_sensitive_data"],
+    ),
+)
+```
+
+The committed helper source lives at
+`app/priv/framework_adapters/openai_agents_sdk/wardwright_openai_agents.py`.
+The default test suite runs a local Python smoke without downloading packages.
+That smoke proves:
+
+- a stable Wardwright model id is requested through the Chat Completions path;
+- caller provenance reaches Wardwright as headers;
+- `x-wardwright-receipt-id` is captured in trace metadata and generation span
+  metadata;
+- generic OpenAI-compatible fallback still works without claiming
+  framework-aware receipt propagation;
+- `/v1/responses` parity, native Agents sessions, tools, and streaming support
+  are deferred instead of implied.
+
 ## Privacy
 
 Framework helpers must not persist raw prompts, completions, provider
@@ -256,7 +349,6 @@ provenance ids, fidelity label, framework metadata paths, and fallback status.
 
 ## Next Targets
 
-The remaining first-class framework targets are OpenAI Agents SDK on Chat
-Completions, Microsoft.Extensions.AI with Semantic Kernel guidance, and
-LlamaIndex. Each target needs its own runnable smoke before Wardwright claims
-framework-aware support.
+The remaining first-class framework targets are Microsoft.Extensions.AI with
+Semantic Kernel guidance and LlamaIndex. Each target needs its own runnable
+smoke before Wardwright claims framework-aware support.
