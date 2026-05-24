@@ -81,6 +81,34 @@ pub fn running_counterfactual_demo_shows_outcome() -> Bool {
   && !view_contains(simulation, "No session trace loaded yet")
 }
 
+pub fn read_before_edit_trace_states_exact_violation() -> Bool {
+  let simulation =
+    start()
+    |> click_button("Record example session")
+
+  view_contains(
+    simulation,
+    "Violation: edit_file ran before read_file for app.txt.",
+  )
+  && view_contains(
+    simulation,
+    "Violation: edit_file ran before read_file for app.txt. Suggested fork point: before mutating app.txt.",
+  )
+}
+
+pub fn read_before_edit_example_targets_tool_governance_pattern() -> Bool {
+  start()
+  |> click_button("Record example session")
+  |> view_has_select_value("control_pattern_id", "tool-governance")
+}
+
+pub fn output_contract_example_targets_output_pattern() -> Bool {
+  start()
+  |> change_select("control_counterfactual_example", "output-contract")
+  |> click_button("Record example session")
+  |> view_has_select_value("control_pattern_id", "ambiguous-success")
+}
+
 pub fn harness_export_requires_loaded_trace() -> Bool {
   start()
   |> click_button("Prepare harness handoff")
@@ -95,10 +123,21 @@ pub fn opencode_harness_export_shows_fidelity_warning() -> Bool {
 
   view_contains(simulation, "Prepared OpenCode trace handoff and saved")
   && view_contains(simulation, "session_import_best_effort")
-  && view_contains(simulation, "Saved file")
+  && view_contains(simulation, "Handoff artifact")
+  && view_contains(simulation, "State probe")
   && view_contains(simulation, "Equivalent agent resume")
   && view_contains(simulation, "no")
   && view_contains(simulation, "opencode import")
+  && view_contains(simulation, "verify_harness_state_fidelity")
+}
+
+pub fn adapter_status_panel_explains_recording_policy() -> Bool {
+  start()
+  |> view_contains("Adapter install status")
+  && initial_view_contains("Recording and runtime visibility")
+  && initial_view_contains("Auto-recording applies only to verified adapters")
+  && initial_view_contains("Generic OpenAI-compatible clients stay manual")
+  && initial_view_contains("recording.adapted_agents")
 }
 
 pub fn fork_actions_are_contextual_to_loaded_event() -> Bool {
@@ -349,6 +388,21 @@ fn view_has_select_accessible_name(
     matching: query.tag("select")
     |> query.and(query.id(select_id))
     |> query.and(query.attribute("aria-label", accessible_name)),
+  ))
+  |> result.is_ok
+}
+
+fn view_has_select_value(
+  simulation,
+  select_id: String,
+  expected_value: String,
+) -> Bool {
+  simulation
+  |> simulate.view
+  |> query.find(matching: query.element(
+    matching: query.tag("select")
+    |> query.and(query.id(select_id))
+    |> query.and(query.attribute("value", expected_value)),
   ))
   |> result.is_ok
 }

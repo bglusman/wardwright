@@ -25,6 +25,9 @@ type PatternOption =
 type ModelOption =
   #(String, String, String, String)
 
+type ExampleModelOption =
+  #(String, String, String, String)
+
 type FixtureOption =
   #(String, String, String, String, String, List(RetryResponse))
 
@@ -126,6 +129,9 @@ fn external_pattern_options(model_id: String) -> List(PatternOption)
 
 @external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "model_options")
 fn external_model_options() -> List(ModelOption)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "example_model_options")
+fn external_example_model_options() -> List(ExampleModelOption)
 
 @external(erlang, "Elixir.WardwrightWeb.LustreWorkbenchData", "fixture_options")
 fn external_fixture_options(
@@ -810,55 +816,142 @@ fn add_unique(states: List(String), state: String) -> List(String) {
 pub fn view(model: Model) -> Element(Msg) {
   html.div([class("lustre-workbench")], [
     html.style([], styles()),
-    lustre_shell.sidebar(lustre_shell.Workbench, "Workbench", [
-      labeled_select(
-        "Registered model",
-        "model_id",
-        model.model_id,
-        model_options(model.model_id),
-        ModelChanged,
-      ),
-    ]),
+    lustre_shell.sidebar(
+      lustre_shell.Workbench,
+      "Model lab",
+      sidebar_controls(model),
+    ),
     workspace(model),
   ])
 }
 
 pub fn workspace(model: Model) -> Element(Msg) {
+  let example_preview = is_example_model_id(model.model_id)
+
   html.main([class("workspace")], [
     html.header([class("topbar")], [
       html.div([], [
-        html.h1([], [text(model.model_id)]),
-        html.p([], [
-          text(
-            model.simulation.pattern_title
-            <> ": "
-            <> model.simulation.pattern_promise,
-          ),
+        html.h1([], [text(model_title(model.model_id))]),
+        html.p([], [text(model_description(model))]),
+        html.small([class("model-subtitle")], [
+          text(model.model_id <> " / " <> model.simulation.pattern_title),
         ]),
       ]),
+      html.div([class("mode-actions")], [
+        html.span([class(mode_badge_class(example_preview))], [
+          text(mode_title(example_preview)),
+        ]),
+        case example_preview {
+          True ->
+            element(
+              "a",
+              [class("secondary-link"), attribute("href", "/admin")],
+              [text("Open live model")],
+            )
+
+          False -> html.span([], [])
+        },
+      ]),
     ]),
-    html.div([class("simulation-mode")], [
-      text(authoring_draft.simulation_label(
-        model.authoring_draft,
-        model.model_id,
-      )),
+    html.div([class(mode_banner_class(example_preview))], [
+      text(mode_banner_text(example_preview, model)),
     ]),
     simulator_form(model),
-    authoring_panel(model),
     results_grid(model),
     trace_panel(model),
+    authoring_panel(model),
   ])
+}
+
+fn model_title(model_id: String) -> String {
+  case example_model_info(model_id) {
+    Ok(#(_, title, _, _)) -> blank_default(title, model_id)
+    Error(_) -> model_id
+  }
+}
+
+fn model_description(model: Model) -> String {
+  case example_model_info(model.model_id) {
+    Ok(#(_, _, description, _)) ->
+      blank_default(description, pattern_description(model))
+    Error(_) -> pattern_description(model)
+  }
+}
+
+fn pattern_description(model: Model) -> String {
+  model.simulation.pattern_title <> ": " <> model.simulation.pattern_promise
+}
+
+fn is_example_model_id(model_id: String) -> Bool {
+  case example_model_info(model_id) {
+    Ok(_) -> True
+    Error(_) -> False
+  }
+}
+
+fn example_model_info(model_id: String) -> Result(ExampleModelOption, Nil) {
+  external_example_model_options()
+  |> find_example_model(model_id)
+}
+
+fn find_example_model(
+  options: List(ExampleModelOption),
+  model_id: String,
+) -> Result(ExampleModelOption, Nil) {
+  case options {
+    [] -> Error(Nil)
+    [option, ..rest] -> {
+      let #(option_id, _, _, _) = option
+
+      case option_id == model_id {
+        True -> Ok(option)
+        False -> find_example_model(rest, model_id)
+      }
+    }
+  }
+}
+
+fn mode_title(example_preview: Bool) -> String {
+  case example_preview {
+    True -> "Example preview"
+    False -> "Registered model"
+  }
+}
+
+fn mode_badge_class(example_preview: Bool) -> String {
+  case example_preview {
+    True -> "mode-badge preview"
+    False -> "mode-badge live"
+  }
+}
+
+fn mode_banner_class(example_preview: Bool) -> String {
+  case example_preview {
+    True -> "simulation-mode preview"
+    False -> "simulation-mode live"
+  }
+}
+
+fn mode_banner_text(example_preview: Bool, model: Model) -> String {
+  case example_preview {
+    True ->
+      "Previewing an example. Select a registered model when you want to inspect live local behavior."
+
+    False ->
+      authoring_draft.simulation_label(model.authoring_draft, model.model_id)
+  }
 }
 
 pub fn sidebar_controls(model: Model) -> List(Element(Msg)) {
   [
     labeled_select(
-      "Registered model",
+      "Model to inspect",
       "model_id",
       model.model_id,
       model_options(model.model_id),
       ModelChanged,
     ),
+    example_library(model.model_id),
   ]
 }
 
@@ -932,6 +1025,44 @@ fn model_options(selected_id: String) -> List(Element(Msg)) {
   })
 }
 
+fn example_library(selected_id: String) -> Element(Msg) {
+  html.details([class("example-library"), attribute("open", "")], [
+    html.summary([], [text("Example models")]),
+    html.p([], [
+      text(
+        "Open a prepared model to see routing, rewriting, retries, and composed models in the simulator.",
+      ),
+    ]),
+    html.div(
+      [class("example-model-list")],
+      external_example_model_options()
+        |> list.map(fn(option) {
+          let #(model_id, title, description, category) = option
+
+          element(
+            "a",
+            [
+              class(example_model_class(model_id == selected_id)),
+              attribute("href", "/admin?model=" <> model_id),
+            ],
+            [
+              html.span([], [text(category)]),
+              html.strong([], [text(title)]),
+              html.small([], [text(description)]),
+            ],
+          )
+        }),
+    ),
+  ])
+}
+
+fn example_model_class(active: Bool) -> String {
+  case active {
+    True -> "example-model active"
+    False -> "example-model"
+  }
+}
+
 fn fixture_options(
   pattern_id: String,
   model_id: String,
@@ -962,13 +1093,13 @@ fn fixture_options(
 fn policy_projection_select(model: Model) -> Element(Msg) {
   html.label([class("field projection-field"), attribute("for", "pattern_id")], [
     html.span([], [
-      text("Policy projection"),
+      text("Diagram focus"),
       html.span(
         [
           class("help-dot"),
           attribute(
             "title",
-            "Projection chooses the policy lens for this model. The graph shows possible transitions for the selected model, then highlights the replay path driven by the current fixture and edits.",
+            "Choose which part of this model to visualize. The map shows possible states, then highlights the path driven by the current scenario and edits.",
           ),
         ],
         [text("?")],
@@ -990,11 +1121,11 @@ fn simulator_form(model: Model) -> Element(Msg) {
   html.form([class("simulator"), event.on_submit(SubmitSimulation)], [
     html.div([class("form-header")], [
       html.div([], [
-        html.strong([], [text("Selected model turn simulator")]),
+        html.strong([], [text("Simulate a turn")]),
       ]),
       html.div([class("simulator-toolbar")], [
         labeled_select(
-          "Fixture",
+          "Scenario",
           "fixture_id",
           model.fixture_id,
           fixture_options(model.pattern_id, model.model_id, model.fixture_id),
@@ -1024,7 +1155,7 @@ fn simulator_form(model: Model) -> Element(Msg) {
         UserInputChanged,
       ),
       text_area(
-        "Raw model output / stream",
+        "Model stream",
         "model_response",
         model.model_response,
         "Type the model output to evaluate",
@@ -1039,7 +1170,7 @@ fn simulator_form(model: Model) -> Element(Msg) {
 fn fixture_save_panel(model: Model) -> Element(Msg) {
   html.div([class("fixture-save")], [
     html.label([class("field")], [
-      html.span([], [text("Save fixture")]),
+      html.span([], [text("Save as scenario")]),
       html.input([
         id("fixture_title"),
         name("fixture_title"),
@@ -1054,12 +1185,10 @@ fn fixture_save_panel(model: Model) -> Element(Msg) {
         type_("button"),
         event.on_click(SaveFixture),
       ],
-      [text("Save current turn")],
+      [text("Save scenario")],
     ),
     html.span([class("fixture-note")], [
-      text(
-        "Saved fixtures are available to every model on this projection; the source model is recorded.",
-      ),
+      text("Saved scenarios can be reused across models."),
     ]),
     case model.fixture_status {
       "" -> html.span([], [])
@@ -1079,7 +1208,7 @@ fn authoring_panel(model: Model) -> Element(Msg) {
         html.strong([], [text("Model authoring")]),
         html.p([], [
           text(
-            "Draft and review model changes against the current model and projection.",
+            "Draft and review model changes against the current model and diagram focus.",
           ),
         ]),
       ]),
@@ -1323,7 +1452,39 @@ fn retry_response_fields(model: Model) -> Element(Msg) {
   case model.retry_responses {
     [] -> html.div([], [])
     responses ->
-      html.div([class("retry-grid")], list.map(responses, retry_response_field))
+      html.details(
+        retry_details_attributes(retry_responses_have_content(responses)),
+        [
+          html.summary([], [text("Retry attempts")]),
+          html.small([], [
+            text(
+              "Optional provider outputs for later attempts. Fill these when a policy retries generation.",
+            ),
+          ]),
+          html.div(
+            [class("retry-grid")],
+            list.map(responses, retry_response_field),
+          ),
+        ],
+      )
+  }
+}
+
+fn retry_details_attributes(open: Bool) {
+  case open {
+    True -> [class("retry-fields"), attribute("open", "")]
+    False -> [class("retry-fields")]
+  }
+}
+
+fn retry_responses_have_content(responses: List(RetryResponse)) -> Bool {
+  case responses {
+    [] -> False
+    [response, ..rest] -> {
+      let #(_, content) = response
+
+      string.trim(content) != "" || retry_responses_have_content(rest)
+    }
   }
 }
 
@@ -1474,40 +1635,50 @@ fn results_grid(model: Model) -> Element(Msg) {
   let simulation = model.simulation
 
   html.section([class("results")], [
+    latest_run_summary(simulation),
     html.article([class(changed_class(simulation.input_changed))], [
       html.div([class("panel-heading")], [
-        html.span([], [text("Provider input after policy")]),
+        html.span([], [text("Sent to provider")]),
         badge.badge([badge.variant(status_variant(simulation.input_changed))], [
           text(change_label(simulation.input_changed)),
         ]),
       ]),
-      html.pre([], [text(simulation.model_received_input)]),
+      result_block(
+        simulation.model_received_input,
+        "No provider input recorded for this simulated turn.",
+      ),
     ]),
     html.article([class(changed_class(simulation.output_changed))], [
       html.div([class("panel-heading")], [
-        html.span([], [text("User output after policy")]),
+        html.span([], [text("Returned to user")]),
         badge.badge([badge.variant(status_variant(simulation.output_changed))], [
           text(change_label(simulation.output_changed)),
         ]),
       ]),
-      html.pre([], [text(simulation.user_received_output)]),
+      result_block(
+        simulation.user_received_output,
+        "No user-visible output is released in this simulated turn.",
+      ),
     ]),
     html.article([class("panel facts")], [
       html.div([class("fact")], [
-        html.span([], [text("Selected upstream")]),
+        html.span([], [text("Provider used")]),
         html.strong([], [text(blank_default(simulation.selected_model, "none"))]),
       ]),
       html.div([class("fact")], [
-        html.span([], [text("Engine")]),
-        html.strong([], [text(simulation.engine_id)]),
-      ]),
-      html.div([class("fact")], [
-        html.span([], [text("Policy artifact")]),
-        html.code([], [text(simulation.artifact_label)]),
-      ]),
-      html.div([class("fact")], [
-        html.span([], [text("Verdict")]),
+        html.span([], [text("Run result")]),
         html.strong([], [text(simulation.verdict)]),
+      ]),
+      html.details([class("technical-details")], [
+        html.summary([], [text("Technical details")]),
+        html.div([class("fact")], [
+          html.span([], [text("Engine")]),
+          html.strong([], [text(simulation.engine_id)]),
+        ]),
+        html.div([class("fact")], [
+          html.span([], [text("Artifact")]),
+          html.code([], [text(simulation.artifact_label)]),
+        ]),
       ]),
     ]),
     policy_action_table(simulation.policy_actions),
@@ -1516,13 +1687,76 @@ fn results_grid(model: Model) -> Element(Msg) {
   ])
 }
 
+fn latest_run_summary(simulation: Simulation) -> Element(Msg) {
+  html.article([class("panel run-summary")], [
+    html.div([class("panel-heading")], [
+      html.div([], [
+        html.span([], [text("Latest simulated run")]),
+        html.strong([], [
+          text(
+            "Provider "
+            <> blank_default(simulation.selected_model, "not selected")
+            <> " / ends in "
+            <> blank_default(
+              simulation.state_replay.final_state,
+              "single state",
+            ),
+          ),
+        ]),
+      ]),
+      badge.badge([badge.variant(badge.Secondary)], [
+        text(blank_default(simulation.verdict, "unknown")),
+      ]),
+    ]),
+    html.div([class("run-path")], trace_summary_items(simulation.trace_events)),
+  ])
+}
+
+fn trace_summary_items(events: List(TraceEvent)) -> List(Element(Msg)) {
+  case events {
+    [] -> [
+      html.span([class("run-step")], [text("No trace events recorded.")]),
+    ]
+    _ -> events |> take_trace_events(6) |> list.map(trace_summary_item)
+  }
+}
+
+fn take_trace_events(
+  events: List(TraceEvent),
+  remaining: Int,
+) -> List(TraceEvent) {
+  case remaining <= 0 {
+    True -> []
+    False ->
+      case events {
+        [] -> []
+        [event, ..rest] -> [event, ..take_trace_events(rest, remaining - 1)]
+      }
+  }
+}
+
+fn trace_summary_item(event: TraceEvent) -> Element(Msg) {
+  let #(phase, label, _, severity, _) = event
+
+  html.span([class("run-step " <> severity_class(severity))], [
+    text(blank_default(label, blank_default(phase, "event"))),
+  ])
+}
+
+fn result_block(content: String, empty_message: String) -> Element(Msg) {
+  case string.trim(content) {
+    "" -> html.pre([class("empty-result")], [text(empty_message)])
+    _ -> html.pre([], [text(content)])
+  }
+}
+
 fn policy_action_table(actions: List(PolicyAction)) -> Element(Msg) {
   table.table([class("policy-table")], [
     table.table_header([], [
       table.table_header_row([], [
-        table.table_column_header([], [text("Rule")]),
-        table.table_column_header([], [text("Action")]),
-        table.table_column_header([], [text("Message")]),
+        table.table_column_header([], [text("Check")]),
+        table.table_column_header([], [text("Result")]),
+        table.table_column_header([], [text("Reason")]),
       ]),
     ]),
     table.table_body([], action_rows(actions)),
@@ -1534,7 +1768,7 @@ fn action_rows(actions: List(PolicyAction)) -> List(Element(Msg)) {
     [] -> [
       table.table_row([], [
         table.table_cell([attribute("colspan", "3")], [
-          text("No request policy action changed this turn."),
+          text("No checks changed this turn."),
         ]),
       ]),
     ]
@@ -1559,7 +1793,7 @@ fn state_machine_graph(model: Model) -> Element(Msg) {
   html.article([class("panel state-graph")], [
     html.div([class("panel-heading")], [
       html.div([class("status-stack")], [
-        html.span([], [text("State machine")]),
+        html.span([], [text("Behavior map")]),
         badge.badge([badge.variant(badge.Outline)], [
           text(blank_default(replay.status, "unknown")),
         ]),
@@ -1594,7 +1828,7 @@ fn state_machine_graph(model: Model) -> Element(Msg) {
       [],
     ),
     html.details([class("state-evidence")], [
-      html.summary([], [text("Transition evidence")]),
+      html.summary([], [text("Why this path happened")]),
       html.div(
         [class("edge-list")],
         state_edge_rows(replay.transitions, active_state),
@@ -1771,8 +2005,8 @@ fn state_edge_rows(
   case transitions {
     [] -> [
       html.div([class("state-edge")], [
-        html.strong([], [text("Default projection")]),
-        html.span([], [text("No transition table is needed for this policy.")]),
+        html.strong([], [text("Single-state model")]),
+        html.span([], [text("This model does not need extra states.")]),
       ]),
     ]
     _ ->
@@ -1804,19 +2038,19 @@ fn state_machine_table(replay: StateReplay) -> Element(Msg) {
   table.table([class("state-table")], [
     table.table_header([], [
       table.table_header_row([], [
-        table.table_column_header([], [text("Replay")]),
+        table.table_column_header([], [text("Path")]),
         table.table_column_header([], [
           text(blank_default(replay.status, "unknown")),
         ]),
         table.table_column_header([], [
-          text("Final: " <> blank_default(replay.final_state, "none")),
+          text("Ends in: " <> blank_default(replay.final_state, "none")),
         ]),
       ]),
       table.table_header_row([], [
-        table.table_column_header([], [text("Event")]),
-        table.table_column_header([], [text("From -> to")]),
+        table.table_column_header([], [text("Trigger")]),
+        table.table_column_header([], [text("State change")]),
         table.table_column_header([], [
-          text(int.to_string(replay.transition_count) <> " transitions"),
+          text(int.to_string(replay.transition_count) <> " possible changes"),
         ]),
       ]),
     ]),
@@ -1829,7 +2063,7 @@ fn state_rows(transitions: List(StateReplayStep)) -> List(Element(Msg)) {
     [] -> [
       table.table_row([], [
         table.table_cell([attribute("colspan", "3")], [
-          text("Default single-state policy."),
+          text("Single-state model: no state changes for this scenario."),
         ]),
       ]),
     ]
@@ -1867,7 +2101,7 @@ fn trace_panel(model: Model) -> Element(Msg) {
   html.section([class("trace-panel")], [
     html.div([class("trace-header")], [
       html.div([], [
-        html.strong([], [text("Trace playback")]),
+        html.strong([], [text("Step playback")]),
         html.span([], [text(step_label(model))]),
       ]),
       playback_actions(model),
@@ -2062,6 +2296,60 @@ pub fn styles() -> String {
   .field {
     gap: 8px;
   }
+  .example-library {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+  }
+  .example-library summary {
+    cursor: pointer;
+    color: var(--foreground);
+    font-size: 13px;
+    font-weight: 850;
+  }
+  .example-library p {
+    color: var(--muted-foreground);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .example-model-list {
+    display: grid;
+    gap: 8px;
+  }
+  .example-model {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    min-height: 0;
+    padding: 10px;
+    border: 1px solid #dde4ea;
+    border-radius: 8px;
+    background: #fbfcfd;
+    color: inherit;
+    text-decoration: none;
+    text-align: left;
+  }
+  .example-model:hover, .example-model.active {
+    border-color: #9ec8c3;
+    background: #eef7f5;
+  }
+  .example-model span {
+    color: #66727f;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+  .example-model strong, .example-model small {
+    overflow-wrap: anywhere;
+  }
+  .example-model small {
+    color: var(--muted-foreground);
+    font-size: 12px;
+    line-height: 1.35;
+  }
   .projection-field > span {
     display: inline-flex;
     align-items: center;
@@ -2083,6 +2371,52 @@ pub fn styles() -> String {
   .runtime-note {
     margin-top: auto;
   }
+  .mode-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .mode-badge {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    max-width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 850;
+    overflow-wrap: anywhere;
+  }
+  .mode-badge.preview {
+    background: #fff6e7;
+    border-color: #e1b96e;
+    color: #6b4a12;
+  }
+  .mode-badge.live {
+    background: #eef6f2;
+    border-color: #9ec8c3;
+    color: #274736;
+  }
+  .secondary-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--foreground);
+    font-size: 12px;
+    font-weight: 800;
+    text-decoration: none;
+  }
+  .secondary-link:hover {
+    background: var(--accent);
+    color: var(--accent-foreground);
+  }
   .workspace {
     display: flex;
     flex-direction: column;
@@ -2102,6 +2436,11 @@ pub fn styles() -> String {
     font-weight: 800;
     overflow-wrap: anywhere;
   }
+  .simulation-mode.preview {
+    background: #fffaf0;
+    border-color: #e1b96e;
+    color: #6b4a12;
+  }
   .topbar, .form-header, .trace-header, .panel-heading {
     display: flex;
     justify-content: space-between;
@@ -2118,6 +2457,14 @@ pub fn styles() -> String {
     margin: 0;
     color: #46525f;
     line-height: 1.45;
+  }
+  .model-subtitle {
+    display: block;
+    margin-top: 8px;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    font-weight: 700;
+    overflow-wrap: anywhere;
   }
   .status-stack, .actions {
     display: flex;
@@ -2157,6 +2504,31 @@ pub fn styles() -> String {
     gap: 10px;
     align-items: end;
     padding-top: 4px;
+  }
+  .retry-fields {
+    display: grid;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid #dbe5ed;
+    border-radius: 8px;
+    background: #fbfcfd;
+  }
+  .retry-fields summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 850;
+  }
+  .retry-fields small {
+    color: var(--muted-foreground);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .retry-fields textarea {
+    min-height: 96px;
+  }
+  .retry-grid {
+    display: grid;
+    gap: 12px;
   }
   .fixture-note, .fixture-status, .fixture-error {
     align-self: center;
@@ -2346,6 +2718,48 @@ pub fn styles() -> String {
     border-color: #d99a24;
     background: #fffaf0;
   }
+  .run-summary {
+    grid-column: 1 / -1;
+    gap: 12px;
+  }
+  .run-summary .panel-heading strong {
+    display: block;
+    margin-top: 4px;
+    font-size: 14px;
+  }
+  .run-path {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .run-step {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 7px 9px;
+    border: 1px solid #dbe5ed;
+    border-radius: 999px;
+    background: #f7faf9;
+    color: #354554;
+    font-size: 12px;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+  }
+  .run-step.fail {
+    border-color: #ecb4a9;
+    background: #fff4f1;
+    color: #7a2d1f;
+  }
+  .run-step.warn {
+    border-color: #e1b96e;
+    background: #fffaf0;
+    color: #6b4a12;
+  }
+  .run-step.pass {
+    border-color: #bcded3;
+    background: #f0faf6;
+    color: #274736;
+  }
   pre {
     min-height: 170px;
     margin: 0;
@@ -2357,6 +2771,11 @@ pub fn styles() -> String {
     padding: 12px;
     font-size: 13px;
     line-height: 1.5;
+  }
+  pre.empty-result {
+    background: #f7faf9;
+    border: 1px dashed #c8d5d1;
+    color: #56636f;
   }
   .facts {
     display: grid;
@@ -2370,6 +2789,20 @@ pub fn styles() -> String {
   }
   .fact code, .fact strong {
     overflow-wrap: anywhere;
+  }
+  .technical-details {
+    grid-column: 1 / -1;
+    border-top: 1px solid #e5eaee;
+    padding-top: 10px;
+  }
+  .technical-details summary {
+    cursor: pointer;
+    color: #46525f;
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .technical-details .fact {
+    margin-top: 10px;
   }
   .state-graph {
     grid-column: 1 / -1;

@@ -1,6 +1,8 @@
 defmodule WardwrightWeb.ControlDebuggerData do
   @moduledoc false
 
+  alias Wardwright.CLI.Adapters
+
   def pattern_options do
     Wardwright.PolicyProjection.patterns()
     |> Enum.map(fn pattern ->
@@ -21,6 +23,10 @@ defmodule WardwrightWeb.ControlDebuggerData do
       {pattern_id, _title, _category, _promise} -> pattern_id
     end
   end
+
+  def default_pattern_id_for_example("read-before-edit"), do: "tool-governance"
+  def default_pattern_id_for_example("output-contract"), do: "ambiguous-success"
+  def default_pattern_id_for_example(_example_id), do: default_pattern_id()
 
   def receipt_options do
     %{}
@@ -50,7 +56,7 @@ defmodule WardwrightWeb.ControlDebuggerData do
   end
 
   def storage_note do
-    "Receipts: #{store_location(Wardwright.ReceiptStore.health())}. Simulator cases: #{store_location(Wardwright.PolicyScenarioStore.health())}."
+    "Receipts: #{store_location(Wardwright.ReceiptStore.health())}. Simulator cases: #{scenario_store_location(Wardwright.PolicyScenarioStore.health())}."
   end
 
   def counterfactual_facts do
@@ -127,6 +133,15 @@ defmodule WardwrightWeb.ControlDebuggerData do
 
   def default_harness_adapter_id, do: "opencode"
 
+  def adapter_status_rows do
+    if System.get_env("WARDWRIGHT_BROWSER_ADAPTER_STATUS_FIXTURE") == "1" do
+      browser_adapter_status_fixture()
+    else
+      Adapters.doctor()
+      |> Enum.map(&adapter_status_row/1)
+    end
+  end
+
   def export_harness_trace(session_id, adapter_id) do
     session_id = session_id |> to_string() |> String.trim()
     adapter_id = adapter_id |> to_string() |> String.trim() |> blank_fallback(default_harness_adapter_id())
@@ -138,15 +153,21 @@ defmodule WardwrightWeb.ControlDebuggerData do
       warnings = export["warnings"] || []
       saved_files = export["saved_files"] || []
       command = harness_export_command(export, saved_files)
+      probe_file = harness_probe_file(saved_files)
 
       {true, "Prepared #{adapter["label"] || adapter_id} trace handoff and saved #{length(saved_files)} file(s).",
        [
          {"Adapter", adapter["label"] || adapter_id},
          {"Fidelity", adapter["fidelity"] || "unknown"},
+         {"Resume claim", adapter["resume_claim_status"] || "unknown"},
          {"Equivalent agent resume", bool_text(adapter["equivalent_agent_resume"])},
+         {"Verification required", bool_text(get_in(adapter, ["state_fidelity_verification", "required"]))},
          {"Artifact", export["artifact_format"] || "unknown"},
-         {"Saved file", saved_files |> List.first() |> blank_fallback("none")},
-         {"Command", command |> blank_fallback(commands |> List.first() |> blank_fallback("none"))},
+         {"Handoff artifact", saved_files |> List.first() |> blank_fallback("none")},
+         {"State probe", probe_file |> blank_fallback("none")},
+         {"Handoff command", command |> blank_fallback(commands |> List.first() |> blank_fallback("none"))},
+         {"Verify with",
+          harness_verification_instruction(probe_file, get_in(adapter, ["state_fidelity_verification", "required"]))},
          {"Warnings", warnings |> Enum.join(" ") |> blank_fallback("none")}
        ]}
     else
@@ -167,6 +188,55 @@ defmodule WardwrightWeb.ControlDebuggerData do
   end
 
   defp harness_export_command(_export, _saved_files), do: ""
+
+  defp harness_probe_file(saved_files) do
+    Enum.find(saved_files, &(Path.basename(to_string(&1)) == "wardwright-state-fidelity-probe.json"))
+  end
+
+  defp harness_verification_instruction(_probe_file, false), do: "not required"
+
+  defp harness_verification_instruction(nil, _required) do
+    "verify_harness_state_fidelity with the exported probe and observed imported-harness state"
+  end
+
+  defp harness_verification_instruction(probe_file, _required) do
+    "verify_harness_state_fidelity with #{probe_file} and observed imported-harness state"
+  end
+
+  defp adapter_status_row(row) do
+    next_action =
+      row.next_actions
+      |> Enum.join(" ")
+      |> blank_fallback("no next action")
+
+    {
+      row.target || "",
+      row.label || row.target || "",
+      row.state || "unknown",
+      row.runtime || "unknown",
+      row.adapter_id || "",
+      row.fidelity || "unknown",
+      row.coverage || "unknown",
+      next_action
+    }
+  end
+
+  defp browser_adapter_status_fixture do
+    [
+      {"omp", "OMP / oh-my-pi", "installable", "omp", "wardwright-omp", "runtime_verified", "native_runtime",
+       "run `wardwright adapters install omp`"},
+      {"omp-paired", "OMP paired workspace", "verified", "omp", "wardwright-omp", "runtime_verified", "native_runtime",
+       "run `wardwright adapters probe omp` for stronger replay affordances"},
+      {"omp-probed", "OMP probed workspace", "verified_with_probe", "omp", "wardwright-omp", "runtime_verified",
+       "native_runtime", "adapter identity and runtime probe are verified"},
+      {"omp-drifted", "OMP edited rule", "drifted", "omp", "wardwright-omp", "runtime_verified", "native_runtime",
+       "repair only after reviewing local edits"},
+      {"opencode-omp", "OpenCode through OMP", "installable", "omp", "wardwright-omp", "runtime_verified",
+       "covered_through_runtime", "covered by the OMP runtime adapter"},
+      {"opencode-native", "OpenCode native", "installable", "opencode-native", "wardwright-opencode",
+       "session_import_best_effort", "native_surface", "lower-fidelity plugin/import scaffold"}
+    ]
+  end
 
   defp shell_quote(value) do
     "'" <> String.replace(to_string(value), "'", "'\"'\"'") <> "'"
@@ -234,7 +304,7 @@ defmodule WardwrightWeb.ControlDebuggerData do
       fork_point = suggested_fork_point(events)
 
       {true, "Loaded #{length(events)} trace event(s) for #{receipt_id}.", session_id, fork_point,
-       Enum.map(events, &transcript_event_summary/1)}
+       transcript_event_summaries(events)}
     else
       {:receipt_id, true} ->
         {false, "Choose a receipt with a full-session transcript.", "", "", []}
@@ -646,16 +716,34 @@ defmodule WardwrightWeb.ControlDebuggerData do
     end
   end
 
-  defp transcript_event_summary(event) when is_map(event) do
+  defp transcript_event_summaries(events) when is_list(events) do
+    events
+    |> Enum.map_reduce(MapSet.new(), fn event, read_paths ->
+      summary = transcript_event_summary(event, read_paths)
+      {summary, record_read_path(read_paths, event)}
+    end)
+    |> elem(0)
+  end
+
+  defp transcript_event_summary(event, read_paths) when is_map(event) do
     cursor = event["cursor"] || ""
     sequence = event["sequence"] |> to_string()
     type = event["type"] || "event"
     label = event_label(event)
     detail = event_detail(event)
-    recommendation = fork_point_recommendation(event)
+    recommendation = fork_point_recommendation(event, read_paths)
 
     {cursor, sequence, type, label, detail, recommendation}
   end
+
+  defp record_read_path(read_paths, %{"type" => "tool.call"} = event) do
+    case {get_in(event, ["tool", "name"]), get_in(event, ["tool", "args", "path"])} do
+      {"read_file", path} when is_binary(path) and path != "" -> MapSet.put(read_paths, path)
+      _ -> read_paths
+    end
+  end
+
+  defp record_read_path(read_paths, _event), do: read_paths
 
   defp event_label(%{"type" => "tool.call"} = event) do
     tool_name = get_in(event, ["tool", "name"]) || "tool"
@@ -718,33 +806,48 @@ defmodule WardwrightWeb.ControlDebuggerData do
 
   defp event_detail(event), do: compact_json(Map.drop(event, ["schema", "cursor", "sequence", "session_id", "type"]))
 
-  defp fork_point_recommendation(%{"type" => "tool.call"} = event) do
+  defp fork_point_recommendation(%{"type" => "tool.call"} = event, read_paths) do
     tool_name = get_in(event, ["tool", "name"]) || ""
     args = get_in(event, ["tool", "args"]) || %{}
+    path = args["path"]
 
     cond do
-      tool_name == "edit_file" -> "Suggested fork point: before mutating #{args["path"] || "a file"}."
-      tool_name == "run_tests" -> "Possible fork point: before validation."
-      true -> "Can fork before this tool call."
+      tool_name == "edit_file" and is_binary(path) and path != "" and not MapSet.member?(read_paths, path) ->
+        "Violation: edit_file ran before read_file for #{path}. Suggested fork point: before mutating #{path}."
+
+      tool_name == "edit_file" ->
+        "Suggested fork point: before mutating #{path || "a file"}."
+
+      tool_name == "run_tests" ->
+        "Possible fork point: before validation."
+
+      true ->
+        "Can fork before this tool call."
     end
   end
 
-  defp fork_point_recommendation(%{"fork_point" => true, "type" => "model.response"}),
+  defp fork_point_recommendation(%{"fork_point" => true, "type" => "model.response"}, _read_paths),
     do: "Suggested fork point: before the response is validated or repaired."
 
-  defp fork_point_recommendation(%{"failure_class" => failure_class, "type" => "policy.decision"})
+  defp fork_point_recommendation(%{"failure_class" => failure_class, "type" => "policy.decision"}, _read_paths)
        when is_binary(failure_class) and failure_class != "",
        do: "Evidence event; usually fork before the response or action that triggered it."
 
-  defp fork_point_recommendation(%{"type" => "tool.result"}),
+  defp fork_point_recommendation(%{"type" => "tool.result"}, _read_paths),
     do: "Evidence event; usually fork before the matching call."
 
-  defp fork_point_recommendation(_event), do: "Context event."
+  defp fork_point_recommendation(_event, _read_paths), do: "Context event."
 
   defp compact_json(value) do
     value
-    |> JSON.encode!()
+    |> safe_json()
     |> String.slice(0, 180)
+  end
+
+  defp safe_json(value) do
+    JSON.encode!(value)
+  rescue
+    _error -> inspect(value)
   end
 
   defp counterfactual_example("output-contract") do
@@ -807,6 +910,12 @@ defmodule WardwrightWeb.ControlDebuggerData do
   defp store_location(%{"kind" => "memory"}), do: "memory only; not durable across restart"
   defp store_location(%{"kind" => kind}), do: kind
   defp store_location(_health), do: "unknown"
+
+  defp scenario_store_location(%{"kind" => "memory"}),
+    do:
+      "memory only; not durable across restart. Set WARDWRIGHT_POLICY_SCENARIO_STORE_FILE to a local JSON path to keep saved simulator cases"
+
+  defp scenario_store_location(health), do: store_location(health)
 
   defp capability_summary(%{"capabilities" => capabilities}) when is_map(capabilities) do
     [

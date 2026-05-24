@@ -167,6 +167,8 @@ defmodule Wardwright.GleamPolicyCoreTest do
     refute :wardwright@harness_adapter.can_claim_equivalent_agent_resume(true, false, true, true, true)
     refute :wardwright@harness_adapter.can_claim_equivalent_agent_resume(true, true, false, true, true)
     assert :wardwright@harness_adapter.can_claim_equivalent_agent_resume(true, true, true, true, true)
+    assert :wardwright@harness_adapter.resume_claim_status(false) == "unverified_best_effort_handoff"
+    assert :wardwright@harness_adapter.resume_claim_status(true) == "verified_equivalent_resume"
   end
 
   test "alert core classifies queue capacity, duplicate, and terminal states" do

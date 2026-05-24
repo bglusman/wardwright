@@ -34,6 +34,13 @@ wardwright tools
 wardwright tools --json
 ```
 
+Treat `wardwright tools` as the cold-start entrypoint for an agent with no
+other Wardwright context. The text form should tell a human or agent how to
+connect, which operations are safe or write-capable, and where to read fuller
+examples. The JSON form should expose the same tool names, paths, argument
+expectations where available, safety notes, and documentation links in a shape
+that an agent can use without scraping the UI.
+
 MCP-capable agents should connect to:
 
 ```text
@@ -44,6 +51,13 @@ If the service is bound to a different address, replace `8787` with the
 configured `WARDWRIGHT_BIND` port. Protected HTTP tools accept loopback callers
 by default; non-loopback deployments should set `WARDWRIGHT_ADMIN_TOKEN` and
 send it as an admin bearer token.
+
+MCP, CLI, and UI are expected to be symmetrical control surfaces over the same
+authoring and debugging capabilities. The UI may be more visual, MCP may be
+more structured, and CLI help may be more compact, but none should require
+unstated project knowledge. If a workflow can only be completed in one surface,
+that is either a deliberate product decision that needs documentation or a
+capability gap to file from the run.
 
 Agents should not ask users to paste raw provider API keys into model artifacts.
 For OpenAI-compatible targets, reference `credential_fnox_key` when fnox is

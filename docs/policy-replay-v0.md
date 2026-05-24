@@ -29,7 +29,7 @@ receipt says happened.
   receipt store.
 - Expose a protected API path:
   `POST /v1/policy-authoring/replay-receipts/{receipt_id}`.
-- Keep the LiveView workbench unchanged for this slice.
+- Keep the operator workbench unchanged for this slice.
 
 ## Adversarial Plan Review
 

@@ -3,6 +3,10 @@ defmodule Wardwright.Router do
 
   use Plug.Router
 
+  alias Wardwright.AgentAdapters.ClaudeCodePack
+  alias Wardwright.AgentAdapters.Identity
+  alias Wardwright.AgentAdapters.OmpPack
+  alias Wardwright.AgentAdapters.PiPack
   alias Wardwright.Policy.AlertDelivery
   alias Wardwright.Policy.History
   alias Wardwright.Policy.Plan
@@ -12,6 +16,17 @@ defmodule Wardwright.Router do
   @max_unpinned_key "max_unpinned"
   @regression_format_key "format"
   @json_format "json"
+  @adapter_key_adapter_id "adapter_id"
+  @adapter_key_adapter_version "adapter_version"
+  @adapter_key_expires_at "expires_at"
+  @adapter_key_identity "identity"
+  @adapter_key_runtime "runtime"
+  @adapter_key_target "target"
+  @adapter_key_verified "verified"
+  @adapter_key_workspace_fingerprint "workspace_fingerprint"
+  @adapter_runtime_claude_cli "claude-cli"
+  @adapter_runtime_omp "omp"
+  @adapter_runtime_pi "pi"
 
   plug(Plug.Logger)
 
@@ -58,9 +73,18 @@ defmodule Wardwright.Router do
          {:ok, model} <- Wardwright.normalize_model(Map.get(request, "model")),
          {:ok, config} <- Wardwright.model_config(model),
          :ok <- require_model_access(conn, model, config),
+         {:ok, adapter_context} <- WardwrightWeb.AdapterRequestContext.from_conn(conn, config),
          :ok <- require_messages(request) do
       request = apply_prompt_transforms(request, config)
-      caller = WardwrightWeb.RequestContext.caller(conn, Map.get(request, "metadata", %{}))
+      config = WardwrightWeb.AdapterRequestContext.apply_recording(config, adapter_context)
+
+      caller =
+        conn
+        |> WardwrightWeb.RequestContext.caller(Map.get(request, "metadata", %{}))
+        |> WardwrightWeb.RequestContext.put_adapter(
+          WardwrightWeb.AdapterRequestContext.caller_adapter(adapter_context.adapter, adapter_context)
+        )
+
       tool_context_opts = WardwrightWeb.RequestContext.tool_context_opts(conn)
       History.record_request(caller, request, tool_context_opts)
       {request, policy} = apply_request_policies(request, caller, tool_context_opts, config)
@@ -121,6 +145,9 @@ defmodule Wardwright.Router do
 
       {:error, :model_auth, status, message, code} ->
         error(conn, status, message, model_auth_error_type(status), code)
+
+      {:error, :adapter_identity, status, message, code} ->
+        error(conn, status, message, adapter_identity_error_type(status), code)
     end
   end
 
@@ -339,6 +366,58 @@ defmodule Wardwright.Router do
 
       {:error, message} ->
         error(conn, 400, message, "invalid_request", "invalid_policy_cache_event")
+    end
+  end
+
+  post "/v1/agent-adapters/pair" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         :ok <- require_supported_pair_request(body),
+         {:ok, identity} <- Identity.issue(body) do
+      json(conn, 200, Map.new([{@adapter_key_identity, identity}]))
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, :missing_secret} ->
+        error(
+          conn,
+          503,
+          "adapter identity signing secret is not configured",
+          "server_error",
+          "adapter_identity_secret_missing"
+        )
+
+      {:error, _reason} ->
+        error(conn, 400, "adapter pairing request is malformed", "invalid_request", "invalid_adapter_pairing")
+    end
+  end
+
+  post "/v1/agent-adapters/identity/verify" do
+    with {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, identity} <- required_body_map(body, "identity"),
+         {:ok, workspace_fingerprint} <- required_body_string(body, "workspace_fingerprint"),
+         {:ok, expected} <- supported_identity(identity),
+         {:ok, claims} <-
+           Identity.validate(identity, Keyword.put(expected, :workspace_fingerprint, workspace_fingerprint)) do
+      json(conn, 200, %{
+        @adapter_key_identity =>
+          Map.new([
+            {@adapter_key_adapter_id, Map.get(claims, @adapter_key_adapter_id)},
+            {@adapter_key_adapter_version, Map.get(claims, @adapter_key_adapter_version)},
+            {@adapter_key_expires_at, Map.get(claims, @adapter_key_expires_at)},
+            {@adapter_key_runtime, Map.get(claims, @adapter_key_runtime)},
+            {@adapter_key_target, Map.get(claims, @adapter_key_target)},
+            {@adapter_key_workspace_fingerprint, Map.get(claims, @adapter_key_workspace_fingerprint)}
+          ]),
+        @adapter_key_verified => true
+      })
+    else
+      {:error, reason} when reason in [:expired, :invalid_signature, :malformed, :missing_secret, :wrong_workspace] ->
+        adapter_identity_error(conn, reason)
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_adapter_identity")
     end
   end
 
@@ -597,6 +676,117 @@ defmodule Wardwright.Router do
     end
   end
 
+  get "/v1/policy-authoring/control-debugger/examples" do
+    with :ok <- require_protected_access(conn),
+         {:ok, examples} <- WardwrightWeb.ControlDebuggerTools.list_examples() do
+      json(conn, 200, examples)
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+    end
+  end
+
+  post "/v1/policy-authoring/control-debugger/examples/:example_id/record" do
+    with :ok <- require_protected_access(conn),
+         {:ok, recording} <- WardwrightWeb.ControlDebuggerTools.record_example(example_id) do
+      json(conn, 201, recording)
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message, data} ->
+        json(
+          conn,
+          400,
+          WardwrightWeb.ControlDebuggerTools.error_response(message, "invalid_control_debugger_recording", data)
+        )
+    end
+  end
+
+  post "/v1/policy-authoring/control-debugger/traces/load" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, trace} <- WardwrightWeb.ControlDebuggerTools.load_trace(body) do
+      json(conn, 200, trace)
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_control_debugger_trace")
+
+      {:error, message, data} ->
+        json(
+          conn,
+          400,
+          WardwrightWeb.ControlDebuggerTools.error_response(message, "invalid_control_debugger_trace", data)
+        )
+    end
+  end
+
+  post "/v1/policy-authoring/control-debugger/traces/replay-cursor" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, replay} <- WardwrightWeb.ControlDebuggerTools.replay_cursor(body) do
+      json(conn, 200, replay)
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_control_debugger_replay")
+
+      {:error, message, data} ->
+        json(
+          conn,
+          400,
+          WardwrightWeb.ControlDebuggerTools.error_response(message, "invalid_control_debugger_replay", data)
+        )
+    end
+  end
+
+  post "/v1/policy-authoring/control-debugger/traces/fork-cursor" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, fork} <- WardwrightWeb.ControlDebuggerTools.fork_cursor(body) do
+      json(conn, 200, fork)
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_control_debugger_fork")
+
+      {:error, message, data} ->
+        json(
+          conn,
+          400,
+          WardwrightWeb.ControlDebuggerTools.error_response(message, "invalid_control_debugger_fork", data)
+        )
+    end
+  end
+
+  post "/v1/policy-authoring/control-debugger/traces/save-evidence" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, saved} <- WardwrightWeb.ControlDebuggerTools.save_evidence(body) do
+      json(conn, 201, saved)
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_control_debugger_evidence")
+
+      {:error, message, data} ->
+        json(
+          conn,
+          400,
+          WardwrightWeb.ControlDebuggerTools.error_response(message, "invalid_control_debugger_evidence", data)
+        )
+    end
+  end
+
   get "/v1/policy-authoring/harness-adapters" do
     case require_protected_access(conn) do
       :ok ->
@@ -619,6 +809,23 @@ defmodule Wardwright.Router do
 
       {:error, message} when is_binary(message) ->
         error(conn, 400, message, "invalid_request", "invalid_harness_adapter_export")
+    end
+  end
+
+  post "/v1/policy-authoring/harness-adapters/state-fidelity/verify" do
+    with :ok <- require_protected_access(conn),
+         {:ok, body} <- require_json_object(conn.body_params),
+         {:ok, probe} <- required_body_map(body, "probe"),
+         {:ok, observed} <- required_body_map(body, "observed"),
+         verification when is_map(verification) <-
+           WardwrightWeb.AgentHarnessAdapters.verify_state_fidelity(probe, observed) do
+      json(conn, 200, Map.new([{"verification", verification}]))
+    else
+      {:error, :protected, message} ->
+        error(conn, 403, message, "forbidden", "protected_endpoint")
+
+      {:error, message} when is_binary(message) ->
+        error(conn, 400, message, "invalid_request", "invalid_harness_state_fidelity_verification")
     end
   end
 
@@ -809,6 +1016,13 @@ defmodule Wardwright.Router do
     end
   end
 
+  defp required_body_map(body, key) do
+    case body do
+      %{^key => value} when is_map(value) -> {:ok, value}
+      _value -> {:error, "#{key} must be a JSON object"}
+    end
+  end
+
   defp override_model(request, nil), do: request
   defp override_model(request, ""), do: request
   defp override_model(request, model), do: Map.put(request, "model", model)
@@ -927,6 +1141,11 @@ defmodule Wardwright.Router do
   defp model_auth_error_type(401), do: "unauthorized"
   defp model_auth_error_type(403), do: "forbidden"
 
+  defp adapter_identity_error_type(400), do: "invalid_request"
+  defp adapter_identity_error_type(403), do: "forbidden"
+  defp adapter_identity_error_type(503), do: "server_error"
+  defp adapter_identity_error_type(_status), do: "unauthorized"
+
   defp request_model_api_key(conn) do
     conn
     |> get_req_header("authorization")
@@ -956,6 +1175,78 @@ defmodule Wardwright.Router do
 
       {:error, :protected, message}
     end
+  end
+
+  defp require_supported_pair_request(body) do
+    if supported_pair_request?(body) do
+      :ok
+    else
+      {:error, :malformed}
+    end
+  end
+
+  defp supported_pair_request?(body) do
+    supported_pair_request?(body, OmpPack, @adapter_runtime_omp) or
+      supported_pair_request?(body, PiPack, @adapter_runtime_pi) or
+      supported_pair_request?(body, ClaudeCodePack, @adapter_runtime_claude_cli)
+  end
+
+  defp supported_pair_request?(body, pack, runtime) do
+    Map.get(body, @adapter_key_adapter_id) == pack.adapter_id() and
+      Map.get(body, @adapter_key_adapter_version) == pack.adapter_version() and
+      Map.get(body, @adapter_key_runtime) == runtime and
+      Map.get(body, @adapter_key_target) == pack.target()
+  end
+
+  defp supported_identity(identity) when is_map(identity) do
+    case {Map.get(identity, @adapter_key_adapter_id), Map.get(identity, @adapter_key_runtime),
+          Map.get(identity, @adapter_key_target)} do
+      {adapter_id, @adapter_runtime_omp, @adapter_runtime_omp} ->
+        if adapter_id == OmpPack.adapter_id(),
+          do: {:ok, [adapter_id: OmpPack.adapter_id(), runtime: @adapter_runtime_omp, target: @adapter_runtime_omp]},
+          else: {:error, :malformed}
+
+      {adapter_id, @adapter_runtime_pi, @adapter_runtime_pi} ->
+        if adapter_id == PiPack.adapter_id(),
+          do: {:ok, [adapter_id: PiPack.adapter_id(), runtime: @adapter_runtime_pi, target: @adapter_runtime_pi]},
+          else: {:error, :malformed}
+
+      {adapter_id, @adapter_runtime_claude_cli, "claude-code"} ->
+        if adapter_id == ClaudeCodePack.adapter_id(),
+          do:
+            {:ok,
+             [
+               adapter_id: ClaudeCodePack.adapter_id(),
+               runtime: @adapter_runtime_claude_cli,
+               target: ClaudeCodePack.target()
+             ]},
+          else: {:error, :malformed}
+
+      _unsupported ->
+        {:error, :malformed}
+    end
+  end
+
+  defp adapter_identity_error(conn, :expired) do
+    error(conn, 401, "adapter identity is expired", "unauthorized", "adapter_identity_expired")
+  end
+
+  defp adapter_identity_error(conn, :wrong_workspace) do
+    error(conn, 403, "adapter identity is for a different workspace", "forbidden", "adapter_identity_wrong_workspace")
+  end
+
+  defp adapter_identity_error(conn, :missing_secret) do
+    error(
+      conn,
+      503,
+      "adapter identity signing secret is not configured",
+      "server_error",
+      "adapter_identity_secret_missing"
+    )
+  end
+
+  defp adapter_identity_error(conn, _reason) do
+    error(conn, 401, "adapter identity is invalid", "unauthorized", "adapter_identity_invalid")
   end
 
   defp bearer_token("Bearer " <> token), do: WardwrightWeb.RequestContext.blank_to_nil(token)

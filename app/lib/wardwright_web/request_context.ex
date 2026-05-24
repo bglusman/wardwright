@@ -46,6 +46,9 @@ defmodule WardwrightWeb.RequestContext do
 
   def caller(conn, _metadata), do: caller(conn, %{})
 
+  def put_adapter(caller, nil), do: caller
+  def put_adapter(caller, adapter) when is_map(adapter), do: Map.put(caller, "adapter", adapter)
+
   def session_id(caller), do: get_in(caller, ["session_id", "value"])
 
   def tool_context_opts(conn), do: [trusted_metadata: trusted_tool_context_metadata?(conn)]

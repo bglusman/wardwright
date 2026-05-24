@@ -141,10 +141,11 @@ defmodule WardwrightWeb.WorkbenchTest do
              WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
 
     assert json =~ "Wardwright"
-    assert json =~ "Selected model turn simulator"
+    assert json =~ "Simulate a turn"
     assert json =~ "Model authoring"
-    assert json =~ "Policy projection"
-    assert json =~ "Fixture"
+    assert json =~ "Diagram focus"
+    assert json =~ "Example models"
+    assert json =~ "Scenario"
     assert json =~ "/admin"
     assert json =~ "/admin?view=model_access"
     assert json =~ "/admin?view=control_debugger"
@@ -173,7 +174,7 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert {:push, {:text, json}, _state} =
              WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
 
-    assert json =~ "Model Management"
+    assert json =~ "Models & access"
     assert json =~ "Access Policy"
     assert json =~ "Debug recording"
     assert json =~ "Receipt store"
@@ -197,12 +198,12 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert {:push, {:text, json}, _state} =
              WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
 
-    assert json =~ "Control debugger"
+    assert json =~ "Session replay"
     assert json =~ "Create simulator case"
     assert json =~ "Save scenario"
     assert json =~ "Receipts:"
     assert json =~ "Simulator cases:"
-    assert json =~ "VCR replay"
+    assert json =~ "Replay summary"
     assert json =~ "Explain receipt"
     assert json =~ "/admin"
     assert json =~ "/admin?view=model_access"
@@ -255,7 +256,7 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert {:push, {:text, json}, _state} =
              WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
 
-    assert json =~ "Control debugger"
+    assert json =~ "Session replay"
     assert json =~ "/admin?model=debugger-selected-model"
     assert json =~ "/admin?view=model_access&model=debugger-selected-model"
     assert json =~ "/admin?view=control_debugger&model=debugger-selected-model"
@@ -313,7 +314,7 @@ defmodule WardwrightWeb.WorkbenchTest do
   test "Lustre UI derives projection state in Gleam" do
     assert :wardwright@lustre_workbench_test_support.selecting_policy_slice_updates_heading(
              "tts-retry",
-             "Final: recording"
+             "Ends in: recording"
            )
   end
 
@@ -371,6 +372,13 @@ defmodule WardwrightWeb.WorkbenchTest do
 
     assert WardwrightWeb.LustreWorkbenchData.default_model_response("demo-composed-retry-router") =~
              "OldClient"
+
+    assert {"model-default", "Model default", "Current model policy sample", _input, _response, retry_responses} =
+             WardwrightWeb.LustreWorkbenchData.fixture_options("tts-retry", "demo-retry-guard")
+             |> Enum.find(&(elem(&1, 0) == "model-default"))
+
+    assert {2, "Still uses OldClient(arg)."} in retry_responses
+    assert {3, "Use NewClient(arg) in the migration."} in retry_responses
   end
 
   test "Lustre state graph composes across nested Wardwright model targets" do
@@ -669,7 +677,7 @@ defmodule WardwrightWeb.WorkbenchTest do
       )
 
     assert ok?
-    assert message =~ "Fixture saved"
+    assert message =~ "Scenario saved"
     assert fixture_id =~ "saved:"
 
     assert Enum.any?(
@@ -719,7 +727,7 @@ defmodule WardwrightWeb.WorkbenchTest do
   end
 
   test "control debugger exposes counterfactual fork workflow and runtime readiness" do
-    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Counterfactual fork")
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("What-if replay")
 
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("Replay, change policy, continue")
 
@@ -738,10 +746,24 @@ defmodule WardwrightWeb.WorkbenchTest do
            )
 
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("tool calls/results")
+
+    assert :wardwright@lustre_control_debugger_test_support.initial_view_contains(
+             "WARDWRIGHT_POLICY_SCENARIO_STORE_FILE"
+           )
   end
 
   test "control debugger records the default counterfactual example from the UI" do
     assert :wardwright@lustre_control_debugger_test_support.running_counterfactual_demo_shows_outcome()
+  end
+
+  test "control debugger states the exact read-before-edit violation on the selected trace event" do
+    assert :wardwright@lustre_control_debugger_test_support.read_before_edit_trace_states_exact_violation()
+  end
+
+  test "control debugger targets the matching workbench pattern for counterfactual examples" do
+    assert :wardwright@lustre_control_debugger_test_support.read_before_edit_example_targets_tool_governance_pattern()
+
+    assert :wardwright@lustre_control_debugger_test_support.output_contract_example_targets_output_pattern()
   end
 
   test "control debugger keeps fork actions attached to a loaded transcript event" do
@@ -775,6 +797,10 @@ defmodule WardwrightWeb.WorkbenchTest do
   test "control debugger prepares an agent harness handoff from a loaded trace" do
     assert :wardwright@lustre_control_debugger_test_support.harness_export_requires_loaded_trace()
     assert :wardwright@lustre_control_debugger_test_support.opencode_harness_export_shows_fidelity_warning()
+  end
+
+  test "control debugger explains adapter recording scope on the status panel" do
+    assert :wardwright@lustre_control_debugger_test_support.adapter_status_panel_explains_recording_policy()
   end
 
   test "control debugger validates editable policy overlays before forking" do

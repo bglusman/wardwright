@@ -4,14 +4,12 @@ defmodule WardwrightWeb.Router do
   use Phoenix.Router, helpers: false
 
   import Phoenix.LiveDashboard.Router
-  import Phoenix.LiveView.Router
 
   alias Hermes.Server.Transport.StreamableHTTP.Plug
 
   pipeline :browser do
     plug(:accepts, ["html"])
     plug(:fetch_session)
-    plug(:fetch_live_flash)
     plug(:put_root_layout, html: {WardwrightWeb.Layouts, :root})
     plug(:protect_from_forgery)
     plug(:put_secure_browser_headers)
@@ -34,12 +32,9 @@ defmodule WardwrightWeb.Router do
 
     get("/", LustreWorkbenchController, :show)
     get("/admin", LustreWorkbenchController, :show)
-    live("/policies", PolicyProjectionLive, :index)
+    get("/policies", LustreWorkbenchController, :redirect_legacy_policies)
+    get("/policies/*path", LustreWorkbenchController, :redirect_legacy_policies)
     get("/spikes/graph-renderer-lab", GraphRendererLabController, :show)
-    live("/policies/:pattern/:mode/recipe/:recipe/step/:step", PolicyProjectionLive, :index)
-    live("/policies/:pattern/:mode/recipe/:recipe", PolicyProjectionLive, :index)
-    live("/policies/:pattern/:mode/step/:step", PolicyProjectionLive, :index)
-    live("/policies/:pattern/:mode", PolicyProjectionLive, :index)
   end
 
   scope "/" do

@@ -381,7 +381,6 @@ defmodule WardwrightWeb.GraphRendererLabController do
             </div>
             <nav class="topbar-actions" aria-label="Workbench navigation">
               <a class="button" href="/admin">Workbench</a>
-              <a class="button" href="/policies">Legacy workbench</a>
             </nav>
           </header>
 

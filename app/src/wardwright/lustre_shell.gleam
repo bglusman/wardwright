@@ -23,20 +23,20 @@ pub fn sidebar(
     ]),
     element("nav", [class("rail-nav")], [
       rail_link(
-        "Workbench",
-        "Run and inspect registered models.",
+        "Model lab",
+        "Simulate turns and inspect behavior.",
         "/admin",
         active_page == Workbench,
       ),
       rail_link(
-        "Model management",
-        "Configure keys, access, and VCR capture.",
+        "Models & access",
+        "Configure models, provider keys, and local access.",
         "/admin?view=model_access",
         active_page == ModelAccess,
       ),
       rail_link(
-        "Control debugger",
-        "Explain receipts and save simulator cases.",
+        "Session replay",
+        "Load receipts and replay model runs.",
         "/admin?view=control_debugger",
         active_page == ControlDebugger,
       ),
@@ -61,20 +61,20 @@ pub fn admin_sidebar(
     ]),
     element("nav", [class("rail-nav")], [
       rail_admin_link(
-        "Workbench",
-        "Run and inspect registered models.",
+        "Model lab",
+        "Simulate turns and inspect behavior.",
         admin_href(Workbench, selected_model),
         active_page == Workbench,
       ),
       rail_admin_link(
-        "Model management",
-        "Configure keys, access, and VCR capture.",
+        "Models & access",
+        "Configure models, provider keys, and local access.",
         admin_href(ModelAccess, selected_model),
         active_page == ModelAccess,
       ),
       rail_admin_link(
-        "Control debugger",
-        "Explain receipts and save simulator cases.",
+        "Session replay",
+        "Load receipts and replay model runs.",
         admin_href(ControlDebugger, selected_model),
         active_page == ControlDebugger,
       ),
@@ -240,6 +240,7 @@ pub fn styles() -> String {
   }
   @media (max-width: 860px) {
     .rail {
+      position: static;
       width: 100%;
       height: auto;
       max-width: 100vw;

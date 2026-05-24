@@ -18,6 +18,8 @@ description: A governed model gateway for AI agents.
     <a class="button secondary" href="workbench.html">Policy Workbench</a>
     <a class="button secondary" href="wardwright-models.html">Model Middleware</a>
     <a class="button secondary" href="agent-authoring.html">Agent Authoring</a>
+    <a class="button secondary" href="agent-adapters.html">Agent Adapters</a>
+    <a class="button secondary" href="framework-adapters.html">Framework Adapters</a>
     <a class="button secondary" href="https://github.com/bglusman/wardwright">GitHub</a>
   </div>
 </section>
@@ -37,10 +39,10 @@ logic inside every agent.
 Today, Wardwright can run as a local or remote service, define Wardwright
 models, simulate policy behavior in the `/admin` workbench, record receipts,
 and exercise early policy examples such as routing decisions, stream governance,
-output checks, retries, and saved simulator test cases. The legacy `/policies`
-workbench is still present during the transition, but new operator workflows
-start from `/admin`. The admin surface currently supports basic auth, while
-individual models can be configured for API-key or open access.
+output checks, retries, and saved simulator test cases. Operator workflows start
+from `/admin`; old `/policies` links redirect there. The admin surface currently
+supports basic auth, while individual models can be configured for API-key or
+open access.
 
 ## Install
 
@@ -116,6 +118,10 @@ projection, and reviewed turns can be saved as reusable simulator test cases.
 See [Policy Workbench](workbench.html) for screenshots and examples. External
 agents can use `wardwright tools`, `/mcp`, and the protected authoring APIs; see
 [Agent Authoring](agent-authoring.html) for the review workflow.
+Adapter install and validation commands are covered in
+[Agent Adapters](agent-adapters.html).
+SDK and application-framework recipes are tracked separately in
+[Framework Adapters](framework-adapters.html).
 
 ## Provider Credentials
 

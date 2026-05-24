@@ -21,6 +21,39 @@ leave the same review trail:
 4. adversarial implementation and design review
 5. test evidence
 
+## Ralph Loop Acceptance Criteria
+
+A Ralph debugging loop is not complete merely because one operator can click
+through the UI. The same debugging capability must be available through three
+operator surfaces:
+
+- the visual Control Debugger UI
+- MCP tools for an assisting agent
+- CLI or CLI-discoverable HTTP/API instructions for scriptable operation
+
+Each surface should be usable by a future agent or operator with no private
+project context. It may point to a dedicated help command, docs URL, or example
+catalog instead of embedding every example inline, but the surface itself must
+explain what to run next and where to get complete guidance.
+
+For a Ralph run to count as accepted, the evidence should show:
+
+- UI proof: screenshots of the investigation, replay or fork controls, final
+  result, and any confusing UI state that drove a change.
+- MCP proof: tool-discoverable names, argument shapes, and safety notes for the
+  same investigation path, or a clearly filed follow-up when a control is
+  missing.
+- CLI proof: `wardwright tools` or another documented command gives enough
+  context for an agent starting from a shell to discover the same debugging
+  workflow without reading the repository.
+- Cross-check proof: final scenario, trace, replay result, and saved evidence
+  agree across the UI and non-UI surfaces.
+
+The surfaces do not need identical interaction design. They do need to share the
+same backend capability model so that the UI cannot become a polished demo while
+MCP and CLI remain incomplete, and so that agent-assisted debugging does not
+gain invisible powers that a human operator cannot review.
+
 ## Track 1: Streaming Tool Calls
 
 ### Plan
@@ -338,6 +371,69 @@ Full app validation also passed after integration:
 (cd app && mise exec --command 'mix test --no-deps-check')
 ```
 
+## Track 6: Agent-Operable Control Debugger
+
+### Plan
+
+The Control Debugger loop should be usable by an assisting agent without
+scraping the UI. The first MCP/API parity slice should expose the same
+read-before-edit family the UI already proves: list built-in examples, record a
+scripted example, load trace events by receipt or session id, replay to a
+cursor without a provider call, fork from a cursor with deterministic scripted
+continuation, and save selected trace evidence as a simulator case.
+
+### Adversarial Plan Review
+
+The risk is creating an agent-only control path that does not match the UI, or
+claiming more safety than the trace evidence supports. Write-capable tools must
+say what they write. Replay must remain provider-free. Fork/continue should use
+the deterministic scripted runner unless a separate live-provider proof is
+explicitly requested.
+
+### Implementation Notes
+
+`WardwrightWeb.ControlDebuggerTools` now wraps the existing Control Debugger
+backend operations in structured payloads. Protected HTTP endpoints live under
+`/v1/policy-authoring/control-debugger/...`, and Hermes MCP tools expose the
+same controls:
+
+- `list_control_debugger_examples`
+- `record_control_debugger_example`
+- `load_control_debugger_trace`
+- `replay_control_debugger_cursor`
+- `fork_control_debugger_cursor`
+- `save_control_debugger_evidence`
+
+`wardwright tools` and `wardwright tools --json` advertise the new API controls
+with method, path, when-to-use guidance, and safety notes. Read-only MCP tools
+are annotated read-only; recording, forking, and saving are intentionally
+write-capable. The MCP fork tool uses deterministic scripted continuation and
+reports `provider_called=false`.
+
+### Adversarial Implementation And Design Review
+
+The slice deliberately avoids live model continuation over MCP. That keeps the
+agent-operable path deterministic and prevents an MCP caller from accidentally
+turning a replay proof into a provider call. The evidence-save API stores the
+selected trace prefix as a pinned simulator case; it preserves cursor/session
+metadata but does not pretend that the simulator case is the policy source of
+truth.
+
+### Test Evidence
+
+Focused coverage:
+
+```text
+cd app && MIX_ENV=test mise exec -- mix test --no-deps-check test/mcp_authoring_test.exs
+cd app && MIX_ENV=test mise exec -- mix test --no-deps-check test/public_api_test.exs
+cd app && MIX_ENV=test mise exec -- mix test --no-deps-check test/cli_test.exs
+cd app && MIX_ENV=test mise exec -- mix test --no-deps-check test/workbench_test.exs
+```
+
+The MCP and HTTP tests run the read-before-edit loop through non-UI controls and
+assert agreement on receipt id, trace cursor, provider-free replay, accepted
+deterministic fork, applied rule id, and saved `tool-governance` scenario.
+
 ## Manual Experiments
 
 ### Browser-Controlled Debugger
@@ -415,6 +511,26 @@ policy too brittle. Public examples should teach policy authors to allow
 OpenAI-compatible declared tools by their normalized `openai.function` names,
 or to add an adapter that maps a client-specific namespace before policy
 evaluation.
+
+OpenCode trace export remains a best-effort handoff until a separate
+state-fidelity trial proves native replay equivalence. Adapter payloads expose
+`resume_claim_status: unverified_best_effort_handoff` and a
+`state_fidelity_verification` checklist plus a `state_fidelity_probe` object.
+The probe contains a trace fingerprint and tool-result fingerprints that an
+agent can compare after importing the saved artifact and resuming or forking
+through native OpenCode controls. A passing trial must show that the native
+harness exposes the same trace fingerprint, preserves every tool-result
+fingerprint, and can identify the read-before-edit cursor before any
+write-class action in the forked continuation.
+
+The comparison step is also available as the
+`verify_harness_state_fidelity` MCP tool and protected
+`POST /v1/policy-authoring/harness-adapters/state-fidelity/verify` endpoint.
+Call it with the exported `state_fidelity_probe` plus observed imported-harness
+state containing `trace_fingerprint`, either `tool_result_fingerprints` or raw
+`events`, and `read_before_edit_cursor_identified: true`. A passing result means
+the probe evidence matched; it still leaves `equivalent_agent_resume` false
+until a broader live harness trial proves hidden state and workspace fidelity.
 
 ### Discussion-Derived Follow-Ups
 

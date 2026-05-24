@@ -11,10 +11,20 @@ defmodule Wardwright.MCPAuthoringTest do
   alias WardwrightWeb.MCP.Tools.DraftWardwrightModel
   alias WardwrightWeb.MCP.Tools.EvaluateDuneSnippet
   alias WardwrightWeb.MCP.Tools.ExplainProjection
+  alias WardwrightWeb.MCP.Tools.ExportAgentHarnessTrace
+  alias WardwrightWeb.MCP.Tools.ForkControlDebuggerCursor
+  alias WardwrightWeb.MCP.Tools.ListControlDebuggerExamples
   alias WardwrightWeb.MCP.Tools.ListDuneSnippets
+  alias WardwrightWeb.MCP.Tools.ListHarnessAdapters
+  alias WardwrightWeb.MCP.Tools.LoadControlDebuggerTrace
   alias WardwrightWeb.MCP.Tools.ProposeRuleChange
+  alias WardwrightWeb.MCP.Tools.RecordControlDebuggerExample
+  alias WardwrightWeb.MCP.Tools.ReplayControlDebuggerCursor
+  alias WardwrightWeb.MCP.Tools.ReplayReceiptPolicy
+  alias WardwrightWeb.MCP.Tools.SaveControlDebuggerEvidence
   alias WardwrightWeb.MCP.Tools.SaveDuneSnippet
   alias WardwrightWeb.MCP.Tools.ValidatePolicyArtifact
+  alias WardwrightWeb.MCP.Tools.VerifyHarnessStateFidelity
 
   @endpoint WardwrightWeb.Endpoint
 
@@ -57,12 +67,156 @@ defmodule Wardwright.MCPAuthoringTest do
              "draft_wardwright_model",
              "evaluate_dune_snippet",
              "explain_projection",
+             "export_agent_harness_trace",
+             "fork_control_debugger_cursor",
+             "list_control_debugger_examples",
              "list_dune_snippets",
+             "list_harness_adapters",
+             "load_control_debugger_trace",
              "propose_rule_change",
+             "record_control_debugger_example",
+             "replay_control_debugger_cursor",
+             "replay_receipt_policy",
+             "save_control_debugger_evidence",
              "save_dune_snippet",
              "simulate_policy",
-             "validate_policy_artifact"
+             "validate_policy_artifact",
+             "verify_harness_state_fidelity"
            ]
+  end
+
+  test "control debugger MCP tools run the read-before-edit loop without UI scraping" do
+    assert {:reply, %Response{} = list_response, %Frame{}} =
+             ListControlDebuggerExamples.execute(%{}, Frame.new())
+
+    assert Enum.any?(list_response.structured_content["data"], &(&1["id"] == "read-before-edit"))
+
+    assert {:reply, %Response{} = record_response, %Frame{}} =
+             RecordControlDebuggerExample.execute(%{"example_id" => "read-before-edit"}, Frame.new())
+
+    receipt_id = record_response.structured_content["receipt_id"]
+    assert receipt_id =~ "rcpt_"
+
+    session_id = get_in(record_response.structured_content, ["facts", "Original session"])
+    cursor = get_in(record_response.structured_content, ["facts", "Fork cursor"])
+    assert session_id =~ "session_"
+    assert cursor =~ "#{session_id}:"
+
+    assert {:reply, %Response{} = load_response, %Frame{}} =
+             LoadControlDebuggerTrace.execute(%{"receipt_id" => receipt_id}, Frame.new())
+
+    assert load_response.structured_content["session_id"] == session_id
+    assert load_response.structured_content["suggested_fork_cursor"] == cursor
+    assert Enum.any?(load_response.structured_content["events"], &(&1["cursor"] == cursor))
+
+    assert {:reply, %Response{} = replay_response, %Frame{}} =
+             ReplayControlDebuggerCursor.execute(
+               %{"session_id" => session_id, "trace_cursor" => cursor},
+               Frame.new()
+             )
+
+    assert replay_response.structured_content["provider_called"] == false
+    assert get_in(replay_response.structured_content, ["facts", "Provider called"]) == "no"
+
+    assert {:reply, %Response{} = fork_response, %Frame{}} =
+             ForkControlDebuggerCursor.execute(
+               %{
+                 "policy_overlay" => %{"id" => "mcp-read-before-edit", "requires_prior_read_for" => ["edit_file"]},
+                 "session_id" => session_id,
+                 "trace_cursor" => cursor
+               },
+               Frame.new()
+             )
+
+    assert fork_response.structured_content["provider_called"] == false
+    assert get_in(fork_response.structured_content, ["facts", "Comparison accepted"]) == "yes"
+    assert get_in(fork_response.structured_content, ["facts", "Applied rules"]) == "mcp-read-before-edit"
+
+    assert {:reply, %Response{} = save_response, %Frame{}} =
+             SaveControlDebuggerEvidence.execute(
+               %{
+                 "pattern_id" => "tool-governance",
+                 "session_id" => session_id,
+                 "title" => "MCP read-before-edit trace evidence",
+                 "trace_cursor" => cursor
+               },
+               Frame.new()
+             )
+
+    assert save_response.structured_content["pattern_id"] == "tool-governance"
+    assert get_in(save_response.structured_content, ["scenario", "source"]) == "live_replay"
+    assert get_in(save_response.structured_content, ["scenario", "receipt_preview", "trace_cursor"]) == cursor
+  end
+
+  test "agent harness MCP tools expose fidelity limits and export trace evidence" do
+    session_id = recorded_session_id!()
+
+    assert {:reply, %Response{} = list_response, %Frame{}} =
+             ListHarnessAdapters.execute(%{}, Frame.new())
+
+    opencode =
+      Enum.find(list_response.structured_content["data"], &(&1["id"] == "opencode"))
+
+    assert opencode["fidelity"] == "session_import_best_effort"
+    assert opencode["equivalent_agent_resume"] == false
+    assert opencode["resume_claim_status"] == "unverified_best_effort_handoff"
+    assert get_in(opencode, ["state_fidelity_verification", "required"]) == true
+
+    assert {:reply, %Response{} = export_response, %Frame{}} =
+             ExportAgentHarnessTrace.execute(
+               %{"adapter_id" => "opencode", "session_id" => session_id},
+               Frame.new()
+             )
+
+    assert get_in(export_response.structured_content, ["export", "artifact_format"]) == "opencode_session_json"
+    assert get_in(export_response.structured_content, ["export", "adapter", "equivalent_agent_resume"]) == false
+
+    assert get_in(export_response.structured_content, ["export", "adapter", "resume_claim_status"]) ==
+             "unverified_best_effort_handoff"
+
+    assert get_in(export_response.structured_content, [
+             "export",
+             "adapter",
+             "state_fidelity_verification",
+             "required"
+           ]) == true
+
+    assert get_in(export_response.structured_content, ["export", "state_fidelity_probe", "schema"]) ==
+             "wardwright.harness_state_fidelity_probe.v0"
+
+    assert get_in(export_response.structured_content, ["export", "state_fidelity_probe", "tool_result_count"]) > 0
+    assert hd(get_in(export_response.structured_content, ["export", "commands"])) =~ "opencode import"
+
+    probe = get_in(export_response.structured_content, ["export", "state_fidelity_probe"])
+
+    assert {:reply, %Response{} = verification_response, %Frame{}} =
+             VerifyHarnessStateFidelity.execute(
+               %{
+                 "observed" => %{
+                   "read_before_edit_cursor_identified" => true,
+                   "tool_result_fingerprints" => probe["tool_result_fingerprints"],
+                   "trace_fingerprint" => probe["trace_fingerprint"]
+                 },
+                 "probe" => probe
+               },
+               Frame.new()
+             )
+
+    assert get_in(verification_response.structured_content, ["verification", "passed"]) == true
+
+    assert get_in(verification_response.structured_content, [
+             "verification",
+             "equivalent_agent_resume_claim_allowed"
+           ]) == false
+  end
+
+  test "receipt replay MCP tool fails closed for unknown receipts" do
+    assert {:error, error, %Frame{}} =
+             ReplayReceiptPolicy.execute(%{"receipt_id" => "rcpt_missing"}, Frame.new())
+
+    assert error.reason == :execution_error
+    assert error.message == "receipt not found"
+    assert error.data == %{receipt_id: "rcpt_missing"}
   end
 
   test "projection tool returns deterministic projection payloads" do
@@ -296,11 +450,21 @@ defmodule Wardwright.MCPAuthoringTest do
              "draft_wardwright_model",
              "evaluate_dune_snippet",
              "explain_projection",
+             "export_agent_harness_trace",
+             "fork_control_debugger_cursor",
+             "list_control_debugger_examples",
              "list_dune_snippets",
+             "list_harness_adapters",
+             "load_control_debugger_trace",
              "propose_rule_change",
+             "record_control_debugger_example",
+             "replay_control_debugger_cursor",
+             "replay_receipt_policy",
+             "save_control_debugger_evidence",
              "save_dune_snippet",
              "simulate_policy",
-             "validate_policy_artifact"
+             "validate_policy_artifact",
+             "verify_harness_state_fidelity"
            ]
   end
 
@@ -333,5 +497,22 @@ defmodule Wardwright.MCPAuthoringTest do
 
   defp temp_workspace_dir(prefix) do
     Path.join(System.tmp_dir!(), "#{prefix}-#{System.unique_integer([:positive])}")
+  end
+
+  defp recorded_session_id! do
+    scenario = %{
+      "contract_version" => :wardwright@counterfactual_contract.api_contract_version(),
+      "debugger_example_id" => "read-before-edit",
+      "expected" => %{"failure_class" => "read_before_edit_violation"},
+      "model_id" => "counterfactual-mcp-test",
+      "task" => "Enable the feature flag from settings.json.",
+      "workspace" => %{
+        "app.txt" => "feature_enabled=false",
+        "settings.json" => ~s({"feature_enabled":false})
+      }
+    }
+
+    assert {:ok, outcome} = WardwrightWeb.CounterfactualReplay.run_recorded_session(scenario)
+    outcome["session_id"]
   end
 end

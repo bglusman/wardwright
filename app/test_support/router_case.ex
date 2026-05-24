@@ -248,11 +248,21 @@ defmodule Wardwright.RouterCase do
   end
 
   setup do
+    previous_transcript_store_dir = Application.get_env(:wardwright, :counterfactual_transcript_store_dir)
+    transcript_store_dir = Path.join(System.tmp_dir!(), "wardwright-router-case-#{System.unique_integer([:positive])}")
+
+    Application.put_env(:wardwright, :counterfactual_transcript_store_dir, transcript_store_dir)
     Wardwright.reset_config()
     Wardwright.ReceiptStore.clear()
     Wardwright.ModelApiKeyStore.reset!()
     Wardwright.PolicyScenarioStore.clear()
     Wardwright.PolicyCache.reset()
+
+    on_exit(fn ->
+      File.rm_rf(transcript_store_dir)
+      restore_env(:counterfactual_transcript_store_dir, previous_transcript_store_dir)
+    end)
+
     :ok
   end
 
@@ -277,6 +287,14 @@ defmodule Wardwright.RouterCase do
     port = :ranch.get_port(ref)
     on_exit(fn -> Plug.Cowboy.shutdown(ref) end)
     "http://127.0.0.1:#{port}#{prefix}"
+  end
+
+  def wardwright_router_base_url do
+    ref = :"wardwright_router_#{System.unique_integer([:positive])}"
+    {:ok, _pid} = Plug.Cowboy.http(Wardwright.Router, [], ref: ref, port: 0)
+    port = :ranch.get_port(ref)
+    on_exit(fn -> Plug.Cowboy.shutdown(ref) end)
+    "http://127.0.0.1:#{port}"
   end
 
   def unit_policy_config do
@@ -359,4 +377,7 @@ defmodule Wardwright.RouterCase do
       "simulation" => status == "simulated"
     }
   end
+
+  defp restore_env(key, nil), do: Application.delete_env(:wardwright, key)
+  defp restore_env(key, value), do: Application.put_env(:wardwright, key, value)
 end

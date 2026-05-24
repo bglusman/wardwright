@@ -8,12 +8,12 @@ description: Release, native binary, and Homebrew packaging plan for Wardwright.
 
 Status: initial Burrito/Tinfoil packaging path in place. Release `v0.0.10` is
 the latest published usable early release, with the stronger model-aware
-workbench, saved simulator test cases, and a legacy experimental in-page
-authoring assistant.
+workbench, saved simulator test cases, and an experimental in-page authoring
+assistant.
 
-Wardwright is a BEAM application with a Phoenix operator UI, a legacy LiveView
-fallback page, and Gleam decision cores. The packaging goal is a user-facing
-binary that does not require Erlang, Elixir, or Gleam on the target machine.
+Wardwright is a BEAM application with a Phoenix/Lustre operator UI and Gleam
+decision cores. The packaging goal is a user-facing binary that does not require
+Erlang, Elixir, or Gleam on the target machine.
 
 ## Chosen Path
 
@@ -138,7 +138,7 @@ wardwright tools --json
 
 `wardwright admin` opens the operator workbench in the default browser. If the
 configured bind port is not responding, it starts `wardwright serve` in the
-background first. `wardwright admin access` opens Model Management
+background first. `wardwright admin access` opens Models & access
 directly. Homebrew users can still run Wardwright as a service with
 `brew services start wardwright`; the admin helper just removes the need to
 remember the local URL.
@@ -167,8 +167,8 @@ local model/provider selection that was only present in one shell session.
 `WARDWRIGHT_ADMIN_TOKEN` remains optional for loopback-only use. For browser
 access to the operator workbench and protected control APIs beyond loopback, set
 `BASIC_AUTH_PASSWORD`; the Basic Auth username is always `admin`. This protects
-operator surfaces such as `/admin`, `/policies`, `/mcp`, `/admin/*`,
-receipts, and policy-authoring and simulation APIs. OpenAI-compatible model
+operator surfaces such as `/admin`, `/mcp`, `/admin/*`, receipts, and
+policy-authoring and simulation APIs. OpenAI-compatible model
 endpoints remain governed by model access configuration. Generated model API
 keys and the active model definition are stored in the SQLite database at
 `~/.local/share/wardwright/wardwright.sqlite3` unless `XDG_DATA_HOME` or

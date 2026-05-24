@@ -20,10 +20,9 @@ Today, Wardwright can run as a local or remote service, expose
 OpenAI-compatible endpoints, define Wardwright models, simulate policy behavior
 in the `/admin` workbench, record receipts, and exercise early policy examples
 such as routing decisions, stream governance, output checks, retries, and saved
-simulator test cases. The legacy `/policies` workbench is still present during
-the transition, but new operator workflows start from `/admin`. The admin
-surface currently supports basic auth, while individual models can be configured
-for API-key or open access.
+simulator test cases. Operator workflows start from `/admin`; old `/policies`
+links redirect there. The admin surface currently supports basic auth, while
+individual models can be configured for API-key or open access.
 
 ## Install
 
@@ -69,10 +68,10 @@ steps, and service details.
 
 Then visit `http://127.0.0.1:8787/admin`. Set `BASIC_AUTH_PASSWORD` before
 exposing the workbench or protected control APIs beyond loopback; the Basic Auth
-username is always `admin`. Model calls remain governed separately by Model
-Management.
+username is always `admin`. Model calls remain governed separately by Models &
+access.
 
-## Model Management
+## Models & Access
 
 Wardwright models are unkeyed by default. Operators can set a model to require a
 model-scoped API key, or set unkeyed models to internal-only composition:
@@ -89,7 +88,7 @@ or revoke keys for that model. Raw keys are shown once; Wardwright
 stores only a hash in the SQLite store at
 `~/.local/share/wardwright/wardwright.sqlite3` unless `XDG_DATA_HOME` or
 `WARDWRIGHT_SQLITE_STORE` points somewhere else. The same store persists
-registered model definitions. Model Management can archive a model so it no
+registered model definitions. Models & access can archive a model so it no
 longer appears in discovery or routing, restore it from the SQLite registry, or
 hard-delete the archived artifact when it should stop being recoverable.
 Keep `WARDWRIGHT_SECRET_KEY_BASE` stable, or set
@@ -125,10 +124,12 @@ Wardwright exposes:
 
 See [Agent Authoring](docs/agent-authoring.md) for the review loop external
 agents should follow before activating a model.
+Release-candidate adapter install, doctor, pair, probe, privacy, cleanup, and
+fallback behavior is documented in [Agent Adapters](docs/agent-adapters.md).
 
 `wardwright admin` opens the workbench in your browser. If nothing is listening
 on the configured `WARDWRIGHT_BIND` port, it starts a local background service
-first. Use `wardwright admin access` to jump directly to Model Management.
+first. Use `wardwright admin access` to jump directly to Models & access.
 
 ## Provider Credentials
 
@@ -149,8 +150,9 @@ The installed service includes a registered-model workbench at `/admin`. It
 lets you choose the Wardwright model being simulated, load a fixture, edit caller
 input, backend model output, and retry attempts, then step through routing,
 state transitions, stream retries, rewrites, tool decisions, and receipt events.
-The older `/policies` workbench remains in the service during the transition,
-but new operator workflows should start from `/admin`.
+The workbench also includes an example model library for toy routing,
+composition, retry, and rewrite policies. Old `/policies` links redirect to
+`/admin`.
 
 ![Wardwright registered-model workbench showing a retry fixture](docs/assets/workbench/registered-model-workbench.png)
 

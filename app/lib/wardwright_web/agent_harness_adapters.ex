@@ -7,12 +7,26 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
   run behave the way it did.
   """
 
+  alias Wardwright.AgentAdapters.OmpPack
+
   @contract_version "wardwright.harness_adapter.v0"
   @opencode_version "1.15.4"
+  @pi_package "@earendil-works/pi-coding-agent@0.75.5"
+  @omp_extension_file "wardwright-state-fidelity.ts"
+  @omp_rule_file "wardwright-read-before-edit.md"
 
   def list do
     [
       adapter("opencode", "OpenCode", installed?("opencode"), %{
+        "model_context_replay" => true,
+        "native_session_fork" => true,
+        "native_session_import" => true,
+        "native_session_resume" => true,
+        "native_tool_results" => false,
+        "private_agent_state" => false,
+        "workspace_snapshot" => false
+      }),
+      adapter("opencode-plugin", "OpenCode plugin spike", installed?("opencode"), %{
         "model_context_replay" => true,
         "native_session_fork" => true,
         "native_session_import" => true,
@@ -39,12 +53,21 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
         "private_agent_state" => false,
         "workspace_snapshot" => false
       }),
-      adapter("pi", "Pi / oh-my-pi", installed?("pi") or installed?("oh-my-pi"), %{
+      adapter("pi", "Pi", installed?("pi"), %{
         "model_context_replay" => true,
-        "native_session_fork" => false,
-        "native_session_import" => false,
-        "native_session_resume" => false,
-        "native_tool_results" => false,
+        "native_session_fork" => true,
+        "native_session_import" => true,
+        "native_session_resume" => true,
+        "native_tool_results" => true,
+        "private_agent_state" => false,
+        "workspace_snapshot" => false
+      }),
+      adapter("oh-my-pi", "oh-my-pi / omp", installed?("omp") or installed?("oh-my-pi"), %{
+        "model_context_replay" => true,
+        "native_session_fork" => true,
+        "native_session_import" => true,
+        "native_session_resume" => true,
+        "native_tool_results" => true,
         "private_agent_state" => false,
         "workspace_snapshot" => false
       })
@@ -64,10 +87,23 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
          {:ok, transcript} <- WardwrightWeb.CounterfactualReplay.transcript(session_id),
          events when is_list(events) and events != [] <- transcript["events"] do
       case adapter_id do
-        "opencode" -> {:ok, opencode_export(session_id, transcript, events, adapter, opts)}
-        "claude" -> {:ok, handoff_export(session_id, transcript, events, adapter, opts)}
-        "codex" -> {:ok, handoff_export(session_id, transcript, events, adapter, opts)}
-        "pi" -> {:ok, handoff_export(session_id, transcript, events, adapter, opts)}
+        "opencode" ->
+          {:ok, opencode_export(session_id, transcript, events, adapter, opts)}
+
+        "opencode-plugin" ->
+          {:ok, opencode_plugin_export(session_id, transcript, events, adapter, opts)}
+
+        "claude" ->
+          {:ok, handoff_export(session_id, transcript, events, adapter, opts)}
+
+        "codex" ->
+          {:ok, handoff_export(session_id, transcript, events, adapter, opts)}
+
+        "pi" ->
+          {:ok, pi_session_export(session_id, transcript, events, adapter, opts)}
+
+        "oh-my-pi" ->
+          {:ok, oh_my_pi_export(session_id, transcript, events, adapter, opts)}
       end
     else
       {:adapter, _} -> {:error, "unknown agent harness adapter #{inspect(adapter_id)}"}
@@ -94,6 +130,86 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
 
   def write_export(_session_id, _adapter_id, _opts), do: {:error, "session_id and adapter_id are required"}
 
+  def verify_state_fidelity(probe, observed) when is_map(probe) and is_map(observed) do
+    observed_fingerprints = observed_tool_result_fingerprints(observed)
+    expected_fingerprints = probe["tool_result_fingerprints"] || []
+    missing = fingerprint_difference(expected_fingerprints, observed_fingerprints)
+    unexpected = fingerprint_difference(observed_fingerprints, expected_fingerprints)
+    expected_trace_fingerprint = probe["trace_fingerprint"]
+    observed_trace_fingerprint = observed["trace_fingerprint"]
+    trace_matches = trace_fingerprint_matches?(expected_trace_fingerprint, observed_trace_fingerprint)
+    tool_results_match = missing == [] and unexpected == []
+    read_before_edit_cursor_identified = observed["read_before_edit_cursor_identified"] == true
+    passed = trace_matches and tool_results_match and read_before_edit_cursor_identified
+
+    %{
+      "adapter_id" => probe["adapter_id"] || observed["adapter_id"],
+      "checks" =>
+        state_fidelity_checks(%{
+          expected_fingerprints: expected_fingerprints,
+          expected_trace_fingerprint: expected_trace_fingerprint,
+          missing: missing,
+          observed_fingerprints: observed_fingerprints,
+          observed_trace_fingerprint: observed_trace_fingerprint,
+          read_before_edit_cursor_identified: read_before_edit_cursor_identified,
+          tool_results_match: tool_results_match,
+          trace_matches: trace_matches,
+          unexpected: unexpected
+        }),
+      "equivalent_agent_resume_claim_allowed" => false,
+      "passed" => passed,
+      "probe_schema" => probe["schema"],
+      "schema" => "wardwright.harness_state_fidelity_verification.v0",
+      "session_id" => probe["session_id"],
+      "status" => if(passed, do: "probe_matched", else: "probe_mismatch")
+    }
+  end
+
+  def verify_state_fidelity(_probe, _observed), do: {:error, "probe and observed must be JSON objects"}
+
+  defp observed_tool_result_fingerprints(%{"tool_result_fingerprints" => fingerprints}) when is_list(fingerprints),
+    do: fingerprints
+
+  defp observed_tool_result_fingerprints(%{"events" => events}) when is_list(events) do
+    events
+    |> Enum.filter(&tool_result_event?/1)
+    |> Enum.map(fn event ->
+      %{
+        "cursor" => event["cursor"] || "",
+        "fingerprint" => stable_fingerprint(event["tool"] || event),
+        "tool_name" => get_in(event, ["tool", "name"]) || "unknown"
+      }
+    end)
+  end
+
+  defp observed_tool_result_fingerprints(_observed), do: []
+
+  defp trace_fingerprint_matches?(expected, observed), do: is_binary(expected) and expected == observed
+
+  defp state_fidelity_checks(fields) do
+    [
+      %{
+        "expected" => fields.expected_trace_fingerprint,
+        "name" => "trace_fingerprint",
+        "observed" => fields.observed_trace_fingerprint,
+        "passed" => fields.trace_matches
+      },
+      %{
+        "expected_count" => length(fields.expected_fingerprints),
+        "missing" => fields.missing,
+        "name" => "tool_result_fingerprints",
+        "observed_count" => length(fields.observed_fingerprints),
+        "passed" => fields.tool_results_match,
+        "unexpected" => fields.unexpected
+      },
+      %{
+        "name" => "read_before_edit_cursor_identified",
+        "observed" => fields.read_before_edit_cursor_identified,
+        "passed" => fields.read_before_edit_cursor_identified
+      }
+    ]
+  end
+
   defp adapter(id, label, installed, capabilities) do
     native_session_import = capabilities["native_session_import"] == true
     native_session_fork = capabilities["native_session_fork"] == true
@@ -102,17 +218,28 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
     workspace_snapshot = capabilities["workspace_snapshot"] == true
     private_agent_state = capabilities["private_agent_state"] == true
 
+    equivalent_agent_resume =
+      :wardwright@harness_adapter.can_claim_equivalent_agent_resume(
+        native_session_import,
+        native_session_resume,
+        native_tool_results,
+        workspace_snapshot,
+        private_agent_state
+      )
+
+    missing_fidelity =
+      :wardwright@harness_adapter.missing_fidelity(
+        native_session_import,
+        native_session_fork,
+        native_tool_results,
+        workspace_snapshot,
+        private_agent_state
+      )
+
     %{
       "capabilities" => capabilities,
       "contract_version" => @contract_version,
-      "equivalent_agent_resume" =>
-        :wardwright@harness_adapter.can_claim_equivalent_agent_resume(
-          native_session_import,
-          native_session_resume,
-          native_tool_results,
-          workspace_snapshot,
-          private_agent_state
-        ),
+      "equivalent_agent_resume" => equivalent_agent_resume,
       "fidelity" =>
         :wardwright@harness_adapter.fidelity_label(
           native_session_import,
@@ -124,14 +251,9 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
       "id" => id,
       "installed" => installed,
       "label" => label,
-      "missing_fidelity" =>
-        :wardwright@harness_adapter.missing_fidelity(
-          native_session_import,
-          native_session_fork,
-          native_tool_results,
-          workspace_snapshot,
-          private_agent_state
-        ),
+      "missing_fidelity" => missing_fidelity,
+      "resume_claim_status" => :wardwright@harness_adapter.resume_claim_status(equivalent_agent_resume),
+      "state_fidelity_verification" => state_fidelity_verification(equivalent_agent_resume, missing_fidelity),
       "status" => :wardwright@harness_adapter.adapter_status(installed, native_session_import)
     }
   end
@@ -155,12 +277,25 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
         "summary" => %{"additions" => 0, "deletions" => 0, "files" => 0},
         "time" => %{"created" => now, "updated" => now},
         "title" => title,
-        "tokens" => %{"cache" => %{"read" => 0, "write" => 0}, "input" => 0, "output" => 0, "reasoning" => 0},
+        "tokens" => %{
+          "cache" => %{"read" => 0, "write" => 0},
+          "input" => 0,
+          "output" => 0,
+          "reasoning" => 0
+        },
         "version" => @opencode_version
       },
       "messages" => [
         opencode_user_message(export_id, user_message_id, session_id, transcript, events, now),
-        opencode_assistant_message(export_id, assistant_message_id, user_message_id, session_id, events, now, cwd)
+        opencode_assistant_message(
+          export_id,
+          assistant_message_id,
+          user_message_id,
+          session_id,
+          events,
+          now,
+          cwd
+        )
       ]
     }
 
@@ -174,6 +309,7 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
       ],
       "fidelity_notice" => fidelity_notice(adapter),
       "session_id" => session_id,
+      "state_fidelity_probe" => state_fidelity_probe(session_id, adapter, events),
       "warnings" => adapter_warnings(adapter)
     }
   end
@@ -219,7 +355,12 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
         "role" => "assistant",
         "sessionID" => export_id,
         "time" => %{"completed" => now, "created" => now},
-        "tokens" => %{"cache" => %{"read" => 0, "write" => 0}, "input" => 0, "output" => 0, "reasoning" => 0}
+        "tokens" => %{
+          "cache" => %{"read" => 0, "write" => 0},
+          "input" => 0,
+          "output" => 0,
+          "reasoning" => 0
+        }
       },
       "parts" => [
         %{
@@ -228,14 +369,24 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
           "sessionID" => export_id,
           "type" => "step-start"
         },
-        text_part(export_id, message_id, opencode_id("prt", session_id, 3), trace_markdown(events)),
+        text_part(
+          export_id,
+          message_id,
+          opencode_id("prt", session_id, 3),
+          trace_markdown(events)
+        ),
         %{
           "cost" => 0,
           "id" => opencode_id("prt", session_id, 4),
           "messageID" => message_id,
           "reason" => "stop",
           "sessionID" => export_id,
-          "tokens" => %{"cache" => %{"read" => 0, "write" => 0}, "input" => 0, "output" => 0, "reasoning" => 0},
+          "tokens" => %{
+            "cache" => %{"read" => 0, "write" => 0},
+            "input" => 0,
+            "output" => 0,
+            "reasoning" => 0
+          },
           "type" => "step-finish"
         }
       ]
@@ -269,8 +420,83 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
       "commands" => handoff_commands(adapter["id"], cwd),
       "fidelity_notice" => fidelity_notice(adapter),
       "session_id" => session_id,
+      "state_fidelity_probe" => state_fidelity_probe(session_id, adapter, events),
       "warnings" => adapter_warnings(adapter)
     }
+  end
+
+  defp pi_session_export(session_id, transcript, events, adapter, opts) do
+    cwd = opts["cwd"] || System.get_env("PWD") || File.cwd!()
+    title = opts["title"] || "Wardwright trace #{session_id}"
+    file_name = pi_file_name(session_id)
+
+    artifact = %{
+      "content" => pi_session_jsonl(session_id, transcript, events, cwd, title),
+      "file_name" => file_name,
+      "session_id" => pi_session_id(session_id)
+    }
+
+    %{
+      "adapter" => adapter,
+      "artifact" => artifact,
+      "artifact_format" => "pi_session_jsonl",
+      "commands" => pi_session_commands(file_name),
+      "fidelity_notice" => fidelity_notice(adapter),
+      "session_id" => session_id,
+      "state_fidelity_probe" => state_fidelity_probe(session_id, adapter, events),
+      "warnings" => adapter_warnings(adapter)
+    }
+  end
+
+  defp oh_my_pi_export(session_id, transcript, events, adapter, opts) do
+    cwd = opts["cwd"] || System.get_env("PWD") || File.cwd!()
+    title = opts["title"] || "Wardwright trace #{session_id}"
+    session_file = pi_file_name(session_id)
+    rule_file = @omp_rule_file
+    extension_file = @omp_extension_file
+
+    files = [
+      %{
+        "content" => pi_session_jsonl(session_id, transcript, events, cwd, title),
+        "path" => session_file
+      },
+      %{"content" => oh_my_pi_ttsr_rule(), "path" => rule_file},
+      %{"content" => pi_state_fidelity_extension(), "path" => extension_file}
+    ]
+
+    %{
+      "adapter" => adapter,
+      "artifact" => %{"files" => files, "session_file" => session_file},
+      "artifact_format" => "oh_my_pi_replay_bundle",
+      "commands" => [
+        omp_install_command(rule_file, extension_file)
+        | omp_session_commands(session_file)
+      ],
+      "fidelity_notice" => fidelity_notice(adapter),
+      "session_id" => session_id,
+      "state_fidelity_probe" => state_fidelity_probe(session_id, adapter, events),
+      "warnings" => adapter_warnings(adapter)
+    }
+  end
+
+  defp opencode_plugin_export(session_id, transcript, events, adapter, opts) do
+    opencode = opencode_export(session_id, transcript, events, adapter, opts)
+    session_file = opencode_file_name(session_id)
+    plugin_file = "wardwright-state-fidelity.ts"
+
+    files = [
+      %{"content" => JSON.encode!(opencode["artifact"]), "path" => session_file},
+      %{"content" => opencode_state_fidelity_plugin(), "path" => plugin_file}
+    ]
+
+    opencode
+    |> Map.put("artifact", %{"files" => files, "session_file" => session_file})
+    |> Map.put("artifact_format", "opencode_plugin_bundle")
+    |> Map.put("commands", [
+      "mkdir -p .opencode/plugins && cp #{shell_quote(plugin_file)} .opencode/plugins/wardwright-state-fidelity.ts",
+      "opencode import #{shell_quote(session_file)}",
+      "opencode run --session #{opencode["artifact"]["info"]["id"]} --fork \"Continue from the Wardwright trace cursor you want to investigate.\""
+    ])
   end
 
   defp handoff_prompt(session_id, transcript, events, adapter) do
@@ -308,8 +534,7 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
 
   defp handoff_commands("pi", _cwd) do
     [
-      "pi < wardwright-handoff-prompt.md",
-      "oh-my-pi < wardwright-handoff-prompt.md"
+      "npx --yes #{@pi_package} -p < wardwright-handoff-prompt.md"
     ]
   end
 
@@ -323,16 +548,59 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
          :ok <- chmod_private_dir(dir) do
       case export["artifact_format"] do
         "opencode_session_json" ->
-          write_json_artifact(dir, opencode_file_name(session_id), export["artifact"])
+          with {:ok, artifact_paths} <-
+                 write_json_artifact(dir, opencode_file_name(session_id), export["artifact"]),
+               {:ok, probe_paths} <- write_probe_artifact(dir, export) do
+            {:ok, artifact_paths ++ probe_paths}
+          end
+
+        "pi_session_jsonl" ->
+          with {:ok, artifact_paths} <-
+                 write_text_artifact(
+                   dir,
+                   get_in(export, ["artifact", "file_name"]),
+                   get_in(export, ["artifact", "content"])
+                 ),
+               {:ok, probe_paths} <- write_probe_artifact(dir, export) do
+            {:ok, artifact_paths ++ probe_paths}
+          end
+
+        "oh_my_pi_replay_bundle" ->
+          with {:ok, artifact_paths} <-
+                 write_prompt_handoff_files(dir, get_in(export, ["artifact", "files"]) || []),
+               {:ok, probe_paths} <- write_probe_artifact(dir, export) do
+            {:ok, artifact_paths ++ probe_paths}
+          end
+
+        "opencode_plugin_bundle" ->
+          with {:ok, artifact_paths} <-
+                 write_prompt_handoff_files(dir, get_in(export, ["artifact", "files"]) || []),
+               {:ok, probe_paths} <- write_probe_artifact(dir, export) do
+            {:ok, artifact_paths ++ probe_paths}
+          end
 
         "prompt_handoff" ->
-          write_prompt_handoff_files(dir, get_in(export, ["artifact", "files"]) || [])
+          with {:ok, artifact_paths} <-
+                 write_prompt_handoff_files(dir, get_in(export, ["artifact", "files"]) || []),
+               {:ok, probe_paths} <- write_probe_artifact(dir, export) do
+            {:ok, artifact_paths ++ probe_paths}
+          end
 
         _format ->
           {:error, "unsupported harness export artifact format"}
       end
     end
   end
+
+  defp write_text_artifact(dir, file_name, content) when is_binary(file_name) and is_binary(content) do
+    path = Path.join(dir, Path.basename(file_name))
+
+    with :ok <- write_private_file(path, content) do
+      {:ok, [path]}
+    end
+  end
+
+  defp write_text_artifact(_dir, _file_name, _content), do: {:error, "text artifact is missing"}
 
   defp write_json_artifact(dir, file_name, artifact) do
     path = Path.join(dir, file_name)
@@ -345,14 +613,23 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
     _error -> {:error, "could not encode harness export artifact"}
   end
 
+  defp write_probe_artifact(dir, %{"state_fidelity_probe" => probe}) when is_map(probe) do
+    write_json_artifact(dir, "wardwright-state-fidelity-probe.json", probe)
+  end
+
+  defp write_probe_artifact(_dir, _export), do: {:ok, []}
+
   defp write_prompt_handoff_files(dir, files) when is_list(files) do
     files
     |> Enum.reduce_while({:ok, []}, fn file, {:ok, paths} ->
       path = Path.join(dir, Path.basename(file["path"] || "wardwright-handoff.txt"))
 
       case write_private_file(path, file["content"] || "") do
-        :ok -> {:cont, {:ok, [path | paths]}}
-        {:error, reason} -> {:halt, {:error, "could not write harness export file: #{:file.format_error(reason)}"}}
+        :ok ->
+          {:cont, {:ok, [path | paths]}}
+
+        {:error, reason} ->
+          {:halt, {:error, "could not write harness export file: #{:file.format_error(reason)}"}}
       end
     end)
     |> case do
@@ -367,7 +644,28 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
     ["opencode import #{shell_quote(path)}" | Enum.drop(export["commands"] || [], 1)]
   end
 
-  defp saved_export_commands(%{"adapter" => %{"id" => "claude"}}, [_trace_path, prompt_path])
+  defp saved_export_commands(%{"adapter" => %{"id" => "opencode-plugin"}} = export, [session_path, plugin_path | _])
+       when is_binary(session_path) and is_binary(plugin_path) do
+    [
+      "mkdir -p .opencode/plugins && cp #{shell_quote(plugin_path)} .opencode/plugins/wardwright-state-fidelity.ts",
+      "opencode import #{shell_quote(session_path)}"
+      | Enum.drop(export["commands"] || [], 2)
+    ]
+  end
+
+  defp saved_export_commands(%{"adapter" => %{"id" => "pi"}}, [path | _]) when is_binary(path) do
+    pi_session_commands(path)
+  end
+
+  defp saved_export_commands(%{"adapter" => %{"id" => "oh-my-pi"}}, [session_path, rule_path, extension_path | _])
+       when is_binary(session_path) and is_binary(rule_path) and is_binary(extension_path) do
+    [
+      omp_install_command(rule_path, extension_path)
+      | omp_session_commands(session_path)
+    ]
+  end
+
+  defp saved_export_commands(%{"adapter" => %{"id" => "claude"}}, [_trace_path, prompt_path | _])
        when is_binary(prompt_path) do
     [
       "claude --print --input-format text --output-format stream-json < #{shell_quote(prompt_path)}",
@@ -375,18 +673,11 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
     ]
   end
 
-  defp saved_export_commands(%{"adapter" => %{"id" => "codex"}}, [_trace_path, prompt_path])
+  defp saved_export_commands(%{"adapter" => %{"id" => "codex"}}, [_trace_path, prompt_path | _])
        when is_binary(prompt_path) do
     [
       "codex exec --json - < #{shell_quote(prompt_path)}",
       "codex fork <existing-codex-session-id> \"Continue from the Wardwright handoff prompt.\""
-    ]
-  end
-
-  defp saved_export_commands(%{"adapter" => %{"id" => "pi"}}, [_trace_path, prompt_path]) when is_binary(prompt_path) do
-    [
-      "pi < #{shell_quote(prompt_path)}",
-      "oh-my-pi < #{shell_quote(prompt_path)}"
     ]
   end
 
@@ -405,6 +696,232 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
     end)
   end
 
+  defp pi_session_jsonl(session_id, transcript, events, cwd, title) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+    now_ms = System.system_time(:millisecond)
+    session = pi_session_id(session_id)
+    root_id = pi_entry_id(session_id, "session-info")
+
+    header = %{
+      "cwd" => cwd,
+      "id" => session,
+      "timestamp" => now,
+      "type" => "session",
+      "version" => 3
+    }
+
+    entries =
+      [
+        %{
+          "id" => root_id,
+          "name" => title,
+          "parentId" => nil,
+          "timestamp" => now,
+          "type" => "session_info"
+        },
+        %{
+          "id" => pi_entry_id(session_id, "import-user"),
+          "message" => %{
+            "content" =>
+              "Imported Wardwright session trace #{session_id}. Treat this as recorded evidence, not as hidden Pi agent state.",
+            "role" => "user",
+            "timestamp" => now_ms
+          },
+          "parentId" => root_id,
+          "timestamp" => now,
+          "type" => "message"
+        },
+        %{
+          "id" => pi_entry_id(session_id, "trace-summary"),
+          "message" => %{
+            "api" => "wardwright",
+            "content" => [
+              %{
+                "text" =>
+                  "Recording scope: #{transcript["recording_scope"] || "unknown"}\n\n" <>
+                    "Events: #{length(events)}\n\n" <>
+                    "The following synthetic tool calls preserve Wardwright trace evidence for Pi fork/resume experiments.",
+                "type" => "text"
+              }
+            ],
+            "model" => "wardwright-trace",
+            "provider" => "wardwright",
+            "role" => "assistant",
+            "stopReason" => "stop",
+            "timestamp" => now_ms,
+            "usage" => zero_usage()
+          },
+          "parentId" => pi_entry_id(session_id, "import-user"),
+          "timestamp" => now,
+          "type" => "message"
+        }
+      ]
+
+    {_parent_id, event_entry_chunks} =
+      Enum.reduce(
+        Enum.with_index(events, 1),
+        {pi_entry_id(session_id, "trace-summary"), []},
+        fn {event, index}, {parent_id, acc} ->
+          {next_parent, entries} =
+            pi_event_entries(session_id, event, index, parent_id, now, now_ms)
+
+          {next_parent, [entries | acc]}
+        end
+      )
+
+    event_entries =
+      event_entry_chunks
+      |> Enum.reverse()
+      |> List.flatten()
+
+    [header | entries ++ event_entries]
+    |> Enum.map_join("\n", &JSON.encode!/1)
+    |> Kernel.<>("\n")
+  end
+
+  defp pi_event_entries(session_id, %{"tool" => %{"name" => tool_name} = tool} = event, index, parent_id, now, now_ms) do
+    call_id = pi_entry_id(session_id, "tool-call-#{index}")
+    assistant_id = pi_entry_id(session_id, "assistant-#{index}")
+    result_id = pi_entry_id(session_id, "tool-result-#{index}")
+
+    assistant = %{
+      "id" => assistant_id,
+      "message" => %{
+        "api" => "wardwright",
+        "content" => [
+          %{
+            "text" => "Wardwright event #{event["sequence"] || index}: #{event_summary(event)}",
+            "type" => "text"
+          },
+          %{
+            "arguments" => tool["args"] || %{},
+            "id" => call_id,
+            "name" => tool_name,
+            "type" => "toolCall"
+          }
+        ],
+        "model" => "wardwright-trace",
+        "provider" => "wardwright",
+        "role" => "assistant",
+        "stopReason" => "toolUse",
+        "timestamp" => now_ms + index,
+        "usage" => zero_usage()
+      },
+      "parentId" => parent_id,
+      "timestamp" => now,
+      "type" => "message"
+    }
+
+    result = %{
+      "id" => result_id,
+      "message" => %{
+        "content" => [%{"text" => safe_json(tool["result"] || %{}), "type" => "text"}],
+        "details" => %{
+          "cursor" => event["cursor"] || "",
+          "fingerprint" => stable_fingerprint(tool),
+          "wardwright_event_type" => event["type"] || "event"
+        },
+        "isError" => event["status"] == "error",
+        "role" => "toolResult",
+        "timestamp" => now_ms + index,
+        "toolCallId" => call_id,
+        "toolName" => tool_name
+      },
+      "parentId" => assistant_id,
+      "timestamp" => now,
+      "type" => "message"
+    }
+
+    {result_id, [assistant, result]}
+  end
+
+  defp pi_event_entries(session_id, event, index, parent_id, now, now_ms) do
+    entry_id = pi_entry_id(session_id, "event-#{index}")
+
+    entry = %{
+      "content" => "Wardwright event #{event["sequence"] || index}: #{event_summary(event)}",
+      "customType" => "wardwright-trace-event",
+      "details" => %{"cursor" => event["cursor"] || "", "event" => event},
+      "display" => true,
+      "id" => entry_id,
+      "parentId" => parent_id,
+      "timestamp" => now,
+      "type" => "custom_message"
+    }
+
+    _ = now_ms
+    {entry_id, [entry]}
+  end
+
+  defp zero_usage do
+    %{
+      "cacheRead" => 0,
+      "cacheWrite" => 0,
+      "cost" => %{"cacheRead" => 0, "cacheWrite" => 0, "input" => 0, "output" => 0, "total" => 0},
+      "input" => 0,
+      "output" => 0,
+      "totalTokens" => 0
+    }
+  end
+
+  defp oh_my_pi_ttsr_rule do
+    OmpPack.rule_content()
+  end
+
+  defp pi_state_fidelity_extension do
+    OmpPack.state_fidelity_extension_content()
+  end
+
+  defp pi_session_commands(path) do
+    [
+      "npx --yes #{@pi_package} --session #{shell_quote(path)}",
+      "npx --yes #{@pi_package} --fork #{shell_quote(path)} \"Continue from the Wardwright trace cursor you want to investigate.\""
+    ]
+  end
+
+  defp omp_install_command(rule_path, extension_path) do
+    "mkdir -p .omp/rules .omp/extensions && cp #{shell_quote(rule_path)} .omp/rules/#{@omp_rule_file} && cp #{shell_quote(extension_path)} .omp/extensions/#{@omp_extension_file}"
+  end
+
+  defp omp_session_commands(session_path) do
+    binary = omp_binary()
+
+    [
+      "#{binary} --session #{shell_quote(session_path)}",
+      "#{binary} --fork #{shell_quote(session_path)} \"Continue from the Wardwright trace cursor you want to investigate.\""
+    ]
+  end
+
+  defp omp_binary do
+    cond do
+      System.find_executable("omp") -> "omp"
+      System.find_executable("oh-my-pi") -> "oh-my-pi"
+      true -> "omp"
+    end
+  end
+
+  defp opencode_state_fidelity_plugin do
+    """
+    import type { Plugin } from "@opencode-ai/plugin";
+
+    export const WardwrightStateFidelity: Plugin = async () => {
+      return {
+        "experimental.session.compacting": async (_input, output) => {
+          output.context.push(`Wardwright imported traces are evidence handoffs. Do not claim equivalent native resume unless state_fidelity_probe verification passes and workspace/private harness state are separately proven.`);
+        },
+        "tool.execute.after": async (input, output) => {
+          if (input.tool === "edit" || input.tool === "write") {
+            output.metadata = {
+              ...(output.metadata ?? {}),
+              wardwright_replay_note: "write-class action observed during Wardwright replay spike",
+            };
+          }
+        },
+      };
+    };
+    """
+  end
+
   defp tool_lines(%{"tool" => %{"name" => name} = tool}) do
     [
       "- tool: #{name}",
@@ -416,9 +933,13 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
   defp tool_lines(_event), do: []
 
   defp event_summary(%{"content_preview" => preview}) when is_binary(preview), do: preview
+
   defp event_summary(%{"failure_class" => failure_class}) when is_binary(failure_class), do: failure_class
+
   defp event_summary(%{"status" => status}) when is_binary(status), do: status
+
   defp event_summary(%{"receipt_id" => receipt_id}) when is_binary(receipt_id), do: "receipt #{receipt_id}"
+
   defp event_summary(_event), do: "recorded trace event"
 
   defp fidelity_notice(adapter) do
@@ -436,7 +957,8 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
 
     [
       if(adapter["installed"] != true, do: "#{adapter["label"]} was not detected on PATH."),
-      missing_warning(missing)
+      missing_warning(missing),
+      verification_warning(adapter)
     ]
     |> Enum.reject(&is_nil/1)
   end
@@ -447,15 +969,115 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
     "Missing fidelity: #{Enum.join(missing, ", ")}."
   end
 
+  defp verification_warning(%{"equivalent_agent_resume" => true}), do: nil
+
+  defp verification_warning(%{"state_fidelity_verification" => %{"required" => true}}) do
+    "State fidelity verification is still required before treating this as equivalent agent resume."
+  end
+
+  defp verification_warning(_adapter), do: nil
+
+  defp state_fidelity_verification(true, _missing_fidelity) do
+    %{
+      "required" => false,
+      "status" => "verified_equivalent_resume",
+      "steps" => []
+    }
+  end
+
+  defp state_fidelity_verification(false, missing_fidelity) do
+    %{
+      "missing_fidelity" => missing_fidelity,
+      "required" => true,
+      "status" => "unverified_best_effort_handoff",
+      "steps" => [
+        "import the saved Wardwright artifact into the target harness",
+        "resume or fork through the harness native session controls",
+        "inspect the harness session store/export for preserved tool results and hidden state",
+        "run a behavior-level continuation and compare it with the Wardwright trace"
+      ]
+    }
+  end
+
+  defp state_fidelity_probe(session_id, adapter, events) do
+    tool_result_fingerprints =
+      events
+      |> Enum.filter(&tool_result_event?/1)
+      |> Enum.map(fn event ->
+        %{
+          "cursor" => event["cursor"] || "",
+          "fingerprint" => stable_fingerprint(event["tool"] || event),
+          "tool_name" => get_in(event, ["tool", "name"]) || "unknown"
+        }
+      end)
+
+    %{
+      "adapter_id" => adapter["id"],
+      "event_count" => length(events),
+      "pass_conditions" => [
+        "imported harness session exposes the same trace_fingerprint",
+        "imported harness session preserves every tool_result_fingerprint",
+        "forked continuation can identify the same read-before-edit cursor before taking write-class action"
+      ],
+      "schema" => "wardwright.harness_state_fidelity_probe.v0",
+      "session_id" => session_id,
+      "tool_result_count" => length(tool_result_fingerprints),
+      "tool_result_fingerprints" => tool_result_fingerprints,
+      "trace_fingerprint" => stable_fingerprint(events)
+    }
+  end
+
+  defp tool_result_event?(%{"tool" => %{"result" => _result}}), do: true
+  defp tool_result_event?(_event), do: false
+
+  defp fingerprint_difference(left, right) do
+    right_counts = fingerprint_counts(right)
+
+    {missing, _remaining_counts} =
+      Enum.reduce(left, {[], right_counts}, fn item, {missing, counts} ->
+        fingerprint = item["fingerprint"]
+
+        if is_binary(fingerprint) and Map.get(counts, fingerprint, 0) > 0 do
+          {missing, Map.update!(counts, fingerprint, &(&1 - 1))}
+        else
+          {[item | missing], counts}
+        end
+      end)
+
+    Enum.reverse(missing)
+  end
+
+  defp fingerprint_counts(items) do
+    Enum.reduce(items, %{}, fn item, counts ->
+      case item["fingerprint"] do
+        fingerprint when is_binary(fingerprint) -> Map.update(counts, fingerprint, 1, &(&1 + 1))
+        _fingerprint -> counts
+      end
+    end)
+  end
+
   defp safe_json(value) do
     JSON.encode!(value)
   rescue
     _ -> inspect(value)
   end
 
+  defp stable_fingerprint(value) do
+    value
+    |> safe_json()
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
+  end
+
   defp opencode_session_id(session_id), do: "ses_ww" <> short_hash(session_id)
 
+  defp pi_session_id(session_id), do: "ww-" <> short_hash(session_id)
+
   defp opencode_file_name(session_id), do: "wardwright-#{safe_file_id(session_id)}.opencode.json"
+
+  defp pi_file_name(session_id), do: "wardwright-#{safe_file_id(session_id)}.pi.jsonl"
+
+  defp pi_entry_id(session_id, label), do: short_hash("pi:#{session_id}:#{label}") |> String.slice(0, 8)
 
   defp opencode_id(prefix, session_id, sequence) do
     "#{prefix}_ww#{short_hash("#{session_id}:#{sequence}")}"

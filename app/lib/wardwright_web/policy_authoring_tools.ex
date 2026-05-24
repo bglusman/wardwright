@@ -20,7 +20,7 @@ defmodule WardwrightWeb.PolicyAuthoringTools do
         "/v1/policy-authoring/simulations/{pattern_id}",
         "Return persisted simulation scenarios when present, otherwise explicit fixture evidence linked to projection node ids and the current artifact hash.",
         "Use to compare the user's intended behavior with the behavior Wardwright can demonstrate.",
-        "Read-only. Simulation evidence explains behavior but does not prove every possible input.",
+        "Read-only. Simulation results explain behavior but do not prove every possible input.",
         "/agent-authoring.html#simulate-before-you-activate"
       ),
       tool(
@@ -121,6 +121,87 @@ defmodule WardwrightWeb.PolicyAuthoringTools do
         "Use after importing or inspecting a receipt when you need deterministic control-layer evidence before drafting a policy change.",
         "Read-only. Replay uses metadata-only VCR fields when present and never returns raw prompts or completions.",
         "/agent-authoring.html#replay-receipts-before-changing-policy"
+      ),
+      tool(
+        "list_control_debugger_examples",
+        "GET",
+        "/v1/policy-authoring/control-debugger/examples",
+        "List built-in Control Debugger counterfactual examples, their default simulator pattern, and policy overlay.",
+        "Use before recording a Ralph counterfactual example from a shell or MCP agent.",
+        "Read-only. Returns example metadata only; no transcript, receipt, or simulator case is written.",
+        "/agent-authoring.html#replay-receipts-before-changing-policy"
+      ),
+      tool(
+        "record_control_debugger_example",
+        "POST",
+        "/v1/policy-authoring/control-debugger/examples/{example_id}/record",
+        "Record a built-in Control Debugger counterfactual example session and return receipt, session, and suggested cursor facts.",
+        "Use when an assisting agent needs the same starting trace the UI creates with Record example session.",
+        "Write-capable. Creates local receipt and transcript evidence. Built-in examples use deterministic scripted continuation and do not require a paid provider call.",
+        "/agent-authoring.html#replay-receipts-before-changing-policy"
+      ),
+      tool(
+        "load_control_debugger_trace",
+        "POST",
+        "/v1/policy-authoring/control-debugger/traces/load",
+        "Load a Control Debugger trace by receipt_id or session_id, including event cursors and suggested fork points.",
+        "Use after recording or selecting a trace before replaying, forking, or saving evidence.",
+        "Read-only. Trace events can contain sensitive session metadata; review before sharing.",
+        "/agent-authoring.html#replay-receipts-before-changing-policy"
+      ),
+      tool(
+        "replay_control_debugger_cursor",
+        "POST",
+        "/v1/policy-authoring/control-debugger/traces/replay-cursor",
+        "Replay a Control Debugger trace up to a selected cursor without making a provider call.",
+        "Use to prove the selected replay/fork point from non-UI tooling.",
+        "Read-only. Stops before the selected cursor and reports provider_called=false.",
+        "/agent-authoring.html#replay-receipts-before-changing-policy"
+      ),
+      tool(
+        "fork_control_debugger_cursor",
+        "POST",
+        "/v1/policy-authoring/control-debugger/traces/fork-cursor",
+        "Fork a Control Debugger trace at a selected cursor, apply a policy overlay, and continue with deterministic scripted steps.",
+        "Use to reproduce the UI's default Ralph fork/continue path without scraping buttons.",
+        "Write-capable. Writes fork transcript evidence but does not call a provider.",
+        "/agent-authoring.html#replay-receipts-before-changing-policy"
+      ),
+      tool(
+        "save_control_debugger_evidence",
+        "POST",
+        "/v1/policy-authoring/control-debugger/traces/save-evidence",
+        "Save selected Control Debugger trace evidence as a pinned simulator case for a policy pattern.",
+        "Use after replaying or forking a selected cursor that should become simulator or regression evidence.",
+        "Write-capable. Saved trace events can include sensitive metadata; review scenario packs before publishing.",
+        "/agent-authoring.html#record-scenarios-as-regression-evidence"
+      ),
+      tool(
+        "list_harness_adapters",
+        "GET",
+        "/v1/policy-authoring/harness-adapters",
+        "List available agent harness adapters, their import/export commands, and the fidelity limits that prevent claiming equivalent agent resume.",
+        "Use before handing a Wardwright trace to OpenCode, Codex, Claude, or another agent runner.",
+        "Read-only. Treat adapter fidelity and equivalent_agent_resume as authoritative; do not infer hidden agent state preservation from an import command.",
+        "/agent-authoring.html#replay-receipts-before-changing-policy"
+      ),
+      tool(
+        "export_agent_harness_trace",
+        "POST",
+        "/v1/policy-authoring/harness-adapters/{adapter_id}/export",
+        "Export a recorded full-session trace as a reviewable artifact for an external agent harness.",
+        "Use after loading a trace when an agent should inspect or continue from the recorded evidence outside the Wardwright UI.",
+        "Read-only unless the caller asks the UI/backend to save files. Exported artifacts can include sensitive trace metadata; equivalent resume is false unless the adapter explicitly says true.",
+        "/agent-authoring.html#replay-receipts-before-changing-policy"
+      ),
+      tool(
+        "verify_harness_state_fidelity",
+        "POST",
+        "/v1/policy-authoring/harness-adapters/state-fidelity/verify",
+        "Compare a saved state-fidelity probe with observed imported-harness state.",
+        "Use after importing or resuming an external harness session to check whether trace and tool-result fingerprints survived the handoff.",
+        "Read-only. Passing this probe does not by itself prove equivalent native agent resume; it only verifies the concrete exported evidence.",
+        "/agent-control-debugger.html#opencode-client-run"
       ),
       tool(
         "export_regression_pack",
