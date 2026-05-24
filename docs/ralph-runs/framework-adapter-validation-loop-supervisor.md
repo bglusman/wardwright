@@ -212,3 +212,64 @@ Execution constraints:
 - Next open item: add LangChain/LangGraph support, starting with Python unless
   a smaller TypeScript slice gives better confidence, and prove receipt
   correlation to framework-visible run or checkpoint metadata.
+
+### Loop 3 - LangChain/LangGraph Recipe Smoke
+
+- Timestamp: 2026-05-23T23:12-04:00.
+- Starting commit: `22180a1`.
+- Intended ending commit: LangChain/LangGraph recipe smoke with post-commit
+  review recorded.
+- Scope: add the second framework-specific implementation slice for
+  LangChain/LangGraph without claiming installed package support, native graph
+  state, or checkpoint durability. The slice adds an adapter-owned Python
+  helper that follows the OpenAI-compatible model configuration path, maps
+  caller provenance into Wardwright headers, captures
+  `x-wardwright-receipt-id` through a callback-style object, writes the receipt
+  into LangChain-style run metadata and LangGraph-style checkpoint metadata,
+  documents the recipe/status, and adds a local Python smoke through a real
+  Wardwright router.
+- Validation:
+  - `python3 -m py_compile app/priv/framework_adapters/langchain_langgraph/wardwright_langchain.py app/priv/framework_adapters/langchain_langgraph/smoke.py`: passed.
+  - `MIX_ENV=test mise exec -- mix compile`: passed.
+  - `MIX_ENV=test mise exec -- mix test --no-compile test/langchain_langgraph_adapter_smoke_test.exs`:
+    passed, 1 test.
+  - `MIX_ENV=test mise exec -- mix test --no-compile test/gleam_framework_adapter_test.exs test/vercel_ai_sdk_adapter_smoke_test.exs test/langchain_langgraph_adapter_smoke_test.exs`:
+    passed, 8 tests.
+  - `mise exec -- mix format --check-formatted`: passed after formatting the
+    new test file.
+  - `mise run check:docs`: passed.
+  - `git diff --check`: passed.
+  - Commit hook full app/docs/gitleaks gate: passed, including 420 app tests
+    with 21 properties and 6 excluded tests.
+- Skipped probes: no Python packages were installed and no live
+  LangChain/LangGraph project was generated in this default slice. The
+  committed smoke deliberately avoids external package fetches and proves the
+  framework-visible metadata contract against Wardwright directly. Streaming,
+  real LangChain callback wiring, and LangGraph checkpoint durability remain
+  deferred rather than implied.
+- Adversarial review:
+  - Architecture: no blocker found. The slice stays recipe-only and keeps
+    LangChain/LangGraph in the framework SDK lane rather than mixing them with
+    OpenCode/OpenClaw/local coding-agent adapters. The helper writes receipt ids
+    into framework-style run/checkpoint metadata but explicitly avoids claiming
+    LangGraph checkpoint durability or native state import. The remaining
+    architecture gap is expected for this tier: direct stdlib HTTP proves the
+    Wardwright metadata contract, not the real LangChain package callback
+    lifecycle.
+  - Code/comment quality: no blocker found. The Python helper is small and
+    boundary-oriented: base URL normalization, provenance header mapping,
+    receipt capture, and a smoke-only chat-completion call. It does not include
+    placeholder API keys or persisted trace payloads. Error handling is minimal
+    but adequate for a deterministic smoke; a future helper package should
+    adopt the real framework client's exception and callback surfaces instead
+    of expanding this stdlib wrapper.
+  - Test quality: the smoke is capable of failing for the missing product
+    behavior under review: wrong Wardwright model routing, dropped provenance,
+    missing receipt header capture, missing LangChain run metadata, missing
+    LangGraph checkpoint metadata, or overclaimed generic fallback. It uses a
+    real local Wardwright router and synthetic prompts. It does not prove the
+    installed LangChain/LangGraph packages, streaming behavior, or checkpoint
+    persistence; those are recorded as skipped/deferred probes.
+- Next open item: add Pydantic AI support with provider/context/receipt
+  correlation and clear structured-output or tool-capability limitation
+  wording.

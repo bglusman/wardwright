@@ -132,8 +132,7 @@ broader recording mode.
 
 ## Current Implementation Status
 
-The first implementation target after this contract is Vercel AI SDK. The
-current slice is recipe-only support backed by an adapter-owned Node smoke. It
+Vercel AI SDK recipe-only support is backed by an adapter-owned Node smoke. It
 uses the AI SDK OpenAI-compatible provider shape: Wardwright is the `baseURL`,
 provenance is mapped into Wardwright headers, and a custom `fetch` wrapper
 captures `x-wardwright-receipt-id` in framework-visible adapter state.
@@ -141,4 +140,14 @@ captures `x-wardwright-receipt-id` in framework-visible adapter state.
 This proves `framework_receipt_correlated` for the tested non-streaming path.
 It does not claim a published npm package, AI SDK middleware ownership,
 streaming receipt propagation, Vercel chat UI state, native framework state, or
+exact replay fidelity.
+
+LangChain/LangGraph recipe-only support is backed by an adapter-owned Python
+smoke. It uses the OpenAI-compatible model configuration path, maps caller
+provenance into Wardwright headers, and records the Wardwright receipt id into
+LangChain-style run metadata plus LangGraph-style checkpoint metadata.
+
+This proves `framework_receipt_correlated` for the tested non-streaming path.
+It does not claim an installed LangChain package, LangGraph checkpoint
+durability, native framework state import, streaming receipt propagation, or
 exact replay fidelity.

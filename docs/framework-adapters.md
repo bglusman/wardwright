@@ -84,17 +84,95 @@ smoke starts from the same OpenAI-compatible provider options and proves:
   framework-aware receipt propagation;
 - streaming support is deferred instead of implied.
 
+## LangChain And LangGraph
+
+Current support tier: `recipe_only`.
+
+Current fidelity label after the committed smoke passes:
+`framework_receipt_correlated`.
+
+The first LangChain/LangGraph slice uses the OpenAI-compatible model
+configuration path: configure Wardwright as the model `base_url`, pass caller
+provenance as request headers, and attach a callback-style receipt capture
+that writes `x-wardwright-receipt-id` into LangChain-visible run metadata and
+LangGraph-visible checkpoint metadata. It does not ship a published Python
+package, and it does not claim LangGraph checkpoint durability, native state
+import, streaming resume, or exact replay fidelity.
+
+Install normal framework dependencies in the framework project when using the
+recipe against real LangChain/LangGraph code:
+
+```bash
+pip install langchain langchain-openai langgraph
+```
+
+Use Wardwright as the OpenAI-compatible endpoint and keep receipt correlation
+in framework metadata:
+
+```python
+from wardwright_langchain import (
+    WardwrightReceiptCallback,
+    chat_completion,
+    wardwright_langchain_model_config,
+)
+
+run_metadata = {"run_id": "example-run"}
+checkpoint_metadata = {"thread_id": "example-thread"}
+callback = WardwrightReceiptCallback()
+
+config = wardwright_langchain_model_config(
+    base_url="http://127.0.0.1:8787/v1",
+    model="coding-balanced",
+    provenance={
+        "tenant_id": "example-tenant",
+        "application_id": "example-app",
+        "consuming_agent_id": "example-agent",
+        "consuming_user_id": "example-user",
+        "session_id": "example-thread",
+        "run_id": "example-run",
+        "client_request_id": "example-request",
+    },
+)
+
+chat_completion(
+    base_url=config["base_url"],
+    model=config["model"],
+    headers=config["default_headers"],
+    messages=[{"role": "user", "content": "Synthetic framework request."}],
+    callback=callback,
+    langchain_run_metadata=run_metadata,
+    langgraph_checkpoint_metadata=checkpoint_metadata,
+)
+
+print(run_metadata["wardwright_receipt_id"])
+print(checkpoint_metadata["wardwright"]["receipt_id"])
+```
+
+The committed helper source lives at
+`app/priv/framework_adapters/langchain_langgraph/wardwright_langchain.py`. The
+default test suite runs a local Python smoke without downloading packages.
+That smoke proves:
+
+- a stable Wardwright model id is requested;
+- caller provenance reaches Wardwright as headers;
+- `x-wardwright-receipt-id` is captured in LangChain-style run metadata;
+- the same receipt id is present in LangGraph-style checkpoint metadata;
+- generic OpenAI-compatible fallback still works without claiming
+  framework-aware receipt propagation;
+- LangGraph checkpoint durability and streaming support are deferred instead
+  of implied.
+
 ## Privacy
 
 Framework helpers must not persist raw prompts, completions, provider
 credentials, admin tokens, bearer tokens, adapter signing secrets, or full
-framework traces by default. The Vercel smoke uses synthetic prompt content and
-returns only sanitized evidence: model ids, receipt id, provenance ids,
-fidelity label, and fallback status.
+framework traces by default. The committed framework smokes use synthetic
+prompt content and return only sanitized evidence: model ids, receipt id,
+provenance ids, fidelity label, framework metadata paths, and fallback status.
 
 ## Next Targets
 
-The remaining first-class framework targets are LangChain/LangGraph, Pydantic
-AI, OpenAI Agents SDK on Chat Completions, Microsoft.Extensions.AI with
-Semantic Kernel guidance, and LlamaIndex. Each target needs its own runnable
-smoke before Wardwright claims framework-aware support.
+The remaining first-class framework targets are Pydantic AI, OpenAI Agents SDK
+on Chat Completions, Microsoft.Extensions.AI with Semantic Kernel guidance, and
+LlamaIndex. Each target needs its own runnable smoke before Wardwright claims
+framework-aware support.
