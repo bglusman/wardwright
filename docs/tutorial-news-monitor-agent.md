@@ -115,9 +115,12 @@ Use the simplest integration that matches the agent:
 The current framework recipes prove provenance and receipt correlation with
 app-local smokes. The `0.1.0-rc.1` validation pass also exercised live package
 installs for Vercel AI SDK, LangChain/LangGraph, Pydantic AI, OpenAI Agents SDK,
-and LlamaIndex. They still do not prove streaming, tool-call preservation,
-native framework state, retrieval lineage, or exact replay. Treat the first
-live feed monitor as an integration test and keep the receipts.
+LlamaIndex, and Microsoft.Extensions.AI/Semantic Kernel. Vercel AI SDK
+streaming receipt capture is proven through the Wardwright fetch wrapper;
+LangChain streaming returns text but did not expose receipt headers in stream
+chunk metadata. These recipes still do not prove broad tool-call preservation,
+native framework state, retrieval lineage, or exact replay. Treat the first live
+feed monitor as an integration test and keep the receipts.
 
 ## Debugging A Bad Result
 
