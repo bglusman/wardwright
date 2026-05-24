@@ -6,8 +6,8 @@ description: Framework integration status, recipes, smoke evidence, and fidelity
 
 # Framework Adapters
 
-Status: framework adapter validation is active. The shared contract is
-`wardwright.framework_adapter.v0`.
+Status: framework adapter validation is complete for the recipe-only
+foundation. The shared contract is `wardwright.framework_adapter.v0`.
 
 Framework adapters are separate from local coding-agent adapters. OpenCode,
 OpenClaw, Pi, OMP, Aider, Claude Code, and Codex stay documented in
@@ -15,6 +15,14 @@ OpenClaw, Pi, OMP, Aider, Claude Code, and Codex stay documented in
 application-framework integrations such as Vercel AI SDK, LangChain,
 LangGraph, Pydantic AI, OpenAI Agents SDK, Microsoft.Extensions.AI, Semantic
 Kernel, and LlamaIndex.
+
+The completed recipe-only track proves a common baseline for each implemented
+framework: a stable Wardwright model id is requested, caller provenance reaches
+Wardwright, `x-wardwright-receipt-id` is captured in framework-visible
+metadata, fallback generic OpenAI-compatible usage stays honest, and privacy
+limits are enforced by synthetic app-local smokes. The current tests do not
+install live framework packages or prove streaming, tool-call preservation,
+native framework state, or exact replay.
 
 ## Vercel AI SDK
 

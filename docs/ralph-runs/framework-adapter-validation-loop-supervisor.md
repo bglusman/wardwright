@@ -8,9 +8,10 @@ This file is the durable tracker for the framework adapter validation Ralph
 loop. The build target is
 [`framework-adapter-validation-requirements.md`](framework-adapter-validation-requirements.html).
 
-Status: active. The local adapter install-validation loop is complete; this is
-a separate follow-on loop for high-adoption framework integrations and e2e
-smoke validation.
+Status: complete. The local adapter install-validation loop is complete; this
+separate follow-on loop for high-adoption framework integrations and e2e smoke
+validation has completed the recipe-only foundation and recorded its remaining
+fidelity limits.
 
 ## Branch Policy
 
@@ -580,3 +581,52 @@ Execution constraints:
 - Next open item: final docs pass and completion sentinel if the completion
   criteria are otherwise satisfied; otherwise record any remaining validation
   gap before stopping.
+
+### Loop 9 - Final Docs Pass And Completion Sentinel
+
+- Timestamp: 2026-05-24T00:02-04:00.
+- Starting commit: `9b0bfab`.
+- Intended ending commit: final framework adapter validation completion docs.
+- Scope: perform the completion pass after the contract foundation, six
+  framework recipe smokes, and reusable smoke infrastructure were implemented.
+  The pass confirms the docs cover framework tiers, provenance metadata,
+  receipt-id propagation, app-local smoke evidence, local coding-agent
+  separation, fallback behavior, privacy rules, and fidelity limits without
+  claiming live package execution or native framework state.
+- Validation:
+  - `MIX_ENV=test mise exec -- mix compile`: passed.
+  - `MIX_ENV=test mise exec -- mix test --no-compile test/gleam_framework_adapter_test.exs test/vercel_ai_sdk_adapter_smoke_test.exs test/langchain_langgraph_adapter_smoke_test.exs test/pydantic_ai_adapter_smoke_test.exs test/openai_agents_sdk_adapter_smoke_test.exs test/microsoft_extensions_ai_adapter_smoke_test.exs test/llamaindex_adapter_smoke_test.exs`:
+    passed, 12 tests.
+  - `mise exec -- mix format --check-formatted`: passed.
+  - `mise run check:docs`: passed.
+  - `git diff --check`: passed.
+  - Commit hook docs/gitleaks gate: passed.
+- Skipped probes: no external npm, pip, or NuGet package-manager probes are
+  part of the default completion pass. Live framework package execution,
+  streaming, tool calls, native framework state/checkpoints, and exact replay
+  remain future opt-in probes because the committed recipe-only smokes prove
+  only Wardwright routing, provenance, receipt correlation, fallback honesty,
+  and privacy-safe evidence.
+- Adversarial review:
+  - Architecture: no blocker found. The completion pass changes only durable
+    docs and supervisor state; it does not move framework adapter truth into
+    runtime code, local coding-agent adapters, or package-manager side effects.
+    The docs mark only the recipe-only foundation complete and keep stronger
+    claims scoped to future opt-in probes, so the complete status does not
+    overclaim native framework state, streaming, tool-call fidelity, or exact
+    replay.
+  - Code/comment quality: no blocker found. The added summary is short and
+    matches the existing contract wording: framework tiers, provenance,
+    receipt propagation, fallback, privacy, and fidelity limits are stated in
+    product terms rather than implementation details. No code comments changed.
+  - Test quality: no blocker found. This docs-only completion loop reran the
+    behavior-focused Gleam contract test and all six framework recipe smokes,
+    which are capable of failing for dropped provenance, missing receipt
+    capture, wrong model routing, or overclaimed fallback behavior. The tests
+    still intentionally do not prove live framework package execution,
+    streaming, tool calls, or native state; those gaps remain recorded as
+    skipped probes.
+- Next open item: none for this Ralph track. Future work should be new cycles:
+  live package-manager probes behind opt-in flags, helper-package promotion for
+  selected frameworks, streaming receipt propagation, and separate local
+  coding-agent follow-ups for OpenCode-native, OpenClaw, and Aider.
