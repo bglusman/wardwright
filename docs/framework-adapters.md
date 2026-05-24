@@ -162,6 +162,90 @@ That smoke proves:
 - LangGraph checkpoint durability and streaming support are deferred instead
   of implied.
 
+## Pydantic AI
+
+Current support tier: `recipe_only`.
+
+Current fidelity label after the committed smoke passes:
+`framework_receipt_correlated`.
+
+The first Pydantic AI slice uses the documented OpenAI-compatible provider
+path: configure `OpenAIChatModel` with `OpenAIProvider(base_url=...)`, carry
+typed caller context through the run, map that context into Wardwright
+provenance headers, and attach `x-wardwright-receipt-id` to Pydantic-style run
+metadata. It does not ship a published Python package, and it does not claim
+native Pydantic AI state import, graph durability, structured-output fidelity,
+tool-call fidelity, streaming resume, or exact replay fidelity.
+
+Install normal framework dependencies in the framework project when using the
+recipe against real Pydantic AI code:
+
+```bash
+pip install pydantic-ai
+```
+
+Use Wardwright as the OpenAI-compatible provider and keep receipt correlation
+in run metadata:
+
+```python
+from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
+import os
+from wardwright_pydantic_ai import (
+    WardwrightPydanticContext,
+    WardwrightPydanticReceiptCapture,
+    wardwright_pydantic_ai_model_config,
+)
+
+context = WardwrightPydanticContext(
+    tenant_id="example-tenant",
+    application_id="example-app",
+    consuming_agent_id="example-agent",
+    consuming_user_id="example-user",
+    session_id="example-session",
+    run_id="example-run",
+    client_request_id="example-request",
+)
+config = wardwright_pydantic_ai_model_config(
+    base_url="http://127.0.0.1:8787/v1",
+    model="coding-balanced",
+    context=context,
+)
+receipt_capture = WardwrightPydanticReceiptCapture()
+run_metadata = {"deps": config["deps"]}
+
+provider_args = {"base_url": config["provider"]["base_url"]}
+api_key = os.environ.get(config["provider"]["api_key_env"])
+if api_key:
+    provider_args["api_key"] = api_key
+
+model = OpenAIChatModel(
+    config["model"],
+    provider=OpenAIProvider(**provider_args),
+)
+agent = Agent(model, deps_type=type(context))
+
+# In real Pydantic AI code, pass context as deps and use a model/provider hook
+# or owned HTTP client wrapper to add config["default_headers"] and call
+# receipt_capture.capture(...) with the response headers.
+```
+
+The committed helper source lives at
+`app/priv/framework_adapters/pydantic_ai/wardwright_pydantic_ai.py`. The
+default test suite runs a local Python smoke without downloading packages.
+That smoke proves:
+
+- a stable Wardwright model id is requested;
+- caller provenance from typed context reaches Wardwright as headers;
+- `x-wardwright-receipt-id` is captured in Pydantic-style run metadata;
+- generic OpenAI-compatible fallback still works without claiming
+  framework-aware receipt propagation;
+- structured-output and tool-call fidelity are explicitly limited to the
+  future Wardwright model capability contract rather than implied by the
+  recipe;
+- native state import and streaming support are deferred instead of implied.
+
 ## Privacy
 
 Framework helpers must not persist raw prompts, completions, provider
@@ -172,7 +256,7 @@ provenance ids, fidelity label, framework metadata paths, and fallback status.
 
 ## Next Targets
 
-The remaining first-class framework targets are Pydantic AI, OpenAI Agents SDK
-on Chat Completions, Microsoft.Extensions.AI with Semantic Kernel guidance, and
+The remaining first-class framework targets are OpenAI Agents SDK on Chat
+Completions, Microsoft.Extensions.AI with Semantic Kernel guidance, and
 LlamaIndex. Each target needs its own runnable smoke before Wardwright claims
 framework-aware support.

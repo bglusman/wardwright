@@ -151,3 +151,14 @@ This proves `framework_receipt_correlated` for the tested non-streaming path.
 It does not claim an installed LangChain package, LangGraph checkpoint
 durability, native framework state import, streaming receipt propagation, or
 exact replay fidelity.
+
+Pydantic AI recipe-only support is backed by an adapter-owned Python smoke. It
+uses the OpenAI-compatible `OpenAIProvider(base_url=...)` model configuration
+path, maps typed run context into Wardwright provenance headers, and records
+the Wardwright receipt id into Pydantic-style run metadata.
+
+This proves `framework_receipt_correlated` for the tested non-streaming path.
+It does not claim an installed Pydantic AI package, native state import,
+streaming receipt propagation, exact replay fidelity, or structured-output and
+tool-call fidelity beyond what Wardwright's model capability contract can prove
+in a later slice.

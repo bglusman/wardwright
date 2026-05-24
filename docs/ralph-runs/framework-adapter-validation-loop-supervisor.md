@@ -128,6 +128,9 @@ Execution constraints:
   - `mise exec -- mix format --check-formatted`: passed.
   - `mise run check:docs`: passed.
   - `git diff --check`: passed.
+  - Post-review credential-metadata fix repeated the Python syntax check,
+    focused Pydantic smoke, combined framework smoke set, format check, docs
+    check, and whitespace check above: passed.
   - Commit hook full app/docs/gitleaks gate: passed, including 419 app tests
     with 21 properties and 6 excluded tests.
   - `MIX_ENV=test mise exec -- mix compile`: passed.
@@ -273,3 +276,62 @@ Execution constraints:
 - Next open item: add Pydantic AI support with provider/context/receipt
   correlation and clear structured-output or tool-capability limitation
   wording.
+
+### Loop 4 - Pydantic AI Recipe Smoke
+
+- Timestamp: 2026-05-23T23:19-04:00.
+- Starting commit: `76c30eb`.
+- Intended ending commit: Pydantic AI recipe smoke with post-commit review
+  recorded.
+- Scope: add the third framework-specific implementation slice for Pydantic AI
+  without claiming installed package support, native framework state, graph
+  durability, or structured-output/tool-call fidelity. The slice adds an
+  adapter-owned Python helper that follows the Pydantic AI OpenAI-compatible
+  provider path, maps typed run context into Wardwright provenance headers,
+  captures `x-wardwright-receipt-id` into Pydantic-style run metadata,
+  documents the recipe/status, and adds a local Python smoke through a real
+  Wardwright router.
+- Validation:
+  - `python3 -m py_compile app/priv/framework_adapters/pydantic_ai/wardwright_pydantic_ai.py app/priv/framework_adapters/pydantic_ai/smoke.py`:
+    passed.
+  - `MIX_ENV=test mise exec -- mix compile`: passed.
+  - `MIX_ENV=test mise exec -- mix test --no-compile test/pydantic_ai_adapter_smoke_test.exs`:
+    passed, 1 test.
+  - `MIX_ENV=test mise exec -- mix test --no-compile test/gleam_framework_adapter_test.exs test/vercel_ai_sdk_adapter_smoke_test.exs test/langchain_langgraph_adapter_smoke_test.exs test/pydantic_ai_adapter_smoke_test.exs`:
+    passed, 9 tests.
+  - `mise exec -- mix format --check-formatted`: passed.
+  - `mise run check:docs`: passed.
+  - `git diff --check`: passed.
+- Skipped probes: no Python packages were installed and no live Pydantic AI
+  project was generated in this default slice. The committed smoke avoids
+  external package fetches and proves the framework-visible metadata contract
+  against Wardwright directly. Real Pydantic AI provider hooks, graph
+  durability, streaming behavior, structured output, and tool-call capability
+  preservation remain deferred rather than implied.
+- Adversarial review:
+  - Architecture: initial post-commit review found one blocker in the helper
+    boundary: accepting an API key and returning it inside the provider config
+    could make adapter-owned smoke reports or user metadata capture a provider
+    credential. The helper now returns only the environment variable name
+    `WARDWRIGHT_MODEL_API_KEY`; docs read the environment value at the
+    framework boundary instead of storing it in adapter metadata. No other
+    architecture blocker found. The slice stays recipe-only, keeps Pydantic AI
+    in the framework SDK lane, and does not claim native Pydantic AI state,
+    graph durability, streaming, structured-output fidelity, or tool-call
+    fidelity.
+  - Code/comment quality: the Python helper is small and boundary-oriented:
+    typed run context, provenance headers, base URL normalization, receipt
+    capture, and capability-limit wording. No comments were needed in code;
+    the docs carry the integration caveat that real Pydantic AI usage needs a
+    provider hook or owned HTTP client wrapper to attach headers and capture
+    response headers.
+  - Test quality: the smoke is capable of failing for the missing product
+    behavior under review: wrong Wardwright model routing, dropped provenance,
+    missing receipt header capture, missing Pydantic-style run metadata,
+    leaked API-key config, missing capability-limit wording, or overclaimed
+    generic fallback. It uses a real local Wardwright router and synthetic
+    prompts. It does not prove the installed Pydantic AI package, graph
+    durability, streaming behavior, structured output, or tool-call
+    preservation; those are recorded as skipped/deferred probes.
+- Next open item: add OpenAI Agents SDK support on the Chat Completions path
+  and record the `/v1/responses` gap unless implemented.
