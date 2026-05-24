@@ -20,6 +20,8 @@ defmodule Wardwright.ToolContextTest do
     assert context["schema"] == "wardwright.tool_context.v1"
     assert context["phase"] == "planning"
     assert context["confidence"] == "exact"
+    assert context["execution_location"] == "client"
+    assert context["visibility_level"] == "remote_observed"
 
     assert context["primary_tool"] == %{
              "name" => "create_ticket",
@@ -68,6 +70,8 @@ defmodule Wardwright.ToolContextTest do
     assert context["argument_hash"] =~ "sha256:"
     assert context["result_hash"] =~ "sha256:"
     assert context["result_status"] == "unknown"
+    assert context["execution_location"] == "client"
+    assert context["visibility_level"] == "remote_observed"
     assert get_in(context, ["primary_tool", "name"]) == "run_shell"
 
     refute inspect(context) =~ "secret-token-123"
@@ -105,6 +109,8 @@ defmodule Wardwright.ToolContextTest do
     assert context["argument_hash"] =~ "sha256:"
     assert context["result_hash"] =~ "sha256:"
     assert context["confidence"] == "declared"
+    assert context["execution_location"] == "client"
+    assert context["visibility_level"] == "remote_observed"
     assert get_in(context, ["primary_tool", "source"]) == "caller_metadata"
     assert get_in(request, ["metadata", "tool_context"]) == context
     refute inspect(context) =~ "raw secret"
@@ -114,6 +120,37 @@ defmodule Wardwright.ToolContextTest do
              "namespaces" => ["mcp.github"],
              "risk_classes" => ["read_only", "write"]
            })
+  end
+
+  test "normalizes future Wardwright-hosted and provider-hosted tool visibility" do
+    wardwright_context =
+      Wardwright.ToolContext.normalize(
+        %{
+          "metadata" => %{
+            "tool_context" => %{
+              "phase" => "planning",
+              "primary_tool" => %{
+                "name" => "wardwright_policy_cache_status",
+                "namespace" => "wardwright.server",
+                "source" => "wardwright_hosted"
+              }
+            }
+          }
+        },
+        trusted_metadata: true
+      )
+
+    assert wardwright_context["execution_location"] == "wardwright"
+    assert wardwright_context["visibility_level"] == "local_verified"
+
+    provider_context =
+      Wardwright.ToolContext.normalize(%{
+        "messages" => [%{"content" => "search", "role" => "user"}],
+        "tools" => [%{"name" => "web_search", "type" => "web_search"}]
+      })
+
+    assert provider_context["execution_location"] == "provider"
+    assert provider_context["visibility_level"] == "provider_attested"
   end
 
   test "ignores caller metadata unless the gateway marks it trusted" do

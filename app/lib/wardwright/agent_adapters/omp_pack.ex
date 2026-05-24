@@ -4,7 +4,7 @@ defmodule Wardwright.AgentAdapters.OmpPack do
   alias Wardwright.AgentAdapters.CanonicalJson
 
   @adapter_id "wardwright-omp"
-  @adapter_version "0.1.0-rc.1"
+  @adapter_version "0.1.0"
   @config_path ".omp/wardwright-adapter.json"
   @default_gateway_url "http://127.0.0.1:8787"
   @key_gateway_url "gateway_url"

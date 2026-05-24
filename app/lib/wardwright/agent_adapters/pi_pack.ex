@@ -4,7 +4,7 @@ defmodule Wardwright.AgentAdapters.PiPack do
   alias Wardwright.AgentAdapters.CanonicalJson
 
   @adapter_id "wardwright-pi"
-  @adapter_version "0.1.0-rc.1"
+  @adapter_version "0.1.0"
   @config_path ".wardwright/adapters/pi-adapter.json"
   @default_gateway_url "http://127.0.0.1:8787"
   @key_export_only "export_only"

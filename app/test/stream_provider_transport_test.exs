@@ -406,6 +406,218 @@ defmodule Wardwright.StreamProviderTransportTest do
     assert get_in(receipt, ["final", "provider_metadata", "usage", "total_tokens"]) == 5
   end
 
+  test "openai-compatible targets use the Wardwright-hosted server-tool framework for registered tools" do
+    base_url = streaming_provider_base_url("/openai")
+    System.put_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS", "1")
+    System.put_env("WARDWRIGHT_TEST_OPENAI_KEY", "test-openai-key")
+
+    on_exit(fn ->
+      System.delete_env("WARDWRIGHT_TEST_OPENAI_KEY")
+      System.delete_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS")
+    end)
+
+    config =
+      unit_policy_config()
+      |> Map.put("targets", [
+        %{
+          "context_window" => 256,
+          "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY",
+          "model" => "openai-compatible/live-test",
+          "provider_base_url" => base_url,
+          "provider_kind" => "openai-compatible"
+        }
+      ])
+      |> Map.put("governance", [])
+      |> Map.put("server_tools", [%{"name" => "wardwright_policy_cache_status"}])
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    assert {:ok, _event} =
+             Wardwright.PolicyCache.add(%{
+               "created_at_unix_ms" => 1,
+               "key" => "browser:read",
+               "kind" => "tool_call",
+               "scope" => %{"session_id" => "server-tool-smoke"}
+             })
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "check Wardwright policy cache status", role: "user"}],
+        model: "unit-model"
+      })
+
+    assert conn.status == 200
+
+    body = JSON.decode!(conn.resp_body)
+
+    assert get_in(body, ["choices", Access.at(0), "message", "content"]) ==
+             "Wardwright server tool status was observed."
+
+    assert get_in(body, ["choices", Access.at(0), "finish_reason"]) == "stop"
+
+    [receipt_id] = get_resp_header(conn, "x-wardwright-receipt-id")
+    receipt = Wardwright.ReceiptStore.get(receipt_id)
+
+    assert [server_tool] = get_in(receipt, ["final", "provider_metadata", "wardwright_server_tools"])
+    assert server_tool["call_id"] == "call_wardwright_status_1"
+    assert server_tool["execution_location"] == "wardwright"
+    assert server_tool["name"] == "wardwright_policy_cache_status"
+    assert server_tool["status"] == "completed"
+    assert server_tool["visibility_level"] == "local_verified"
+    assert get_in(server_tool, ["result_metadata", "entry_count"]) >= 1
+    assert get_in(server_tool, ["result_metadata", "topology"]) == "catalog_per_session_tables"
+
+    assert get_in(receipt, ["final", "provider_metadata", "wardwright_server_tool_first_finish_reason"]) == "tool_calls"
+  end
+
+  test "openai-compatible targets run configured Dune server tools with model arguments" do
+    base_url = streaming_provider_base_url("/openai")
+    System.put_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS", "1")
+    System.put_env("WARDWRIGHT_TEST_OPENAI_KEY", "test-openai-key")
+
+    on_exit(fn ->
+      System.delete_env("WARDWRIGHT_TEST_OPENAI_KEY")
+      System.delete_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS")
+    end)
+
+    config =
+      unit_policy_config()
+      |> Map.put("targets", [
+        %{
+          "context_window" => 256,
+          "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY",
+          "model" => "openai-compatible/live-test",
+          "provider_base_url" => base_url,
+          "provider_kind" => "openai-compatible"
+        }
+      ])
+      |> Map.put("governance", [])
+      |> Map.put("server_tools", [
+        %{
+          "description" => "Echo a value through a trusted local Dune server function.",
+          "engine" => "dune",
+          "name" => "dune_echo_tool",
+          "parameters" => %{
+            "additionalProperties" => false,
+            "properties" => %{"value" => %{"type" => "string"}},
+            "type" => "object"
+          },
+          "source" => ~S(%{"echo" => input["value"]})
+        }
+      ])
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "use the Dune echo server tool", role: "user"}],
+        model: "unit-model"
+      })
+
+    assert conn.status == 200
+
+    body = JSON.decode!(conn.resp_body)
+
+    assert get_in(body, ["choices", Access.at(0), "message", "content"]) ==
+             "Wardwright Dune server tool result was observed."
+
+    [receipt_id] = get_resp_header(conn, "x-wardwright-receipt-id")
+    receipt = Wardwright.ReceiptStore.get(receipt_id)
+
+    assert [server_tool] = get_in(receipt, ["final", "provider_metadata", "wardwright_server_tools"])
+    assert server_tool["call_id"] == "call_dune_echo_tool_1"
+    assert server_tool["engine"] == "dune"
+    assert server_tool["execution_location"] == "wardwright"
+    assert server_tool["name"] == "dune_echo_tool"
+    assert server_tool["status"] == "completed"
+    assert server_tool["visibility_level"] == "local_verified"
+    assert get_in(server_tool, ["result_metadata", "echo"]) == "from-model"
+  end
+
+  test "openai-compatible targets run trusted BEAM module server tools loaded from path" do
+    base_url = streaming_provider_base_url("/openai")
+    module_name = "WardwrightBeamReverseTool#{System.unique_integer([:positive])}"
+    path = Path.join(System.tmp_dir!(), "#{module_name}.exs")
+
+    File.write!(path, """
+    defmodule #{module_name} do
+      @behaviour Wardwright.ServerTools.Behaviour
+
+      def spec do
+        %{
+          "description" => "Reverse text through a trusted local BEAM module.",
+          "name" => "beam_reverse_tool",
+          "parameters" => %{
+            "additionalProperties" => false,
+            "properties" => %{"text" => %{"type" => "string"}},
+            "type" => "object"
+          }
+        }
+      end
+
+      def run(%{"text" => text}, _context), do: {:ok, %{"reversed" => String.reverse(text)}}
+      def run(_arguments, _context), do: {:error, "text is required"}
+    end
+    """)
+
+    System.put_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS", "1")
+    System.put_env("WARDWRIGHT_TEST_OPENAI_KEY", "test-openai-key")
+
+    on_exit(fn ->
+      File.rm(path)
+      System.delete_env("WARDWRIGHT_TEST_OPENAI_KEY")
+      System.delete_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS")
+    end)
+
+    config =
+      unit_policy_config()
+      |> Map.put("targets", [
+        %{
+          "context_window" => 256,
+          "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY",
+          "model" => "openai-compatible/live-test",
+          "provider_base_url" => base_url,
+          "provider_kind" => "openai-compatible"
+        }
+      ])
+      |> Map.put("governance", [])
+      |> Map.put("server_tools", [
+        %{
+          "engine" => "beam_module",
+          "module" => module_name,
+          "name" => "beam_reverse_tool",
+          "path" => path
+        }
+      ])
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "use the BEAM reverse server tool", role: "user"}],
+        model: "unit-model"
+      })
+
+    assert conn.status == 200
+
+    body = JSON.decode!(conn.resp_body)
+
+    assert get_in(body, ["choices", Access.at(0), "message", "content"]) ==
+             "Wardwright BEAM server tool result was observed."
+
+    [receipt_id] = get_resp_header(conn, "x-wardwright-receipt-id")
+    receipt = Wardwright.ReceiptStore.get(receipt_id)
+
+    assert [server_tool] = get_in(receipt, ["final", "provider_metadata", "wardwright_server_tools"])
+    assert server_tool["call_id"] == "call_beam_reverse_tool_1"
+    assert server_tool["engine"] == "beam_module"
+    assert server_tool["execution_location"] == "wardwright"
+    assert server_tool["name"] == "beam_reverse_tool"
+    assert server_tool["status"] == "completed", inspect(server_tool)
+    assert server_tool["visibility_level"] == "local_verified"
+    assert get_in(server_tool, ["result_metadata", "reversed"]) == "desserts"
+  end
+
   defp sse_json_payloads(body) do
     body
     |> String.split("\n\n", trim: true)

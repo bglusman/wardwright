@@ -13,11 +13,10 @@ an OpenAI-compatible interface.
 
 <div class="notice">
   <strong>Current status:</strong> Wardwright is an early installable prototype,
-  not a finished product. The latest stable published release is
-  <code>v0.0.10</code>; the current source tree is preparing
-  <code>v0.1.0-rc.1</code> with framework-adapter recipes, local agent-adapter
-  install/probe support, and the Lustre workbench migration. The repo is still
-  intentionally docs-driven: write down the
+  not a finished product. The <code>v0.1.0</code> release line includes
+  framework-adapter recipes, local agent-adapter install/probe support, and the
+  Lustre workbench migration. The repo is still intentionally docs-driven:
+  write down the
   contract, build prototypes against it, test the contract, then harden the
   production foundation using evidence.
 </div>

@@ -178,7 +178,7 @@ defmodule Wardwright.AgentAdapterRecordingTest do
         Map.merge(
           %{
             "adapter_id" => "wardwright-omp",
-            "adapter_version" => "0.1.0-rc.1",
+            "adapter_version" => "0.1.0",
             "gateway_url" => "http://127.0.0.1:8787",
             "runtime" => "omp",
             "target" => "omp",
@@ -186,7 +186,7 @@ defmodule Wardwright.AgentAdapterRecordingTest do
           },
           attrs
         ),
-        Keyword.merge([secret: @secret, now: @now], opts)
+        Keyword.merge([secret: @secret, now: @now, ttl_seconds: 7 * 24 * 60 * 60], opts)
       )
 
     identity

@@ -366,7 +366,7 @@ later removed or made internal-only.
 
 ## Mental Model
 
-For the current release-candidate line, a Wardwright model is easiest to
+For the current release line, a Wardwright model is easiest to
 explain as four layers:
 
 1. **Targets**: real provider models or other Wardwright models.
@@ -395,7 +395,7 @@ reviewability:
 - require projection, trace, validation, and scenario evidence to stay engine
   neutral
 
-This is not a release-candidate requirement. The current requirement is that
+This is not a release requirement. The current requirement is that
 agents can create and modify local Wardwright models through a documented,
 reviewable, reversible workflow.
 

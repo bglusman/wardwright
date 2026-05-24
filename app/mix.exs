@@ -111,7 +111,7 @@ defmodule Wardwright.MixProject do
   def project do
     [
       app: :wardwright,
-      version: "0.1.0-rc.1",
+      version: "0.1.0",
       elixir: "~> 1.18",
       compilers: [:gleam_deps, :gleam] ++ Mix.compilers(),
       aliases: ["deps.get": ["deps.get", "gleam.deps.get"]],

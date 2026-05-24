@@ -58,6 +58,8 @@ tool_context:
     risk_class: read_only | write | irreversible | external_side_effect | unknown
     schema_hash: sha256:...
   tool_call_id: call_abc
+  execution_location: client | wardwright | provider | remote_mcp | unknown
+  visibility_level: local_verified | remote_observed | provider_attested | opaque
   available_tools:
     - namespace: mcp.github
       name: create_pull_request

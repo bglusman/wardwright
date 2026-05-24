@@ -481,6 +481,53 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GovernanceRule"
+        server_tools:
+          type: array
+          description: Explicit Wardwright-hosted server-tool extension surface for built-ins, trusted local Dune functions, and trusted BEAM modules.
+          items:
+            $ref: "#/components/schemas/ServerTool"
+    ServerTool:
+      type: object
+      properties:
+        engine:
+          type: string
+          enum: [builtin, dune, beam_module, elixir_module]
+          default: builtin
+          description: elixir_module is accepted as an alias for beam_module; Gleam, Erlang, and Elixir modules all use the BEAM module contract.
+        name:
+          type: string
+          description: Tool name advertised to the selected provider. Built-in support currently includes wardwright_policy_cache_status. Dune tools declare a name here; BEAM modules may return it from spec/0.
+        description:
+          type: string
+        parameters:
+          type: object
+          description: JSON Schema object advertised for the function arguments.
+        source:
+          type: string
+          description: Trusted local Dune source used when engine is dune.
+        snippet_id:
+          type: string
+          description: Saved Dune snippet id used when engine is dune and source is omitted.
+        input:
+          type: object
+          description: Optional default Dune input merged with model-provided arguments.
+        module:
+          type: string
+          description: Trusted BEAM module name exporting spec/0 and run/2.
+        path:
+          type: string
+          description: Trusted local .ex/.exs, .erl, or .beam path to load before calling the BEAM module.
+        enabled:
+          type: boolean
+          default: true
+        execution_location:
+          type: string
+          enum: [wardwright]
+          readOnly: true
+        visibility_level:
+          type: string
+          enum: [local_verified]
+          readOnly: true
     RouteGraph:
       type: object
       required: [root, nodes]
@@ -550,7 +597,7 @@ components:
         id: { type: string }
         kind:
           type: string
-          enum: [request_guard, request_transform, route_gate, stream_guard, structured_output, receipt_annotation, history_threshold, history_regex_threshold, tool_selector, tool_loop_threshold, tool_sequence, custom]
+          enum: [request_guard, request_transform, route_gate, stream_guard, structured_output, receipt_annotation, history_threshold, history_regex_threshold, allowed_tools, tool_selector, tool_loop_threshold, tool_sequence, custom]
         action:
           type: string
           enum: [pass, transform, validate_or_block, inject_reminder_and_retry, restrict_routes, switch_model, reroute, escalate, alert_async, block, block_final, annotate, state_transition]
@@ -861,6 +908,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GovernanceRule"
+        server_tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServerTool"
     TestRouteTarget:
       type: object
       required: [model, context_window]

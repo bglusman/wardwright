@@ -26,10 +26,9 @@ individual models can be configured for API-key or open access.
 
 ## Install
 
-Wardwright publishes early native binaries for macOS and Linux. The latest
-stable published release is `v0.0.10`. The current source tree is preparing
-`v0.1.0-rc.1`, which adds the Lustre workbench migration, framework-adapter
-recipes, and local agent-adapter install/probe support while keeping stronger
+Wardwright publishes early native binaries for macOS and Linux. The `v0.1.0`
+release adds the Lustre workbench migration, framework-adapter recipes, and
+local agent-adapter install/probe support while keeping stronger
 state-fidelity claims explicitly limited.
 
 ### macOS Homebrew
@@ -60,13 +59,7 @@ WARDWRIGHT_BIND=127.0.0.1:8787 \
 For a pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.10
-```
-
-For the release candidate after it is tagged, pin it explicitly:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.1.0-rc.1
+curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.1.0
 ```
 
 Set `WARDWRIGHT_ADMIN_TOKEN` before exposing Wardwright beyond loopback. See
@@ -131,8 +124,8 @@ Wardwright exposes:
 
 See [Agent Authoring](docs/agent-authoring.md) for the review loop external
 agents should follow before activating a model.
-Release-candidate adapter install, doctor, pair, probe, privacy, cleanup, and
-fallback behavior is documented in [Agent Adapters](docs/agent-adapters.md).
+Adapter install, doctor, pair, probe, privacy, cleanup, and fallback behavior
+is documented in [Agent Adapters](docs/agent-adapters.md).
 
 `wardwright admin` opens the workbench in your browser. If nothing is listening
 on the configured `WARDWRIGHT_BIND` port, it starts a local background service

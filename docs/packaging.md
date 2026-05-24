@@ -6,10 +6,9 @@ description: Release, native binary, and Homebrew packaging plan for Wardwright.
 
 # Packaging
 
-Status: initial Burrito/Tinfoil packaging path in place. Release `v0.0.10` is
-the latest stable published usable early release. The current source tree is
-preparing `v0.1.0-rc.1` with the Lustre workbench migration, framework-adapter
-recipe smokes, and local agent-adapter install/probe support.
+Status: initial Burrito/Tinfoil packaging path in place. Release `v0.1.0`
+adds the Lustre workbench migration, framework-adapter recipe smokes, and local
+agent-adapter install/probe support.
 
 Wardwright is a BEAM application with a Phoenix/Lustre operator UI and Gleam
 decision cores. The packaging goal is a user-facing binary that does not require
@@ -58,13 +57,7 @@ curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/in
 For a pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.10
-```
-
-For the release candidate after it is tagged:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.1.0-rc.1
+curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.1.0
 ```
 
 The script downloads the matching release archive, requires
@@ -250,8 +243,8 @@ write access to `bglusman/homebrew-tap`. Tinfoil also supports deploy-key auth,
 which is preferable once release automation is no longer experimental.
 
 Dev tags such as `v0.1.0-dev` are published as GitHub prereleases but do not
-update the Homebrew tap. The `0.1.0` milestone is reserved for the first release
-where the policy UI and validation story are useful enough to promote.
+update the Homebrew tap. The `v0.1.0` stable tag updates the tap after release
+artifacts and checksums publish successfully.
 
 ## Known Gaps
 
@@ -272,13 +265,18 @@ where the policy UI and validation story are useful enough to promote.
 - Release `v0.0.10` preserves the unified `/admin` workbench shell from
   `v0.0.9` and fixes packaged releases so the Gleam/Lustre runtime modules are
   included in the Burrito payload.
-- Release `v0.1.0-rc.1` is the first release-candidate target for the Lustre
-  workbench migration, framework-adapter recipe foundation, and local
-  agent-adapter install/probe lifecycle. It remains a prerelease and should not
-  imply exact cross-agent replay or native framework state fidelity.
+- Release `v0.1.0` adds the Lustre workbench migration, framework-adapter
+  recipe foundation, and local agent-adapter install/probe lifecycle. It does
+  not imply exact cross-agent replay or native framework state fidelity. It also
+  adds a Wardwright-hosted server-tool framework with one registered read-only
+  built-in, `wardwright_policy_cache_status`, trusted Dune function tools, and
+  trusted BEAM module tools loaded from explicit `.ex/.exs`, `.erl`, or `.beam`
+  paths. Receipts record explicit engine, execution-location, visibility, status,
+  and result metadata; these extension tools are trusted local operator code,
+  not a sandbox or side-effect approval system.
 - Fnox-backed provider credentials are runtime-supported but not package-managed;
   fnox installation/profile management and product authorization remain
-  hardening work beyond this RC.
+  hardening work beyond this release.
 - The first CI run may expose platform-specific Burrito, Zig, or NIF issues.
   macOS builds intentionally install Homebrew `zig@0.15` because upstream Zig
   0.15.2 can fail to link on newer macOS/Xcode combinations.

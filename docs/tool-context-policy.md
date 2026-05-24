@@ -53,6 +53,84 @@ usage details, Wardwright can only govern the pre-call route/provider/tool
 configuration and the final visible response; it cannot inspect or stop each
 hidden internal step.
 
+Wardwright-owned server-side tools are a separate explicit extension surface.
+They should not be hidden broad execution authority inside the
+OpenAI-compatible Chat Completions path. Current Chat Completions tool support
+mostly stays pass-through and policy evidence: clients or providers execute
+tools, while Wardwright normalizes visible `tools`, `tool_choice`, `tool_calls`,
+tool results, and provider-exposed hosted tool events. The `0.1.0` spike adds a
+small server-tool registry and execution loop with three explicit engines:
+read-only built-ins, trusted local Dune functions, and trusted BEAM modules
+loaded from a local path. The first built-in tool is
+`wardwright_policy_cache_status`; extension modules can be written in Elixir,
+Gleam, or Erlang as long as the loaded BEAM module exports `spec/0` and
+`run/2`. Every Wardwright-hosted tool must be explicit about who executes it
+and what Wardwright can prove:
+
+| Execution location | Visibility level | Meaning |
+| --- | --- | --- |
+| `client` | `remote_observed` | The caller or local agent executes the tool outside Wardwright, and Wardwright sees structured request/result evidence when supplied. |
+| `wardwright` | `local_verified` | Wardwright executes the configured tool and receipts explicit execution metadata plus result or error metadata. Argument hashes, tool-specific timing, and richer allow/deny policy evidence remain follow-up work. |
+| `provider` | `provider_attested` | A provider-hosted tool exposes structured events or result metadata that Wardwright can record but not directly control. |
+| `remote_mcp` | `remote_observed` | A remote MCP or service executes the call, while Wardwright observes structured call/result evidence through an explicit integration. |
+| `unknown` | `opaque` | Wardwright can govern only the pre-call request/provider choice and final visible response. |
+
+Datalog-style or other derived history queries, if they prove useful, should sit
+behind this future Wardwright-hosted read-only tool surface or behind internal
+typed policy predicates. They should not become a second hidden policy engine
+or a model-facing query language before the fact schema, cost bounds, and
+receipt evidence are explicit.
+
+The first registered server tool is configured per Wardwright model:
+
+```yaml
+server_tools:
+  - name: wardwright_policy_cache_status
+```
+
+Trusted Dune functions are configured with either inline source or a saved
+snippet id. Model-supplied tool arguments become the Dune `input` map, merged
+over any configured `input` defaults:
+
+```yaml
+server_tools:
+  - engine: dune
+    name: dune_echo_tool
+    description: Echo a value through a trusted local Dune function.
+    source: |
+      %{"echo" => input["value"]}
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        value:
+          type: string
+```
+
+Trusted BEAM modules are loaded from an explicit local `.ex/.exs`, `.erl`, or
+`.beam` path, then called through `spec/0` and `run/2`:
+
+```yaml
+server_tools:
+  - engine: beam_module
+    module: MyApp.WardwrightTools.ReverseTool
+    path: /opt/wardwright/tools/reverse_tool.exs
+```
+
+`elixir_module` is accepted as a compatibility alias for `beam_module`; Gleam
+and Erlang modules use the same BEAM contract. These modules run inside the
+Wardwright BEAM and are trusted operator code, not a sandbox boundary.
+
+In non-streaming Chat Completions, Wardwright advertises that tool to the
+selected provider, executes a matching model-requested call once, appends a tool
+result message, and asks the provider for the final answer. Receipts record
+`final.provider_metadata.wardwright_server_tools[]` with the call id, tool name,
+`execution_location: wardwright`, `visibility_level: local_verified`, status,
+engine, and result or error metadata. Extension authors should return
+receipt-safe metadata because Wardwright does not yet redact arbitrary local tool
+output. Streaming, side-effecting tools, remote MCP passthrough, and hidden
+provider tools remain deferred.
+
 Tool-aware governance currently has four built-in rule shapes:
 
 - `allowed_tools` declares the first-class tool surface for a state and phase.
