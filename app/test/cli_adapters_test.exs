@@ -194,6 +194,156 @@ defmodule Wardwright.CLIAdaptersTest do
     refute Enum.any?(opencode["next_actions"], &String.contains?(&1, "probe omp"))
   end
 
+  test "doctor distinguishes OpenCode runtime verification from missing surface verification" do
+    workspace = tmp_workspace("wardwright-opencode-runtime-verified")
+    secret = String.duplicate("opencode-runtime-secret", 3)
+    now = ~U[2026-05-23 22:00:00Z]
+
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    setup_verified_omp_runtime(workspace, secret, now)
+
+    write_opencode_runtime_config(workspace, %{
+      "runtime" => "omp-opencode-bridge"
+    })
+
+    results =
+      Adapters.doctor(
+        find_executable: fake_omp_and_opencode_finder(),
+        identity_secret: secret,
+        now: DateTime.add(now, 120, :second),
+        workspace_root: workspace
+      )
+
+    opencode = Enum.find(results, &(&1.target == "opencode"))
+    assert opencode.state == "verified_with_probe"
+    assert opencode.fidelity == "runtime_verified"
+    assert opencode.surface_probe == "not_run"
+
+    assert opencode.next_actions == [
+             "run `wardwright adapters probe opencode` to verify OpenCode reaches the runtime adapter"
+           ]
+  end
+
+  test "probe opencode records surface verification only after the OMP runtime adapter is probed" do
+    workspace = tmp_workspace("wardwright-opencode-surface-probe")
+    secret = String.duplicate("opencode-surface-secret", 3)
+    now = ~U[2026-05-23 22:30:00Z]
+    test_pid = self()
+
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    setup_verified_omp_runtime(workspace, secret, now)
+
+    write_opencode_runtime_config(workspace, %{
+      "runtime" => "omp-opencode-bridge"
+    })
+
+    surface_probe_runner = fn request ->
+      send(test_pid, {:opencode_surface_probe_request, request})
+
+      assert request.opencode_bin == "/tmp/fake-bin/opencode"
+      assert request.runtime == "omp"
+      assert request.adapter_id == "wardwright-omp"
+      assert request.workspace_root == workspace
+
+      {:ok, "wardwright_surface_probe=passed\n"}
+    end
+
+    collector = collector()
+
+    assert 0 =
+             Adapters.run(["probe", "opencode"], collector,
+               find_executable: fake_omp_and_opencode_finder(),
+               identity_secret: secret,
+               now: DateTime.add(now, 180, :second),
+               opencode_surface_probe_runner: surface_probe_runner,
+               workspace_root: workspace
+             )
+
+    assert_receive {:opencode_surface_probe_request, _request}
+    assert collected() =~ "OpenCode surface probe passed"
+
+    runtime_config = JSON.decode!(File.read!(Path.join(workspace, ".opencode/wardwright-runtime.json")))
+    assert get_in(runtime_config, ["surface_probe", "status"]) == "passed"
+    assert get_in(runtime_config, ["surface_probe", "probe"]) == "opencode_runtime_surface"
+    assert get_in(runtime_config, ["surface_probe", "runtime"]) == "omp"
+    assert get_in(runtime_config, ["surface_probe", "target"]) == "opencode"
+    assert get_in(runtime_config, ["surface_probe", "output_sha256"]) =~ ~r/^[0-9a-f]{64}$/
+
+    results =
+      Adapters.doctor(
+        find_executable: fake_omp_and_opencode_finder(),
+        identity_secret: secret,
+        now: DateTime.add(now, 240, :second),
+        workspace_root: workspace
+      )
+
+    opencode = Enum.find(results, &(&1.target == "opencode"))
+    assert opencode.state == "verified_with_probe"
+    assert opencode.fidelity == "surface_verified"
+    assert opencode.surface_probe == "passed"
+    assert opencode.next_actions == ["OpenCode surface and underlying runtime probe are verified"]
+  end
+
+  test "probe opencode refuses lower-fidelity native runtime without invoking the surface runner" do
+    workspace = tmp_workspace("wardwright-opencode-native-probe-refusal")
+    test_pid = self()
+
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    write_opencode_runtime_config(workspace, %{
+      "runtime" => "opencode-native"
+    })
+
+    collector = collector()
+
+    assert 1 =
+             Adapters.run(["probe", "opencode"], collector,
+               find_executable: fake_opencode_finder(),
+               opencode_surface_probe_runner: fn request ->
+                 send(test_pid, {:unexpected_surface_probe, request})
+                 {:ok, "wardwright_surface_probe=passed\n"}
+               end,
+               workspace_root: workspace
+             )
+
+    assert collected() =~ "OpenCode-native is lower-fidelity"
+    refute_receive {:unexpected_surface_probe, _request}
+  end
+
+  test "probe opencode failure reports a digest instead of raw OpenCode output" do
+    workspace = tmp_workspace("wardwright-opencode-surface-probe-failure")
+    secret = String.duplicate("opencode-failure-secret", 3)
+    now = ~U[2026-05-23 22:45:00Z]
+
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    setup_verified_omp_runtime(workspace, secret, now)
+
+    write_opencode_runtime_config(workspace, %{
+      "runtime" => "omp-opencode-bridge"
+    })
+
+    collector = collector()
+
+    assert 1 =
+             Adapters.run(["probe", "opencode"], collector,
+               find_executable: fake_omp_and_opencode_finder(),
+               identity_secret: secret,
+               now: DateTime.add(now, 180, :second),
+               opencode_surface_probe_runner: fn _request ->
+                 {:error, :probe_failed, %{output: "raw OpenCode probe transcript", status: 1}}
+               end,
+               workspace_root: workspace
+             )
+
+    output = collected()
+    assert output =~ "OpenCode surface probe failed"
+    assert output =~ ~r/output_sha256: [0-9a-f]{64}/
+    refute output =~ "raw OpenCode probe transcript"
+  end
+
   test "install omp writes only project-local Wardwright adapter files" do
     workspace = tmp_workspace("wardwright-omp-install")
     collector = collector()
@@ -584,6 +734,47 @@ defmodule Wardwright.CLIAdaptersTest do
       "opencode" -> "/tmp/fake-bin/opencode"
       _binary -> nil
     end
+  end
+
+  defp fake_omp_and_opencode_finder do
+    fn
+      "omp" -> "/tmp/fake-bin/omp"
+      "opencode" -> "/tmp/fake-bin/opencode"
+      _binary -> nil
+    end
+  end
+
+  defp setup_verified_omp_runtime(workspace, secret, now) do
+    assert 0 =
+             Adapters.run(["install", "omp"], collector(),
+               find_executable: fake_omp_finder(),
+               workspace_root: workspace
+             )
+
+    pair_request_fun = fn "http://127.0.0.1:8787", "gateway-token", payload ->
+      Identity.issue(payload, secret: secret, now: now)
+    end
+
+    assert 0 =
+             Adapters.run(["pair", "omp"], collector(),
+               find_executable: fake_omp_finder(),
+               gateway_token: "gateway-token",
+               identity_secret: secret,
+               now: now,
+               pair_request_fun: pair_request_fun,
+               workspace_root: workspace
+             )
+
+    assert 0 =
+             Adapters.run(["probe", "omp"], collector(),
+               find_executable: fake_omp_finder(),
+               identity_secret: secret,
+               now: DateTime.add(now, 60, :second),
+               probe_runner: fn _request ->
+                 {:ok, "PASS edit: expected trigger\nPASS read: expected not trigger\n"}
+               end,
+               workspace_root: workspace
+             )
   end
 
   defp write_opencode_runtime_config(workspace, payload) do

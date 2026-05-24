@@ -49,6 +49,17 @@ defmodule Wardwright.GleamAdapterCoreTest do
              {"", "unsupported_runtime", "no_install", "unsupported"}
   end
 
+  test "surface fidelity only upgrades runtime-backed adapters after a surface probe passes" do
+    assert :wardwright@adapter_core.surface_fidelity("runtime_verified", false) == "runtime_verified"
+    assert :wardwright@adapter_core.surface_fidelity("runtime_verified", true) == "surface_verified"
+
+    assert :wardwright@adapter_core.surface_fidelity("session_import_best_effort", true) ==
+             "session_import_best_effort"
+
+    assert :wardwright@adapter_core.surface_fidelity("prompt_handoff", true) == "prompt_handoff"
+    assert :wardwright@adapter_core.surface_fidelity("unsupported", true) == "unsupported"
+  end
+
   test "install plans default to project scope and require explicit user scope" do
     assert :wardwright@adapter_core.install_plan("installable", "project", false) ==
              "install_project_files"

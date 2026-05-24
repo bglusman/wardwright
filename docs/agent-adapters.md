@@ -25,6 +25,7 @@ wardwright adapters doctor --json
 wardwright adapters install omp
 wardwright adapters pair omp
 wardwright adapters probe omp
+wardwright adapters probe opencode
 wardwright adapters uninstall omp
 ```
 
@@ -65,8 +66,8 @@ defaults. Stronger replay affordances require `verified_with_probe`.
 
 `doctor --json` is the stable machine-readable form. It includes each target's
 state, detected runtime, runtime source, installed paths, install plan, fidelity
-label, and next actions. Human output is for operators and may add explanatory
-wording.
+label, `surface_probe` status, and next actions. Human output is for operators
+and may add explanatory wording.
 
 ## OMP / oh-my-pi
 
@@ -113,6 +114,31 @@ It does not store the raw probe output or gateway token in the adapter config.
 The probe requires the `omp` or `oh-my-pi` runtime to be installed and available
 on `PATH`. If that binary is missing, Wardwright should report the missing
 runtime rather than manufacturing probe success.
+
+## OpenCode Through OMP
+
+OpenCode support remains runtime-driven. When `.opencode/wardwright-runtime.json`
+resolves OpenCode to an OMP-backed runtime, `doctor` reuses the OMP adapter
+state instead of treating OpenCode as a separate rule engine. If the underlying
+OMP adapter is paired and probed, OpenCode may report `verified_with_probe` with
+fidelity `runtime_verified`.
+
+That does not prove the OpenCode surface itself reached the adapted runtime.
+Run this only after `wardwright adapters probe omp` succeeds:
+
+```bash
+wardwright adapters probe opencode
+```
+
+The OpenCode surface probe is fail-closed. It invokes OpenCode's packaged
+surface-probe command and records sanitized evidence only when the output
+contains Wardwright's explicit surface-probe pass marker. After that, `doctor`
+reports `surface_probe: passed` and upgrades the OpenCode fidelity label to
+`surface_verified`.
+
+OpenCode-native and Codex-backed OpenCode do not use this probe. OpenCode-native
+remains best-effort harness export/plugin scaffold work, and Codex-backed
+OpenCode uses the future gateway-identity path rather than the OMP TTSR probe.
 
 ## Uninstall And Cleanup
 
@@ -168,7 +194,7 @@ gateway/export behavior:
 | --- | --- | --- |
 | OMP / oh-my-pi | Packaged install, pair, probe, doctor, and uninstall. | `tts_runtime_probe` only after the OMP probe passes; otherwise no stronger claim than installed or verified identity. |
 | Pi | Runtime resolution and adapter vocabulary exist, but packaged Pi install/probe is not complete. | `state_import_probe` is the intended label; exact resume parity is not claimed. |
-| OpenCode with Pi or OMP runtime | `doctor` can report coverage through the underlying runtime adapter. | `runtime_verified` means the underlying runtime path is covered; OpenCode surface verification is a separate future probe. |
+| OpenCode with Pi or OMP runtime | `doctor` can report coverage through the underlying runtime adapter. OMP-backed OpenCode can run `probe opencode` after the OMP runtime probe passes. | `runtime_verified` means the underlying runtime path is covered; `surface_verified` requires an explicit OpenCode surface probe. |
 | OpenCode-native | Packaged plugin install is not complete; use the current harness export scaffold. | `session_import_best_effort`; do not claim Pi/OMP runtime verification. |
 | OpenCode with Codex runtime | Gateway identity support is the intended path when packaged. | `prompt_handoff`; do not run or claim the OMP TTSR probe. |
 | OpenClaw | Runtime-driven support is planned for Pi, Codex, and supported CLI backends. | Unsupported or unknown runtimes report `unsupported_runtime`. |

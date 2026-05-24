@@ -11,7 +11,10 @@ defmodule Wardwright.CLI.Adapters do
   @key_adapter_version "adapter_version"
   @key_expires_at "expires_at"
   @key_gateway_url "gateway_url"
+  @key_probe "probe"
+  @key_probed_at "probed_at"
   @key_runtime "runtime"
+  @key_status "status"
   @key_target "target"
   @key_workspace_fingerprint "workspace_fingerprint"
 
@@ -242,8 +245,54 @@ defmodule Wardwright.CLI.Adapters do
     end
   end
 
+  def probe("opencode", argv, write_fun, opts) do
+    with {:ok, parsed} <- parse_scope_args(argv),
+         :ok <- ensure_project_scope(parsed.scope),
+         {:ok, opencode_bin} <- detected_runtime_path("opencode", opts, "probe") do
+      workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
+      target = Enum.find(@targets, &(&1.target == "opencode"))
+      runtime_info = runtime_info_for(target, opencode_bin, opts)
+      resolution = resolution_for(target.surface, runtime_info.runtime)
+
+      with :ok <- ensure_opencode_surface_probe_supported(runtime_info.runtime, resolution),
+           :ok <- ensure_runtime_adapter_probe_verified(runtime_info.runtime, opts),
+           {:ok, output} <-
+             run_opencode_surface_probe(workspace_root, opencode_bin, runtime_info.runtime, resolution, opts),
+           {:ok, evidence} <-
+             OpenCodeRuntime.record_surface_probe(workspace_root, runtime_info.runtime, resolution.adapter_id, output,
+               adapter_version: OmpPack.adapter_version(),
+               now: Keyword.get(opts, :now, DateTime.utc_now())
+             ) do
+        write_fun.(opencode_probe_success_human(evidence))
+        0
+      else
+        {:error, :runtime_not_configured} ->
+          write_fun.(
+            "Cannot probe OpenCode surface: write .opencode/wardwright-runtime.json with a supported runtime first."
+          )
+
+          1
+
+        {:error, :probe_failed, result} ->
+          write_fun.(opencode_probe_failed_human(result))
+          1
+
+        {:error, message} ->
+          write_fun.(message)
+          1
+      end
+    else
+      {:error, message} ->
+        write_fun.(message)
+        2
+    end
+  end
+
   def probe(_target, _argv, write_fun, _opts) do
-    write_fun.("Only `wardwright adapters probe omp` is implemented in this loop.")
+    write_fun.(
+      "Only `wardwright adapters probe omp` and `wardwright adapters probe opencode` are implemented in this loop."
+    )
+
     2
   end
 
@@ -276,6 +325,7 @@ defmodule Wardwright.CLI.Adapters do
           runtime: #{row.runtime}#{runtime_source(row)}
           adapter: #{blank_adapter(row.adapter_id)}
           status: #{row.state}
+          surface_probe: #{row.surface_probe}
           install: #{row.install_plan}
         #{next_actions}
         """
@@ -296,7 +346,8 @@ defmodule Wardwright.CLI.Adapters do
     resolution = resolution_for(target.surface, runtime)
     supported? = supported_resolution?(resolution)
     detected? = is_binary(detected_path)
-    installation = installation_for(target, opts)
+    installation = installation_for(target, resolution, runtime_info, opts)
+    fidelity = :wardwright@adapter_core.surface_fidelity(resolution.fidelity, installation.surface_probe_passed)
 
     state =
       :wardwright@adapter_core.adapter_state(
@@ -314,19 +365,34 @@ defmodule Wardwright.CLI.Adapters do
       coverage: resolution.coverage,
       detected: detected?,
       detected_path: detected_path,
-      fidelity: resolution.fidelity,
+      fidelity: fidelity,
       install_plan: doctor_install_plan(state, target, resolution),
       installed_paths: installation.installed_paths,
       label: target.label,
-      next_actions: next_actions(state, target, resolution),
+      next_actions: next_actions(state, target, resolution, installation),
       runtime: if(detected?, do: runtime, else: "not_detected"),
       runtime_source: runtime_info.source,
       state: state,
+      surface_probe: surface_probe_label(target, installation),
       target: target.target
     }
   end
 
-  defp installation_for(%{target: "omp"}, opts) do
+  defp installation_for(%{target: "omp"}, _resolution, _runtime_info, opts) do
+    runtime_adapter_installation("omp", opts)
+  end
+
+  defp installation_for(%{target: "opencode"}, %{coverage: "covered_through_runtime"}, runtime_info, opts) do
+    runtime_info.runtime
+    |> runtime_adapter_installation(opts)
+    |> Map.put(:surface_probe_passed, Map.get(runtime_info, :surface_probe_passed, false))
+  end
+
+  defp installation_for(_target, _resolution, _runtime_info, _opts) do
+    default_installation()
+  end
+
+  defp runtime_adapter_installation("omp", opts) do
     workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
 
     inspection =
@@ -340,17 +406,21 @@ defmodule Wardwright.CLI.Adapters do
       installed_files_present: inspection.installed_files_present,
       installed_manifest_matches: inspection.installed_manifest_matches,
       installed_paths: inspection.files |> Enum.filter(& &1.present?) |> Enum.map(& &1.path),
-      runtime_probe_passed: inspection.runtime_probe_passed
+      runtime_probe_passed: inspection.runtime_probe_passed,
+      surface_probe_passed: false
     }
   end
 
-  defp installation_for(_target, _opts) do
+  defp runtime_adapter_installation(_runtime, _opts), do: default_installation()
+
+  defp default_installation do
     %{
       identity_verified: false,
       installed_files_present: false,
       installed_manifest_matches: true,
       installed_paths: [],
-      runtime_probe_passed: false
+      runtime_probe_passed: false,
+      surface_probe_passed: false
     }
   end
 
@@ -409,8 +479,11 @@ defmodule Wardwright.CLI.Adapters do
     target = Enum.find(@targets, &(&1.target == target_name))
 
     case detected_path(target, opts) do
-      path when is_binary(path) -> {:ok, path}
-      _path -> {:error, "Cannot #{action} OMP adapter: install omp or oh-my-pi first."}
+      path when is_binary(path) ->
+        {:ok, path}
+
+      _path ->
+        {:error, "Cannot #{action} #{target.label} adapter: install #{Enum.join(target.binaries, " or ")} first."}
     end
   end
 
@@ -508,6 +581,16 @@ defmodule Wardwright.CLI.Adapters do
     """
   end
 
+  defp opencode_probe_success_human(evidence) do
+    """
+    OpenCode surface probe passed.
+      probe: #{Map.get(evidence, @key_probe)}
+      status: #{Map.get(evidence, @key_status)}
+      runtime: #{Map.get(evidence, @key_runtime)}
+      probed_at: #{Map.get(evidence, @key_probed_at)}
+    """
+  end
+
   defp probe_failed_human(result) do
     output =
       result.output
@@ -518,6 +601,19 @@ defmodule Wardwright.CLI.Adapters do
     OMP runtime probe failed.
       status: #{inspect(result.status)}
     #{indent_output(output)}
+    """
+  end
+
+  defp opencode_probe_failed_human(result) do
+    output =
+      result.output
+      |> to_string()
+      |> String.trim()
+
+    """
+    OpenCode surface probe failed.
+      status: #{inspect(result.status)}
+      output_sha256: #{sha256(output)}
     """
   end
 
@@ -532,7 +628,8 @@ defmodule Wardwright.CLI.Adapters do
   defp runtime_info_for(target, nil, _opts) do
     %{
       runtime: target.default_runtime || "unknown",
-      source: if(target.default_runtime, do: "default", else: "not_detected")
+      source: if(target.default_runtime, do: "default", else: "not_detected"),
+      surface_probe_passed: false
     }
   end
 
@@ -540,7 +637,7 @@ defmodule Wardwright.CLI.Adapters do
     runtime_hints = Keyword.get(opts, :runtime_hints, %{})
 
     if Map.has_key?(runtime_hints, target.target) do
-      %{runtime: Map.fetch!(runtime_hints, target.target), source: "runtime hint"}
+      %{runtime: Map.fetch!(runtime_hints, target.target), source: "runtime hint", surface_probe_passed: false}
     else
       detected_runtime_info_for(target, opts)
     end
@@ -550,12 +647,16 @@ defmodule Wardwright.CLI.Adapters do
     workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
 
     case OpenCodeRuntime.resolve(workspace_root) do
-      {:ok, runtime} -> %{runtime: runtime.runtime, source: runtime.source}
-      :unknown -> %{runtime: target.default_runtime || "unknown", source: "default"}
+      {:ok, runtime} ->
+        %{runtime: runtime.runtime, source: runtime.source, surface_probe_passed: runtime.surface_probe_passed}
+
+      :unknown ->
+        %{runtime: target.default_runtime || "unknown", source: "default", surface_probe_passed: false}
     end
   end
 
-  defp detected_runtime_info_for(target, _opts), do: %{runtime: target.default_runtime || "unknown", source: "default"}
+  defp detected_runtime_info_for(target, _opts),
+    do: %{runtime: target.default_runtime || "unknown", source: "default", surface_probe_passed: false}
 
   defp runtime_source(%{runtime_source: "default"}), do: " via default"
   defp runtime_source(%{runtime_source: "not_detected"}), do: ""
@@ -603,54 +704,121 @@ defmodule Wardwright.CLI.Adapters do
     end
   end
 
-  defp next_actions("not_detected", target, _resolution), do: ["install #{Enum.join(target.binaries, " or ")} first"]
+  defp next_actions("not_detected", target, _resolution, _installation),
+    do: ["install #{Enum.join(target.binaries, " or ")} first"]
 
-  defp next_actions("installable", %{target: "opencode"}, %{coverage: "covered_through_runtime"} = resolution) do
+  defp next_actions(
+         "installable",
+         %{target: "opencode"},
+         %{coverage: "covered_through_runtime"} = resolution,
+         _installation
+       ) do
     runtime_target = runtime_adapter_target(resolution.adapter_id)
 
     ["run `wardwright adapters install #{runtime_target}` to install the runtime adapter used by OpenCode"]
   end
 
-  defp next_actions("installable", %{target: "opencode"}, %{install_strategy: "install_plugin_scaffold"}) do
+  defp next_actions("installable", %{target: "opencode"}, %{install_strategy: "install_plugin_scaffold"}, _installation) do
     [
       "OpenCode-native plugin install is not packaged yet; use the current harness export scaffold for best-effort handoff"
     ]
   end
 
-  defp next_actions("installable", %{target: "opencode"}, %{install_strategy: "install_gateway_identity"}) do
+  defp next_actions(
+         "installable",
+         %{target: "opencode"},
+         %{install_strategy: "install_gateway_identity"},
+         _installation
+       ) do
     action(
       "install Codex/gateway identity support when that adapter surface is packaged; do not run the OMP runtime probe"
     )
   end
 
-  defp next_actions("installable", target, resolution) do
+  defp next_actions("installable", target, resolution, _installation) do
     ["run `wardwright adapters install #{target.target}` to #{install_summary(resolution.install_strategy)}"]
   end
 
-  defp next_actions("unsupported_runtime", %{target: target}, _resolution) when target in ["opencode", "openclaw"] do
+  defp next_actions("unsupported_runtime", %{target: target}, _resolution, _installation)
+       when target in ["opencode", "openclaw"] do
     [
       "runtime detection is incomplete for this surface; provide a supported Pi, OMP, or Codex runtime before installing"
     ]
   end
 
-  defp next_actions("unsupported_runtime", _target, _resolution),
+  defp next_actions("unsupported_runtime", _target, _resolution, _installation),
     do: action("no packaged adapter is available for this runtime yet")
 
-  defp next_actions("installed_unverified", target, _resolution),
+  defp next_actions("installed_unverified", target, _resolution, _installation),
     do: ["run `wardwright adapters pair #{target.target}` or `wardwright adapters probe #{target.target}`"]
 
-  defp next_actions("verified", target, _resolution),
+  defp next_actions("verified", target, _resolution, _installation),
     do: ["run `wardwright adapters probe #{target.target}` for stronger replay affordances"]
 
-  defp next_actions("verified_with_probe", _target, _resolution),
+  defp next_actions("verified_with_probe", %{target: "opencode"}, %{coverage: "covered_through_runtime"}, %{
+         surface_probe_passed: false
+       }), do: action("run `wardwright adapters probe opencode` to verify OpenCode reaches the runtime adapter")
+
+  defp next_actions("verified_with_probe", %{target: "opencode"}, %{coverage: "covered_through_runtime"}, %{
+         surface_probe_passed: true
+       }), do: action("OpenCode surface and underlying runtime probe are verified")
+
+  defp next_actions("verified_with_probe", _target, _resolution, _installation),
     do: action("adapter identity and runtime probe are verified")
 
-  defp next_actions("drifted", target, _resolution),
+  defp next_actions("drifted", target, _resolution, _installation),
     do: [
       "review local edits, then run `wardwright adapters install #{target.target} --repair` if replacement is intentional"
     ]
 
-  defp next_actions(_state, _target, _resolution), do: []
+  defp next_actions(_state, _target, _resolution, _installation), do: []
+
+  defp ensure_opencode_surface_probe_supported(runtime, %{coverage: "covered_through_runtime"})
+       when runtime in ["omp", "pi"], do: :ok
+
+  defp ensure_opencode_surface_probe_supported("opencode-native", _resolution),
+    do:
+      {:error,
+       "Cannot probe OpenCode surface: OpenCode-native is lower-fidelity and has no packaged surface probe yet."}
+
+  defp ensure_opencode_surface_probe_supported("codex", _resolution),
+    do:
+      {:error,
+       "Cannot probe OpenCode surface: Codex-backed OpenCode uses gateway identity support, not the OMP/Pi runtime probe."}
+
+  defp ensure_opencode_surface_probe_supported(_runtime, _resolution),
+    do: {:error, "Cannot probe OpenCode surface: resolve OpenCode to a supported Pi or OMP runtime first."}
+
+  defp ensure_runtime_adapter_probe_verified("omp", opts) do
+    case runtime_adapter_installation("omp", opts) do
+      %{identity_verified: true, runtime_probe_passed: true} -> :ok
+      _installation -> {:error, "Cannot probe OpenCode surface: run `wardwright adapters probe omp` first."}
+    end
+  end
+
+  defp ensure_runtime_adapter_probe_verified("pi", _opts),
+    do: {:error, "Cannot probe OpenCode surface: packaged Pi runtime probe is not implemented yet."}
+
+  defp run_opencode_surface_probe(workspace_root, opencode_bin, runtime, resolution, opts) do
+    request = %{
+      adapter_id: resolution.adapter_id,
+      opencode_bin: opencode_bin,
+      runtime: runtime,
+      workspace_root: workspace_root
+    }
+
+    probe_runner = Keyword.get(opts, :opencode_surface_probe_runner, &OpenCodeRuntime.run_surface_probe/1)
+    probe_runner.(request)
+  end
+
+  defp surface_probe_label(%{target: "opencode"}, %{surface_probe_passed: true}), do: "passed"
+  defp surface_probe_label(%{target: "opencode"}, _installation), do: "not_run"
+  defp surface_probe_label(_target, _installation), do: "not_applicable"
+
+  defp sha256(value) do
+    :crypto.hash(:sha256, value)
+    |> Base.encode16(case: :lower)
+  end
 
   defp install_summary("install_runtime_adapter"), do: "install the runtime adapter"
   defp install_summary("install_plugin_scaffold"), do: "install the plugin/import scaffold"

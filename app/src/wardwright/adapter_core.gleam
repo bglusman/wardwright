@@ -32,8 +32,10 @@ type Fidelity {
   TtsRuntimeProbe
   StateImportProbe
   RuntimeVerified
+  SurfaceVerified
   SessionImportBestEffort
   PromptHandoff
+  UnsupportedFidelity
 }
 
 type AdapterResolution {
@@ -121,6 +123,16 @@ pub fn recording_mode(
 pub fn adapter_recording_enabled(adapter_state: String) -> Bool {
   parse_adapter_state(adapter_state)
   |> adapter_state_recording_enabled
+}
+
+pub fn surface_fidelity(
+  base_fidelity: String,
+  surface_probe_passed: Bool,
+) -> String {
+  case parse_fidelity(base_fidelity), surface_probe_passed {
+    RuntimeVerified, True -> fidelity_label(SurfaceVerified)
+    fidelity, _ -> fidelity_label(fidelity)
+  }
 }
 
 fn classify_adapter_state(
@@ -349,8 +361,22 @@ fn fidelity_label(fidelity: Fidelity) -> String {
     TtsRuntimeProbe -> "tts_runtime_probe"
     StateImportProbe -> "state_import_probe"
     RuntimeVerified -> "runtime_verified"
+    SurfaceVerified -> "surface_verified"
     SessionImportBestEffort -> "session_import_best_effort"
     PromptHandoff -> "prompt_handoff"
+    UnsupportedFidelity -> "unsupported"
+  }
+}
+
+fn parse_fidelity(label: String) -> Fidelity {
+  case label {
+    "tts_runtime_probe" -> TtsRuntimeProbe
+    "state_import_probe" -> StateImportProbe
+    "runtime_verified" -> RuntimeVerified
+    "surface_verified" -> SurfaceVerified
+    "session_import_best_effort" -> SessionImportBestEffort
+    "prompt_handoff" -> PromptHandoff
+    _ -> UnsupportedFidelity
   }
 }
 
