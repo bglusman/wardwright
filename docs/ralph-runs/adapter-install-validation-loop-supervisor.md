@@ -8,7 +8,7 @@ This file is the durable tracker for the adapter install and validation Ralph
 loop. The build target is
 [`adapter-install-validation-requirements.md`](adapter-install-validation-requirements.html).
 
-Status: continuing after loop 16. The OMP release-candidate slice is complete,
+Status: continuing after loop 17. The OMP release-candidate slice is complete,
 but the Ralph loop remains open for the follow-up adapter backlog below. The
 completion sentinel should stay absent until those continuation items are also
 implemented, validated, and recorded.
@@ -1059,3 +1059,70 @@ execution constraints for the loop are:
 - Next open item: backlog item 13, add Pi adapter lifecycle support, including
   explicit export-only reporting where Pi has no persistent project extension
   surface.
+
+### Loop 17 - Pi Adapter Metadata Lifecycle
+
+- Timestamp: 2026-05-23T21:20:56-04:00.
+- Starting commit: `d7339fa`.
+- Ending implementation commit: `d155931`.
+- Scope: added packaged Pi adapter lifecycle support without claiming a
+  persistent Pi project extension surface. `wardwright adapters install pi`
+  now writes only Wardwright-owned project metadata under
+  `.wardwright/adapters/`, reports Pi replay pieces as export-only, and refuses
+  user scope. `pair pi` stores a signed gateway identity, the gateway pair and
+  verify endpoints accept Pi identities, `doctor` can report installed and
+  verified Pi metadata, `probe pi` explicitly points to export-only
+  state-fidelity verification instead of marking runtime probe success, and
+  `uninstall pi` removes only matching Wardwright-owned metadata.
+- Validation:
+  - `cd app && MIX_ENV=test mise exec -- sh -lc 'mix compile && mix test --no-compile test/cli_adapters_test.exs test/agent_adapter_identity_test.exs test/agent_adapter_recording_test.exs'`:
+    `37 passed`.
+  - `cd app && MIX_ENV=test mise exec -- mix format --check-formatted`.
+  - `mise run check:maps`.
+  - `mise run check:docs`.
+  - `mise run check:types`.
+  - `git diff --check`.
+  - `gitleaks protect --staged --config .gitleaks.toml --verbose`: no leaks.
+  - `cd app && MIX_ENV=test mise exec -- sh -lc 'mix compile && mix test --no-compile'`:
+    `402 passed (21 properties, 381 tests), 6 excluded` before adding one
+    additional Pi uninstall regression; the commit hook reran the full app
+    check and reported `403 passed (21 properties, 382 tests), 6 excluded`.
+  - Commit hook reran app format/test, docs-site checks, and staged gitleaks;
+    all passed.
+- Adversarial review:
+  - Architecture: Pi filesystem behavior lives in a new
+    `Wardwright.AgentAdapters.PiInstaller` boundary and static metadata lives
+    in `PiPack`; the CLI remains the command/rendering boundary, while gateway
+    identity validation now accepts OMP and Pi through explicit supported
+    identity checks. The slice does not claim a live Pi hook or persistent
+    project extension and keeps Pi replay verification export-only.
+  - Architecture concern reviewed: `PiInstaller` intentionally mirrors the OMP
+    installer shape for a narrow lifecycle slice, which creates duplication in
+    status, repair refusal, pairing, and cleanup. This is acceptable for the
+    second adapter, but backlog items 14 and 15 should not keep copying installer
+    modules; they should extract a shared adapter metadata/manifest boundary or
+    small dispatcher before adding more lifecycle surfaces.
+  - Code/comment quality: no comments were added. Operator-facing wording names
+    the actual written files and export-only artifacts without exposing tokens
+    or private deployment details. The CLI module grew again, but the impure Pi
+    file mutation stays out of the CLI and no new map-boundary baseline was
+    added.
+  - Test quality: tests use temp workspaces and fake Pi binaries, so they do
+    not inspect or mutate real Pi state. They assert product-visible behavior:
+    Pi install writes only Wardwright metadata and no `.pi` runtime directory,
+    doctor exposes export-only replay pieces, pairing writes a Pi identity
+    without leaking the gateway token, gateway pair/verify accepts Pi, probe
+    guidance does not mark runtime verification, and uninstall preserves edited
+    metadata while removing matching Wardwright-owned files. These tests would
+    fail for hidden `.pi` writes, overclaiming runtime probe success, token
+    leakage, or unsafe cleanup.
+  - Post-commit review of `d155931` found no blockers.
+- Skipped probes: real live Pi import/state-fidelity probing was skipped
+  because this loop packages project metadata and explicit export-only
+  verification guidance, not a persistent Pi runtime probe. Pi-backed OpenCode
+  surface verification remains blocked on a real packaged Pi runtime probe.
+  OpenClaw runtime probes and Claude gateway identity probe remain skipped
+  because this loop only covers Pi lifecycle support.
+- Next open item: backlog item 14, add Claude Code install/doctor/pair support
+  for gateway identity with an explicit `prompt_handoff` or
+  `model_context_replay` fidelity label.
