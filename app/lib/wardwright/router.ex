@@ -5,6 +5,7 @@ defmodule Wardwright.Router do
 
   alias Wardwright.AgentAdapters.Identity
   alias Wardwright.AgentAdapters.OmpPack
+  alias Wardwright.AgentAdapters.PiPack
   alias Wardwright.Policy.AlertDelivery
   alias Wardwright.Policy.History
   alias Wardwright.Policy.Plan
@@ -23,6 +24,7 @@ defmodule Wardwright.Router do
   @adapter_key_verified "verified"
   @adapter_key_workspace_fingerprint "workspace_fingerprint"
   @adapter_runtime_omp "omp"
+  @adapter_runtime_pi "pi"
 
   plug(Plug.Logger)
 
@@ -368,7 +370,7 @@ defmodule Wardwright.Router do
   post "/v1/agent-adapters/pair" do
     with :ok <- require_protected_access(conn),
          {:ok, body} <- require_json_object(conn.body_params),
-         :ok <- require_omp_pair_request(body),
+         :ok <- require_supported_pair_request(body),
          {:ok, identity} <- Identity.issue(body) do
       json(conn, 200, Map.new([{@adapter_key_identity, identity}]))
     else
@@ -393,13 +395,9 @@ defmodule Wardwright.Router do
     with {:ok, body} <- require_json_object(conn.body_params),
          {:ok, identity} <- required_body_map(body, "identity"),
          {:ok, workspace_fingerprint} <- required_body_string(body, "workspace_fingerprint"),
+         {:ok, expected} <- supported_identity(identity),
          {:ok, claims} <-
-           Identity.validate(identity,
-             adapter_id: OmpPack.adapter_id(),
-             runtime: "omp",
-             target: "omp",
-             workspace_fingerprint: workspace_fingerprint
-           ) do
+           Identity.validate(identity, Keyword.put(expected, :workspace_fingerprint, workspace_fingerprint)) do
       json(conn, 200, %{
         @adapter_key_identity =>
           Map.new([
@@ -1177,14 +1175,41 @@ defmodule Wardwright.Router do
     end
   end
 
-  defp require_omp_pair_request(body) do
-    if Map.get(body, @adapter_key_adapter_id) == OmpPack.adapter_id() and
-         Map.get(body, @adapter_key_adapter_version) == OmpPack.adapter_version() and
-         Map.get(body, @adapter_key_runtime) == @adapter_runtime_omp and
-         Map.get(body, @adapter_key_target) == @adapter_runtime_omp do
+  defp require_supported_pair_request(body) do
+    if supported_pair_request?(body) do
       :ok
     else
       {:error, :malformed}
+    end
+  end
+
+  defp supported_pair_request?(body) do
+    supported_pair_request?(body, OmpPack, @adapter_runtime_omp) or
+      supported_pair_request?(body, PiPack, @adapter_runtime_pi)
+  end
+
+  defp supported_pair_request?(body, pack, runtime) do
+    Map.get(body, @adapter_key_adapter_id) == pack.adapter_id() and
+      Map.get(body, @adapter_key_adapter_version) == pack.adapter_version() and
+      Map.get(body, @adapter_key_runtime) == runtime and
+      Map.get(body, @adapter_key_target) == runtime
+  end
+
+  defp supported_identity(identity) when is_map(identity) do
+    case {Map.get(identity, @adapter_key_adapter_id), Map.get(identity, @adapter_key_runtime),
+          Map.get(identity, @adapter_key_target)} do
+      {adapter_id, @adapter_runtime_omp, @adapter_runtime_omp} ->
+        if adapter_id == OmpPack.adapter_id(),
+          do: {:ok, [adapter_id: OmpPack.adapter_id(), runtime: @adapter_runtime_omp, target: @adapter_runtime_omp]},
+          else: {:error, :malformed}
+
+      {adapter_id, @adapter_runtime_pi, @adapter_runtime_pi} ->
+        if adapter_id == PiPack.adapter_id(),
+          do: {:ok, [adapter_id: PiPack.adapter_id(), runtime: @adapter_runtime_pi, target: @adapter_runtime_pi]},
+          else: {:error, :malformed}
+
+      _unsupported ->
+        {:error, :malformed}
     end
   end
 

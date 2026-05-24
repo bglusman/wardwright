@@ -3,6 +3,7 @@ defmodule Wardwright.CLIAdaptersTest do
 
   alias Wardwright.AgentAdapters.Identity
   alias Wardwright.AgentAdapters.OmpPack
+  alias Wardwright.AgentAdapters.PiPack
   alias Wardwright.CLI.Adapters
 
   test "list prints stable adapter targets without claiming runtime-specific OpenCode support" do
@@ -183,6 +184,149 @@ defmodule Wardwright.CLIAdaptersTest do
     output = collected()
     assert output =~ "packaged plugin/import scaffold is not available yet"
     refute File.exists?(Path.join(workspace, ".opencode/plugins/wardwright-state-fidelity.ts"))
+  end
+
+  test "install pi writes Wardwright metadata and reports replay pieces as export-only" do
+    workspace = tmp_workspace("wardwright-pi-install")
+    collector = collector()
+
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    assert 0 =
+             Adapters.run(["install", "pi"], collector,
+               find_executable: fake_pi_finder(),
+               workspace_root: workspace
+             )
+
+    output = collected()
+    assert output =~ "Installed Pi adapter metadata"
+    assert output =~ "Export-only Pi replay pieces"
+    assert output =~ "pi_session_jsonl"
+    refute File.exists?(Path.join(workspace, ".pi"))
+
+    assert File.exists?(Path.join(workspace, PiPack.config_path()))
+    assert File.exists?(Path.join(workspace, PiPack.manifest_path()))
+
+    results =
+      Adapters.doctor(
+        find_executable: fake_pi_finder(),
+        workspace_root: workspace
+      )
+
+    pi = Enum.find(results, &(&1.target == "pi"))
+    assert pi.state == "installed_unverified"
+    assert pi.install_plan == "pair_or_probe"
+    assert pi.export_only == ["pi_session_jsonl", "state_fidelity_probe_json", "import_commands"]
+    assert PiPack.config_path() in pi.installed_paths
+
+    assert pi.next_actions == [
+             "run `wardwright adapters pair pi`; replay-state probes remain export-only for Pi"
+           ]
+  end
+
+  test "pair pi verifies gateway identity without claiming a persistent runtime probe" do
+    workspace = tmp_workspace("wardwright-pi-pair")
+    secret = String.duplicate("pi-pair-secret", 4)
+    now = ~U[2026-05-24 01:00:00Z]
+
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    assert 0 =
+             Adapters.run(["install", "pi"], collector(),
+               find_executable: fake_pi_finder(),
+               workspace_root: workspace
+             )
+
+    pair_request_fun = fn "http://127.0.0.1:8787", "gateway-token", payload ->
+      assert payload["adapter_id"] == "wardwright-pi"
+      assert payload["runtime"] == "pi"
+      assert payload["target"] == "pi"
+      assert payload["workspace_fingerprint"] == Identity.workspace_fingerprint(workspace)
+      Identity.issue(payload, secret: secret, now: now)
+    end
+
+    collector = collector()
+
+    assert 0 =
+             Adapters.run(["pair", "pi"], collector,
+               find_executable: fake_pi_finder(),
+               gateway_token: "gateway-token",
+               identity_secret: secret,
+               now: now,
+               pair_request_fun: pair_request_fun,
+               workspace_root: workspace
+             )
+
+    output = collected()
+    assert output =~ "Paired Pi adapter with Wardwright gateway"
+    refute output =~ "gateway-token"
+
+    config = JSON.decode!(File.read!(Path.join(workspace, PiPack.config_path())))
+    assert config["paired"] == true
+    assert get_in(config, ["gateway_identity", "adapter_id"]) == "wardwright-pi"
+    assert config["export_only"] == ["pi_session_jsonl", "state_fidelity_probe_json", "import_commands"]
+
+    results =
+      Adapters.doctor(
+        find_executable: fake_pi_finder(),
+        identity_secret: secret,
+        now: DateTime.add(now, 60, :second),
+        workspace_root: workspace
+      )
+
+    pi = Enum.find(results, &(&1.target == "pi"))
+    assert pi.state == "verified"
+    assert pi.fidelity == "state_import_probe"
+    assert pi.surface_probe == "not_applicable"
+
+    assert pi.next_actions == [
+             "Pi identity is verified; use harness export and state-fidelity verification for replay evidence"
+           ]
+  end
+
+  test "uninstall pi removes Wardwright-owned metadata but leaves edited metadata in place" do
+    workspace = tmp_workspace("wardwright-pi-uninstall")
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    assert 0 =
+             Adapters.run(["install", "pi"], collector(),
+               find_executable: fake_pi_finder(),
+               workspace_root: workspace
+             )
+
+    config_path = Path.join(workspace, PiPack.config_path())
+    File.write!(config_path, "local metadata edit\n")
+
+    collector = collector()
+
+    assert 0 =
+             Adapters.run(["uninstall", "pi"], collector, workspace_root: workspace)
+
+    output = collected()
+    assert output =~ "Removed Wardwright-owned Pi adapter metadata"
+    assert output =~ PiPack.manifest_path()
+    assert output =~ "Skipped edited or unknown files"
+    assert output =~ PiPack.config_path()
+
+    assert File.read!(config_path) == "local metadata edit\n"
+    refute File.exists?(Path.join(workspace, PiPack.manifest_path()))
+  end
+
+  test "probe pi is explicit about export-only state fidelity instead of marking runtime verification" do
+    workspace = tmp_workspace("wardwright-pi-export-only-probe")
+    collector = collector()
+
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    assert 1 =
+             Adapters.run(["probe", "pi"], collector,
+               find_executable: fake_pi_finder(),
+               workspace_root: workspace
+             )
+
+    output = collected()
+    assert output =~ "Pi state-fidelity probing is export-only"
+    assert output =~ "wardwright-state-fidelity-probe.json"
   end
 
   test "doctor resolves OpenCode Codex runtime as gateway identity support without OMP probe claims" do
@@ -753,6 +897,13 @@ defmodule Wardwright.CLIAdaptersTest do
   defp fake_opencode_finder do
     fn
       "opencode" -> "/tmp/fake-bin/opencode"
+      _binary -> nil
+    end
+  end
+
+  defp fake_pi_finder do
+    fn
+      "pi" -> "/tmp/fake-bin/pi"
       _binary -> nil
     end
   end

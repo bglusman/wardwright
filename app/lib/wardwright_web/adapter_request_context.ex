@@ -5,6 +5,7 @@ defmodule WardwrightWeb.AdapterRequestContext do
 
   alias Wardwright.AgentAdapters.Identity
   alias Wardwright.AgentAdapters.OmpPack
+  alias Wardwright.AgentAdapters.PiPack
   alias WardwrightWeb.RequestContext
 
   @adapter_id_key "adapter_id"
@@ -79,13 +80,9 @@ defmodule WardwrightWeb.AdapterRequestContext do
   defp verified_adapter_from_identity(conn, encoded_identity) do
     with {:ok, identity} <- decode_identity(encoded_identity),
          {:ok, workspace_fingerprint} <- expected_workspace_fingerprint(conn),
+         {:ok, expected} <- supported_identity(identity),
          {:ok, claims} <-
-           Identity.validate(identity,
-             adapter_id: OmpPack.adapter_id(),
-             runtime: "omp",
-             target: "omp",
-             workspace_fingerprint: workspace_fingerprint
-           ) do
+           Identity.validate(identity, Keyword.put(expected, :workspace_fingerprint, workspace_fingerprint)) do
       {:ok,
        %{
          @adapter_id_key => Map.get(claims, @adapter_id_key),
@@ -111,6 +108,23 @@ defmodule WardwrightWeb.AdapterRequestContext do
 
       {:error, _reason} ->
         {:error, :adapter_identity, 401, "adapter identity is invalid", "adapter_identity_invalid"}
+    end
+  end
+
+  defp supported_identity(identity) when is_map(identity) do
+    case {Map.get(identity, @adapter_id_key), Map.get(identity, @runtime_key), Map.get(identity, @target_key)} do
+      {adapter_id, "omp", "omp"} ->
+        if adapter_id == OmpPack.adapter_id(),
+          do: {:ok, [adapter_id: OmpPack.adapter_id(), runtime: "omp", target: "omp"]},
+          else: {:error, :malformed}
+
+      {adapter_id, "pi", "pi"} ->
+        if adapter_id == PiPack.adapter_id(),
+          do: {:ok, [adapter_id: PiPack.adapter_id(), runtime: "pi", target: "pi"]},
+          else: {:error, :malformed}
+
+      _unsupported ->
+        {:error, :malformed}
     end
   end
 

@@ -6,6 +6,8 @@ defmodule Wardwright.CLI.Adapters do
   alias Wardwright.AgentAdapters.OmpInstaller
   alias Wardwright.AgentAdapters.OmpPack
   alias Wardwright.AgentAdapters.OpenCodeRuntime
+  alias Wardwright.AgentAdapters.PiInstaller
+  alias Wardwright.AgentAdapters.PiPack
 
   @key_adapter_id "adapter_id"
   @key_adapter_version "adapter_version"
@@ -149,6 +151,28 @@ defmodule Wardwright.CLI.Adapters do
     end
   end
 
+  def install("pi", argv, write_fun, opts) do
+    with {:ok, parsed} <- parse_install_args(argv),
+         :ok <- ensure_project_scope(parsed.scope),
+         :ok <- ensure_runtime_detected("pi", opts) do
+      workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
+
+      case PiInstaller.install(workspace_root, repair?: parsed.repair?) do
+        {:ok, result} ->
+          write_fun.(pi_install_success_human(result))
+          0
+
+        {:error, :repair_required, inspection} ->
+          write_fun.(pi_repair_required_human(inspection))
+          1
+      end
+    else
+      {:error, message} ->
+        write_fun.(message)
+        2
+    end
+  end
+
   def install("opencode", argv, write_fun, opts) do
     with {:ok, parsed} <- parse_install_args(argv),
          :ok <- ensure_project_scope(parsed.scope),
@@ -167,7 +191,7 @@ defmodule Wardwright.CLI.Adapters do
   end
 
   def install(_target, _argv, write_fun, _opts) do
-    write_fun.("Only `wardwright adapters install omp` is implemented in this loop.")
+    write_fun.("Only `wardwright adapters install omp` and `wardwright adapters install pi` are implemented.")
     2
   end
 
@@ -187,8 +211,22 @@ defmodule Wardwright.CLI.Adapters do
     end
   end
 
+  def uninstall("pi", argv, write_fun, opts) do
+    with {:ok, parsed} <- parse_scope_args(argv),
+         :ok <- ensure_project_scope(parsed.scope) do
+      workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
+      {:ok, result} = PiInstaller.uninstall(workspace_root)
+      write_fun.(pi_uninstall_success_human(result))
+      0
+    else
+      {:error, message} ->
+        write_fun.(message)
+        2
+    end
+  end
+
   def uninstall(_target, _argv, write_fun, _opts) do
-    write_fun.("Only `wardwright adapters uninstall omp` is implemented in this loop.")
+    write_fun.("Only `wardwright adapters uninstall omp` and `wardwright adapters uninstall pi` are implemented.")
     2
   end
 
@@ -198,10 +236,10 @@ defmodule Wardwright.CLI.Adapters do
     with {:ok, parsed} <- parse_scope_args(argv),
          :ok <- ensure_project_scope(parsed.scope),
          :ok <- ensure_runtime_detected("omp", opts),
-         {:ok, gateway_token} <- gateway_token(opts),
-         {:ok, identity} <- request_pairing_identity(gateway_token, opts),
+         {:ok, gateway_token} <- gateway_token("OMP", opts),
+         {:ok, identity} <- request_pairing_identity(OmpPack, "omp", "omp", gateway_token, opts),
          {:ok, result} <- OmpInstaller.pair(Keyword.get(opts, :workspace_root, File.cwd!()), identity) do
-      write_fun.(pair_success_human(result, identity))
+      write_fun.(pair_success_human("OMP", result, identity))
       0
     else
       {:error, :not_installed, _inspection} ->
@@ -218,8 +256,32 @@ defmodule Wardwright.CLI.Adapters do
     end
   end
 
+  def pair("pi", argv, write_fun, opts) do
+    with {:ok, parsed} <- parse_scope_args(argv),
+         :ok <- ensure_project_scope(parsed.scope),
+         :ok <- ensure_runtime_detected("pi", opts),
+         {:ok, gateway_token} <- gateway_token("Pi", opts),
+         {:ok, identity} <- request_pairing_identity(PiPack, "pi", "pi", gateway_token, opts),
+         {:ok, result} <- PiInstaller.pair(Keyword.get(opts, :workspace_root, File.cwd!()), identity) do
+      write_fun.(pair_success_human("Pi", result, identity))
+      0
+    else
+      {:error, :not_installed, _inspection} ->
+        write_fun.("Cannot pair Pi adapter: run `wardwright adapters install pi` first.")
+        1
+
+      {:error, :repair_required, _inspection} ->
+        write_fun.("Cannot pair Pi adapter: installed metadata is drifted; repair it before pairing.")
+        1
+
+      {:error, message} ->
+        write_fun.(message)
+        2
+    end
+  end
+
   def pair(_target, _argv, write_fun, _opts) do
-    write_fun.("Only `wardwright adapters pair omp` is implemented in this loop.")
+    write_fun.("Only `wardwright adapters pair omp` and `wardwright adapters pair pi` are implemented.")
     2
   end
 
@@ -305,9 +367,21 @@ defmodule Wardwright.CLI.Adapters do
     end
   end
 
+  def probe("pi", argv, write_fun, _opts) do
+    with {:ok, parsed} <- parse_scope_args(argv),
+         :ok <- ensure_project_scope(parsed.scope) do
+      write_fun.(pi_probe_export_only_human())
+      1
+    else
+      {:error, message} ->
+        write_fun.(message)
+        2
+    end
+  end
+
   def probe(_target, _argv, write_fun, _opts) do
     write_fun.(
-      "Only `wardwright adapters probe omp` and `wardwright adapters probe opencode` are implemented in this loop."
+      "Only `wardwright adapters probe omp`, `wardwright adapters probe opencode`, and export-only `wardwright adapters probe pi` are implemented."
     )
 
     2
@@ -344,6 +418,7 @@ defmodule Wardwright.CLI.Adapters do
           status: #{row.state}
           surface_probe: #{row.surface_probe}
           install: #{row.install_plan}
+          export_only: #{export_only_human(row.export_only)}
         #{next_actions}
         """
         |> String.trim_trailing()
@@ -384,6 +459,7 @@ defmodule Wardwright.CLI.Adapters do
       coverage: resolution.coverage,
       detected: detected?,
       detected_path: detected_path,
+      export_only: installation.export_only,
       fidelity: fidelity,
       install_plan: doctor_install_plan(state, target, resolution),
       installed_paths: installation.installed_paths,
@@ -399,6 +475,10 @@ defmodule Wardwright.CLI.Adapters do
 
   defp installation_for(%{target: "omp"}, _resolution, _runtime_info, opts) do
     runtime_adapter_installation("omp", opts)
+  end
+
+  defp installation_for(%{target: "pi"}, _resolution, _runtime_info, opts) do
+    runtime_adapter_installation("pi", opts)
   end
 
   defp installation_for(%{target: "opencode"}, %{coverage: "covered_through_runtime"}, runtime_info, opts) do
@@ -421,6 +501,27 @@ defmodule Wardwright.CLI.Adapters do
       )
 
     %{
+      export_only: [],
+      identity_verified: inspection.identity_verified,
+      installed_files_present: inspection.installed_files_present,
+      installed_manifest_matches: inspection.installed_manifest_matches,
+      installed_paths: inspection.files |> Enum.filter(& &1.present?) |> Enum.map(& &1.path),
+      runtime_probe_passed: inspection.runtime_probe_passed,
+      surface_probe_passed: false
+    }
+  end
+
+  defp runtime_adapter_installation("pi", opts) do
+    workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
+
+    inspection =
+      PiInstaller.status(workspace_root,
+        identity_secret: Keyword.get(opts, :identity_secret),
+        now: Keyword.get(opts, :now, DateTime.utc_now())
+      )
+
+    %{
+      export_only: inspection.export_only,
       identity_verified: inspection.identity_verified,
       installed_files_present: inspection.installed_files_present,
       installed_manifest_matches: inspection.installed_manifest_matches,
@@ -434,6 +535,7 @@ defmodule Wardwright.CLI.Adapters do
 
   defp default_installation do
     %{
+      export_only: [],
       identity_verified: false,
       installed_files_present: false,
       installed_manifest_matches: true,
@@ -548,6 +650,18 @@ defmodule Wardwright.CLI.Adapters do
     """
   end
 
+  defp pi_install_success_human(result) do
+    verb = if result.repaired?, do: "Repaired", else: "Installed"
+
+    """
+    #{verb} Pi adapter metadata:
+    #{Enum.map_join(result.written, "\n", &"  #{&1}")}
+
+    Export-only Pi replay pieces:
+    #{Enum.map_join(result.export_only, "\n", &"  #{&1}")}
+    """
+  end
+
   defp repair_required_human(inspection) do
     present =
       inspection.files
@@ -556,6 +670,20 @@ defmodule Wardwright.CLI.Adapters do
 
     """
     OMP adapter files are present but do not match the Wardwright adapter pack.
+    Review local edits before replacing them, then rerun with `--repair`.
+    Present files:
+    #{present}
+    """
+  end
+
+  defp pi_repair_required_human(inspection) do
+    present =
+      inspection.files
+      |> Enum.filter(& &1.present?)
+      |> Enum.map_join("\n", &"  #{&1.path}")
+
+    """
+    Pi adapter metadata is present but does not match the Wardwright adapter pack.
     Review local edits before replacing them, then rerun with `--repair`.
     Present files:
     #{present}
@@ -584,9 +712,31 @@ defmodule Wardwright.CLI.Adapters do
     """
   end
 
-  defp pair_success_human(result, identity) do
+  defp pi_uninstall_success_human(result) do
+    skipped =
+      case result.skipped do
+        [] -> "  none"
+        paths -> Enum.map_join(paths, "\n", &"  #{&1}")
+      end
+
+    removed =
+      case result.removed do
+        [] -> "  none"
+        paths -> Enum.map_join(paths, "\n", &"  #{&1}")
+      end
+
     """
-    Paired OMP adapter with Wardwright gateway.
+    Removed Wardwright-owned Pi adapter metadata:
+    #{removed}
+
+    Skipped edited or unknown files:
+    #{skipped}
+    """
+  end
+
+  defp pair_success_human(label, result, identity) do
+    """
+    Paired #{label} adapter with Wardwright gateway.
       config: #{result.path}
       adapter: #{Map.get(identity, @key_adapter_id)}
       expires_at: #{Map.get(identity, @key_expires_at)}
@@ -610,6 +760,13 @@ defmodule Wardwright.CLI.Adapters do
       status: #{Map.get(evidence, @key_status)}
       runtime: #{Map.get(evidence, @key_runtime)}
       probed_at: #{Map.get(evidence, @key_probed_at)}
+    """
+  end
+
+  defp pi_probe_export_only_human do
+    """
+    Pi state-fidelity probing is export-only in this package.
+    Use Wardwright harness Pi export to write the Pi session JSONL and wardwright-state-fidelity-probe.json, import the session into Pi, then submit observed state to the protected state-fidelity verifier.
     """
   end
 
@@ -715,17 +872,17 @@ defmodule Wardwright.CLI.Adapters do
   defp runtime_source(%{runtime_source: source}) when is_binary(source) and source != "", do: " via #{source}"
   defp runtime_source(_row), do: ""
 
-  defp request_pairing_identity(gateway_token, opts) do
+  defp request_pairing_identity(pack, target, runtime, gateway_token, opts) do
     workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
     gateway_url = gateway_url(opts)
 
     payload =
       Map.new([
-        {@key_adapter_id, OmpPack.adapter_id()},
-        {@key_adapter_version, OmpPack.adapter_version()},
+        {@key_adapter_id, pack.adapter_id()},
+        {@key_adapter_version, pack.adapter_version()},
         {@key_gateway_url, gateway_url},
-        {@key_runtime, "omp"},
-        {@key_target, "omp"},
+        {@key_runtime, runtime},
+        {@key_target, target},
         {@key_workspace_fingerprint, Identity.workspace_fingerprint(workspace_root)}
       ])
 
@@ -739,7 +896,7 @@ defmodule Wardwright.CLI.Adapters do
       "http://127.0.0.1:8787"
   end
 
-  defp gateway_token(opts) do
+  defp gateway_token(label, opts) do
     token =
       if Keyword.has_key?(opts, :gateway_token) do
         Keyword.get(opts, :gateway_token)
@@ -752,7 +909,7 @@ defmodule Wardwright.CLI.Adapters do
         {:ok, token}
 
       _token ->
-        {:error, "Cannot pair OMP adapter: set WARDWRIGHT_ADMIN_TOKEN for the local gateway."}
+        {:error, "Cannot pair #{label} adapter: set WARDWRIGHT_ADMIN_TOKEN for the local gateway."}
     end
   end
 
@@ -801,6 +958,12 @@ defmodule Wardwright.CLI.Adapters do
   defp next_actions("installable", target, resolution, _installation) do
     ["run `wardwright adapters install #{target.target}` to #{install_summary(resolution.install_strategy)}"]
   end
+
+  defp next_actions("installed_unverified", %{target: "pi"}, _resolution, _installation),
+    do: action("run `wardwright adapters pair pi`; replay-state probes remain export-only for Pi")
+
+  defp next_actions("verified", %{target: "pi"}, _resolution, _installation),
+    do: action("Pi identity is verified; use harness export and state-fidelity verification for replay evidence")
 
   defp next_actions("unsupported_runtime", %{target: target}, _resolution, _installation)
        when target in ["opencode", "openclaw"] do
@@ -878,6 +1041,9 @@ defmodule Wardwright.CLI.Adapters do
   defp surface_probe_label(%{target: "opencode"}, _installation), do: "not_run"
   defp surface_probe_label(_target, _installation), do: "not_applicable"
 
+  defp export_only_human([]), do: "none"
+  defp export_only_human(items), do: Enum.join(items, ", ")
+
   defp sha256(value) do
     :crypto.hash(:sha256, value)
     |> Base.encode16(case: :lower)
@@ -907,9 +1073,13 @@ defmodule Wardwright.CLI.Adapters do
       wardwright adapters doctor        Detect local runtime and adapter status
       wardwright adapters doctor --json Print machine-readable doctor output
       wardwright adapters install omp [--scope project] [--repair]
+      wardwright adapters install pi [--scope project] [--repair]
       wardwright adapters uninstall omp [--scope project]
+      wardwright adapters uninstall pi [--scope project]
       wardwright adapters pair omp [--scope project]
+      wardwright adapters pair pi [--scope project]
       wardwright adapters probe omp [--scope project]
+      wardwright adapters probe pi [--scope project]
     """
   end
 end

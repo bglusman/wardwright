@@ -23,10 +23,14 @@ wardwright adapters list --json
 wardwright adapters doctor
 wardwright adapters doctor --json
 wardwright adapters install omp
+wardwright adapters install pi
 wardwright adapters pair omp
+wardwright adapters pair pi
 wardwright adapters probe omp
+wardwright adapters probe pi
 wardwright adapters probe opencode
 wardwright adapters uninstall omp
+wardwright adapters uninstall pi
 ```
 
 Project scope is the default and only packaged install scope today. User-global
@@ -141,16 +145,48 @@ remains best-effort harness export/plugin scaffold work and reports
 `install_plan: no_install` until that packaged lifecycle is real. Codex-backed
 OpenCode uses the future gateway-identity path rather than the OMP TTSR probe.
 
+## Pi
+
+Pi support is packaged as project-local Wardwright metadata plus gateway
+identity. It does not claim a persistent Pi project extension surface.
+
+```bash
+wardwright adapters install pi
+wardwright adapters pair pi
+wardwright adapters probe pi
+wardwright adapters uninstall pi
+```
+
+`install pi` writes only Wardwright-owned metadata under
+`.wardwright/adapters/`:
+
+- `.wardwright/adapters/pi-adapter.json`
+- `.wardwright/adapters/pi-adapter-manifest.json`
+
+The install output and `doctor --json` list the Pi replay pieces that remain
+export-only: Pi session JSONL, the state-fidelity probe JSON, and import
+commands. Those artifacts are produced by the harness export flow for a chosen
+trace; they are not installed into the project as live Pi hooks.
+
+`pair pi` stores a signed gateway identity in the Pi adapter metadata. After
+pairing, `doctor` may report `verified` for the Pi adapter when the identity
+validates for the current workspace. `probe pi` does not manufacture runtime
+verification. It points operators back to the export flow: generate a Pi session
+JSONL and `wardwright-state-fidelity-probe.json`, import the session into Pi,
+then submit observed imported state to Wardwright's protected state-fidelity
+verifier.
+
 ## Uninstall And Cleanup
 
 ```bash
 wardwright adapters uninstall omp
+wardwright adapters uninstall pi
 ```
 
 Uninstall removes only files that still match the Wardwright adapter pack. Edited
-or unknown files are skipped and reported so a local rule or extension is not
-destroyed silently. After matching files are removed, Wardwright prunes empty
-`.omp` adapter directories when possible.
+or unknown files are skipped and reported so a local rule, extension, or adapter
+metadata file is not destroyed silently. After matching files are removed,
+Wardwright prunes empty adapter directories when possible.
 
 Manual cleanup is safe when you no longer want any OMP adapter state. This
 removes the local adapter identity and probe evidence for the project:
@@ -163,6 +199,13 @@ rm -f .omp/wardwright-adapter-manifest.json
 ```
 
 Do not delete unrelated `.omp` files unless they are yours to remove.
+
+For Pi, manual cleanup removes only Wardwright-owned adapter metadata:
+
+```bash
+rm -f .wardwright/adapters/pi-adapter.json
+rm -f .wardwright/adapters/pi-adapter-manifest.json
+```
 
 ## Privacy And Recording
 
@@ -194,7 +237,7 @@ gateway/export behavior:
 | Surface | Current behavior | Fidelity wording |
 | --- | --- | --- |
 | OMP / oh-my-pi | Packaged install, pair, probe, doctor, and uninstall. | `tts_runtime_probe` only after the OMP probe passes; otherwise no stronger claim than installed or verified identity. |
-| Pi | Runtime resolution and adapter vocabulary exist, but packaged Pi install/probe is not complete. | `state_import_probe` is the intended label; exact resume parity is not claimed. |
+| Pi | Packaged install, pair, doctor, uninstall, and export-only probe guidance. | `state_import_probe` means exported/imported Pi state can be checked with Wardwright's verifier; exact resume parity is not claimed. |
 | OpenCode with Pi or OMP runtime | `doctor` can report coverage through the underlying runtime adapter. OMP-backed OpenCode can run `probe opencode` after the OMP runtime probe passes. | `runtime_verified` means the underlying runtime path is covered; `surface_verified` requires an explicit OpenCode surface probe. |
 | OpenCode-native | Packaged plugin install is not complete; use the current harness export scaffold. | `session_import_best_effort`; do not claim Pi/OMP runtime verification. |
 | OpenCode with Codex runtime | Gateway identity support is the intended path when packaged. | `prompt_handoff`; do not run or claim the OMP TTSR probe. |
