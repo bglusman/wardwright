@@ -840,8 +840,14 @@ defmodule WardwrightWeb.ControlDebuggerData do
 
   defp compact_json(value) do
     value
-    |> JSON.encode!()
+    |> safe_json()
     |> String.slice(0, 180)
+  end
+
+  defp safe_json(value) do
+    JSON.encode!(value)
+  rescue
+    _error -> inspect(value)
   end
 
   defp counterfactual_example("output-contract") do

@@ -91,18 +91,26 @@ defmodule Wardwright.AgentAdapters.OmpPack do
           observed: z.any(),
         }),
         async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-          const probe = JSON.parse(readFileSync(params.probePath, "utf8"));
-          const observed = params.observed ?? {};
-          return {
-            content: [{ type: "text", text: JSON.stringify({
-              schema: "wardwright.pi_state_fidelity_verification_spike.v0",
-              adapter_id: probe.adapter_id,
-              trace_fingerprint_matches: probe.trace_fingerprint === observed.trace_fingerprint,
-              observed_digest: digest(observed),
-              equivalent_agent_resume_claim_allowed: false,
-            }) }],
-            details: {},
-          };
+          try {
+            const probe = JSON.parse(readFileSync(params.probePath, "utf8"));
+            const observed = params.observed ?? {};
+            return {
+              content: [{ type: "text", text: JSON.stringify({
+                schema: "wardwright.pi_state_fidelity_verification_spike.v0",
+                adapter_id: probe.adapter_id,
+                trace_fingerprint_matches: probe.trace_fingerprint === observed.trace_fingerprint,
+                observed_digest: digest(observed),
+                equivalent_agent_resume_claim_allowed: false,
+              }) }],
+              details: {},
+            };
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            return {
+              content: [{ type: "text", text: `Error verifying Wardwright fidelity: ${message}` }],
+              details: { error: message },
+            };
+          }
         },
       });
     }

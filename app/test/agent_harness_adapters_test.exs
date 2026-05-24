@@ -228,16 +228,40 @@ defmodule WardwrightWeb.AgentHarnessAdaptersTest do
     assert Path.basename(extension_path) == "wardwright-state-fidelity.ts"
     assert Path.basename(probe_path) == "wardwright-state-fidelity-probe.json"
     assert hd(export["commands"]) =~ ".omp/rules"
-    assert Enum.at(export["commands"], 1) =~ "omp --session"
+    assert Enum.at(export["commands"], 1) =~ "--session"
     assert File.read!(rule_path) =~ "interruptMode: \"always\""
     assert File.read!(rule_path) =~ ~S|- "."|
     assert File.read!(rule_path) =~ ~S|- "tool:edit_file(*)"|
     assert File.read!(extension_path) =~ "wardwright_verify_state_fidelity"
+    assert File.read!(extension_path) =~ "Error verifying Wardwright fidelity"
     assert private_mode?(session_path, 0o600)
     assert private_mode?(rule_path, 0o600)
     assert private_mode?(extension_path, 0o600)
 
     File.rm_rf!(export_dir)
+  end
+
+  test "oh-my-pi commands use oh-my-pi when omp is unavailable" do
+    session_id = recorded_session_id!()
+    original_path = System.get_env("PATH") || ""
+    bin_dir = Path.join(System.tmp_dir!(), "wardwright-oh-my-pi-bin-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(bin_dir)
+    fake_oh_my_pi = Path.join(bin_dir, "oh-my-pi")
+    File.write!(fake_oh_my_pi, "#!/bin/sh\nexit 0\n")
+    File.chmod!(fake_oh_my_pi, 0o755)
+    System.put_env("PATH", bin_dir)
+
+    on_exit(fn ->
+      System.put_env("PATH", original_path)
+      File.rm_rf(bin_dir)
+    end)
+
+    assert {:ok, export} = AgentHarnessAdapters.export(session_id, "oh-my-pi")
+
+    assert Enum.at(export["commands"], 1) =~ "oh-my-pi --session"
+    assert Enum.at(export["commands"], 2) =~ "oh-my-pi --fork"
+    refute Enum.any?(export["commands"], &String.contains?(&1, "omp --session"))
   end
 
   test "opencode plugin export keeps import best-effort and adds plugin hook scaffold" do

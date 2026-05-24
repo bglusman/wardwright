@@ -450,6 +450,15 @@ defmodule Wardwright.PublicApiTest do
     assert saved_body["pattern_id"] == "tool-governance"
     assert get_in(saved_body, ["scenario", "source"]) == "live_replay"
     assert get_in(saved_body, ["scenario", "receipt_preview", "trace_cursor"]) == cursor
+
+    missing_cursor =
+      call(:post, "/v1/policy-authoring/control-debugger/traces/save-evidence", %{
+        "pattern_id" => "tool-governance",
+        "session_id" => session_id
+      })
+
+    assert missing_cursor.status == 400
+    assert get_in(JSON.decode!(missing_cursor.resp_body), ["error", "message"]) == "trace_cursor is required"
   end
 
   test "protected policy authoring API lists and evaluates Dune snippets" do

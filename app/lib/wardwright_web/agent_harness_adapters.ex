@@ -12,6 +12,8 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
   @contract_version "wardwright.harness_adapter.v0"
   @opencode_version "1.15.4"
   @pi_package "@earendil-works/pi-coding-agent@0.75.5"
+  @omp_extension_file "wardwright-state-fidelity.ts"
+  @omp_rule_file "wardwright-read-before-edit.md"
 
   def list do
     [
@@ -129,63 +131,31 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
   def write_export(_session_id, _adapter_id, _opts), do: {:error, "session_id and adapter_id are required"}
 
   def verify_state_fidelity(probe, observed) when is_map(probe) and is_map(observed) do
-    observed_fingerprints =
-      cond do
-        is_list(observed["tool_result_fingerprints"]) ->
-          observed["tool_result_fingerprints"]
-
-        is_list(observed["events"]) ->
-          observed["events"]
-          |> Enum.filter(&tool_result_event?/1)
-          |> Enum.map(fn event ->
-            %{
-              "cursor" => event["cursor"] || "",
-              "fingerprint" => stable_fingerprint(event["tool"] || event),
-              "tool_name" => get_in(event, ["tool", "name"]) || "unknown"
-            }
-          end)
-
-        true ->
-          []
-      end
-
+    observed_fingerprints = observed_tool_result_fingerprints(observed)
     expected_fingerprints = probe["tool_result_fingerprints"] || []
     missing = fingerprint_difference(expected_fingerprints, observed_fingerprints)
     unexpected = fingerprint_difference(observed_fingerprints, expected_fingerprints)
     expected_trace_fingerprint = probe["trace_fingerprint"]
     observed_trace_fingerprint = observed["trace_fingerprint"]
-
-    trace_matches =
-      is_binary(expected_trace_fingerprint) and
-        expected_trace_fingerprint == observed_trace_fingerprint
-
+    trace_matches = trace_fingerprint_matches?(expected_trace_fingerprint, observed_trace_fingerprint)
     tool_results_match = missing == [] and unexpected == []
     read_before_edit_cursor_identified = observed["read_before_edit_cursor_identified"] == true
     passed = trace_matches and tool_results_match and read_before_edit_cursor_identified
 
     %{
       "adapter_id" => probe["adapter_id"] || observed["adapter_id"],
-      "checks" => [
-        %{
-          "expected" => expected_trace_fingerprint,
-          "name" => "trace_fingerprint",
-          "observed" => observed_trace_fingerprint,
-          "passed" => trace_matches
-        },
-        %{
-          "expected_count" => length(expected_fingerprints),
-          "missing" => missing,
-          "name" => "tool_result_fingerprints",
-          "observed_count" => length(observed_fingerprints),
-          "passed" => tool_results_match,
-          "unexpected" => unexpected
-        },
-        %{
-          "name" => "read_before_edit_cursor_identified",
-          "observed" => observed["read_before_edit_cursor_identified"] == true,
-          "passed" => read_before_edit_cursor_identified
-        }
-      ],
+      "checks" =>
+        state_fidelity_checks(%{
+          expected_fingerprints: expected_fingerprints,
+          expected_trace_fingerprint: expected_trace_fingerprint,
+          missing: missing,
+          observed_fingerprints: observed_fingerprints,
+          observed_trace_fingerprint: observed_trace_fingerprint,
+          read_before_edit_cursor_identified: read_before_edit_cursor_identified,
+          tool_results_match: tool_results_match,
+          trace_matches: trace_matches,
+          unexpected: unexpected
+        }),
       "equivalent_agent_resume_claim_allowed" => false,
       "passed" => passed,
       "probe_schema" => probe["schema"],
@@ -196,6 +166,49 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
   end
 
   def verify_state_fidelity(_probe, _observed), do: {:error, "probe and observed must be JSON objects"}
+
+  defp observed_tool_result_fingerprints(%{"tool_result_fingerprints" => fingerprints}) when is_list(fingerprints),
+    do: fingerprints
+
+  defp observed_tool_result_fingerprints(%{"events" => events}) when is_list(events) do
+    events
+    |> Enum.filter(&tool_result_event?/1)
+    |> Enum.map(fn event ->
+      %{
+        "cursor" => event["cursor"] || "",
+        "fingerprint" => stable_fingerprint(event["tool"] || event),
+        "tool_name" => get_in(event, ["tool", "name"]) || "unknown"
+      }
+    end)
+  end
+
+  defp observed_tool_result_fingerprints(_observed), do: []
+
+  defp trace_fingerprint_matches?(expected, observed), do: is_binary(expected) and expected == observed
+
+  defp state_fidelity_checks(fields) do
+    [
+      %{
+        "expected" => fields.expected_trace_fingerprint,
+        "name" => "trace_fingerprint",
+        "observed" => fields.observed_trace_fingerprint,
+        "passed" => fields.trace_matches
+      },
+      %{
+        "expected_count" => length(fields.expected_fingerprints),
+        "missing" => fields.missing,
+        "name" => "tool_result_fingerprints",
+        "observed_count" => length(fields.observed_fingerprints),
+        "passed" => fields.tool_results_match,
+        "unexpected" => fields.unexpected
+      },
+      %{
+        "name" => "read_before_edit_cursor_identified",
+        "observed" => fields.read_before_edit_cursor_identified,
+        "passed" => fields.read_before_edit_cursor_identified
+      }
+    ]
+  end
 
   defp adapter(id, label, installed, capabilities) do
     native_session_import = capabilities["native_session_import"] == true
@@ -427,10 +440,7 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
       "adapter" => adapter,
       "artifact" => artifact,
       "artifact_format" => "pi_session_jsonl",
-      "commands" => [
-        "npx --yes #{@pi_package} --session #{shell_quote(file_name)}",
-        "npx --yes #{@pi_package} --fork #{shell_quote(file_name)} \"Continue from the Wardwright trace cursor you want to investigate.\""
-      ],
+      "commands" => pi_session_commands(file_name),
       "fidelity_notice" => fidelity_notice(adapter),
       "session_id" => session_id,
       "state_fidelity_probe" => state_fidelity_probe(session_id, adapter, events),
@@ -442,8 +452,8 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
     cwd = opts["cwd"] || System.get_env("PWD") || File.cwd!()
     title = opts["title"] || "Wardwright trace #{session_id}"
     session_file = pi_file_name(session_id)
-    rule_file = "wardwright-read-before-edit.md"
-    extension_file = "wardwright-state-fidelity.ts"
+    rule_file = @omp_rule_file
+    extension_file = @omp_extension_file
 
     files = [
       %{
@@ -459,9 +469,8 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
       "artifact" => %{"files" => files, "session_file" => session_file},
       "artifact_format" => "oh_my_pi_replay_bundle",
       "commands" => [
-        "mkdir -p .omp/rules .omp/extensions && cp #{shell_quote(rule_file)} .omp/rules/wardwright-read-before-edit.md && cp #{shell_quote(extension_file)} .omp/extensions/wardwright-state-fidelity.ts",
-        "omp --session #{shell_quote(session_file)}",
-        "omp --fork #{shell_quote(session_file)} \"Continue from the Wardwright trace cursor you want to investigate.\""
+        omp_install_command(rule_file, extension_file)
+        | omp_session_commands(session_file)
       ],
       "fidelity_notice" => fidelity_notice(adapter),
       "session_id" => session_id,
@@ -645,18 +654,14 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
   end
 
   defp saved_export_commands(%{"adapter" => %{"id" => "pi"}}, [path | _]) when is_binary(path) do
-    [
-      "npx --yes #{@pi_package} --session #{shell_quote(path)}",
-      "npx --yes #{@pi_package} --fork #{shell_quote(path)} \"Continue from the Wardwright trace cursor you want to investigate.\""
-    ]
+    pi_session_commands(path)
   end
 
   defp saved_export_commands(%{"adapter" => %{"id" => "oh-my-pi"}}, [session_path, rule_path, extension_path | _])
        when is_binary(session_path) and is_binary(rule_path) and is_binary(extension_path) do
     [
-      "mkdir -p .omp/rules .omp/extensions && cp #{shell_quote(rule_path)} .omp/rules/wardwright-read-before-edit.md && cp #{shell_quote(extension_path)} .omp/extensions/wardwright-state-fidelity.ts",
-      "omp --session #{shell_quote(session_path)}",
-      "omp --fork #{shell_quote(session_path)} \"Continue from the Wardwright trace cursor you want to investigate.\""
+      omp_install_command(rule_path, extension_path)
+      | omp_session_commands(session_path)
     ]
   end
 
@@ -752,7 +757,7 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
         }
       ]
 
-    {_parent_id, event_entries} =
+    {_parent_id, event_entry_chunks} =
       Enum.reduce(
         Enum.with_index(events, 1),
         {pi_entry_id(session_id, "trace-summary"), []},
@@ -760,9 +765,14 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
           {next_parent, entries} =
             pi_event_entries(session_id, event, index, parent_id, now, now_ms)
 
-          {next_parent, acc ++ entries}
+          {next_parent, [entries | acc]}
         end
       )
+
+    event_entries =
+      event_entry_chunks
+      |> Enum.reverse()
+      |> List.flatten()
 
     [header | entries ++ event_entries]
     |> Enum.map_join("\n", &JSON.encode!/1)
@@ -860,6 +870,34 @@ defmodule WardwrightWeb.AgentHarnessAdapters do
 
   defp pi_state_fidelity_extension do
     OmpPack.state_fidelity_extension_content()
+  end
+
+  defp pi_session_commands(path) do
+    [
+      "npx --yes #{@pi_package} --session #{shell_quote(path)}",
+      "npx --yes #{@pi_package} --fork #{shell_quote(path)} \"Continue from the Wardwright trace cursor you want to investigate.\""
+    ]
+  end
+
+  defp omp_install_command(rule_path, extension_path) do
+    "mkdir -p .omp/rules .omp/extensions && cp #{shell_quote(rule_path)} .omp/rules/#{@omp_rule_file} && cp #{shell_quote(extension_path)} .omp/extensions/#{@omp_extension_file}"
+  end
+
+  defp omp_session_commands(session_path) do
+    binary = omp_binary()
+
+    [
+      "#{binary} --session #{shell_quote(session_path)}",
+      "#{binary} --fork #{shell_quote(session_path)} \"Continue from the Wardwright trace cursor you want to investigate.\""
+    ]
+  end
+
+  defp omp_binary do
+    cond do
+      System.find_executable("omp") -> "omp"
+      System.find_executable("oh-my-pi") -> "oh-my-pi"
+      true -> "omp"
+    end
   end
 
   defp opencode_state_fidelity_plugin do
