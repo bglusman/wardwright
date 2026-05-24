@@ -1,6 +1,8 @@
 defmodule Wardwright.AgentAdapters.PiPack do
   @moduledoc false
 
+  alias Wardwright.AgentAdapters.CanonicalJson
+
   @adapter_id "wardwright-pi"
   @adapter_version "0.1.0-rc.1"
   @config_path ".wardwright/adapters/pi-adapter.json"
@@ -64,7 +66,7 @@ defmodule Wardwright.AgentAdapters.PiPack do
       schema: "wardwright.adapter_config.v0",
       target: "pi"
     }
-    |> JSON.encode!()
+    |> CanonicalJson.encode!()
     |> Kernel.<>("\n")
   end
 
@@ -78,8 +80,16 @@ defmodule Wardwright.AgentAdapters.PiPack do
       schema: "wardwright.adapter_manifest.v0",
       target: "pi"
     }
-    |> JSON.encode!()
+    |> CanonicalJson.encode!()
     |> Kernel.<>("\n")
+  end
+
+  defp manifest_entry(%{dynamic?: true} = file) do
+    %{
+      dynamic: true,
+      path: file.path,
+      validator: "adapter_config_schema"
+    }
   end
 
   defp manifest_entry(file) do

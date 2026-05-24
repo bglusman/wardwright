@@ -231,10 +231,13 @@ wardwright adapters uninstall pi
 wardwright adapters uninstall claude-code
 ```
 
-Uninstall removes only files that still match the Wardwright adapter pack. Edited
-or unknown files are skipped and reported so a local rule, extension, or adapter
-metadata file is not destroyed silently. After matching files are removed,
-Wardwright prunes empty adapter directories when possible.
+Uninstall removes only files that still match the Wardwright adapter pack.
+Static files, such as OMP rules and extensions, are matched by digest. Dynamic
+adapter metadata is matched by schema, adapter id, version, target, runtime, and
+required fidelity fields so pairing can refresh gateway identity without making
+the file look drifted. Edited, invalid, or unknown files are skipped and
+reported so local state is not destroyed silently. After matching files are
+removed, Wardwright prunes empty adapter directories when possible.
 
 Manual cleanup is safe when you no longer want any OMP adapter state. This
 removes the local adapter identity and probe evidence for the project:

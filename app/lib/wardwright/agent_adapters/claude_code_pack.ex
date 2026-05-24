@@ -1,6 +1,8 @@
 defmodule Wardwright.AgentAdapters.ClaudeCodePack do
   @moduledoc false
 
+  alias Wardwright.AgentAdapters.CanonicalJson
+
   @adapter_id "wardwright-claude-code"
   @adapter_version "0.1.0-rc.1"
   @config_path ".wardwright/adapters/claude-code-adapter.json"
@@ -63,7 +65,7 @@ defmodule Wardwright.AgentAdapters.ClaudeCodePack do
       schema: "wardwright.adapter_config.v0",
       target: @target
     }
-    |> JSON.encode!()
+    |> CanonicalJson.encode!()
     |> Kernel.<>("\n")
   end
 
@@ -78,8 +80,16 @@ defmodule Wardwright.AgentAdapters.ClaudeCodePack do
       schema: "wardwright.adapter_manifest.v0",
       target: @target
     }
-    |> JSON.encode!()
+    |> CanonicalJson.encode!()
     |> Kernel.<>("\n")
+  end
+
+  defp manifest_entry(%{dynamic?: true} = file) do
+    %{
+      dynamic: true,
+      path: file.path,
+      validator: "adapter_config_schema"
+    }
   end
 
   defp manifest_entry(file) do

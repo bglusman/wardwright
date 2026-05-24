@@ -1264,3 +1264,103 @@ execution constraints for the loop are:
 - Next open item: none for the adapter install validation Ralph loop. Future
   work should be opened outside this loop for direct upstream OpenClaw config
   discovery or stronger Pi/OpenClaw state-fidelity probes.
+
+### Post-Loop Scoping And Clean-State Mac Validation
+
+- Timestamp: 2026-05-23T22:20-04:00.
+- Starting commit: `d8c61b7`.
+- Ending commit: `52a03a6`.
+- Scope: scoped the vague "future work" note into concrete follow-up tracks
+  and tested the packaged adapter installers from isolated Mac temp homes and
+  workspaces. This was not a new Ralph loop iteration; the loop remains
+  complete and the runner can idle on the completion sentinel.
+- Implementation finding fixed before commit: clean-state packaged testing
+  exposed that `install claude-code` followed by `pair claude-code` could make
+  `doctor` report `drifted`. The root cause was manifest treatment of dynamic
+  adapter metadata. Pairing intentionally rewrites the metadata file, so it
+  must be schema/field/identity validated rather than treated as a static file
+  with one stable digest. Static files such as OMP rules/extensions still keep
+  digest checks.
+- Clean-state Mac validation:
+  - Built a fresh packaged binary with `mise run package:smoke:darwin-arm64`.
+  - Started the packaged gateway on an isolated loopback port with temp SQLite,
+    receipt, transcript, scenario, home, XDG, npm cache, admin token, and
+    adapter identity secret.
+  - OMP used the real published `@oh-my-pi/pi-coding-agent` package through
+    `npm exec` and local Bun 1.3.14; `install`, `pair`, and `probe` passed and
+    `doctor` reported OMP `verified_with_probe`.
+  - OpenCode with an OMP-backed runtime marker passed `probe opencode` and
+    reported `surface_verified`.
+  - Pi used an isolated runtime shim for detection; `install` and `pair`
+    passed, `probe pi` returned the expected export-only exit, and `doctor`
+    reported Pi `verified` with `state_import_probe` fidelity.
+  - Claude Code used an isolated runtime shim for detection; `install` and
+    `pair` passed after the dynamic metadata fix, and `doctor` reported
+    `verified` with `prompt_handoff`.
+  - OpenCode-native install refused as intended and `doctor` kept it
+    `unsupported_runtime` with `session_import_best_effort`; OpenCode-native
+    has not been removed from priority support, but its packaged native
+    scaffold is not implemented.
+  - OpenClaw was tested with isolated project markers for Pi, Claude CLI,
+    Codex, and unknown runtimes. Pi resolves through the Pi adapter,
+    Claude CLI resolves through the Claude Code adapter, Codex resolves to the
+    future `wardwright-codex` gateway-identity adapter path, and unknown
+    remains `unsupported_runtime`.
+  - Secret scan over the temp workspace found no generated admin token or
+    adapter identity signing secret in adapter files.
+  - Uninstall tail check passed: OMP, Pi, and Claude Code uninstall removed
+    Wardwright-owned files while preserving unrelated `.omp/keep.txt` and
+    `.wardwright/adapters/keep.txt`.
+- Focused validation:
+  - `cd app && MIX_ENV=test mise exec -- sh -lc 'mix compile && mix test --no-compile test/cli_adapters_test.exs test/gleam_adapter_core_test.exs'`:
+    `40 passed`.
+  - `mise run package:smoke:darwin-arm64`: passed after the metadata-manifest
+    fix.
+- Scoped future work:
+  1. Research adapter priority from current ecosystem adoption, separating
+     local coding agents from SDK/framework ecosystems such as Python,
+     TypeScript/Node, .NET, Go, and Java. Use package downloads, GitHub
+     activity, ecosystem ownership, and whether Wardwright can provide a
+     meaningful adapter contract beyond generic OpenAI-compatible HTTP.
+  2. Keep OpenCode first-class as its own surface. Current support covers
+     Pi/OMP-backed OpenCode and explicit OpenCode surface probes; future work
+     is a packaged OpenCode-native plugin/import scaffold with honest
+     `session_import_best_effort` or stronger fidelity only after tests prove
+     it.
+  3. Keep OpenClaw first-class but runtime-driven. Add direct upstream OpenClaw
+     config discovery, then prove native Pi and native Codex paths separately.
+     OpenClaw should leverage native Pi and native Codex adapters where
+     possible, not be conflated with OpenCode.
+  4. Package a native Codex/gateway-identity adapter. `doctor` already resolves
+     OpenClaw Codex to `wardwright-codex`, but install/pair/probe lifecycle is
+     not packaged yet.
+  5. Strengthen Pi/OpenClaw state-fidelity probes beyond export-only guidance
+     only when a real runtime import/probe path is observable and repeatable.
+  6. Promote the clean-state packaged Mac installer smoke into a reusable
+     script or CI-adjacent check, with real OMP optional and other runtimes
+     isolated behind temp shims unless their CLIs can be safely exercised.
+- Adversarial review:
+  - Architecture: the fix keeps JSON serialization at the Elixir boundary but
+    narrows the manifest contract: static files are digest-owned, dynamic
+    adapter config is schema-owned. This is less brittle than hashing paired
+    metadata and aligns with the existing installer status checks.
+  - Post-commit architecture review: no blocker found in `52a03a6`. The
+    canonical JSON helper is intentionally limited to adapter pack file
+    generation and should not become a general JSON transport replacement. If a
+    future pack allows arbitrary user-provided map keys, revisit duplicate-key
+    handling before using it there.
+  - Code/comment quality: the new canonical JSON helper is small and private to
+    adapter boundaries. It avoids comments because the manifest entries now
+    carry the important product distinction directly as `dynamic` and
+    `validator` fields.
+  - Test quality: the new test would fail if dynamic adapter metadata regained
+    a static `sha256` manifest entry or if static OMP rules lost digest
+    protection. It tests product-visible drift behavior rather than private map
+    ordering.
+- Skipped probes: no real Pi, Claude Code, OpenCode-native plugin, or OpenClaw
+  runtime was invoked. Those surfaces were isolated with temp shims or runtime
+  markers to avoid mutating private user state. The real OMP runtime probe was
+  invoked through the published OMP package.
+- Next open item: ecosystem-priority research, then choose between
+  OpenCode-native scaffold, OpenClaw upstream config/native Codex support, or a
+  broader SDK/framework adapter track.

@@ -1,6 +1,7 @@
 defmodule Wardwright.CLIAdaptersTest do
   use ExUnit.Case, async: true
 
+  alias Wardwright.AgentAdapters.CanonicalJson
   alias Wardwright.AgentAdapters.ClaudeCodePack
   alias Wardwright.AgentAdapters.Identity
   alias Wardwright.AgentAdapters.OmpPack
@@ -38,6 +39,35 @@ defmodule Wardwright.CLIAdaptersTest do
     opencode = Enum.find(targets, &(&1["target"] == "opencode"))
     assert opencode["runtime"] == "runtime_detected_by_doctor"
     assert opencode["adapter_id"] == ""
+  end
+
+  test "adapter pack manifests avoid hashes for dynamic pairing metadata" do
+    left = %{} |> Map.put("runtime", "claude-cli") |> Map.put("target", "claude-code")
+    right = %{} |> Map.put("target", "claude-code") |> Map.put("runtime", "claude-cli")
+
+    assert CanonicalJson.encode!(left) == CanonicalJson.encode!(right)
+
+    for pack <- [OmpPack, PiPack, ClaudeCodePack] do
+      manifest =
+        pack.expected_files()
+        |> Enum.find(&(&1.path == pack.manifest_path()))
+        |> Map.fetch!(:content)
+        |> JSON.decode!()
+
+      entry = Enum.find(manifest["files"], &(&1["path"] == pack.config_path()))
+      assert entry["dynamic"] == true
+      assert entry["validator"] == "adapter_config_schema"
+      refute Map.has_key?(entry, "sha256")
+    end
+
+    omp_manifest =
+      OmpPack.expected_files()
+      |> Enum.find(&(&1.path == OmpPack.manifest_path()))
+      |> Map.fetch!(:content)
+      |> JSON.decode!()
+
+    rule_entry = Enum.find(omp_manifest["files"], &(&1["path"] == ".omp/rules/wardwright-read-before-edit.md"))
+    assert rule_entry["sha256"] == sha256(OmpPack.rule_content())
   end
 
   test "doctor reports not_detected in an empty executable environment" do
@@ -1223,5 +1253,10 @@ defmodule Wardwright.CLIAdaptersTest do
     |> Path.wildcard()
     |> Enum.filter(&File.regular?/1)
     |> Enum.map(&Path.relative_to(&1, path))
+  end
+
+  defp sha256(content) do
+    :crypto.hash(:sha256, content)
+    |> Base.encode16(case: :lower)
   end
 end
