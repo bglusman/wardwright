@@ -29,7 +29,7 @@ a clear error that names the missing capability.
 - Plan: keep this slice at the OpenAI-compatible stream adapter boundary. Parse
   upstream SSE `delta.tool_calls`, carry those deltas through the existing
   provider runtime, and write OpenAI-compatible downstream SSE chunks without
-  changing VCR, allowed-tool policy, LiveView replay, or scenario fixtures.
+  changing VCR, allowed-tool policy, workbench replay, or scenario fixtures.
 - Adversarial plan review: the narrow pass-through avoids inventing tool
   authorization in the stream transport, but it also means stream policy still
   governs text content only. Tool-call argument validation remains a separate

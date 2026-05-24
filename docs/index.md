@@ -20,16 +20,16 @@ description: A governed model gateway for AI agents.
     <a class="button secondary" href="agent-authoring.html">Agent Authoring</a>
     <a class="button secondary" href="agent-adapters.html">Agent Adapters</a>
     <a class="button secondary" href="framework-adapters.html">Framework Adapters</a>
+    <a class="button secondary" href="tutorial-news-monitor-agent.html">News Monitor Tutorial</a>
     <a class="button secondary" href="https://github.com/bglusman/wardwright">GitHub</a>
   </div>
 </section>
 
 <div class="notice">
-  <strong>Status:</strong> Wardwright is early but installable. The published
-  <code>v0.0.10</code> release ships native macOS and Linux artifacts, a
-  Homebrew formula, an OpenAI-compatible gateway, a model-aware policy
-  workbench, saved simulator test cases, and a legacy experimental in-page
-  authoring assistant.
+  <strong>Status:</strong> Wardwright is early but installable. The latest
+  stable published release is <code>v0.0.10</code>. The current source tree is
+  preparing <code>v0.1.0-rc.1</code> with the Lustre workbench migration,
+  framework-adapter recipes, and local agent-adapter install/probe support.
 </div>
 
 Wardwright is for teams and operators who want model behavior to be a reviewed,
@@ -68,6 +68,9 @@ WARDWRIGHT_BIND=127.0.0.1:8787 \
 Set `WARDWRIGHT_ADMIN_TOKEN` before exposing Wardwright beyond loopback. See
 [Packaging](packaging.html) for manual archive install steps and service
 details.
+
+For an end-to-end example of why the workbench and framework recipes matter,
+see [Build A Lightweight News Monitor](tutorial-news-monitor-agent.html).
 
 ## What Wardwright Adds
 
