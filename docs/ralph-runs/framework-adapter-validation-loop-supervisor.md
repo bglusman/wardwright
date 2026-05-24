@@ -630,3 +630,50 @@ Execution constraints:
   live package-manager probes behind opt-in flags, helper-package promotion for
   selected frameworks, streaming receipt propagation, and separate local
   coding-agent follow-ups for OpenCode-native, OpenClaw, and Aider.
+
+### Release-Candidate Package-Manager Follow-Up
+
+- Timestamp: 2026-05-24T15:45-04:00.
+- Starting commit: `087ef31`.
+- Intended ending commit: release documentation update for live recipe
+  validation evidence.
+- Scope: validate the highest-priority framework recipes against current
+  package-manager installs before tagging `0.1.0-rc.1`, using the local
+  `wardwright_darwin_arm64` Burrito artifact as the gateway.
+- Validation:
+  - `wardwright_darwin_arm64 --version`: `0.1.0-rc.1`.
+  - Local Burrito artifact served `/v1/chat/completions` at
+    `http://127.0.0.1:8798/v1` and returned
+    `x-wardwright-receipt-id`.
+  - `ai@6.0.191` and `@ai-sdk/openai-compatible@2.0.48`: live
+    `generateText` smoke passed and captured a Wardwright receipt.
+  - `langchain@1.3.1`, `langchain-openai@1.2.2`, and `langgraph@1.2.1`:
+    live `ChatOpenAI` smoke passed with response-header receipt evidence, and
+    a minimal `StateGraph` carried the receipt through graph state.
+  - `pydantic-ai@1.102.0`: live `Agent.run_sync` smoke passed through
+    `OpenAIProvider` and `OpenAIChatModel`.
+  - `openai-agents@0.17.3`: live `Runner.run` smoke passed through
+    `OpenAIChatCompletionsModel`; trace export was skipped because no OpenAI
+    tracing key was configured.
+  - `llama-index-llms-openai-like@0.7.2`: live `OpenAILike.complete` smoke
+    passed against Wardwright.
+- Skipped probes: no real Microsoft.Extensions.AI or Semantic Kernel package
+  smoke was run because this machine did not have `dotnet` installed. No live
+  probe claimed streaming, tool-call preservation, native framework state,
+  retrieval lineage, checkpoint durability, `/v1/responses` parity, or exact
+  replay.
+- Adversarial review:
+  - Architecture: no blocker found. The live smokes validate the documented
+    OpenAI-compatible recipe paths without moving package-manager behavior into
+    default tests or conflating SDK frameworks with local coding-agent
+    adapters.
+  - Code/comment quality: no blocker found. The follow-up changes only docs
+    and records package versions and proof boundaries explicitly.
+  - Test quality: no blocker found. The checks are capable of failing for
+    stale imports, changed constructor names, broken OpenAI-compatible routing,
+    and missing receipt headers. They remain smoke-level checks and do not
+    exercise streaming, tool calls, native framework persistence, or exact
+    replay.
+- Next open item: run a real .NET package smoke on a machine with `dotnet`
+  installed, then decide whether to promote any helper into a published package
+  or keep recipes as documentation-only examples.

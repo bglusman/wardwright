@@ -113,9 +113,11 @@ Use the simplest integration that matches the agent:
   Wardwright intentionally supports broader Responses API behavior.
 
 The current framework recipes prove provenance and receipt correlation with
-app-local smokes. They do not prove live package-manager execution, streaming,
-tool-call preservation, native framework state, or exact replay. Treat the
-first live feed monitor as an integration test and keep the receipts.
+app-local smokes. The `0.1.0-rc.1` validation pass also exercised live package
+installs for Vercel AI SDK, LangChain/LangGraph, Pydantic AI, OpenAI Agents SDK,
+and LlamaIndex. They still do not prove streaming, tool-call preservation,
+native framework state, retrieval lineage, or exact replay. Treat the first
+live feed monitor as an integration test and keep the receipts.
 
 ## Debugging A Bad Result
 
