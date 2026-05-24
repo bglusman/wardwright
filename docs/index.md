@@ -20,6 +20,7 @@ description: A governed model gateway for AI agents.
     <a class="button secondary" href="agent-authoring.html">Agent Authoring</a>
     <a class="button secondary" href="agent-adapters.html">Agent Adapters</a>
     <a class="button secondary" href="framework-adapters.html">Framework Adapters</a>
+    <a class="button secondary" href="tool-mediation.html">Tool Mediation</a>
     <a class="button secondary" href="tutorial-news-monitor-agent.html">News Monitor Tutorial</a>
     <a class="button secondary" href="https://github.com/bglusman/wardwright">GitHub</a>
   </div>
@@ -28,7 +29,8 @@ description: A governed model gateway for AI agents.
 <div class="notice">
   <strong>Status:</strong> Wardwright is early but installable. The
   <code>v0.1.0</code> release line includes the Lustre workbench migration,
-  framework-adapter recipes, and local agent-adapter install/probe support.
+  framework-adapter recipes, local agent-adapter install/probe support, and the
+  first Wardwright-hosted server-tool plus tool-mediation controls.
 </div>
 
 Wardwright is for teams and operators who want model behavior to be a reviewed,
