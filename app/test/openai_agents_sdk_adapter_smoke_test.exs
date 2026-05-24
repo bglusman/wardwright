@@ -1,49 +1,31 @@
 defmodule Wardwright.OpenAIAgentsSdkAdapterSmokeTest do
-  use Wardwright.RouterCase
+  use Wardwright.FrameworkAdapterSmokeCase
 
   test "OpenAI Agents SDK recipe routes Chat Completions through Wardwright and records trace receipt metadata" do
-    config =
-      unit_policy_config()
-      |> Map.put("governance", [])
-      |> Map.put("targets", [
-        %{
-          "canned_outputs" => ["openai agents sdk smoke ok"],
-          "context_window" => 256,
-          "model" => "canned/openai-agents-sdk",
-          "provider_kind" => "canned_sequence"
-        }
-      ])
-
-    assert call(:post, "/__test/config", config).status == 200
-
-    python =
-      System.find_executable("python3") ||
-        System.find_executable("python") ||
-        flunk("python is required for the OpenAI Agents SDK smoke")
-
-    smoke = Path.expand("../priv/framework_adapters/openai_agents_sdk/smoke.py", __DIR__)
-
-    {output, status} =
-      System.cmd(
-        python,
-        [smoke, "--base-url", wardwright_router_base_url(), "--model", "unit-model"],
-        stderr_to_stdout: true
-      )
-
-    assert status == 0, output
-    report = JSON.decode!(output)
+    report =
+      run_framework_adapter_smoke(%{
+        caller: %{
+          application_id: "app-openai-agents",
+          client_request_id_prefix: "openai-agents-smoke-",
+          consuming_agent_id: "agent-openai-agents",
+          consuming_user_id: "user-openai-agents-smoke",
+          run_id: "run-openai-agents-smoke",
+          session_id: "session-openai-agents-smoke",
+          tenant_id: "tenant-openai-agents-smoke"
+        },
+        canned_model: "canned/openai-agents-sdk",
+        canned_output: "openai agents sdk smoke ok",
+        name: "OpenAI Agents SDK",
+        runtime: :python,
+        smoke: "openai_agents_sdk/smoke.py"
+      })
 
     assert report["framework"] == "openai-agents-sdk"
-    assert report["support_tier"] == "recipe_only"
-    assert report["fidelity"] == "framework_receipt_correlated"
-    assert report["requested_model"] == "unit-model"
-    assert report["selected_model"] == "canned/openai-agents-sdk"
     assert report["chat_completions"] == "tested"
     assert report["responses_api"] == "not_implemented_not_claimed"
     assert report["streaming"] == "deferred"
     assert report["tools"] == "deferred"
     assert report["native_sessions"] == "not_claimed"
-    assert report["captured_receipts"] == [report["receipt_id"]]
 
     assert get_in(report, ["openai_agents", "config", "model", "class"]) ==
              "agents.models.openai_chatcompletions.OpenAIChatCompletionsModel"
@@ -93,34 +75,6 @@ defmodule Wardwright.OpenAIAgentsSdkAdapterSmokeTest do
 
     assert receipt_id == report["receipt_id"]
 
-    assert report["fallback"] == %{
-             "adapter_receipt_claim" => false,
-             "generic_openai_compatible" => true
-           }
-
-    receipt = Wardwright.ReceiptStore.get(report["receipt_id"])
-
-    assert get_in(receipt, ["caller", "tenant_id"]) == %{
-             "source" => "header",
-             "value" => "tenant-openai-agents-smoke"
-           }
-
-    assert get_in(receipt, ["caller", "application_id", "value"]) == "app-openai-agents"
-    assert get_in(receipt, ["caller", "consuming_agent_id", "value"]) == "agent-openai-agents"
-    assert get_in(receipt, ["caller", "consuming_user_id", "value"]) == "user-openai-agents-smoke"
-    assert get_in(receipt, ["caller", "session_id", "value"]) == "session-openai-agents-smoke"
-    assert get_in(receipt, ["caller", "run_id", "value"]) == "run-openai-agents-smoke"
-
-    assert get_in(receipt, ["caller", "client_request_id", "value"]) =~
-             "openai-agents-smoke-"
-
-    assert :wardwright@framework_adapter.framework_receipt_correlation_ready(
-             "openai-agents-sdk",
-             true,
-             true
-           )
-
-    assert :wardwright@framework_adapter.framework_fidelity(true, true, true, false) ==
-             "framework_receipt_correlated"
+    assert_framework_receipt_ready!("openai-agents-sdk")
   end
 end

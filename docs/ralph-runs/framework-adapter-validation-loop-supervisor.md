@@ -528,3 +528,55 @@ Execution constraints:
 - Next open item: promote reusable framework e2e smoke infrastructure without
   requiring external package fetches in the default test suite, then run the
   final docs/completion pass if the completion criteria are otherwise met.
+
+### Loop 8 - Reusable Framework Smoke Infrastructure
+
+- Timestamp: 2026-05-23T23:58-04:00.
+- Starting commit: `12f793f`.
+- Intended ending commit: `2c77038`.
+- Scope: promote the repeated framework adapter smoke setup into shared ExUnit
+  test support without changing the recipe-only support claims. The slice adds
+  `Wardwright.FrameworkAdapterSmokeCase` to configure an app-local Wardwright
+  router with a canned target, execute the adapter-owned Node or Python smoke,
+  assert common framework smoke contract behavior, and verify caller
+  provenance in Wardwright receipts. Existing framework smoke tests now use
+  that helper while retaining their framework-specific assertions and deferred
+  fidelity limits.
+- Validation:
+  - `MIX_ENV=test mise exec -- mix compile`: passed.
+  - `MIX_ENV=test mise exec -- mix test --no-compile test/vercel_ai_sdk_adapter_smoke_test.exs test/langchain_langgraph_adapter_smoke_test.exs test/pydantic_ai_adapter_smoke_test.exs test/openai_agents_sdk_adapter_smoke_test.exs test/microsoft_extensions_ai_adapter_smoke_test.exs test/llamaindex_adapter_smoke_test.exs`:
+    passed, 6 tests.
+  - `mise exec -- mix format --check-formatted`: passed.
+  - `mise run check:docs`: passed.
+  - `git diff --check`: passed.
+  - Commit hook full app/docs/gitleaks gate: passed, including 424 app tests
+    with 21 properties and 6 excluded tests.
+- Skipped probes: no external npm, pip, or NuGet packages were installed, and
+  no live framework projects were generated. This infrastructure keeps default
+  smokes deterministic and app-local; real package-manager probes remain
+  opt-in future work.
+- Adversarial review:
+  - Architecture: no blocker found. The shared smoke helper stays in test
+    support and does not move framework SDK decisions into router/runtime code
+    or local coding-agent adapters. It preserves the app-local gateway shape
+    and recipe-only fidelity claims while making the repeated smoke contract
+    easier to inspect. The remaining architecture gap is intentional: this
+    still proves adapter-owned deterministic smokes, not live package-manager
+    lifecycle or native framework hooks.
+  - Code/comment quality: no blocker found. The helper is explicit about the
+    required smoke spec, executable selection, canned target setup, common
+    report assertions, and receipt caller assertions. It adds no comments
+    because the helper names and test names carry the intent. The spec maps
+    still repeat expected caller values per framework, which is acceptable
+    because those values are part of each framework smoke's public evidence.
+  - Test quality: no blocker found. The refactor keeps each framework's
+    behavior-specific assertions while centralizing shared failure conditions:
+    model routing, receipt capture, fallback honesty, smoke-contract status,
+    and caller provenance in receipts. The tests remain capable of failing for
+    dropped headers, wrong canned target selection, missing receipt capture, or
+    overclaimed fallback behavior. They still do not prove installed framework
+    packages, streaming, tool calls, or native framework state; those remain
+    recorded skipped probes rather than hidden claims.
+- Next open item: final docs pass and completion sentinel if the completion
+  criteria are otherwise satisfied; otherwise record any remaining validation
+  gap before stopping.
