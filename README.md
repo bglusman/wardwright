@@ -27,9 +27,10 @@ individual models can be configured for API-key or open access.
 ## Install
 
 Wardwright publishes early native binaries for macOS and Linux. The latest
-published release is `v0.0.10`, with a model-aware workbench, saved simulator
-test cases, a legacy experimental in-page authoring assistant, and local
-ratchets for style and browser-regression checks.
+stable published release is `v0.0.10`. The current source tree is preparing
+`v0.1.0-rc.1`, which adds the Lustre workbench migration, framework-adapter
+recipes, and local agent-adapter install/probe support while keeping stronger
+state-fidelity claims explicitly limited.
 
 ### macOS Homebrew
 
@@ -60,6 +61,12 @@ For a pinned release:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.10
+```
+
+For the release candidate after it is tagged, pin it explicitly:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.1.0-rc.1
 ```
 
 Set `WARDWRIGHT_ADMIN_TOKEN` before exposing Wardwright beyond loopback. See

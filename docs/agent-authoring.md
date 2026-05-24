@@ -366,7 +366,8 @@ later removed or made internal-only.
 
 ## Mental Model
 
-For 0.0.10, a Wardwright model is easiest to explain as four layers:
+For the current release-candidate line, a Wardwright model is easiest to
+explain as four layers:
 
 1. **Targets**: real provider models or other Wardwright models.
 2. **Model graph**: route nodes that delegate, choose, or combine targets.
@@ -394,9 +395,9 @@ reviewability:
 - require projection, trace, validation, and scenario evidence to stay engine
   neutral
 
-This is not a 0.0.10 requirement. The 0.0.10 requirement is that agents can create
-and modify local Wardwright models through a documented, reviewable, reversible
-workflow.
+This is not a release-candidate requirement. The current requirement is that
+agents can create and modify local Wardwright models through a documented,
+reviewable, reversible workflow.
 
 The first compatibility conversion is `primitive.request-contains-actions`,
 which implements the old `engine: primitive` request-text contains matcher. The

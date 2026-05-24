@@ -1,8 +1,8 @@
 # Wardwright App
 
-Elixir/LiveView implementation of the Wardwright model middleware contract.
+Elixir/Phoenix implementation of the Wardwright model middleware contract.
 It serves the OpenAI-compatible gateway surface, Wardwright model routing,
-stream policy, receipts, protected authoring APIs, and the LiveView policy
+stream policy, receipts, protected authoring APIs, and the Lustre operator
 workbench. Tests still rely heavily on mock providers, but the runtime boundary
 is shaped for real provider adapters and local Ollama/OpenAI-compatible targets.
 
@@ -110,8 +110,8 @@ health workers, rate-limit state, and circuit breakers explicit instead of
 incidental. Streaming is also a real advantage: Cowboy/Plug can chunk SSE
 today, and a fuller implementation could use GenStage/Broadway or plain
 process mailboxes to model backpressure between provider streams, policy
-inspection, and client release. Phoenix LiveView now owns the first-party
-policy projection workbench.
+inspection, and client release. Phoenix hosts the first-party workbench, and
+new workbench behavior is owned in Lustre/Gleam by default.
 
 The tradeoff is packaging and ecosystem fit. Elixir releases are mature, but OTP
 distribution, runtime tuning, and container image discipline become part of the

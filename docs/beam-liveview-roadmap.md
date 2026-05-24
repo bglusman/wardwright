@@ -1,26 +1,26 @@
 ---
 layout: default
-title: BEAM and LiveView Roadmap
-description: Tentative architecture direction for Wardwright's Elixir, Gleam, and LiveView implementation.
+title: BEAM and Workbench Roadmap
+description: Tentative architecture direction for Wardwright's Elixir, Gleam, Phoenix, and Lustre implementation.
 ---
 
-# BEAM and LiveView Roadmap
+# BEAM and Workbench Roadmap
 
 The current working assumption is that Wardwright's primary implementation should
 move toward a BEAM architecture:
 
-- **Elixir** owns runtime plumbing: HTTP, LiveView, supervision, registries,
+- **Elixir** owns runtime plumbing: HTTP, Phoenix, supervision, registries,
   GenServers, ETS ownership, sidecar/NIF boundaries, provider calls, telemetry,
   dynamic config, and operational dashboards.
 - **Gleam** owns correctness-heavy pure logic: policy/config data types,
   action/result ADTs, route arbitration, guard-loop state machines, cache
   eviction decisions, receipt classification, and projection generation where
   exhaustiveness materially reduces bugs.
-- **Phoenix LiveView** owns the first-party operator UI so policy authoring,
-  simulation, receipts, and runtime state can be driven directly from the same
-  supervised backend.
+- **Lustre/Gleam** owns first-party workbench behavior where typed view models
+  and controlled inputs reduce UI drift. Phoenix remains the HTTP host for the
+  operator UI and protected APIs.
 - **Phoenix PubSub** is the early visibility bus between supervised runtime
-  state and LiveView projections. Session/model processes should publish
+  state and workbench projections. Session/model processes should publish
   receipt events, policy transitions, queue health, and simulation updates so
   the UI and other nodes can observe behavior without taking ownership of the
   hot session state.
@@ -110,13 +110,13 @@ If an expert mode later allows code-backed machines, the code must still expose
 a transition graph, declared effects, simulation hooks, timeout behavior, and
 receipt trace spans.
 
-## LiveView Direction
+## Workbench Direction
 
-The removed TypeScript prototype was useful for shape discovery, but the next
-operator UI should be built in LiveView unless a workflow proves it needs a
-client-heavy canvas app.
+The removed TypeScript prototype and earlier LiveView projection spike were
+useful for shape discovery. The active operator workbench is now Phoenix-hosted
+Lustre, with Elixir retaining the HTTP/API/PubSub boundaries.
 
-Initial LiveView surfaces:
+Initial workbench surfaces:
 
 - Wardwright model catalog and version switcher
 - policy projection workbench
@@ -126,10 +126,10 @@ Initial LiveView surfaces:
   failures
 - advanced policy editor with a deterministic artifact preview
 
-LiveView pages should subscribe to PubSub topics for the model, session,
+Workbench pages should subscribe to PubSub topics for the model, session,
 receipt, policy artifact, and simulation scope they are rendering. The server
 projection remains authoritative: PubSub messages should be small invalidation
-or event records that cause the LiveView to update from supervised state,
+or event records that cause the workbench to update from supervised state,
 durable receipts, or cached projections.
 
 The UI must render stable backend projections rather than engine-specific
@@ -138,18 +138,19 @@ authority; projection and simulation are review aids.
 
 ## Library Shortlist
 
-Use Phoenix and LiveView primitives first. LiveView provides server-rendered
-interactive UI, async cancellation, hooks, and server-to-client events for the
-small amount of client-side behavior needed by graph widgets.
+Use Phoenix for HTTP hosting and protected endpoints, and keep Lustre/Gleam as
+the default place for new first-party workbench behavior. Add client-side hooks
+only for graph or canvas interactions that the server projection cannot express
+cleanly.
 
 Recommended library posture:
 
 | Area | Candidate | Use |
 |---|---|---|
-| Base LiveView UI | SaladUI or Petal Components | Try one small page before adopting broadly. SaladUI is shadcn-inspired with accessible components and charts; Petal is mature HEEX/Tailwind with optional LiveView.JS/Alpine behavior. |
-| Accessible component kit | Fluxon UI | Evaluate if its component set fits dashboards better than SaladUI/Petal. |
+| Base workbench UI | Lustre components plus existing CSS | Prefer the current typed workbench surface before adopting a larger UI kit. |
+| Accessible component kit | Fluxon UI, SaladUI, or Petal Components | Evaluate only if the current Lustre/Phoenix surface cannot cover a repeated dashboard pattern cleanly. |
 | Interactive policy graph | LiveFlow | Spike for node graphs. It is very young, so treat it as experimental and keep a fallback path. |
-| Custom graph/canvas | LiveView hook plus Cytoscape, D3, Mermaid, or custom SVG | Use only for graph interactions LiveView components cannot express cleanly. Keep the graph data shape server-owned. |
+| Custom graph/canvas | Phoenix-hosted hook plus Cytoscape, D3, Mermaid, or custom SVG | Use only for graph interactions the typed workbench cannot express cleanly. Keep the graph data shape server-owned. |
 | Operations dashboard | Phoenix LiveDashboard plus custom pages | Use for VM/process/telemetry inspiration and possibly embed internal metrics pages. |
 
 Avoid committing to a large UI kit before the policy projection contract settles.
@@ -162,10 +163,11 @@ The first goal is a dense operational workbench, not a marketing dashboard.
    should describe projection nodes, confidence, effects, conflicts, simulation
    traces, and receipt previews without assuming a client runtime.
 
-2. **LiveView Projection Workbench**
-   Keep the current LiveView projection prototype focused on three modes:
-   phase map, effect matrix, and trace overlay. Add server-side tests for route
-   behavior and projection shape before adding a UI component library.
+2. **Lustre Projection Workbench**
+   Keep the active Lustre workbench focused on model selection, projection
+   evidence, replay controls, and adapter/framework status. Add server-side
+   tests for route behavior and projection shape before adding a UI component
+   library.
 
 3. **Gleam Decision Core**
    Initial Gleam decision modules now live under `app/src/wardwright` and are

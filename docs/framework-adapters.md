@@ -24,6 +24,34 @@ limits are enforced by synthetic app-local smokes. The current tests do not
 install live framework packages or prove streaming, tool-call preservation,
 native framework state, or exact replay.
 
+## Current Support And Backlog
+
+The `0.1.0-rc.1` scope should stay honest about proof level:
+
+| Surface | RC status | What is proven | Before claiming more |
+| --- | --- | --- | --- |
+| Vercel AI SDK | Implemented recipe-only helper and smoke. | OpenAI-compatible provider options can route to Wardwright, pass provenance headers, capture `x-wardwright-receipt-id`, and keep generic fallback honest. | Run a live npm package-manager smoke against `ai` and `@ai-sdk/openai-compatible`; add streaming receipt capture only after it is tested. |
+| LangChain and LangGraph | Implemented recipe-only helper and smoke. | Python-shaped config passes provenance, captures receipt ids in LangChain run metadata and LangGraph checkpoint-style metadata, and records fallback limits. | Run a live `pip install langchain langchain-openai langgraph` smoke; test real callbacks/checkpointers before claiming graph durability. |
+| Pydantic AI | Implemented recipe-only helper and smoke. | Typed caller context maps to Wardwright provenance and receipt ids are captured in run metadata. | Run a live Pydantic AI provider smoke; test structured-output and tool-call capability checks before claiming fidelity there. |
+| OpenAI Agents SDK | Implemented recipe-only helper and smoke. | Chat Completions-style model routing, provenance, receipt capture, and tracing metadata are represented without claiming Responses API parity. | Run a live Agents SDK smoke; add `/v1/responses` behavior intentionally before claiming full Agents SDK parity. |
+| Microsoft.Extensions.AI and Semantic Kernel | Implemented recipe-only Python smoke that models the .NET metadata contract. | `IChatClient`/Semantic Kernel-style metadata paths are documented and receipt correlation is represented. | Run a real .NET smoke with `Microsoft.Extensions.AI`; add Semantic Kernel filters/plugins only after package execution is tested. |
+| LlamaIndex | Implemented recipe-only helper and smoke. | LLM event metadata and retrieval-context metadata can carry the same Wardwright receipt id without claiming index lineage ownership. | Run a live LlamaIndex smoke; test callbacks/workflows before claiming retrieval/tool fidelity. |
+
+The best candidates for additional integration testing before a release are
+LangChain/LangGraph and Vercel AI SDK. They have the strongest combination of
+adoption, clean OpenAI-compatible integration points, and immediate Wardwright
+value through provenance and receipt correlation. Pydantic AI and OpenAI Agents
+SDK are the next most useful if time allows. The .NET and LlamaIndex tracks are
+worth keeping in the RC docs, but live package execution can follow unless a
+specific user needs them before the tag.
+
+Watch or follow-up candidates remain outside the RC support claim: Aider,
+CrewAI, Agno, AutoGen/AG2, DSPy, Haystack, Mastra, Spring AI, LangChain4j, n8n,
+Dify, Flowise, OpenHands, CloudWeGo Eino, Genkit, Open Interpreter, AutoGPT,
+and smolagents. These should start as recipes or integration tests unless one
+of them exposes a durable hook that lets Wardwright verify more than generic
+OpenAI-compatible traffic.
+
 ## Vercel AI SDK
 
 Current support tier: `recipe_only`.

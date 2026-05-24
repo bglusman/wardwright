@@ -7,9 +7,9 @@ description: Release, native binary, and Homebrew packaging plan for Wardwright.
 # Packaging
 
 Status: initial Burrito/Tinfoil packaging path in place. Release `v0.0.10` is
-the latest published usable early release, with the stronger model-aware
-workbench, saved simulator test cases, and an experimental in-page authoring
-assistant.
+the latest stable published usable early release. The current source tree is
+preparing `v0.1.0-rc.1` with the Lustre workbench migration, framework-adapter
+recipe smokes, and local agent-adapter install/probe support.
 
 Wardwright is a BEAM application with a Phoenix/Lustre operator UI and Gleam
 decision cores. The packaging goal is a user-facing binary that does not require
@@ -59,6 +59,12 @@ For a pinned release:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.10
+```
+
+For the release candidate after it is tagged:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.1.0-rc.1
 ```
 
 The script downloads the matching release archive, requires
@@ -266,13 +272,17 @@ where the policy UI and validation story are useful enough to promote.
 - Release `v0.0.10` preserves the unified `/admin` workbench shell from
   `v0.0.9` and fixes packaged releases so the Gleam/Lustre runtime modules are
   included in the Burrito payload.
+- Release `v0.1.0-rc.1` is the first release-candidate target for the Lustre
+  workbench migration, framework-adapter recipe foundation, and local
+  agent-adapter install/probe lifecycle. It remains a prerelease and should not
+  imply exact cross-agent replay or native framework state fidelity.
 - Fnox-backed provider credentials are runtime-supported but not package-managed;
   fnox installation/profile management and product authorization remain
-  post-`0.0.10` hardening work.
+  hardening work beyond this RC.
 - The first CI run may expose platform-specific Burrito, Zig, or NIF issues.
   macOS builds intentionally install Homebrew `zig@0.15` because upstream Zig
   0.15.2 can fail to link on newer macOS/Xcode combinations.
 - Burrito prints some wrapper diagnostics to stderr before the BEAM app starts.
-- The current app has minimal static assets. If LiveView assets grow beyond the
-  checked-in bundle, packaging must add an explicit asset build/digest step
-  before `mix release`.
+- The current app has minimal static assets. If Phoenix/Lustre assets grow
+  beyond the checked-in bundle, packaging must add an explicit asset
+  build/digest step before `mix release`.
