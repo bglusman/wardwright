@@ -149,6 +149,23 @@ defmodule Wardwright.CLI.Adapters do
     end
   end
 
+  def install("opencode", argv, write_fun, opts) do
+    with {:ok, parsed} <- parse_install_args(argv),
+         :ok <- ensure_project_scope(parsed.scope),
+         {:ok, opencode_bin} <- detected_runtime_path("opencode", opts, "install") do
+      target = Enum.find(@targets, &(&1.target == "opencode"))
+      runtime_info = runtime_info_for(target, opencode_bin, opts)
+      resolution = resolution_for(target.surface, runtime_info.runtime)
+
+      write_fun.(opencode_install_unavailable_human(runtime_info, resolution))
+      2
+    else
+      {:error, message} ->
+        write_fun.(message)
+        2
+    end
+  end
+
   def install(_target, _argv, write_fun, _opts) do
     write_fun.("Only `wardwright adapters install omp` is implemented in this loop.")
     2
@@ -349,11 +366,13 @@ defmodule Wardwright.CLI.Adapters do
     installation = installation_for(target, resolution, runtime_info, opts)
     fidelity = :wardwright@adapter_core.surface_fidelity(resolution.fidelity, installation.surface_probe_passed)
 
+    installable? = installable_resolution?(resolution)
+
     state =
       :wardwright@adapter_core.adapter_state(
         detected?,
         supported?,
-        supported?,
+        installable?,
         installation.installed_files_present,
         installation.installed_manifest_matches,
         installation.identity_verified,
@@ -456,6 +475,9 @@ defmodule Wardwright.CLI.Adapters do
   end
 
   defp supported_resolution?(%{adapter_id: adapter_id}), do: adapter_id != ""
+
+  defp installable_resolution?(%{install_strategy: "no_install"}), do: false
+  defp installable_resolution?(%{adapter_id: adapter_id}), do: adapter_id != ""
 
   defp detected_path(target, opts) do
     find_executable = Keyword.get(opts, :find_executable, &System.find_executable/1)
@@ -617,6 +639,36 @@ defmodule Wardwright.CLI.Adapters do
     """
   end
 
+  defp opencode_install_unavailable_human(%{runtime: "opencode-native"}, %{coverage: "surface_scaffold"}) do
+    """
+    Cannot install OpenCode-native adapter files: the packaged plugin/import scaffold is not available yet.
+    Use the current harness export scaffold for best-effort handoff; doctor will keep this surface lower fidelity.
+    """
+  end
+
+  defp opencode_install_unavailable_human(
+         %{runtime: runtime},
+         %{install_strategy: "install_runtime_adapter"} = resolution
+       ) do
+    runtime_target = runtime_adapter_target(resolution.adapter_id)
+
+    """
+    Cannot install OpenCode directly for runtime #{runtime}.
+    Run `wardwright adapters install #{runtime_target}` to install the runtime adapter used by OpenCode.
+    """
+  end
+
+  defp opencode_install_unavailable_human(%{runtime: "codex"}, _resolution) do
+    """
+    Cannot install OpenCode Codex-backed adapter files yet.
+    Codex-backed OpenCode uses gateway identity support and must not run the OMP/Pi runtime probe.
+    """
+  end
+
+  defp opencode_install_unavailable_human(_runtime_info, _resolution) do
+    "Cannot install OpenCode adapter files: resolve OpenCode to a supported packaged runtime first."
+  end
+
   defp indent_output(""), do: "  output: none"
 
   defp indent_output(output) do
@@ -721,6 +773,17 @@ defmodule Wardwright.CLI.Adapters do
   defp next_actions("installable", %{target: "opencode"}, %{install_strategy: "install_plugin_scaffold"}, _installation) do
     [
       "OpenCode-native plugin install is not packaged yet; use the current harness export scaffold for best-effort handoff"
+    ]
+  end
+
+  defp next_actions(
+         "unsupported_runtime",
+         %{target: "opencode"},
+         %{coverage: "surface_scaffold", install_strategy: "no_install"},
+         _installation
+       ) do
+    [
+      "OpenCode-native packaged plugin install is unavailable; use the current harness export scaffold for best-effort handoff"
     ]
   end
 

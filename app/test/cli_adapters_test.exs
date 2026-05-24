@@ -155,13 +155,34 @@ defmodule Wardwright.CLIAdaptersTest do
     assert opencode.adapter_id == "wardwright-opencode"
     assert opencode.coverage == "surface_scaffold"
     assert opencode.fidelity == "session_import_best_effort"
-    assert opencode.state == "installable"
-    assert opencode.install_plan == "install_plugin_scaffold"
+    assert opencode.state == "unsupported_runtime"
+    assert opencode.install_plan == "no_install"
     refute opencode.fidelity == "runtime_verified"
 
     assert opencode.next_actions == [
-             "OpenCode-native plugin install is not packaged yet; use the current harness export scaffold for best-effort handoff"
+             "OpenCode-native packaged plugin install is unavailable; use the current harness export scaffold for best-effort handoff"
            ]
+  end
+
+  test "install opencode refuses native scaffold without writing plugin files" do
+    workspace = tmp_workspace("wardwright-opencode-native-install-refusal")
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    write_opencode_runtime_config(workspace, %{
+      "runtime" => "opencode-native"
+    })
+
+    collector = collector()
+
+    assert 2 =
+             Adapters.run(["install", "opencode"], collector,
+               find_executable: fake_opencode_finder(),
+               workspace_root: workspace
+             )
+
+    output = collected()
+    assert output =~ "packaged plugin/import scaffold is not available yet"
+    refute File.exists?(Path.join(workspace, ".opencode/plugins/wardwright-state-fidelity.ts"))
   end
 
   test "doctor resolves OpenCode Codex runtime as gateway identity support without OMP probe claims" do

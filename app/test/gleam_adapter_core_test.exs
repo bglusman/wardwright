@@ -34,7 +34,7 @@ defmodule Wardwright.GleamAdapterCoreTest do
              {"wardwright-omp", "covered_through_runtime", "install_runtime_adapter", "runtime_verified"}
 
     assert :wardwright@adapter_core.resolve_adapter("opencode", "opencode-native") ==
-             {"wardwright-opencode", "surface_scaffold", "install_plugin_scaffold", "session_import_best_effort"}
+             {"wardwright-opencode", "surface_scaffold", "no_install", "session_import_best_effort"}
 
     assert :wardwright@adapter_core.resolve_adapter("opencode", "codex") ==
              {"wardwright-codex", "gateway_identity", "install_gateway_identity", "prompt_handoff"}

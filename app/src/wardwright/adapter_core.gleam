@@ -15,10 +15,13 @@ type ResolutionCoverage {
   GatewayIdentity
 }
 
-type InstallPlan {
+type ResolutionInstallStrategy {
   InstallRuntimeAdapter
   InstallPluginScaffold
   InstallGatewayIdentity
+}
+
+type InstallPlan {
   InstallProjectFiles
   InstallUserFiles
   RequiresExplicitUserScope
@@ -42,7 +45,8 @@ type AdapterResolution {
   AdapterResolution(
     adapter_id: String,
     coverage: ResolutionCoverage,
-    install_plan: InstallPlan,
+    install_strategy: ResolutionInstallStrategy,
+    packaged_install: Bool,
     fidelity: Fidelity,
   )
   UnsupportedResolution
@@ -191,6 +195,7 @@ fn resolve(surface: String, runtime: String) -> AdapterResolution {
         "wardwright-omp",
         NativeRuntime,
         InstallRuntimeAdapter,
+        True,
         TtsRuntimeProbe,
       )
     "pi", "pi" ->
@@ -198,6 +203,7 @@ fn resolve(surface: String, runtime: String) -> AdapterResolution {
         "wardwright-pi",
         NativeRuntime,
         InstallRuntimeAdapter,
+        True,
         StateImportProbe,
       )
     "opencode", "pi" ->
@@ -205,6 +211,7 @@ fn resolve(surface: String, runtime: String) -> AdapterResolution {
         "wardwright-pi",
         CoveredThroughRuntime,
         InstallRuntimeAdapter,
+        True,
         RuntimeVerified,
       )
     "opencode", "omp" ->
@@ -212,6 +219,7 @@ fn resolve(surface: String, runtime: String) -> AdapterResolution {
         "wardwright-omp",
         CoveredThroughRuntime,
         InstallRuntimeAdapter,
+        True,
         RuntimeVerified,
       )
     "opencode", "opencode-native" ->
@@ -219,6 +227,7 @@ fn resolve(surface: String, runtime: String) -> AdapterResolution {
         "wardwright-opencode",
         SurfaceScaffold,
         InstallPluginScaffold,
+        False,
         SessionImportBestEffort,
       )
     "opencode", "codex" ->
@@ -226,6 +235,7 @@ fn resolve(surface: String, runtime: String) -> AdapterResolution {
         "wardwright-codex",
         GatewayIdentity,
         InstallGatewayIdentity,
+        True,
         PromptHandoff,
       )
     "openclaw", "pi" ->
@@ -233,6 +243,7 @@ fn resolve(surface: String, runtime: String) -> AdapterResolution {
         "wardwright-pi",
         CoveredThroughRuntime,
         InstallRuntimeAdapter,
+        True,
         RuntimeVerified,
       )
     "openclaw", "auto-pi" ->
@@ -240,6 +251,7 @@ fn resolve(surface: String, runtime: String) -> AdapterResolution {
         "wardwright-pi",
         CoveredThroughRuntime,
         InstallRuntimeAdapter,
+        True,
         RuntimeVerified,
       )
     "openclaw", "codex" ->
@@ -247,6 +259,7 @@ fn resolve(surface: String, runtime: String) -> AdapterResolution {
         "wardwright-codex",
         GatewayIdentity,
         InstallGatewayIdentity,
+        True,
         PromptHandoff,
       )
     "openclaw", "claude-cli" -> UnsupportedResolution
@@ -308,7 +321,10 @@ fn resolution_tuple(
     AdapterResolution(..) -> #(
       resolution.adapter_id,
       coverage_label(resolution.coverage),
-      install_plan_label(resolution.install_plan),
+      packaged_install_strategy_label(
+        resolution.install_strategy,
+        resolution.packaged_install,
+      ),
       fidelity_label(resolution.fidelity),
     )
     UnsupportedResolution -> #(
@@ -341,11 +357,26 @@ fn coverage_label(coverage: ResolutionCoverage) -> String {
   }
 }
 
-fn install_plan_label(plan: InstallPlan) -> String {
-  case plan {
+fn install_strategy_label(strategy: ResolutionInstallStrategy) -> String {
+  case strategy {
     InstallRuntimeAdapter -> "install_runtime_adapter"
     InstallPluginScaffold -> "install_plugin_scaffold"
     InstallGatewayIdentity -> "install_gateway_identity"
+  }
+}
+
+fn packaged_install_strategy_label(
+  strategy: ResolutionInstallStrategy,
+  packaged_install: Bool,
+) -> String {
+  case packaged_install {
+    True -> install_strategy_label(strategy)
+    False -> "no_install"
+  }
+}
+
+fn install_plan_label(plan: InstallPlan) -> String {
+  case plan {
     InstallProjectFiles -> "install_project_files"
     InstallUserFiles -> "install_user_files"
     RequiresExplicitUserScope -> "requires_explicit_user_scope"

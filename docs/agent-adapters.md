@@ -137,7 +137,8 @@ reports `surface_probe: passed` and upgrades the OpenCode fidelity label to
 `surface_verified`.
 
 OpenCode-native and Codex-backed OpenCode do not use this probe. OpenCode-native
-remains best-effort harness export/plugin scaffold work, and Codex-backed
+remains best-effort harness export/plugin scaffold work and reports
+`install_plan: no_install` until that packaged lifecycle is real. Codex-backed
 OpenCode uses the future gateway-identity path rather than the OMP TTSR probe.
 
 ## Uninstall And Cleanup
