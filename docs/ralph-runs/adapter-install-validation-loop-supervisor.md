@@ -1269,7 +1269,7 @@ execution constraints for the loop are:
 
 - Timestamp: 2026-05-23T22:20-04:00.
 - Starting commit: `d8c61b7`.
-- Ending commit: `52a03a6`.
+- Ending implementation commit: `27af12f`.
 - Scope: scoped the vague "future work" note into concrete follow-up tracks
   and tested the packaged adapter installers from isolated Mac temp homes and
   workspaces. This was not a new Ralph loop iteration; the loop remains
@@ -1344,7 +1344,7 @@ execution constraints for the loop are:
     narrows the manifest contract: static files are digest-owned, dynamic
     adapter config is schema-owned. This is less brittle than hashing paired
     metadata and aligns with the existing installer status checks.
-  - Post-commit architecture review: no blocker found in `52a03a6`. The
+  - Post-commit architecture review: no blocker found in `27af12f`. The
     canonical JSON helper is intentionally limited to adapter pack file
     generation and should not become a general JSON transport replacement. If a
     future pack allows arbitrary user-provided map keys, revisit duplicate-key
