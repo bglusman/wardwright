@@ -69,8 +69,8 @@ OpenAI-compatible traffic.
 ## Live Package-Manager Recipe Checks
 
 On 2026-05-24, the release validation pass started the local
-`wardwright_darwin_arm64` Burrito artifact at `0.1.0-rc.1` and ran these
-package-manager smokes against `http://127.0.0.1:8798/v1`:
+`wardwright_darwin_arm64` Burrito artifact from the `0.1.0` release-prep tree
+and ran these package-manager smokes against `http://127.0.0.1:8798/v1`:
 
 - `ai@6.0.191` and `@ai-sdk/openai-compatible@2.0.48`: `generateText` returned
   a completion and the Wardwright fetch wrapper captured a real receipt id. A
