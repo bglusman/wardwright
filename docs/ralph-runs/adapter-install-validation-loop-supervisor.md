@@ -8,7 +8,7 @@ This file is the durable tracker for the adapter install and validation Ralph
 loop. The build target is
 [`adapter-install-validation-requirements.md`](adapter-install-validation-requirements.html).
 
-Status: continuing after loop 14. The OMP release-candidate slice is complete,
+Status: continuing after loop 16. The OMP release-candidate slice is complete,
 but the Ralph loop remains open for the follow-up adapter backlog below. The
 completion sentinel should stay absent until those continuation items are also
 implemented, validated, and recorded.
@@ -994,3 +994,68 @@ execution constraints for the loop are:
 - Next open item: backlog item 12, package the OpenCode-native plugin/import
   scaffold lifecycle or downgrade its install plan until the packaged scaffold
   is real.
+
+### Loop 16 - OpenCode-Native Install Claim Downgrade
+
+- Timestamp: 2026-05-23T21:07:44-04:00.
+- Starting commit: `f3ebafe`.
+- Ending implementation commit: `99dd52d`.
+- Scope: downgraded OpenCode-native from an installable packaged plugin
+  scaffold to a known lower-fidelity surface with `install_plan: no_install`
+  until the packaged lifecycle is real. The typed Gleam adapter core now
+  distinguishes resolution install strategy from whether that strategy is
+  packaged, `doctor` reports OpenCode-native as unsupported for install while
+  preserving `session_import_best_effort`, and `wardwright adapters install
+  opencode` refuses the native scaffold without writing `.opencode/plugins`
+  files.
+- Validation:
+  - `cd app && mise exec -- gleam format --check src`
+  - `cd app && mise exec -- gleam check --target erlang`
+  - `cd app && mise exec -- gleam run -m glinter`
+  - `cd app && MIX_ENV=test mise exec -- mix format --check-formatted`
+  - `cd app && MIX_ENV=test mise exec -- sh -lc 'mix compile && mix test
+    --no-compile test/cli_adapters_test.exs test/gleam_adapter_core_test.exs'`:
+    `29 passed`
+  - `mise run check:maps`
+  - `mise run check:docs`
+  - `mise run check:types`
+  - `git diff --check`
+  - `gitleaks protect --staged --config .gitleaks.toml --verbose`
+  - Commit hook reran app format/test, docs-site checks, and staged gitleaks:
+    `398 passed (21 properties, 377 tests), 6 excluded`; staged gitleaks
+    clean.
+- Adversarial review:
+  - Architecture: the product decision lives in the typed Gleam core instead
+    of the CLI guessing that OpenCode-native should be installable. The Elixir
+    CLI remains the boundary for runtime detection, output, and refusal
+    messaging. Splitting resolution install strategy from packaged availability
+    also avoided the impossible generated match branches found by
+    `mise run check:types`.
+  - Architecture concern reviewed: the current state vocabulary has no
+    dedicated state for "known lower-fidelity surface, but no packaged install
+    lifecycle yet", so OpenCode-native reports `unsupported_runtime` while
+    still preserving `adapter_id`, `surface_scaffold`, and
+    `session_import_best_effort`. That is acceptable for this downgrade, but a
+    future multi-surface install UI may need a more precise non-installable
+    state.
+  - Code quality/comments: no inline comments were added. The new CLI refusal
+    paths are explicit for OpenCode-native, runtime-adapter-backed OpenCode,
+    Codex-backed OpenCode, and unknown runtimes. The CLI module still carries
+    target-specific adapter flow; backlog items 13-15 should avoid growing it
+    further by moving lifecycle behavior behind per-target adapter modules or a
+    small dispatcher.
+  - Test quality: tests assert product-visible behavior rather than private
+    helper calls: OpenCode-native no longer reports an installable scaffold,
+    keeps lower-fidelity wording, and `install opencode` refuses without
+    writing plugin files. The focused tests would fail if the CLI silently
+    created `.opencode/plugins/wardwright-state-fidelity.ts` or if doctor
+    again claimed a packaged OpenCode-native install plan.
+- Skipped probes: real live OpenCode-native plugin loading was skipped because
+  this loop intentionally downgraded the packaged install claim instead of
+  packaging the scaffold. Pi-backed OpenCode surface verification remains
+  blocked on packaged Pi install/probe support. OpenClaw runtime probes and
+  Claude gateway identity probe remain skipped because this loop only covers
+  the OpenCode-native install-plan claim.
+- Next open item: backlog item 13, add Pi adapter lifecycle support, including
+  explicit export-only reporting where Pi has no persistent project extension
+  surface.
