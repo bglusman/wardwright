@@ -342,6 +342,8 @@ The loop should keep iterating until:
 - no adapter path can silently mutate unrelated user config or claim stronger
   replay fidelity than the tests prove.
 
-Anything beyond that, including Claude parity or OpenClaw polish, can ship in a
-follow-up release unless it is already implemented and validated during the
-loop.
+After those release-candidate criteria are met, the Ralph loop should keep
+going through the follow-up adapter backlog recorded in the supervisor. Claude
+Code, OpenClaw, Pi lifecycle, and stronger OpenCode surface verification are
+open continuation items unless they are explicitly implemented, validated, and
+recorded as complete.

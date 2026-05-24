@@ -8,8 +8,10 @@ This file is the durable tracker for the adapter install and validation Ralph
 loop. The build target is
 [`adapter-install-validation-requirements.md`](adapter-install-validation-requirements.html).
 
-Status: complete as of loop 14. The local completion sentinel exists at
-`$(git rev-parse --git-path ralph-runs/adapter-install-validation/complete)`.
+Status: continuing after loop 14. The OMP release-candidate slice is complete,
+but the Ralph loop remains open for the follow-up adapter backlog below. The
+completion sentinel should stay absent until those continuation items are also
+implemented, validated, and recorded.
 
 ## Branch Policy
 
@@ -72,6 +74,16 @@ execution constraints for the loop are:
    privacy, cleanup, fallback behavior, fidelity claims, and adapter-state
    wording.
 10. Run the release-candidate validation matrix from the requirements file.
+11. Add OpenCode surface verification for Pi/OMP-backed runtimes so doctor and
+    probes can distinguish `runtime_verified` from `surface_verified`.
+12. Package the OpenCode-native plugin/import scaffold lifecycle or downgrade
+    its install plan until the packaged scaffold is real.
+13. Add Pi adapter lifecycle support, including explicit export-only reporting
+    where Pi has no persistent project extension surface.
+14. Add Claude Code install/doctor/pair support for gateway identity with an
+    explicit `prompt_handoff` or `model_context_replay` fidelity label.
+15. Add OpenClaw runtime config inspection and tests for Pi, Codex, Claude CLI,
+    and unknown runtime resolution.
 
 ## Continuation Log
 
@@ -810,7 +822,7 @@ execution constraints for the loop are:
   then rerun the packaged `wardwright adapters probe omp` lifecycle before
   considering the completion sentinel.
 
-### Loop 14 - Real OMP Probe And Completion
+### Loop 14 - Real OMP Probe And RC Gate Completion
 
 - Timestamp: 2026-05-23T19:05:21-04:00.
 - Starting commit: `a01e075`.
@@ -820,8 +832,9 @@ execution constraints for the loop are:
   TTSR equivalence probe against a real `@oh-my-pi/pi-coding-agent@15.2.4`
   `omp` CLI through an isolated temporary wrapper. Then reran the packaged
   Wardwright adapter lifecycle against a temporary local gateway and workspace:
-  doctor, install, pair, probe, doctor, and uninstall. Marked the supervisor
-  complete and wrote the local completion sentinel.
+  doctor, install, pair, probe, doctor, and uninstall. This completed the OMP
+  release-candidate gate, but later supervisor correction keeps the broader
+  Ralph loop open for the follow-up adapter backlog.
 - Validation:
   - `command -v omp || true; command -v oh-my-pi || true; command -v pi || true;
     command -v opencode || true; command -v openclaw || true; command -v claude
@@ -863,9 +876,11 @@ execution constraints for the loop are:
     adapter-state wording, and fidelity limits for OMP/Pi/OpenCode/OpenClaw
     and Claude Code. No wording changes were needed.
   - `mise run check:docs`: passed.
-  - Created the local sentinel:
+  - Created the local sentinel at the time:
     `$(git rev-parse --git-path
-    ralph-runs/adapter-install-validation/complete)`.
+    ralph-runs/adapter-install-validation/complete)`. This was later removed
+    by the continuation correction below so the runner keeps processing the
+    follow-up backlog.
 - Adversarial review:
   - Architecture: no product architecture changed. The validation preserves
     the established boundary split: pure state/fidelity decisions remain in
@@ -895,6 +910,23 @@ execution constraints for the loop are:
   `unknown` / `unsupported_runtime`; Claude gateway identity probe skipped
   because Claude Code pairing is not packaged in this RC and doctor reports
   `unsupported_runtime`.
-- Next open item: none for the adapter install validation loop. Claude Code,
-  OpenClaw polish, and stronger OpenCode surface verification remain follow-up
-  release work, not blockers for this recorded completion.
+- Next open item: backlog item 11, add OpenCode surface verification for
+  Pi/OMP-backed runtimes so doctor and probes can distinguish
+  `runtime_verified` from `surface_verified`.
+
+### Continuation Correction - Follow-Up Adapter Work Remains In Scope
+
+- Timestamp: 2026-05-23T20:45-04:00.
+- Scope: corrected the supervisor after operator clarification. The OMP
+  release-candidate gate is complete, but the Ralph loop should continue into
+  the remaining adapter surfaces instead of treating them as out-of-loop
+  follow-up work.
+- State change: removed the local completion sentinel so
+  `scripts/run-adapter-ralph-loop.sh` will continue from backlog item 11.
+- Runner expectation: the launchd-backed runner should start the next
+  `codex exec` iteration immediately after the sentinel is absent, then
+  continue chaining successful iterations until the expanded backlog is
+  implemented, validated, and recorded.
+- Next open item: backlog item 11, add OpenCode surface verification for
+  Pi/OMP-backed runtimes so doctor and probes can distinguish
+  `runtime_verified` from `surface_verified`.
