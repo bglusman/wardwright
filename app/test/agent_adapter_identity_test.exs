@@ -80,6 +80,38 @@ defmodule Wardwright.AgentAdapterIdentityTest do
     assert get_in(body, ["identity", "workspace_fingerprint"]) == workspace_fingerprint
   end
 
+  test "gateway pair endpoint issues a Claude Code adapter identity that the verify endpoint accepts" do
+    workspace_fingerprint = Identity.workspace_fingerprint("/tmp/wardwright-claude-project")
+
+    pair_conn =
+      call(:post, "/v1/agent-adapters/pair", %{
+        "adapter_id" => "wardwright-claude-code",
+        "adapter_version" => "0.1.0-rc.1",
+        "gateway_url" => "http://127.0.0.1:8787",
+        "runtime" => "claude-cli",
+        "target" => "claude-code",
+        "workspace_fingerprint" => workspace_fingerprint
+      })
+
+    assert pair_conn.status == 200
+    identity = get_in(JSON.decode!(pair_conn.resp_body), ["identity"])
+    assert identity["adapter_id"] == "wardwright-claude-code"
+    assert identity["target"] == "claude-code"
+    assert is_binary(identity["token"])
+
+    verify_conn =
+      call(:post, "/v1/agent-adapters/identity/verify", %{
+        "identity" => identity,
+        "workspace_fingerprint" => workspace_fingerprint
+      })
+
+    assert verify_conn.status == 200
+    body = JSON.decode!(verify_conn.resp_body)
+    assert body["verified"] == true
+    assert get_in(body, ["identity", "runtime"]) == "claude-cli"
+    assert get_in(body, ["identity", "target"]) == "claude-code"
+  end
+
   test "gateway identity verification rejects wrong-workspace, expired, and malformed identities" do
     identity =
       paired_identity(%{

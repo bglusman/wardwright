@@ -45,6 +45,9 @@ defmodule Wardwright.GleamAdapterCoreTest do
     assert :wardwright@adapter_core.resolve_adapter("openclaw", "claude-cli") ==
              {"", "unsupported_runtime", "no_install", "unsupported"}
 
+    assert :wardwright@adapter_core.resolve_adapter("claude-code", "claude-cli") ==
+             {"wardwright-claude-code", "gateway_identity", "install_gateway_identity", "prompt_handoff"}
+
     assert :wardwright@adapter_core.resolve_adapter("openclaw", "unknown") ==
              {"", "unsupported_runtime", "no_install", "unsupported"}
   end

@@ -262,6 +262,14 @@ fn resolve(surface: String, runtime: String) -> AdapterResolution {
         True,
         PromptHandoff,
       )
+    "claude-code", "claude-cli" ->
+      AdapterResolution(
+        "wardwright-claude-code",
+        GatewayIdentity,
+        InstallGatewayIdentity,
+        True,
+        PromptHandoff,
+      )
     "openclaw", "claude-cli" -> UnsupportedResolution
     _, _ -> UnsupportedResolution
   }

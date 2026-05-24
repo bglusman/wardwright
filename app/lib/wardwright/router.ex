@@ -3,6 +3,7 @@ defmodule Wardwright.Router do
 
   use Plug.Router
 
+  alias Wardwright.AgentAdapters.ClaudeCodePack
   alias Wardwright.AgentAdapters.Identity
   alias Wardwright.AgentAdapters.OmpPack
   alias Wardwright.AgentAdapters.PiPack
@@ -23,6 +24,7 @@ defmodule Wardwright.Router do
   @adapter_key_target "target"
   @adapter_key_verified "verified"
   @adapter_key_workspace_fingerprint "workspace_fingerprint"
+  @adapter_runtime_claude_cli "claude-cli"
   @adapter_runtime_omp "omp"
   @adapter_runtime_pi "pi"
 
@@ -1185,14 +1187,15 @@ defmodule Wardwright.Router do
 
   defp supported_pair_request?(body) do
     supported_pair_request?(body, OmpPack, @adapter_runtime_omp) or
-      supported_pair_request?(body, PiPack, @adapter_runtime_pi)
+      supported_pair_request?(body, PiPack, @adapter_runtime_pi) or
+      supported_pair_request?(body, ClaudeCodePack, @adapter_runtime_claude_cli)
   end
 
   defp supported_pair_request?(body, pack, runtime) do
     Map.get(body, @adapter_key_adapter_id) == pack.adapter_id() and
       Map.get(body, @adapter_key_adapter_version) == pack.adapter_version() and
       Map.get(body, @adapter_key_runtime) == runtime and
-      Map.get(body, @adapter_key_target) == runtime
+      Map.get(body, @adapter_key_target) == pack.target()
   end
 
   defp supported_identity(identity) when is_map(identity) do
@@ -1206,6 +1209,17 @@ defmodule Wardwright.Router do
       {adapter_id, @adapter_runtime_pi, @adapter_runtime_pi} ->
         if adapter_id == PiPack.adapter_id(),
           do: {:ok, [adapter_id: PiPack.adapter_id(), runtime: @adapter_runtime_pi, target: @adapter_runtime_pi]},
+          else: {:error, :malformed}
+
+      {adapter_id, @adapter_runtime_claude_cli, "claude-code"} ->
+        if adapter_id == ClaudeCodePack.adapter_id(),
+          do:
+            {:ok,
+             [
+               adapter_id: ClaudeCodePack.adapter_id(),
+               runtime: @adapter_runtime_claude_cli,
+               target: ClaudeCodePack.target()
+             ]},
           else: {:error, :malformed}
 
       _unsupported ->

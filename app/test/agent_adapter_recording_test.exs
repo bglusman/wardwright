@@ -63,6 +63,33 @@ defmodule Wardwright.AgentAdapterRecordingTest do
     refute JSON.encode!(receipt) =~ paired_identity()["token"]
   end
 
+  test "verified Claude Code identity uses adapter-scoped recording without native resume claims" do
+    assert call(:post, "/__test/config", recording_config()).status == 200
+
+    identity =
+      paired_identity(%{
+        "adapter_id" => "wardwright-claude-code",
+        "runtime" => "claude-cli",
+        "target" => "claude-code"
+      })
+
+    headers = [
+      {"x-wardwright-adapter-identity", JSON.encode!(identity)},
+      {"x-wardwright-workspace-fingerprint", @workspace_fingerprint}
+    ]
+
+    conn = chat("claude-adapter-session", headers)
+
+    assert conn.status == 200
+    receipt = response_receipt(conn)
+    assert get_in(receipt, ["vcr", "mode"]) == "full_session"
+    assert get_in(receipt, ["caller", "adapter", "adapter_id"]) == "wardwright-claude-code"
+    assert get_in(receipt, ["caller", "adapter", "runtime"]) == "claude-cli"
+    assert get_in(receipt, ["caller", "adapter", "target"]) == "claude-code"
+    assert get_in(receipt, ["caller", "adapter", "verification_state"]) == "verified"
+    refute JSON.encode!(receipt) =~ identity["token"]
+  end
+
   test "declared but unverified adapters do not receive adapted-agent auto recording" do
     assert call(:post, "/__test/config", recording_config()).status == 200
 

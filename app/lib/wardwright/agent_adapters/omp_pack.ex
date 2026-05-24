@@ -12,6 +12,8 @@ defmodule Wardwright.AgentAdapters.OmpPack do
   def adapter_version, do: @adapter_version
   def config_path, do: @config_path
   def manifest_path, do: @manifest_path
+  def runtime, do: "omp"
+  def target, do: "omp"
 
   def expected_files do
     files = content_files()

@@ -1,6 +1,8 @@
 defmodule Wardwright.CLI.Adapters do
   @moduledoc false
 
+  alias Wardwright.AgentAdapters.ClaudeCodeInstaller
+  alias Wardwright.AgentAdapters.ClaudeCodePack
   alias Wardwright.AgentAdapters.GatewayPairing
   alias Wardwright.AgentAdapters.Identity
   alias Wardwright.AgentAdapters.OmpInstaller
@@ -190,8 +192,33 @@ defmodule Wardwright.CLI.Adapters do
     end
   end
 
+  def install("claude-code", argv, write_fun, opts) do
+    with {:ok, parsed} <- parse_install_args(argv),
+         :ok <- ensure_project_scope(parsed.scope),
+         :ok <- ensure_runtime_detected("claude-code", opts) do
+      workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
+
+      case ClaudeCodeInstaller.install(workspace_root, repair?: parsed.repair?) do
+        {:ok, result} ->
+          write_fun.(claude_code_install_success_human(result))
+          0
+
+        {:error, :repair_required, inspection} ->
+          write_fun.(claude_code_repair_required_human(inspection))
+          1
+      end
+    else
+      {:error, message} ->
+        write_fun.(message)
+        2
+    end
+  end
+
   def install(_target, _argv, write_fun, _opts) do
-    write_fun.("Only `wardwright adapters install omp` and `wardwright adapters install pi` are implemented.")
+    write_fun.(
+      "Only `wardwright adapters install omp`, `wardwright adapters install pi`, and `wardwright adapters install claude-code` are implemented."
+    )
+
     2
   end
 
@@ -225,8 +252,25 @@ defmodule Wardwright.CLI.Adapters do
     end
   end
 
+  def uninstall("claude-code", argv, write_fun, opts) do
+    with {:ok, parsed} <- parse_scope_args(argv),
+         :ok <- ensure_project_scope(parsed.scope) do
+      workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
+      {:ok, result} = ClaudeCodeInstaller.uninstall(workspace_root)
+      write_fun.(claude_code_uninstall_success_human(result))
+      0
+    else
+      {:error, message} ->
+        write_fun.(message)
+        2
+    end
+  end
+
   def uninstall(_target, _argv, write_fun, _opts) do
-    write_fun.("Only `wardwright adapters uninstall omp` and `wardwright adapters uninstall pi` are implemented.")
+    write_fun.(
+      "Only `wardwright adapters uninstall omp`, `wardwright adapters uninstall pi`, and `wardwright adapters uninstall claude-code` are implemented."
+    )
+
     2
   end
 
@@ -280,8 +324,42 @@ defmodule Wardwright.CLI.Adapters do
     end
   end
 
+  def pair("claude-code", argv, write_fun, opts) do
+    with {:ok, parsed} <- parse_scope_args(argv),
+         :ok <- ensure_project_scope(parsed.scope),
+         :ok <- ensure_runtime_detected("claude-code", opts),
+         {:ok, gateway_token} <- gateway_token("Claude Code", opts),
+         {:ok, identity} <-
+           request_pairing_identity(
+             ClaudeCodePack,
+             ClaudeCodePack.target(),
+             ClaudeCodePack.runtime(),
+             gateway_token,
+             opts
+           ),
+         {:ok, result} <- ClaudeCodeInstaller.pair(Keyword.get(opts, :workspace_root, File.cwd!()), identity) do
+      write_fun.(pair_success_human("Claude Code", result, identity))
+      0
+    else
+      {:error, :not_installed, _inspection} ->
+        write_fun.("Cannot pair Claude Code adapter: run `wardwright adapters install claude-code` first.")
+        1
+
+      {:error, :repair_required, _inspection} ->
+        write_fun.("Cannot pair Claude Code adapter: installed metadata is drifted; repair it before pairing.")
+        1
+
+      {:error, message} ->
+        write_fun.(message)
+        2
+    end
+  end
+
   def pair(_target, _argv, write_fun, _opts) do
-    write_fun.("Only `wardwright adapters pair omp` and `wardwright adapters pair pi` are implemented.")
+    write_fun.(
+      "Only `wardwright adapters pair omp`, `wardwright adapters pair pi`, and `wardwright adapters pair claude-code` are implemented."
+    )
+
     2
   end
 
@@ -481,6 +559,10 @@ defmodule Wardwright.CLI.Adapters do
     runtime_adapter_installation("pi", opts)
   end
 
+  defp installation_for(%{target: "claude-code"}, _resolution, _runtime_info, opts) do
+    runtime_adapter_installation("claude-cli", opts)
+  end
+
   defp installation_for(%{target: "opencode"}, %{coverage: "covered_through_runtime"}, runtime_info, opts) do
     runtime_info.runtime
     |> runtime_adapter_installation(opts)
@@ -531,6 +613,26 @@ defmodule Wardwright.CLI.Adapters do
     }
   end
 
+  defp runtime_adapter_installation("claude-cli", opts) do
+    workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
+
+    inspection =
+      ClaudeCodeInstaller.status(workspace_root,
+        identity_secret: Keyword.get(opts, :identity_secret),
+        now: Keyword.get(opts, :now, DateTime.utc_now())
+      )
+
+    %{
+      export_only: inspection.export_only,
+      identity_verified: inspection.identity_verified,
+      installed_files_present: inspection.installed_files_present,
+      installed_manifest_matches: inspection.installed_manifest_matches,
+      installed_paths: inspection.files |> Enum.filter(& &1.present?) |> Enum.map(& &1.path),
+      runtime_probe_passed: inspection.runtime_probe_passed,
+      surface_probe_passed: false
+    }
+  end
+
   defp runtime_adapter_installation(_runtime, _opts), do: default_installation()
 
   defp default_installation do
@@ -546,6 +648,9 @@ defmodule Wardwright.CLI.Adapters do
   end
 
   defp doctor_install_plan("installable", %{target: "opencode"}, resolution), do: resolution.install_strategy
+
+  defp doctor_install_plan("installed_unverified", %{target: "claude-code"}, _resolution), do: "pair_identity"
+  defp doctor_install_plan("verified", %{target: "claude-code"}, _resolution), do: "identity_verified"
 
   defp doctor_install_plan(state, _target, _resolution),
     do: :wardwright@adapter_core.install_plan(state, "project", false)
@@ -662,6 +767,18 @@ defmodule Wardwright.CLI.Adapters do
     """
   end
 
+  defp claude_code_install_success_human(result) do
+    verb = if result.repaired?, do: "Repaired", else: "Installed"
+
+    """
+    #{verb} Claude Code adapter metadata:
+    #{Enum.map_join(result.written, "\n", &"  #{&1}")}
+
+    Fidelity: #{ClaudeCodePack.fidelity()}.
+    Native Claude Code state import is not claimed.
+    """
+  end
+
   defp repair_required_human(inspection) do
     present =
       inspection.files
@@ -684,6 +801,20 @@ defmodule Wardwright.CLI.Adapters do
 
     """
     Pi adapter metadata is present but does not match the Wardwright adapter pack.
+    Review local edits before replacing them, then rerun with `--repair`.
+    Present files:
+    #{present}
+    """
+  end
+
+  defp claude_code_repair_required_human(inspection) do
+    present =
+      inspection.files
+      |> Enum.filter(& &1.present?)
+      |> Enum.map_join("\n", &"  #{&1.path}")
+
+    """
+    Claude Code adapter metadata is present but does not match the Wardwright adapter pack.
     Review local edits before replacing them, then rerun with `--repair`.
     Present files:
     #{present}
@@ -727,6 +858,28 @@ defmodule Wardwright.CLI.Adapters do
 
     """
     Removed Wardwright-owned Pi adapter metadata:
+    #{removed}
+
+    Skipped edited or unknown files:
+    #{skipped}
+    """
+  end
+
+  defp claude_code_uninstall_success_human(result) do
+    skipped =
+      case result.skipped do
+        [] -> "  none"
+        paths -> Enum.map_join(paths, "\n", &"  #{&1}")
+      end
+
+    removed =
+      case result.removed do
+        [] -> "  none"
+        paths -> Enum.map_join(paths, "\n", &"  #{&1}")
+      end
+
+    """
+    Removed Wardwright-owned Claude Code adapter metadata:
     #{removed}
 
     Skipped edited or unknown files:
@@ -965,6 +1118,12 @@ defmodule Wardwright.CLI.Adapters do
   defp next_actions("verified", %{target: "pi"}, _resolution, _installation),
     do: action("Pi identity is verified; use harness export and state-fidelity verification for replay evidence")
 
+  defp next_actions("installed_unverified", %{target: "claude-code"}, _resolution, _installation),
+    do: action("run `wardwright adapters pair claude-code`; fidelity remains prompt_handoff")
+
+  defp next_actions("verified", %{target: "claude-code"}, _resolution, _installation),
+    do: action("Claude Code identity is verified; use prompt or model-context handoff without native resume claims")
+
   defp next_actions("unsupported_runtime", %{target: target}, _resolution, _installation)
        when target in ["opencode", "openclaw"] do
     [
@@ -1074,10 +1233,13 @@ defmodule Wardwright.CLI.Adapters do
       wardwright adapters doctor --json Print machine-readable doctor output
       wardwright adapters install omp [--scope project] [--repair]
       wardwright adapters install pi [--scope project] [--repair]
+      wardwright adapters install claude-code [--scope project] [--repair]
       wardwright adapters uninstall omp [--scope project]
       wardwright adapters uninstall pi [--scope project]
+      wardwright adapters uninstall claude-code [--scope project]
       wardwright adapters pair omp [--scope project]
       wardwright adapters pair pi [--scope project]
+      wardwright adapters pair claude-code [--scope project]
       wardwright adapters probe omp [--scope project]
       wardwright adapters probe pi [--scope project]
     """

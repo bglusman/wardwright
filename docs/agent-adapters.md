@@ -24,13 +24,16 @@ wardwright adapters doctor
 wardwright adapters doctor --json
 wardwright adapters install omp
 wardwright adapters install pi
+wardwright adapters install claude-code
 wardwright adapters pair omp
 wardwright adapters pair pi
+wardwright adapters pair claude-code
 wardwright adapters probe omp
 wardwright adapters probe pi
 wardwright adapters probe opencode
 wardwright adapters uninstall omp
 wardwright adapters uninstall pi
+wardwright adapters uninstall claude-code
 ```
 
 Project scope is the default and only packaged install scope today. User-global
@@ -176,11 +179,36 @@ JSONL and `wardwright-state-fidelity-probe.json`, import the session into Pi,
 then submit observed imported state to Wardwright's protected state-fidelity
 verifier.
 
+## Claude Code
+
+Claude Code support is packaged as project-local Wardwright metadata plus
+gateway identity. It does not claim native Claude Code transcript import,
+session fork parity, or a runtime state-fidelity probe.
+
+```bash
+wardwright adapters install claude-code
+wardwright adapters pair claude-code
+wardwright adapters uninstall claude-code
+```
+
+`install claude-code` writes only Wardwright-owned metadata under
+`.wardwright/adapters/`:
+
+- `.wardwright/adapters/claude-code-adapter.json`
+- `.wardwright/adapters/claude-code-adapter-manifest.json`
+
+The metadata records fidelity `prompt_handoff` and
+`native_state_fidelity: false`. `pair claude-code` stores a signed gateway
+identity so adapter-scoped recording can apply to verified Claude Code
+requests. It still remains a prompt or model-context handoff unless a future
+documented Claude Code state/import path proves stronger fidelity.
+
 ## Uninstall And Cleanup
 
 ```bash
 wardwright adapters uninstall omp
 wardwright adapters uninstall pi
+wardwright adapters uninstall claude-code
 ```
 
 Uninstall removes only files that still match the Wardwright adapter pack. Edited
@@ -205,6 +233,13 @@ For Pi, manual cleanup removes only Wardwright-owned adapter metadata:
 ```bash
 rm -f .wardwright/adapters/pi-adapter.json
 rm -f .wardwright/adapters/pi-adapter-manifest.json
+```
+
+For Claude Code, manual cleanup removes only Wardwright-owned adapter metadata:
+
+```bash
+rm -f .wardwright/adapters/claude-code-adapter.json
+rm -f .wardwright/adapters/claude-code-adapter-manifest.json
 ```
 
 ## Privacy And Recording
@@ -242,7 +277,7 @@ gateway/export behavior:
 | OpenCode-native | Packaged plugin install is not complete; use the current harness export scaffold. | `session_import_best_effort`; do not claim Pi/OMP runtime verification. |
 | OpenCode with Codex runtime | Gateway identity support is the intended path when packaged. | `prompt_handoff`; do not run or claim the OMP TTSR probe. |
 | OpenClaw | Runtime-driven support is planned for Pi, Codex, and supported CLI backends. | Unsupported or unknown runtimes report `unsupported_runtime`. |
-| Claude Code | Candidate for install/doctor/pair and gateway identity after OMP. | `prompt_handoff` until a documented native state/import path proves stronger fidelity. |
+| Claude Code | Packaged install, pair, doctor, and uninstall for gateway identity metadata. | `prompt_handoff`; no native state/import or runtime-probe parity is claimed. |
 
 Use `wardwright adapters doctor --json` when another tool needs
 machine-readable state, runtime, installed paths, install plan, and next

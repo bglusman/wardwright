@@ -3,6 +3,7 @@ defmodule WardwrightWeb.AdapterRequestContext do
 
   import Plug.Conn
 
+  alias Wardwright.AgentAdapters.ClaudeCodePack
   alias Wardwright.AgentAdapters.Identity
   alias Wardwright.AgentAdapters.OmpPack
   alias Wardwright.AgentAdapters.PiPack
@@ -121,6 +122,11 @@ defmodule WardwrightWeb.AdapterRequestContext do
       {adapter_id, "pi", "pi"} ->
         if adapter_id == PiPack.adapter_id(),
           do: {:ok, [adapter_id: PiPack.adapter_id(), runtime: "pi", target: "pi"]},
+          else: {:error, :malformed}
+
+      {adapter_id, "claude-cli", "claude-code"} ->
+        if adapter_id == ClaudeCodePack.adapter_id(),
+          do: {:ok, [adapter_id: ClaudeCodePack.adapter_id(), runtime: "claude-cli", target: "claude-code"]},
           else: {:error, :malformed}
 
       _unsupported ->

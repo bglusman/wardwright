@@ -1,6 +1,7 @@
 defmodule Wardwright.CLIAdaptersTest do
   use ExUnit.Case, async: true
 
+  alias Wardwright.AgentAdapters.ClaudeCodePack
   alias Wardwright.AgentAdapters.Identity
   alias Wardwright.AgentAdapters.OmpPack
   alias Wardwright.AgentAdapters.PiPack
@@ -327,6 +328,118 @@ defmodule Wardwright.CLIAdaptersTest do
     output = collected()
     assert output =~ "Pi state-fidelity probing is export-only"
     assert output =~ "wardwright-state-fidelity-probe.json"
+  end
+
+  test "install and pair Claude Code writes prompt-handoff gateway identity metadata without probe claims" do
+    workspace = tmp_workspace("wardwright-claude-code-install-pair")
+    secret = String.duplicate("claude-pair-secret", 3)
+    now = ~U[2026-05-24 02:00:00Z]
+
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    collector = collector()
+
+    assert 0 =
+             Adapters.run(["install", "claude-code"], collector,
+               find_executable: fake_claude_finder(),
+               workspace_root: workspace
+             )
+
+    output = collected()
+    assert output =~ "Installed Claude Code adapter metadata"
+    assert output =~ "prompt_handoff"
+    assert File.exists?(Path.join(workspace, ClaudeCodePack.config_path()))
+    refute File.exists?(Path.join(workspace, ".claude"))
+
+    results =
+      Adapters.doctor(
+        find_executable: fake_claude_finder(),
+        workspace_root: workspace
+      )
+
+    claude = Enum.find(results, &(&1.target == "claude-code"))
+    assert claude.state == "installed_unverified"
+    assert claude.fidelity == "prompt_handoff"
+    assert claude.install_plan == "pair_identity"
+    assert claude.surface_probe == "not_applicable"
+
+    assert claude.next_actions == [
+             "run `wardwright adapters pair claude-code`; fidelity remains prompt_handoff"
+           ]
+
+    pair_request_fun = fn "http://127.0.0.1:8787", "gateway-token", payload ->
+      assert payload["adapter_id"] == "wardwright-claude-code"
+      assert payload["runtime"] == "claude-cli"
+      assert payload["target"] == "claude-code"
+      assert payload["workspace_fingerprint"] == Identity.workspace_fingerprint(workspace)
+      Identity.issue(payload, secret: secret, now: now)
+    end
+
+    collector = collector()
+
+    assert 0 =
+             Adapters.run(["pair", "claude-code"], collector,
+               find_executable: fake_claude_finder(),
+               gateway_token: "gateway-token",
+               identity_secret: secret,
+               now: now,
+               pair_request_fun: pair_request_fun,
+               workspace_root: workspace
+             )
+
+    output = collected()
+    assert output =~ "Paired Claude Code adapter with Wardwright gateway"
+    refute output =~ "gateway-token"
+
+    config = JSON.decode!(File.read!(Path.join(workspace, ClaudeCodePack.config_path())))
+    assert config["paired"] == true
+    assert config["fidelity"] == "prompt_handoff"
+    assert config["native_state_fidelity"] == false
+    assert get_in(config, ["gateway_identity", "adapter_id"]) == "wardwright-claude-code"
+
+    results =
+      Adapters.doctor(
+        find_executable: fake_claude_finder(),
+        identity_secret: secret,
+        now: DateTime.add(now, 60, :second),
+        workspace_root: workspace
+      )
+
+    claude = Enum.find(results, &(&1.target == "claude-code"))
+    assert claude.state == "verified"
+    assert claude.install_plan == "identity_verified"
+
+    assert claude.next_actions == [
+             "Claude Code identity is verified; use prompt or model-context handoff without native resume claims"
+           ]
+  end
+
+  test "uninstall claude-code preserves edited adapter metadata" do
+    workspace = tmp_workspace("wardwright-claude-code-uninstall")
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    assert 0 =
+             Adapters.run(["install", "claude-code"], collector(),
+               find_executable: fake_claude_finder(),
+               workspace_root: workspace
+             )
+
+    config_path = Path.join(workspace, ClaudeCodePack.config_path())
+    File.write!(config_path, "local Claude metadata edit\n")
+
+    collector = collector()
+
+    assert 0 =
+             Adapters.run(["uninstall", "claude-code"], collector, workspace_root: workspace)
+
+    output = collected()
+    assert output =~ "Removed Wardwright-owned Claude Code adapter metadata"
+    assert output =~ ClaudeCodePack.manifest_path()
+    assert output =~ "Skipped edited or unknown files"
+    assert output =~ ClaudeCodePack.config_path()
+
+    assert File.read!(config_path) == "local Claude metadata edit\n"
+    refute File.exists?(Path.join(workspace, ClaudeCodePack.manifest_path()))
   end
 
   test "doctor resolves OpenCode Codex runtime as gateway identity support without OMP probe claims" do
@@ -904,6 +1017,13 @@ defmodule Wardwright.CLIAdaptersTest do
   defp fake_pi_finder do
     fn
       "pi" -> "/tmp/fake-bin/pi"
+      _binary -> nil
+    end
+  end
+
+  defp fake_claude_finder do
+    fn
+      "claude" -> "/tmp/fake-bin/claude"
       _binary -> nil
     end
   end

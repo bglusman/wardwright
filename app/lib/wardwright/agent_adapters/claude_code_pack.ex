@@ -1,33 +1,31 @@
-defmodule Wardwright.AgentAdapters.PiPack do
+defmodule Wardwright.AgentAdapters.ClaudeCodePack do
   @moduledoc false
 
-  @adapter_id "wardwright-pi"
+  @adapter_id "wardwright-claude-code"
   @adapter_version "0.1.0-rc.1"
-  @config_path ".wardwright/adapters/pi-adapter.json"
+  @config_path ".wardwright/adapters/claude-code-adapter.json"
   @default_gateway_url "http://127.0.0.1:8787"
-  @key_export_only "export_only"
+  @fidelity "prompt_handoff"
+  @key_fidelity "fidelity"
   @key_gateway_url "gateway_url"
-  @manifest_path ".wardwright/adapters/pi-adapter-manifest.json"
+  @key_native_state_fidelity "native_state_fidelity"
+  @manifest_path ".wardwright/adapters/claude-code-adapter-manifest.json"
+  @runtime "claude-cli"
+  @target "claude-code"
 
   def adapter_id, do: @adapter_id
   def adapter_version, do: @adapter_version
   def config_path, do: @config_path
+  def fidelity, do: @fidelity
   def manifest_path, do: @manifest_path
-  def runtime, do: "pi"
-  def target, do: "pi"
+  def runtime, do: @runtime
+  def target, do: @target
 
   def required_config_fields do
     %{
-      @key_export_only => export_only_items()
+      @key_fidelity => @fidelity,
+      @key_native_state_fidelity => false
     }
-  end
-
-  def export_only_items do
-    [
-      "pi_session_jsonl",
-      "state_fidelity_probe_json",
-      "import_commands"
-    ]
   end
 
   def expected_files do
@@ -56,13 +54,14 @@ defmodule Wardwright.AgentAdapters.PiPack do
     %{
       adapter_id: @adapter_id,
       adapter_version: @adapter_version,
-      export_only: export_only_items(),
+      fidelity: @fidelity,
       gateway_identity: identity,
       gateway_url: gateway_url(identity),
+      native_state_fidelity: false,
       paired: is_map(identity),
-      runtime: "pi",
+      runtime: @runtime,
       schema: "wardwright.adapter_config.v0",
-      target: "pi"
+      target: @target
     }
     |> JSON.encode!()
     |> Kernel.<>("\n")
@@ -72,11 +71,12 @@ defmodule Wardwright.AgentAdapters.PiPack do
     %{
       adapter_id: @adapter_id,
       adapter_version: @adapter_version,
-      export_only: export_only_items(),
+      fidelity: @fidelity,
       files: Enum.map(files, &manifest_entry/1),
-      runtime: "pi",
+      native_state_fidelity: false,
+      runtime: @runtime,
       schema: "wardwright.adapter_manifest.v0",
-      target: "pi"
+      target: @target
     }
     |> JSON.encode!()
     |> Kernel.<>("\n")
