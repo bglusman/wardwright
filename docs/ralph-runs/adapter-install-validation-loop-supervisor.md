@@ -8,7 +8,7 @@ This file is the durable tracker for the adapter install and validation Ralph
 loop. The build target is
 [`adapter-install-validation-requirements.md`](adapter-install-validation-requirements.html).
 
-Status: continuing after loop 17. The OMP release-candidate slice is complete,
+Status: continuing after loop 18. The OMP release-candidate slice is complete,
 but the Ralph loop remains open for the follow-up adapter backlog below. The
 completion sentinel should stay absent until those continuation items are also
 implemented, validated, and recorded.
@@ -1126,3 +1126,74 @@ execution constraints for the loop are:
 - Next open item: backlog item 14, add Claude Code install/doctor/pair support
   for gateway identity with an explicit `prompt_handoff` or
   `model_context_replay` fidelity label.
+
+### Loop 18 - Claude Code Gateway Identity Lifecycle
+
+- Timestamp: 2026-05-23T21:33:47-04:00.
+- Starting commit: `3abf952`.
+- Ending implementation commit: `13228dc`.
+- Scope: added packaged Claude Code install/doctor/pair/uninstall support for
+  gateway identity metadata with explicit `prompt_handoff` fidelity. The slice
+  adds `wardwright-claude-code` to the typed adapter resolution core, writes
+  project-local metadata under `.wardwright/adapters/`, lets the gateway mint
+  and verify Claude Code identities, lets verified Claude Code requests use the
+  adapter-scoped recording path, and updates user-facing docs without claiming
+  native Claude Code state import or runtime-probe parity. The loop also
+  extracted the Pi metadata lifecycle into a shared
+  `Wardwright.AgentAdapters.MetadataInstaller` boundary before adding Claude
+  Code so follow-up metadata adapters do not copy the Pi installer shape again.
+- Validation:
+  - `cd app && mise exec -- gleam format --check src`.
+  - `cd app && mise exec -- gleam check --target erlang`.
+  - `cd app && mise exec -- gleam run -m glinter`.
+  - `cd app && MIX_ENV=test mise exec -- mix format --check-formatted`.
+  - `cd app && MIX_ENV=test mise exec -- sh -lc 'mix compile && mix test --no-compile test/cli_adapters_test.exs test/agent_adapter_identity_test.exs test/agent_adapter_recording_test.exs test/gleam_adapter_core_test.exs'`:
+    `46 passed`.
+  - `mise run check:maps`.
+  - `mise run check:docs`.
+  - `git diff --check`.
+  - `mise run check:types`.
+  - `cd app && MIX_ENV=test mise exec -- mix test --no-compile`:
+    `407 passed (21 properties, 386 tests), 6 excluded`.
+  - `gitleaks protect --staged --config .gitleaks.toml --verbose`: no leaks.
+  - Commit hook reran app format/test, docs-site checks, and staged gitleaks:
+    `407 passed (21 properties, 386 tests), 6 excluded`; staged gitleaks
+    clean.
+- Adversarial review:
+  - Architecture: the pure product decision moved through the typed Gleam core
+    and keeps Claude Code at `gateway_identity` / `prompt_handoff`. Filesystem
+    metadata mutation stays in an Elixir boundary, now shared by Pi and Claude
+    Code. Gateway pair/verify and request recording accept Claude Code only
+    through explicit adapter id/runtime/target checks, so OpenClaw
+    `claude-cli` remains unsupported and this slice does not accidentally
+    generalize every Claude-backed surface.
+  - Architecture concern reviewed: `MetadataInstaller` uses an informal pack
+    module contract rather than a typed behavior. That is acceptable for this
+    boundary slice because the existing OMP installer still has different
+    runtime-probe behavior and the tests exercise the two metadata packs that
+    use the shared module. A future third metadata-only adapter should consider
+    making the pack contract explicit before extending it further.
+  - Code quality/comments: no comments were added. Operator-facing strings and
+    metadata fields name the fidelity limit directly:
+    `fidelity: prompt_handoff` and `native_state_fidelity: false`. The CLI
+    module still owns target-specific command routing and messaging; lifecycle
+    mutation is outside it, but the next OpenClaw loop should avoid adding
+    more command-specific branches without a dispatcher cleanup.
+  - Test quality: tests assert user/operator behavior rather than private
+    helper calls: Claude Code install writes only Wardwright metadata and no
+    `.claude` directory, doctor reports `prompt_handoff` with no surface probe,
+    pair writes a gateway identity without leaking the admin token, gateway
+    pair/verify accepts Claude Code identities, verified Claude Code requests
+    trigger adapter-scoped recording without storing the identity token, and
+    uninstall preserves locally edited metadata. The Pi tests also rerun
+    through the shared installer, so the refactor is covered for existing
+    metadata lifecycle behavior.
+  - Post-commit review of `13228dc` found no blockers.
+- Skipped probes: real Claude Code gateway invocation was skipped because this
+  loop packages install/doctor/pair identity metadata only and does not add a
+  Claude Code hook or native surface probe. Claude native state/import fidelity
+  remains unclaimed. OpenClaw runtime probes remain skipped because this loop
+  intentionally leaves OpenClaw `claude-cli` unsupported until runtime config
+  inspection is implemented.
+- Next open item: backlog item 15, add OpenClaw runtime config inspection and
+  tests for Pi, Codex, Claude CLI, and unknown runtime resolution.
