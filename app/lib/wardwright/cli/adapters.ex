@@ -7,6 +7,7 @@ defmodule Wardwright.CLI.Adapters do
   alias Wardwright.AgentAdapters.Identity
   alias Wardwright.AgentAdapters.OmpInstaller
   alias Wardwright.AgentAdapters.OmpPack
+  alias Wardwright.AgentAdapters.OpenClawRuntime
   alias Wardwright.AgentAdapters.OpenCodeRuntime
   alias Wardwright.AgentAdapters.PiInstaller
   alias Wardwright.AgentAdapters.PiPack
@@ -569,6 +570,11 @@ defmodule Wardwright.CLI.Adapters do
     |> Map.put(:surface_probe_passed, Map.get(runtime_info, :surface_probe_passed, false))
   end
 
+  defp installation_for(%{target: "openclaw"}, %{adapter_id: adapter_id}, runtime_info, opts)
+       when adapter_id in ["wardwright-pi", "wardwright-claude-code"] do
+    runtime_adapter_installation(runtime_info.runtime, opts)
+  end
+
   defp installation_for(_target, _resolution, _runtime_info, _opts) do
     default_installation()
   end
@@ -648,6 +654,7 @@ defmodule Wardwright.CLI.Adapters do
   end
 
   defp doctor_install_plan("installable", %{target: "opencode"}, resolution), do: resolution.install_strategy
+  defp doctor_install_plan("installable", %{target: "openclaw"}, resolution), do: resolution.install_strategy
 
   defp doctor_install_plan("installed_unverified", %{target: "claude-code"}, _resolution), do: "pair_identity"
   defp doctor_install_plan("verified", %{target: "claude-code"}, _resolution), do: "identity_verified"
@@ -1017,6 +1024,18 @@ defmodule Wardwright.CLI.Adapters do
     end
   end
 
+  defp detected_runtime_info_for(%{target: "openclaw"} = target, opts) do
+    workspace_root = Keyword.get(opts, :workspace_root, File.cwd!())
+
+    case OpenClawRuntime.resolve(workspace_root) do
+      {:ok, runtime} ->
+        %{runtime: runtime.runtime, source: runtime.source, surface_probe_passed: false}
+
+      :unknown ->
+        %{runtime: target.default_runtime || "unknown", source: "default", surface_probe_passed: false}
+    end
+  end
+
   defp detected_runtime_info_for(target, _opts),
     do: %{runtime: target.default_runtime || "unknown", source: "default", surface_probe_passed: false}
 
@@ -1071,13 +1090,14 @@ defmodule Wardwright.CLI.Adapters do
 
   defp next_actions(
          "installable",
-         %{target: "opencode"},
+         %{label: label, target: target},
          %{coverage: "covered_through_runtime"} = resolution,
          _installation
-       ) do
+       )
+       when target in ["opencode", "openclaw"] do
     runtime_target = runtime_adapter_target(resolution.adapter_id)
 
-    ["run `wardwright adapters install #{runtime_target}` to install the runtime adapter used by OpenCode"]
+    ["run `wardwright adapters install #{runtime_target}` to install the runtime adapter used by #{label}"]
   end
 
   defp next_actions("installable", %{target: "opencode"}, %{install_strategy: "install_plugin_scaffold"}, _installation) do
@@ -1108,6 +1128,16 @@ defmodule Wardwright.CLI.Adapters do
     )
   end
 
+  defp next_actions("installable", %{target: "openclaw"}, %{adapter_id: "wardwright-claude-code"}, _installation) do
+    action("run `wardwright adapters install claude-code` to install the Claude CLI adapter used by OpenClaw")
+  end
+
+  defp next_actions("installable", %{target: "openclaw"}, %{adapter_id: "wardwright-codex"}, _installation) do
+    action(
+      "install Codex/gateway identity support when that adapter surface is packaged; do not run the OMP/Pi runtime probe"
+    )
+  end
+
   defp next_actions("installable", target, resolution, _installation) do
     ["run `wardwright adapters install #{target.target}` to #{install_summary(resolution.install_strategy)}"]
   end
@@ -1123,6 +1153,22 @@ defmodule Wardwright.CLI.Adapters do
 
   defp next_actions("verified", %{target: "claude-code"}, _resolution, _installation),
     do: action("Claude Code identity is verified; use prompt or model-context handoff without native resume claims")
+
+  defp next_actions("installed_unverified", %{target: "openclaw"}, %{adapter_id: "wardwright-pi"}, _installation),
+    do: action("run `wardwright adapters pair pi`; OpenClaw remains covered through the Pi runtime")
+
+  defp next_actions(
+         "installed_unverified",
+         %{target: "openclaw"},
+         %{adapter_id: "wardwright-claude-code"},
+         _installation
+       ), do: action("run `wardwright adapters pair claude-code`; OpenClaw fidelity remains prompt_handoff")
+
+  defp next_actions("verified", %{target: "openclaw"}, %{adapter_id: "wardwright-pi"}, _installation),
+    do: action("Pi identity is verified for the OpenClaw runtime; replay-state probes remain export-only for Pi")
+
+  defp next_actions("verified", %{target: "openclaw"}, %{adapter_id: "wardwright-claude-code"}, _installation),
+    do: action("Claude Code identity is verified for OpenClaw; native OpenClaw or Claude state fidelity is not claimed")
 
   defp next_actions("unsupported_runtime", %{target: target}, _resolution, _installation)
        when target in ["opencode", "openclaw"] do

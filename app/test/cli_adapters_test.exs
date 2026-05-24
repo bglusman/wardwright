@@ -472,6 +472,128 @@ defmodule Wardwright.CLIAdaptersTest do
     refute Enum.any?(opencode["next_actions"], &String.contains?(&1, "probe omp"))
   end
 
+  test "doctor resolves OpenClaw auto Pi runtime through the Pi adapter" do
+    workspace = tmp_workspace("wardwright-openclaw-pi-runtime")
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    write_openclaw_runtime_config(workspace, %{
+      "agentRuntime" => %{
+        "id" => "Auto",
+        "resolved" => "pi"
+      }
+    })
+
+    results =
+      Adapters.doctor(
+        find_executable: fake_openclaw_finder(),
+        workspace_root: workspace
+      )
+
+    openclaw = Enum.find(results, &(&1.target == "openclaw"))
+    assert openclaw.detected == true
+    assert openclaw.runtime == "pi"
+    assert openclaw.runtime_source == "agentRuntime.auto -> pi"
+    assert openclaw.adapter_id == "wardwright-pi"
+    assert openclaw.coverage == "covered_through_runtime"
+    assert openclaw.fidelity == "runtime_verified"
+    assert openclaw.state == "installable"
+
+    assert openclaw.next_actions == [
+             "run `wardwright adapters install pi` to install the runtime adapter used by OpenClaw"
+           ]
+  end
+
+  test "doctor resolves OpenClaw Codex runtime as gateway identity without Pi or OMP probe claims" do
+    workspace = tmp_workspace("wardwright-openclaw-codex-runtime")
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    write_openclaw_runtime_config(workspace, %{
+      "agentRuntime" => %{
+        "id" => "openai-codex",
+        "source" => "OpenClaw agentRuntime.id"
+      }
+    })
+
+    collector = collector()
+
+    assert 0 =
+             Adapters.run(["doctor", "--json"], collector,
+               find_executable: fake_openclaw_finder(),
+               workspace_root: workspace
+             )
+
+    results = collected() |> JSON.decode!()
+    openclaw = Enum.find(results, &(&1["target"] == "openclaw"))
+
+    assert openclaw["runtime"] == "codex"
+    assert openclaw["runtime_source"] == "OpenClaw agentRuntime.id"
+    assert openclaw["adapter_id"] == "wardwright-codex"
+    assert openclaw["coverage"] == "gateway_identity"
+    assert openclaw["fidelity"] == "prompt_handoff"
+    assert openclaw["state"] == "installable"
+    assert openclaw["install_plan"] == "install_gateway_identity"
+    refute Enum.any?(openclaw["next_actions"], &String.contains?(&1, "probe omp"))
+    refute Enum.any?(openclaw["next_actions"], &String.contains?(&1, "probe pi"))
+  end
+
+  test "doctor resolves OpenClaw Claude CLI backend through Claude Code identity support" do
+    workspace = tmp_workspace("wardwright-openclaw-claude-runtime")
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    write_openclaw_runtime_config(workspace, %{
+      "cliBackend" => %{
+        "id" => "claude-cli",
+        "source" => "OpenClaw CLI backend"
+      }
+    })
+
+    results =
+      Adapters.doctor(
+        find_executable: fake_openclaw_finder(),
+        workspace_root: workspace
+      )
+
+    openclaw = Enum.find(results, &(&1.target == "openclaw"))
+    assert openclaw.runtime == "claude-cli"
+    assert openclaw.runtime_source == "OpenClaw CLI backend"
+    assert openclaw.adapter_id == "wardwright-claude-code"
+    assert openclaw.coverage == "gateway_identity"
+    assert openclaw.fidelity == "prompt_handoff"
+    assert openclaw.state == "installable"
+    assert openclaw.install_plan == "install_gateway_identity"
+
+    assert openclaw.next_actions == [
+             "run `wardwright adapters install claude-code` to install the Claude CLI adapter used by OpenClaw"
+           ]
+  end
+
+  test "doctor keeps unknown OpenClaw runtime unsupported without adapter claims" do
+    workspace = tmp_workspace("wardwright-openclaw-unknown-runtime")
+    on_exit(fn -> File.rm_rf!(workspace) end)
+
+    write_openclaw_runtime_config(workspace, %{
+      "agentRuntime" => %{
+        "id" => "experimental-runtime",
+        "source" => "OpenClaw agentRuntime.id"
+      }
+    })
+
+    results =
+      Adapters.doctor(
+        find_executable: fake_openclaw_finder(),
+        workspace_root: workspace
+      )
+
+    openclaw = Enum.find(results, &(&1.target == "openclaw"))
+    assert openclaw.runtime == "experimental-runtime"
+    assert openclaw.runtime_source == "OpenClaw agentRuntime.id"
+    assert openclaw.adapter_id == ""
+    assert openclaw.coverage == "unsupported_runtime"
+    assert openclaw.fidelity == "unsupported"
+    assert openclaw.state == "unsupported_runtime"
+    assert openclaw.install_plan == "no_install"
+  end
+
   test "doctor distinguishes OpenCode runtime verification from missing surface verification" do
     workspace = tmp_workspace("wardwright-opencode-runtime-verified")
     secret = String.duplicate("opencode-runtime-secret", 3)
@@ -1028,6 +1150,13 @@ defmodule Wardwright.CLIAdaptersTest do
     end
   end
 
+  defp fake_openclaw_finder do
+    fn
+      "openclaw" -> "/tmp/fake-bin/openclaw"
+      _binary -> nil
+    end
+  end
+
   defp fake_omp_and_opencode_finder do
     fn
       "omp" -> "/tmp/fake-bin/omp"
@@ -1071,6 +1200,12 @@ defmodule Wardwright.CLIAdaptersTest do
 
   defp write_opencode_runtime_config(workspace, payload) do
     path = Path.join(workspace, ".opencode/wardwright-runtime.json")
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, JSON.encode!(payload))
+  end
+
+  defp write_openclaw_runtime_config(workspace, payload) do
+    path = Path.join(workspace, ".openclaw/wardwright-runtime.json")
     File.mkdir_p!(Path.dirname(path))
     File.write!(path, JSON.encode!(payload))
   end
