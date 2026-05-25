@@ -130,9 +130,26 @@ When mediation runs, receipts include:
 }
 ```
 
-The hash records the schema change without storing the full schema in every receipt.
-Future slices should add argument hashes, result hashes, tool-specific timing,
-approval evidence, and provider-hosted event normalization.
+The hash records the schema change without storing the full schema in every
+receipt. Schema hashes use canonical JSON encoding so semantically equivalent
+tool schemas do not appear different only because map keys arrived in a
+different order.
+
+The `0.1.0` review pass also tightened three request-side edge cases:
+
+- Patch rules that match a tool but make no provider request change do not
+  create `wardwright_tool_mediation` receipt metadata.
+- Replacement rules can introduce arbitrary provider-visible function schemas,
+  but the final provider request is deduplicated by function name so providers
+  do not receive duplicate tool names after mediation.
+- Wardwright-hosted server tools remain explicit first-class declarations when
+  replacement rules collide with them; receipts show the final
+  `provider_visible_tools` list that the provider saw.
+
+These checks are covered by integration tests for no-op mediation, canonical
+schema hashing, and replacement-name collision handling. Future slices should
+add argument hashes, result hashes, tool-specific timing, approval evidence, and
+provider-hosted event normalization.
 
 ## Provider Tool Normalization Backlog
 
