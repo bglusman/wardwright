@@ -6,7 +6,9 @@ import lustre/element.{type Element, element, map, text}
 import lustre/element/html
 import lustre/event
 import ui/tabs as tabs_ui
+import wardwright/lustre_control_debugger
 import wardwright/lustre_model_access
+import wardwright/lustre_workbench
 
 pub type Concept {
   ModelConfigCleanup
@@ -24,12 +26,20 @@ pub type Theme {
 }
 
 pub type Model {
-  Model(concept: Concept, theme: Theme, model_access: lustre_model_access.Model)
+  Model(
+    concept: Concept,
+    theme: Theme,
+    workbench: lustre_workbench.Model,
+    model_access: lustre_model_access.Model,
+    control_debugger: lustre_control_debugger.Model,
+  )
 }
 
 pub type Msg {
   ThemeChanged(Theme)
+  WorkbenchMsg(lustre_workbench.Msg)
   ModelAccessMsg(lustre_model_access.Msg)
+  ControlDebuggerMsg(lustre_control_debugger.Msg)
 }
 
 pub fn init(flags: String) -> Model {
@@ -38,18 +48,61 @@ pub fn init(flags: String) -> Model {
   Model(
     concept:,
     theme: default_theme(concept),
+    workbench: lustre_workbench.init(model_id),
     model_access: lustre_model_access.init(model_id),
+    control_debugger: lustre_control_debugger.init(Nil),
   )
 }
 
 pub fn update(model: Model, msg: Msg) -> Model {
   case msg {
     ThemeChanged(theme) -> Model(..model, theme:)
+    WorkbenchMsg(msg) -> {
+      let workbench = lustre_workbench.update(model.workbench, msg)
+
+      Model(
+        ..model,
+        workbench:,
+        model_access: sync_model_access(model.model_access, msg),
+      )
+    }
     ModelAccessMsg(msg) ->
       Model(
         ..model,
+        workbench: sync_workbench(model.workbench, msg),
         model_access: lustre_model_access.update(model.model_access, msg),
       )
+    ControlDebuggerMsg(msg) -> {
+      let control_debugger =
+        lustre_control_debugger.update(model.control_debugger, msg)
+
+      Model(..model, control_debugger:)
+    }
+  }
+}
+
+fn sync_model_access(
+  model_access: lustre_model_access.Model,
+  msg: lustre_workbench.Msg,
+) -> lustre_model_access.Model {
+  case msg {
+    lustre_workbench.ModelChanged(model_id) ->
+      lustre_model_access.init(model_id)
+    _ -> model_access
+  }
+}
+
+fn sync_workbench(
+  workbench: lustre_workbench.Model,
+  msg: lustre_model_access.Msg,
+) -> lustre_workbench.Model {
+  case msg {
+    lustre_model_access.ModelChanged(model_id) ->
+      lustre_workbench.update(
+        workbench,
+        lustre_workbench.ModelChanged(model_id),
+      )
+    _ -> workbench
   }
 }
 
@@ -98,15 +151,29 @@ fn header(model: Model) -> Element(Msg) {
     ]),
     html.div([class("ux-header-actions")], [
       link_button(
-        "/admin?view=model_access&model=" <> model.model_access.model_id,
-        "Open production model page",
+        ux_anchor_href(
+          model.concept,
+          model.model_access.model_id,
+          "ux-model-config",
+        ),
+        "Model config",
       ),
-      link_button("/admin?model=" <> model.model_access.model_id, "Run lab"),
+      link_button(
+        ux_anchor_href(
+          model.concept,
+          model.model_access.model_id,
+          "ux-model-lab",
+        ),
+        "Model lab",
+      ),
     ]),
   ])
 }
 
 fn controls(model: Model) -> Element(Msg) {
+  let #(mode, guaranteed_tools, conditional_tools) =
+    model.model_access.tool_advertisement
+
   html.section([class("ux-controls")], [
     html.div([class("ux-control-group")], [
       html.span([], [text("Layout concept")]),
@@ -116,6 +183,22 @@ fn controls(model: Model) -> Element(Msg) {
       html.span([], [text("Visual theme")]),
       tabs_ui.tabs([], [
         tabs_ui.tab_list([class("ux-tabs")], theme_buttons(model.theme)),
+      ]),
+    ]),
+    html.div([class("ux-current-state")], [
+      html.span([], [text("Model")]),
+      html.code([], [text(model.model_access.model_id)]),
+      html.span([], [text("Theme")]),
+      html.code([], [text(theme_label(model.theme))]),
+      html.span([], [text("Advertise")]),
+      html.code([], [
+        text(
+          mode
+          <> " / "
+          <> int.to_string(guaranteed_tools)
+          <> "+"
+          <> int.to_string(conditional_tools),
+        ),
       ]),
     ]),
   ])
@@ -173,19 +256,17 @@ fn theme_button(selected_theme: Theme, theme: Theme) -> Element(Msg) {
 
 fn concept_body(model: Model) -> Element(Msg) {
   case model.concept {
-    ModelConfigCleanup -> model_config_cleanup(model.model_access)
-    CapabilityCommandCenter -> capability_command_center(model.model_access)
-    RouteTopologyMap -> route_topology_map(model.model_access)
-    GuidedChangeReview -> guided_change_review(model.model_access)
-    HolisticControlRoom -> holistic_control_room(model.model_access)
+    ModelConfigCleanup -> model_config_cleanup(model)
+    CapabilityCommandCenter -> capability_command_center(model)
+    RouteTopologyMap -> route_topology_map(model)
+    GuidedChangeReview -> guided_change_review(model)
+    HolisticControlRoom -> holistic_control_room(model)
   }
 }
 
-fn model_config_cleanup(
-  model_access: lustre_model_access.Model,
-) -> Element(Msg) {
+fn model_config_cleanup(model: Model) -> Element(Msg) {
   experience_frame(
-    model_access,
+    model,
     "config-cleanup-experience",
     "Progressive model management",
     "Lead with the current model promise, then reveal access, tools, replay, and lifecycle controls in the order an operator usually needs them.",
@@ -193,17 +274,20 @@ fn model_config_cleanup(
     [
       html.section([class("ux-layout config-cleanup")], [
         html.div([class("ux-live-panel")], [
-          map(lustre_model_access.model_summary(model_access), ModelAccessMsg),
+          map(
+            lustre_model_access.model_summary(model.model_access),
+            ModelAccessMsg,
+          ),
         ]),
         html.div([class("ux-live-panel")], [
           map(
-            lustre_model_access.access_policy_editor(model_access),
+            lustre_model_access.access_policy_editor(model.model_access),
             ModelAccessMsg,
           ),
         ]),
         html.div([class("ux-live-panel wide")], [
           map(
-            lustre_model_access.server_tools_panel(model_access),
+            lustre_model_access.server_tools_panel(model.model_access),
             ModelAccessMsg,
           ),
         ]),
@@ -212,14 +296,12 @@ fn model_config_cleanup(
   )
 }
 
-fn capability_command_center(
-  model_access: lustre_model_access.Model,
-) -> Element(Msg) {
+fn capability_command_center(model: Model) -> Element(Msg) {
   let #(mode, guaranteed_tools, conditional_tools) =
-    model_access.tool_advertisement
+    model.model_access.tool_advertisement
 
   experience_frame(
-    model_access,
+    model,
     "capability-command-experience",
     "Capability command center",
     "Put the agent-visible contract above implementation detail so operators can tell what is guaranteed, conditional, or blocked before editing config.",
@@ -229,10 +311,10 @@ fn capability_command_center(
         score_card("Advertise", mode),
         score_card("Guaranteed tools", int.to_string(guaranteed_tools)),
         score_card("Conditional tools", int.to_string(conditional_tools)),
-        score_card("Model", model_access.model_id),
+        score_card("Model", model.model_access.model_id),
         html.div([class("ux-live-panel wide")], [
           map(
-            lustre_model_access.server_tools_panel(model_access),
+            lustre_model_access.server_tools_panel(model.model_access),
             ModelAccessMsg,
           ),
         ]),
@@ -241,9 +323,9 @@ fn capability_command_center(
   )
 }
 
-fn route_topology_map(model_access: lustre_model_access.Model) -> Element(Msg) {
+fn route_topology_map(model: Model) -> Element(Msg) {
   experience_frame(
-    model_access,
+    model,
     "topology-map-experience",
     "Topology-first operations",
     "Show Wardwright as a graph of promises, routes, targets, tools, and evidence so composition risks are visible before a model is changed.",
@@ -251,25 +333,28 @@ fn route_topology_map(model_access: lustre_model_access.Model) -> Element(Msg) {
     [
       html.section([class("ux-layout topology-map")], [
         html.article([class("ux-route-map")], [
-          route_node("Stable model", model_access.model_id, "contract"),
+          route_node("Stable model", model.model_access.model_id, "contract"),
           route_node("Model lab", "simulate", "test behavior"),
-          route_node("Access", access_label(model_access), "caller gate"),
+          route_node("Access", access_label(model.model_access), "caller gate"),
           route_node(
             "Server tools",
-            int.to_string(list.length(model_access.server_tools)),
+            int.to_string(list.length(model.model_access.server_tools)),
             "Wardwright hosted",
           ),
-          route_node("Replay", model_access.vcr_mode, "evidence"),
+          route_node("Replay", model.model_access.vcr_mode, "evidence"),
           route_node("Adapters", "recipes", "framework + local agents"),
           route_node("Release", "checks", "browser + package smoke"),
-          ..target_nodes(model_access.server_tool_targets)
-        ]),
-        html.div([class("ux-live-panel")], [
-          map(lustre_model_access.model_summary(model_access), ModelAccessMsg),
+          ..target_nodes(model.model_access.server_tool_targets)
         ]),
         html.div([class("ux-live-panel")], [
           map(
-            lustre_model_access.server_tools_panel(model_access),
+            lustre_model_access.model_summary(model.model_access),
+            ModelAccessMsg,
+          ),
+        ]),
+        html.div([class("ux-live-panel")], [
+          map(
+            lustre_model_access.server_tools_panel(model.model_access),
             ModelAccessMsg,
           ),
         ]),
@@ -278,36 +363,34 @@ fn route_topology_map(model_access: lustre_model_access.Model) -> Element(Msg) {
   )
 }
 
-fn guided_change_review(
-  model_access: lustre_model_access.Model,
-) -> Element(Msg) {
+fn guided_change_review(model: Model) -> Element(Msg) {
   experience_frame(
-    model_access,
+    model,
     "guided-review-experience",
     "Guided change review",
     "Turn risky admin work into an evidence-gated flow: understand the promise, change one thing, prove behavior, then promote.",
     "Operators move through contract, access, tool advertisement, simulation, receipt replay, and promotion proof before a release-sensitive change lands.",
     [
       html.section([class("ux-layout guided-review")], [
-        review_step("1", "Choose model contract", model_access.model_id),
-        review_step("2", "Confirm access", access_label(model_access)),
+        review_step("1", "Choose model contract", model.model_access.model_id),
+        review_step("2", "Confirm access", access_label(model.model_access)),
         review_step(
           "3",
           "Confirm tool advertisement",
-          advertisement_label(model_access),
+          advertisement_label(model.model_access),
         ),
         review_step("4", "Run simulation", "Model lab scenario evidence"),
-        review_step("5", "Replay receipt", model_access.vcr_mode),
+        review_step("5", "Replay receipt", model.model_access.vcr_mode),
         review_step("6", "Promote", "Package and browser smoke required"),
         html.div([class("ux-live-panel")], [
           map(
-            lustre_model_access.access_policy_editor(model_access),
+            lustre_model_access.access_policy_editor(model.model_access),
             ModelAccessMsg,
           ),
         ]),
         html.div([class("ux-live-panel")], [
           map(
-            lustre_model_access.server_tools_panel(model_access),
+            lustre_model_access.server_tools_panel(model.model_access),
             ModelAccessMsg,
           ),
         ]),
@@ -316,11 +399,9 @@ fn guided_change_review(
   )
 }
 
-fn holistic_control_room(
-  model_access: lustre_model_access.Model,
-) -> Element(Msg) {
+fn holistic_control_room(model: Model) -> Element(Msg) {
   experience_frame(
-    model_access,
+    model,
     "control-room-experience",
     "Holistic control room",
     "Give operators one command surface for model contracts, policy authoring, tools, replay evidence, integration posture, and release readiness.",
@@ -328,17 +409,20 @@ fn holistic_control_room(
     [
       html.section([class("ux-layout control-room")], [
         html.div([class("ux-live-panel")], [
-          map(lustre_model_access.model_summary(model_access), ModelAccessMsg),
+          map(
+            lustre_model_access.model_summary(model.model_access),
+            ModelAccessMsg,
+          ),
         ]),
         html.div([class("ux-live-panel")], [
           map(
-            lustre_model_access.access_policy_editor(model_access),
+            lustre_model_access.access_policy_editor(model.model_access),
             ModelAccessMsg,
           ),
         ]),
         html.div([class("ux-live-panel wide")], [
           map(
-            lustre_model_access.server_tools_panel(model_access),
+            lustre_model_access.server_tools_panel(model.model_access),
             ModelAccessMsg,
           ),
         ]),
@@ -350,7 +434,11 @@ fn holistic_control_room(
             ),
           ]),
           link_button(
-            "/admin?view=control_debugger&model=" <> model_access.model_id,
+            ux_anchor_href(
+              HolisticControlRoom,
+              model.model_access.model_id,
+              "ux-evidence",
+            ),
             "Open replay",
           ),
         ]),
@@ -360,7 +448,7 @@ fn holistic_control_room(
 }
 
 fn experience_frame(
-  model_access: lustre_model_access.Model,
+  model: Model,
   class_name: String,
   title: String,
   body: String,
@@ -368,7 +456,7 @@ fn experience_frame(
   children: List(Element(Msg)),
 ) -> Element(Msg) {
   html.section([class("ux-experience " <> class_name)], [
-    app_spine(model_access),
+    app_spine(model.concept, model.model_access),
     html.div([class("ux-experience-main")], [
       html.article([class("ux-masthead wide")], [
         html.p([class("eyebrow")], [text("Admin workspace")]),
@@ -376,30 +464,49 @@ fn experience_frame(
         html.p([], [text(body)]),
       ]),
       posture_card(theory),
-      capability_deck(model_access),
+      capability_deck(model.concept, model.model_access),
       ..children
     ]),
-    product_surface_strip(model_access),
+    product_surface_strip(model.concept, model.model_access),
+    end_to_end_modules(model),
   ])
 }
 
-fn app_spine(model_access: lustre_model_access.Model) -> Element(Msg) {
+fn app_spine(
+  concept: Concept,
+  model_access: lustre_model_access.Model,
+) -> Element(Msg) {
   html.aside([class("ux-app-spine")], [
     html.strong([], [text("Wardwright")]),
     html.span([], [text(model_access.model_id)]),
-    spine_link("Overview", "#ux-overview"),
-    spine_link("Model lab", "/admin?model=" <> model_access.model_id),
+    spine_link(
+      "Overview",
+      ux_anchor_href(concept, model_access.model_id, "ux-overview"),
+    ),
+    spine_link(
+      "Model lab",
+      ux_anchor_href(concept, model_access.model_id, "ux-model-lab"),
+    ),
     spine_link(
       "Models & access",
-      "/admin?view=model_access&model=" <> model_access.model_id,
+      ux_anchor_href(concept, model_access.model_id, "ux-model-config"),
     ),
-    spine_link("Policy lab", "/admin?model=" <> model_access.model_id),
+    spine_link(
+      "Policy lab",
+      ux_anchor_href(concept, model_access.model_id, "ux-policy-lab"),
+    ),
     spine_link(
       "Evidence",
-      "/admin?view=control_debugger&model=" <> model_access.model_id,
+      ux_anchor_href(concept, model_access.model_id, "ux-evidence"),
     ),
-    spine_link("Integrations", "#ux-integrations"),
-    spine_link("Release", "#ux-release"),
+    spine_link(
+      "Integrations",
+      ux_anchor_href(concept, model_access.model_id, "ux-integrations"),
+    ),
+    spine_link(
+      "Release",
+      ux_anchor_href(concept, model_access.model_id, "ux-release"),
+    ),
   ])
 }
 
@@ -414,43 +521,46 @@ fn posture_card(body: String) -> Element(Msg) {
   ])
 }
 
-fn capability_deck(model_access: lustre_model_access.Model) -> Element(Msg) {
+fn capability_deck(
+  concept: Concept,
+  model_access: lustre_model_access.Model,
+) -> Element(Msg) {
   html.section([id_attr("ux-overview"), class("ux-capability-deck")], [
     capability_card(
       "Model lab",
       "Simulate turns and inspect policy behavior.",
       "Run scenarios",
-      "/admin?model=" <> model_access.model_id,
+      ux_anchor_href(concept, model_access.model_id, "ux-model-lab"),
     ),
     capability_card(
       "Models & access",
       "Manage contracts, access, keys, replay, and server tools.",
       access_label(model_access),
-      "/admin?view=model_access&model=" <> model_access.model_id,
+      ux_anchor_href(concept, model_access.model_id, "ux-model-config"),
     ),
     capability_card(
       "Policy lab",
       "Author, compare, and activate changes with evidence.",
       "Draft + simulate",
-      "/admin?model=" <> model_access.model_id,
+      ux_anchor_href(concept, model_access.model_id, "ux-policy-lab"),
     ),
     capability_card(
       "Session replay",
       "Load receipts, fork traces, and save evidence.",
       model_access.vcr_mode,
-      "/admin?view=control_debugger&model=" <> model_access.model_id,
+      ux_anchor_href(concept, model_access.model_id, "ux-evidence"),
     ),
     capability_card(
       "Integrations",
       "Separate framework recipes from local coding-agent adapters.",
       "Adapters",
-      "#ux-integrations",
+      ux_anchor_href(concept, model_access.model_id, "ux-integrations"),
     ),
     capability_card(
       "Release readiness",
       "Package, browser, docs, and adapter smoke evidence.",
       "Checks",
-      "#ux-release",
+      ux_anchor_href(concept, model_access.model_id, "ux-release"),
     ),
   ])
 }
@@ -472,6 +582,7 @@ fn capability_card(
 }
 
 fn product_surface_strip(
+  concept: Concept,
   model_access: lustre_model_access.Model,
 ) -> Element(Msg) {
   html.section([class("ux-product-surfaces")], [
@@ -479,30 +590,115 @@ fn product_surface_strip(
       "Provider runtime",
       "Route target support, context-window differences, provider tool-call support, and server-tool mediation stay visible as model-level risk.",
       "Inspect in Models & access",
-      "/admin?view=model_access&model=" <> model_access.model_id,
+      ux_anchor_href(concept, model_access.model_id, "ux-model-config"),
       "",
     ),
     surface_card(
       "Integrations",
       "Framework recipes remain separate from OpenCode and OpenClaw local coding-agent adapters so support claims stay explicit.",
       "Review adapter recipes",
-      "#ux-integrations",
-      "ux-integrations",
+      ux_anchor_href(concept, model_access.model_id, "ux-integrations"),
+      "",
     ),
     surface_card(
       "Evidence",
       "Receipt replay, simulator cases, and counterfactual forks provide the proof path before config changes are promoted.",
       "Open replay",
-      "/admin?view=control_debugger&model=" <> model_access.model_id,
+      ux_anchor_href(concept, model_access.model_id, "ux-evidence"),
       "",
     ),
     surface_card(
       "Release readiness",
       "Browser smoke, docs checks, package installation smoke, and adapter evidence are treated as visible product state.",
       "Review checks",
-      "#ux-release",
-      "ux-release",
+      ux_anchor_href(concept, model_access.model_id, "ux-release"),
+      "",
     ),
+  ])
+}
+
+fn end_to_end_modules(model: Model) -> Element(Msg) {
+  html.section([class("ux-end-to-end")], [
+    embedded_section(
+      "ux-model-lab",
+      "Model lab",
+      "Run scenarios against the selected model contract.",
+      [
+        map(lustre_workbench.embedded_model_lab(model.workbench), WorkbenchMsg),
+      ],
+    ),
+    embedded_section(
+      "ux-model-config",
+      "Models & access",
+      "Configure the selected model contract, caller access, keys, lifecycle, replay capture, server tools, and tool-capable targets.",
+      [
+        map(
+          lustre_model_access.embedded_workspace(model.model_access),
+          ModelAccessMsg,
+        ),
+      ],
+    ),
+    embedded_section(
+      "ux-policy-lab",
+      "Policy lab",
+      "Author, refine, activate, and re-simulate model behavior without leaving this concept experience.",
+      [
+        map(lustre_workbench.embedded_policy_lab(model.workbench), WorkbenchMsg),
+      ],
+    ),
+    embedded_section(
+      "ux-evidence",
+      "Evidence",
+      "Replay receipts, fork traces, save simulator cases, and prepare harness handoffs from the same selected-model workspace.",
+      [
+        map(
+          lustre_control_debugger.evidence_panel(model.control_debugger),
+          ControlDebuggerMsg,
+        ),
+      ],
+    ),
+    embedded_section(
+      "ux-integrations",
+      "Integrations",
+      "Keep framework SDK recipes and local coding-agent adapters visible as separate support surfaces.",
+      [
+        map(lustre_control_debugger.adapter_status_card(), ControlDebuggerMsg),
+      ],
+    ),
+    embedded_section(
+      "ux-release",
+      "Release readiness",
+      "Promotion evidence stays in the concept route: browser smoke, docs checks, package installation smoke, and adapter evidence.",
+      [
+        release_check_card("Browser smoke", "Required before promotion"),
+        release_check_card("Docs check", "Required when docs changed"),
+        release_check_card("Package smoke", "Required for release artifacts"),
+        release_check_card("Adapter evidence", "Claims must match probes"),
+      ],
+    ),
+  ])
+}
+
+fn embedded_section(
+  marker: String,
+  title: String,
+  body: String,
+  children: List(Element(Msg)),
+) -> Element(Msg) {
+  html.section([id_attr(marker), class("ux-embedded-section")], [
+    html.div([class("ux-embedded-heading")], [
+      html.p([class("eyebrow")], [text("Admin surface")]),
+      html.h2([], [text(title)]),
+      html.p([], [text(body)]),
+    ]),
+    ..children
+  ])
+}
+
+fn release_check_card(label: String, status: String) -> Element(Msg) {
+  html.article([class("ux-release-check")], [
+    html.strong([], [text(label)]),
+    html.span([], [text(status)]),
   ])
 }
 
@@ -661,6 +857,14 @@ fn concept_href(concept: Concept, model_id: String) -> String {
   }
 }
 
+fn ux_anchor_href(
+  concept: Concept,
+  model_id: String,
+  marker: String,
+) -> String {
+  concept_href(concept, model_id) <> "#" <> marker
+}
+
 fn default_theme(concept: Concept) -> Theme {
   case concept {
     ModelConfigCleanup -> Operations
@@ -755,6 +959,26 @@ pub fn styles() -> String {
   .ux-control-group {
     display: grid;
     gap: 6px;
+  }
+  .ux-current-state {
+    display: grid;
+    grid-template-columns: repeat(3, auto minmax(90px, max-content));
+    gap: 4px 8px;
+    align-items: center;
+    margin-left: auto;
+    padding: 10px 12px;
+    border: 1px solid var(--ux-line);
+    border-radius: var(--ux-radius);
+    background: var(--ux-panel-soft);
+    font-size: 12px;
+  }
+  .ux-current-state span {
+    color: var(--muted-foreground);
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .ux-current-state code {
+    overflow-wrap: anywhere;
   }
   .ux-control-group > span {
     color: var(--muted-foreground);
@@ -1036,6 +1260,11 @@ pub fn styles() -> String {
     }
     .ux-app-spine {
       position: static;
+    }
+    .ux-current-state {
+      width: 100%;
+      margin-left: 0;
+      grid-template-columns: auto minmax(0, 1fr);
     }
   }
   "

@@ -42,7 +42,7 @@ pub fn ux_exploration_theme_switch_updates_sidebar(
   |> view_contains("<code>" <> theme_label <> "</code>")
 }
 
-pub fn ux_exploration_exposes_full_admin_recovery_links(
+pub fn ux_exploration_is_standalone_end_to_end(
   concept_id: String,
   model_id: String,
 ) -> Bool {
@@ -51,11 +51,24 @@ pub fn ux_exploration_exposes_full_admin_recovery_links(
     |> simulate.view
     |> element.to_string
 
-  string.contains(view, "/admin?model=" <> model_id)
-  && contains_href(view, "/admin?view=model_access&model=" <> model_id)
-  && contains_href(view, "/admin?view=control_debugger&model=" <> model_id)
+  let concept_path =
+    "/admin/ux-exploration/" <> concept_id <> "?model=" <> model_id
+
+  contains_href(view, concept_path <> "#ux-model-lab")
+  && contains_href(view, concept_path <> "#ux-model-config")
+  && contains_href(view, concept_path <> "#ux-policy-lab")
+  && contains_href(view, concept_path <> "#ux-evidence")
   && string.contains(view, "#ux-integrations")
   && string.contains(view, "#ux-release")
+  && string.contains(view, "Simulate a turn")
+  && string.contains(view, "Model authoring")
+  && string.contains(view, "Access Policy")
+  && string.contains(view, "Create Key")
+  && string.contains(view, "Session replay")
+  && string.contains(view, "Create simulator case")
+  && string.contains(view, "Adapter install status")
+  && string.contains(view, "Browser smoke")
+  && string.contains(view, "/admin?") == False
 }
 
 fn contains_href(view: String, href: String) -> Bool {

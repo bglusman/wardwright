@@ -863,6 +863,20 @@ pub fn workspace(model: Model) -> Element(Msg) {
   ])
 }
 
+pub fn embedded_model_lab(model: Model) -> Element(Msg) {
+  html.div([class("embedded-workbench-model-lab")], [
+    simulator_form(model),
+    results_grid(model),
+    trace_panel(model),
+  ])
+}
+
+pub fn embedded_policy_lab(model: Model) -> Element(Msg) {
+  html.div([class("embedded-workbench-policy-lab")], [
+    authoring_panel(model),
+  ])
+}
+
 fn model_title(model_id: String) -> String {
   case example_model_info(model_id) {
     Ok(#(_, title, _, _)) -> blank_default(title, model_id)

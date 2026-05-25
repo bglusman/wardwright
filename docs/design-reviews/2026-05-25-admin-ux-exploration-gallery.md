@@ -49,18 +49,19 @@ claim that any concept has replaced `/admin`.
 The in-app exploration now separates two axes:
 
 - **UX concept**: the five routes above are whole-admin candidates, not single
-  page mockups. Each route keeps live model controls visible while also exposing
-  recoverable paths for the Workbench, Models & access, Policy Lab, Evidence,
-  Integrations, and Release readiness.
+  page mockups. Each route embeds the real Workbench/model lab, Models & access
+  controls, Policy Lab authoring, Control Debugger evidence, adapter status, and
+  release-readiness surfaces so reviewers can stay inside one coherent concept
+  experience end to end.
 - **Look and feel**: the Lustre surface exposes independent Operations, Studio,
   Topology, and Review treatments. They vary density, radius, borders, shadow,
   typography treatment, and component emphasis so reviewers can mix the UX
   concept and visual system independently.
 
-The first real behavior wired into the exploration is model-level server-tool
-management. The exploration page reuses the production Models & access summary,
-access policy editor, and server-tool panel, so toggling a tool from a concept
-view changes the same stored model configuration as the production admin page.
+The exploration page reuses production/admin modules rather than static copies:
+model-level server-tool management, model lifecycle/key controls, simulation,
+policy authoring, receipt replay, harness handoff, and adapter-status rendering
+all dispatch through the same Lustre update paths as the protected admin app.
 
 ## Design Rationale
 
@@ -68,11 +69,12 @@ This pass follows three design constraints rather than a purely aesthetic theme
 exercise:
 
 - Complex admin products need persistent, predictable navigation. Material
-  Design recommends side navigation for many top-level views and deep structures,
-  and cross-links for moving directly between non-adjacent scenes. Wardwright's
-  exploration therefore keeps durable anchors into `/admin`,
-  `/admin?view=model_access`, and `/admin?view=control_debugger` instead of
-  hiding the rest of the app behind a single concept page.
+  Design recommends side navigation for many top-level views and deep
+  structures, and cross-links for moving directly between non-adjacent scenes.
+  Wardwright's exploration now treats each concept route as its own complete
+  admin shell: links stay on the active concept route and jump to embedded
+  model lab, model configuration, policy, evidence, integration, and release
+  sections instead of escaping back to the older `/admin?...` pages.
 - Progressive disclosure is the right default for risky model configuration:
   start with the current model promise, expose access/tool/evidence controls
   where they are needed, and keep release proof adjacent to the decision. NN/g's
@@ -93,8 +95,9 @@ References used for this pass:
 ## Current Implementation Notes
 
 - Every concept uses the same live Wardwright model state and action dispatchers,
-  but owns its presentation. Tests assert shared behavior and recoverable app
-  reachability, not a fixed panel order.
+  but owns its presentation. Tests assert shared behavior, embedded end-to-end
+  admin surfaces, and same-concept navigation rather than fixed panel order or
+  links back to older admin routes.
 - The UI now includes five UX buttons and four look-and-feel buttons. Reviewers
   can compare a conservative config flow, capability-first console, topology
   map, guided review flow, and holistic control room under the same four visual

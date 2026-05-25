@@ -485,33 +485,41 @@ async function assertUxExplorationConcepts() {
       await cdp.waitFor("Page.loadEventFired");
       await waitForEval(cdp, `pageText(document.body).includes("Admin workspace")`);
       await waitForEval(cdp, `pageText(document.body).includes("browser_smoke_dune_tool")`);
+      await waitForEval(cdp, `pageText(document.body).includes("Simulate a turn")`);
+      await waitForEval(cdp, `pageText(document.body).includes("Create simulator case")`);
+      await waitForEval(cdp, `pageText(document.body).includes("Adapter install status")`);
 
       const result = await evaluate(
         cdp,
         `(() => {
           const hrefs = allElements("a").map((link) => link.getAttribute("href") || "");
+          const conceptBase = "/admin/ux-exploration/${concept}?model=browser-smoke-tools";
           return {
-            hasWorkbench: hrefs.includes("/admin?model=browser-smoke-tools"),
-            hasModelAccess: hrefs.includes("/admin?view=model_access&model=browser-smoke-tools"),
-            hasDebugger: hrefs.includes("/admin?view=control_debugger&model=browser-smoke-tools"),
-            hasIntegrations: hrefs.includes("#ux-integrations"),
-            hasRelease: hrefs.includes("#ux-release")
+            escapingLinks: hrefs.filter((href) => href.startsWith("/admin?")),
+            hasModelLab: hrefs.includes(conceptBase + "#ux-model-lab"),
+            hasModelConfig: hrefs.includes(conceptBase + "#ux-model-config"),
+            hasPolicyLab: hrefs.includes(conceptBase + "#ux-policy-lab"),
+            hasEvidence: hrefs.includes(conceptBase + "#ux-evidence"),
+            hasIntegrations: hrefs.includes(conceptBase + "#ux-integrations"),
+            hasRelease: hrefs.includes(conceptBase + "#ux-release")
           };
         })()`
       );
 
       if (
-        !result.hasWorkbench ||
-        !result.hasModelAccess ||
-        !result.hasDebugger ||
+        result.escapingLinks.length > 0 ||
+        !result.hasModelLab ||
+        !result.hasModelConfig ||
+        !result.hasPolicyLab ||
+        !result.hasEvidence ||
         !result.hasIntegrations ||
         !result.hasRelease
       ) {
-        throw new Error(`UX exploration ${concept} recovery links failed: ${JSON.stringify(result)}`);
+        throw new Error(`UX exploration ${concept} standalone links failed: ${JSON.stringify(result)}`);
       }
     }
 
-    console.log("ok UX exploration concepts expose full admin links and live model controls");
+    console.log("ok UX exploration concepts are standalone and render live admin controls");
   } finally {
     cdp.close();
   }

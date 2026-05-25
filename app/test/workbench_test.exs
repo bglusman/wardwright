@@ -139,7 +139,7 @@ defmodule WardwrightWeb.WorkbenchTest do
            )
   end
 
-  test "admin UX concepts expose the whole admin app as recoverable routes" do
+  test "admin UX concepts are standalone end-to-end admin experiences" do
     put_server_tool_model_config()
 
     for concept <- [
@@ -149,7 +149,7 @@ defmodule WardwrightWeb.WorkbenchTest do
           "guided-change-review",
           "holistic-control-room"
         ] do
-      assert :wardwright@lustre_admin_test_support.ux_exploration_exposes_full_admin_recovery_links(
+      assert :wardwright@lustre_admin_test_support.ux_exploration_is_standalone_end_to_end(
                concept,
                "server-tool-ui"
              )

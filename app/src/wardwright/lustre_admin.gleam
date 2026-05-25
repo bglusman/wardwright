@@ -105,31 +105,46 @@ fn sync_workbench(
 }
 
 pub fn view(model: Model) -> Element(Msg) {
-  html.div([class("admin-app")], [
+  let content = case model.page {
+    lustre_shell.UXExploration -> [
+      map(
+        lustre_ux_exploration.workspace(model.ux_exploration),
+        UXExplorationMsg,
+      ),
+    ]
+    _ -> [
+      lustre_shell.admin_sidebar(
+        model.page,
+        current_model_id(model),
+        "Admin",
+        sidebar_controls(model),
+      ),
+      case model.page {
+        lustre_shell.Workbench ->
+          map(lustre_workbench.workspace(model.workbench), WorkbenchMsg)
+        lustre_shell.ModelAccess ->
+          map(lustre_model_access.workspace(model.model_access), ModelAccessMsg)
+        lustre_shell.ControlDebugger ->
+          map(
+            lustre_control_debugger.workspace(model.control_debugger),
+            ControlDebuggerMsg,
+          )
+        lustre_shell.UXExploration -> html.div([], [])
+      },
+    ]
+  }
+
+  html.div([class(admin_app_class(model.page))], [
     html.style([], styles()),
-    lustre_shell.admin_sidebar(
-      model.page,
-      current_model_id(model),
-      "Admin",
-      sidebar_controls(model),
-    ),
-    case model.page {
-      lustre_shell.Workbench ->
-        map(lustre_workbench.workspace(model.workbench), WorkbenchMsg)
-      lustre_shell.ModelAccess ->
-        map(lustre_model_access.workspace(model.model_access), ModelAccessMsg)
-      lustre_shell.ControlDebugger ->
-        map(
-          lustre_control_debugger.workspace(model.control_debugger),
-          ControlDebuggerMsg,
-        )
-      lustre_shell.UXExploration ->
-        map(
-          lustre_ux_exploration.workspace(model.ux_exploration),
-          UXExplorationMsg,
-        )
-    },
+    ..content
   ])
+}
+
+fn admin_app_class(page: lustre_shell.Page) -> String {
+  case page {
+    lustre_shell.UXExploration -> "admin-app ux-admin-app"
+    _ -> "admin-app"
+  }
 }
 
 fn sidebar_controls(model: Model) -> List(Element(Msg)) {
@@ -197,6 +212,9 @@ fn styles() -> String {
     grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
     background: var(--background);
     color: var(--foreground);
+  }
+  .admin-app.ux-admin-app {
+    grid-template-columns: minmax(0, 1fr);
   }
   @media (max-width: 860px) {
     .admin-app {

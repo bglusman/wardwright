@@ -319,6 +319,21 @@ pub fn workspace(model: Model) -> Element(Msg) {
   ])
 }
 
+pub fn embedded_workspace(model: Model) -> Element(Msg) {
+  html.div([class("embedded-model-access-workspace")], [
+    notices(model),
+    html.section([class("model-key-grid")], [
+      model_summary(model),
+      access_policy_editor(model),
+      server_tools_panel(model),
+      model_lifecycle_panel(model),
+      create_key_panel(model),
+      keys_panel(model),
+      archived_models_panel(),
+    ]),
+  ])
+}
+
 pub fn sidebar_controls(model: Model) -> List(Element(Msg)) {
   [
     html.div([class("sidebar-footer")], [
