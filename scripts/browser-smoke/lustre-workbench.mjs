@@ -368,6 +368,36 @@ async function assertServerToolModelAccess() {
       throw new Error(`server-tool model access smoke failed: ${JSON.stringify(result)}`);
     }
 
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 3,
+      mobile: true
+    });
+    await cdp.send("Page.navigate", {
+      url: `${appUrl}/admin?view=model_access&model=browser-smoke-tools`
+    });
+    await cdp.waitFor("Page.loadEventFired");
+    await waitForEval(cdp, `pageText(document.body).includes("browser_smoke_dune_tool")`);
+
+    const mobileLayout = await evaluate(
+      cdp,
+      `(() => {
+        const thead = allElements(".server-tool-table thead")[0];
+        const row = allElements(".server-tool-table tbody tr")[0];
+        const cell = allElements(".server-tool-table tbody td")[0];
+        return {
+          hidesHeader: thead ? getComputedStyle(thead).display === "none" : false,
+          stacksRows: row ? getComputedStyle(row).display === "block" : false,
+          labelsCells: cell ? getComputedStyle(cell, "::before").content.includes("Tool") : false
+        };
+      })()`
+    );
+
+    if (!mobileLayout.hidesHeader || !mobileLayout.stacksRows || !mobileLayout.labelsCells) {
+      throw new Error(`server-tool mobile table layout smoke failed: ${JSON.stringify(mobileLayout)}`);
+    }
+
     console.log("ok model access renders server-tool config and target support");
   } finally {
     cdp.close();

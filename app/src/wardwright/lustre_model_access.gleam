@@ -541,15 +541,15 @@ fn server_tool_row(tool: ServerToolOption) -> Element(Msg) {
   ) = tool
 
   html.tr([], [
-    html.td([], [
+    html.td([attribute("data-label", "Tool")], [
       html.code([], [text(name)]),
       html.small([], [text(visibility)]),
     ]),
-    html.td([], [text(engine)]),
-    html.td([], [text(enabled)]),
-    html.td([], [text(source)]),
-    html.td([], [text(limit_summary)]),
-    html.td([], [
+    html.td([attribute("data-label", "Engine")], [text(engine)]),
+    html.td([attribute("data-label", "State")], [text(enabled)]),
+    html.td([attribute("data-label", "Source")], [text(source)]),
+    html.td([attribute("data-label", "Dune limits")], [text(limit_summary)]),
+    html.td([attribute("data-label", "Schema")], [
       html.small([], [
         text("params " <> parameter_keys <> " / input " <> input_keys),
       ]),
@@ -1035,12 +1035,16 @@ pub fn styles() -> String {
   table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: auto;
   }
   th, td {
     border-bottom: 1px solid var(--border);
     padding: 10px;
     text-align: left;
     vertical-align: top;
+  }
+  td {
+    overflow-wrap: anywhere;
   }
   th {
     background: #eef3f5;
@@ -1050,6 +1054,15 @@ pub fn styles() -> String {
   }
   .server-tools-panel {
     grid-column: 1 / -1;
+  }
+  .server-tool-table {
+    font-size: 14px;
+  }
+  .server-tool-table th:nth-child(1) {
+    min-width: 190px;
+  }
+  .server-tool-table th:nth-child(5) {
+    min-width: 210px;
   }
   .server-tool-table td:first-child {
     display: grid;
@@ -1113,6 +1126,53 @@ pub fn styles() -> String {
   @media (max-width: 860px) {
     .model-access-app, .model-key-grid, .inline-form {
       grid-template-columns: minmax(0, 1fr);
+    }
+    .server-tool-table,
+    .server-tool-table tbody,
+    .server-tool-table tr,
+    .server-tool-table td {
+      display: block;
+      width: 100%;
+    }
+    .server-tool-table {
+      border-collapse: separate;
+      border-spacing: 0 10px;
+      font-size: 15px;
+    }
+    .server-tool-table thead {
+      display: none;
+    }
+    .server-tool-table tr {
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fbfcfd;
+    }
+    .server-tool-table td {
+      display: grid;
+      grid-template-columns: minmax(92px, max-content) minmax(0, 1fr);
+      gap: 12px;
+      padding: 7px 0;
+      border-bottom: 0;
+    }
+    .server-tool-table td::before {
+      content: attr(data-label);
+      color: var(--muted-foreground);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .server-tool-table td:first-child {
+      display: grid;
+      grid-template-columns: minmax(92px, max-content) minmax(0, 1fr);
+      gap: 12px;
+    }
+    .server-tool-table td:first-child code,
+    .server-tool-table td:first-child small {
+      grid-column: 2;
+    }
+    .server-tool-table td:first-child::before {
+      grid-row: 1 / span 2;
     }
     .server-tool-targets li {
       grid-template-columns: minmax(0, 1fr);
