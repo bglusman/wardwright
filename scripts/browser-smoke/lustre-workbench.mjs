@@ -517,7 +517,46 @@ async function assertUxExplorationConcepts() {
       ) {
         throw new Error(`UX exploration ${concept} standalone links failed: ${JSON.stringify(result)}`);
       }
+
+      await evaluate(
+        cdp,
+        `(() => {
+          const conceptBase = "/admin/ux-exploration/${concept}?model=browser-smoke-tools";
+          const releaseLink = allElements("a").find((link) =>
+            link.getAttribute("href") === conceptBase + "#ux-release"
+          );
+          if (!releaseLink) return false;
+          window.scrollTo(0, 0);
+          releaseLink.click();
+          return true;
+        })()`
+      );
+      await waitForEval(cdp, `location.hash === "#ux-release"`);
+      await waitForEval(
+        cdp,
+        `(() => {
+          const target = allElements("#ux-release")[0];
+          if (!target) return false;
+          const rect = target.getBoundingClientRect();
+          return rect.top < window.innerHeight - 40 && rect.bottom > 40;
+        })()`
+      );
     }
+
+    await cdp.send("Page.navigate", {
+      url: `${appUrl}/admin/ux-exploration/model-config-cleanup?model=browser-smoke-tools#ux-release`
+    });
+    await cdp.waitFor("Page.loadEventFired");
+    await waitForEval(cdp, `pageText(document.body).includes("Admin workspace")`);
+    await waitForEval(
+      cdp,
+      `(() => {
+        const target = allElements("#ux-release")[0];
+        if (!target) return false;
+        const rect = target.getBoundingClientRect();
+        return rect.top < window.innerHeight - 40 && rect.bottom > 40;
+      })()`
+    );
 
     console.log("ok UX exploration concepts are standalone and render live admin controls");
   } finally {

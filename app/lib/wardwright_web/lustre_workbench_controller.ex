@@ -72,6 +72,74 @@ defmodule WardwrightWeb.LustreWorkbenchController do
         <script src="/vendor/cytoscape/cytoscape.min.js"></script>
         <script type="module" src="/assets/wardwright_state_graph.js?v=graph-boundaries-5"></script>
         <script type="module" src="/vendor/lustre/lustre-server-component.mjs"></script>
+        <script>
+          (() => {
+            const componentSelector = 'lustre-server-component[data-runtime="lustre-server-component"]';
+
+            const currentComponent = () => document.querySelector(componentSelector);
+
+            const idFromHash = (hash) => {
+              const raw = String(hash || "").replace(/^#/, "");
+              try {
+                return decodeURIComponent(raw);
+              } catch {
+                return raw;
+              }
+            };
+
+            const targetFromHash = (hash) => {
+              const id = idFromHash(hash);
+              if (!id) return null;
+              return currentComponent()?.shadowRoot?.getElementById(id) || null;
+            };
+
+            const scrollToHash = (hash, behavior = "auto") => {
+              const target = targetFromHash(hash);
+              if (!target) return false;
+              const top = Math.max(0, target.getBoundingClientRect().top + scrollY - 16);
+              scrollTo({ top, behavior });
+              return true;
+            };
+
+            const anchorFromEvent = (event) =>
+              event.composedPath?.().find((node) => node?.tagName === "A" && node.href);
+
+            const bindComponentMount = () => {
+              const component = currentComponent();
+              if (!component || component.dataset.anchorBridge === "ready") return;
+              component.dataset.anchorBridge = "ready";
+              component.addEventListener("lustre:mount", () =>
+                requestAnimationFrame(() => scrollToHash(location.hash))
+              );
+              requestAnimationFrame(() => scrollToHash(location.hash));
+            };
+
+            document.addEventListener("click", (event) => {
+              const anchor = anchorFromEvent(event);
+              if (!anchor) return;
+
+              const url = new URL(anchor.href, location.href);
+              if (
+                url.origin !== location.origin ||
+                url.pathname !== location.pathname ||
+                url.search !== location.search ||
+                !url.hash ||
+                !targetFromHash(url.hash)
+              ) {
+                return;
+              }
+
+              event.preventDefault();
+              history.pushState(null, "", url.pathname + url.search + url.hash);
+              scrollToHash(url.hash, "smooth");
+            });
+
+            addEventListener("hashchange", () => scrollToHash(location.hash, "smooth"));
+            addEventListener("popstate", () => scrollToHash(location.hash));
+            document.addEventListener("DOMContentLoaded", bindComponentMount, { once: true });
+            bindComponentMount();
+          })();
+        </script>
         <style>
           :root {
             --background: #f4f6f8;
