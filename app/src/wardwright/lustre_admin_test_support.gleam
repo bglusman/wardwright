@@ -34,7 +34,7 @@ pub fn ux_exploration_theme_switch_updates_sidebar(
   model_id: String,
   theme_label: String,
 ) -> Bool {
-  start("ux_exploration:holistic-control-room:" <> model_id)
+  start("ux_exploration:ops-console:" <> model_id)
   |> simulate.click(on: query.element(
     matching: query.tag("button")
     |> query.and(query.text(theme_label)),
@@ -64,7 +64,7 @@ pub fn ux_exploration_is_standalone_end_to_end(
   && string.contains(view, "Model authoring")
   && string.contains(view, "Access Policy")
   && string.contains(view, "Create Key")
-  && string.contains(view, "Session replay")
+  && string.contains(view, "Replay receipts")
   && string.contains(view, "Create simulator case")
   && string.contains(view, "Adapter install status")
   && string.contains(view, "Browser smoke")

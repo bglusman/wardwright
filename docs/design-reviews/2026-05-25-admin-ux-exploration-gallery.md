@@ -15,11 +15,10 @@ opening static screenshots.
 App routes:
 
 - `/admin/ux-exploration`
-- `/admin/ux-exploration/model-config-cleanup`
-- `/admin/ux-exploration/capability-command-center`
-- `/admin/ux-exploration/route-topology-map`
-- `/admin/ux-exploration/guided-change-review`
-- `/admin/ux-exploration/holistic-control-room`
+- `/admin/ux-exploration/ops-console`
+- `/admin/ux-exploration/model-builder`
+- `/admin/ux-exploration/guided-lab`
+- `/admin/ux-exploration/capability-catalog`
 
 Artifacts:
 
@@ -32,15 +31,17 @@ Feedback and voting:
 
 ## Included Concepts
 
-1. **Current model config cleanup**: conservative simplification of the existing
-   Models & access page.
-2. **Capability Command Center**: model capability and tool-advertisement
-   clarity.
-3. **Route Topology Map**: graph-first explanation of model composition,
-   targets, tools, policy, receipts, and adapters.
-4. **Guided Change Review**: a safer workflow for risky model changes.
-5. **Holistic Control Room**: a whole-product admin shell covering Overview,
-   Models, Policy Lab, Evidence, Integrations, and Release readiness.
+1. **Ops Console**: production monitoring and incident-response posture, with
+   model status, risk watchlist, tool mediation, replay evidence, and live
+   controls arranged for repeated operations.
+2. **Model Builder**: canvas-first composition posture, where the route graph
+   and model promise are primary and configuration appears as node inspector
+   detail.
+3. **Guided Lab**: workflow-first change posture, moving risky model edits
+   through runbook steps from edit to simulation, replay, and promotion proof.
+4. **Capability Catalog**: catalog-first posture, organizing Wardwright by
+   agent-visible promises: models, tools, replay fidelity, adapters, policy
+   authoring, and release gates.
 
 The gallery and app routes keep these concepts separate from implemented
 production admin behavior. They are discussion and selection surfaces, not a
@@ -48,8 +49,9 @@ claim that any concept has replaced `/admin`.
 
 The in-app exploration now separates two axes:
 
-- **UX concept**: the five routes above are whole-admin candidates, not single
-  page mockups. Each route embeds the real Workbench/model lab, Models & access
+- **UX concept**: the four routes above are whole-admin candidates with
+  intentionally different information architecture, not single page mockups.
+  Each route embeds the real Workbench/model lab, Models & access
   controls, Policy Lab authoring, Control Debugger evidence, adapter status, and
   release-readiness surfaces so reviewers can stay inside one coherent concept
   experience end to end.
@@ -98,9 +100,9 @@ References used for this pass:
   but owns its presentation. Tests assert shared behavior, embedded end-to-end
   admin surfaces, and same-concept navigation rather than fixed panel order or
   links back to older admin routes.
-- The UI now includes five UX buttons and four look-and-feel buttons. Reviewers
-  can compare a conservative config flow, capability-first console, topology
-  map, guided review flow, and holistic control room under the same four visual
+- The UI now includes four UX buttons and four look-and-feel buttons. Reviewers
+  can compare operations-console, model-builder, guided-lab, and
+  capability-catalog information architectures under the same four visual
   treatments.
 - The exploration remains non-production. It is a live evaluation surface for
   choosing which shell, density, and component treatment should graduate into

@@ -31,11 +31,10 @@ const overflowPaths = [
   "/admin?view=model_access&model=browser-smoke-tools",
   "/admin?view=control_debugger",
   "/admin/ux-exploration",
-  "/admin/ux-exploration/model-config-cleanup",
-  "/admin/ux-exploration/capability-command-center",
-  "/admin/ux-exploration/route-topology-map",
-  "/admin/ux-exploration/guided-change-review",
-  "/admin/ux-exploration/holistic-control-room"
+  "/admin/ux-exploration/ops-console",
+  "/admin/ux-exploration/model-builder",
+  "/admin/ux-exploration/guided-lab",
+  "/admin/ux-exploration/capability-catalog"
 ];
 
 if (!chromePath) {
@@ -461,11 +460,10 @@ async function assertUxExplorationConcepts() {
   const target = await createChromeTarget();
   const cdp = await connectCdp(target.webSocketDebuggerUrl);
   const concepts = [
-    "model-config-cleanup",
-    "capability-command-center",
-    "route-topology-map",
-    "guided-change-review",
-    "holistic-control-room"
+    "ops-console",
+    "model-builder",
+    "guided-lab",
+    "capability-catalog"
   ];
 
   try {
@@ -488,6 +486,16 @@ async function assertUxExplorationConcepts() {
       await waitForEval(cdp, `pageText(document.body).includes("Simulate a turn")`);
       await waitForEval(cdp, `pageText(document.body).includes("Create simulator case")`);
       await waitForEval(cdp, `pageText(document.body).includes("Adapter install status")`);
+      if (concept === "ops-console") {
+        await waitForEval(cdp, `pageText(document.body).includes("Production watchlist")`);
+      } else if (concept === "model-builder") {
+        await waitForEval(cdp, `pageText(document.body).includes("Route graph builder")`);
+        await waitForEval(cdp, `allElements(".builder-canvas .ux-route-node").length >= 6`);
+      } else if (concept === "guided-lab") {
+        await waitForEval(cdp, `pageText(document.body).includes("Change runbook")`);
+      } else if (concept === "capability-catalog") {
+        await waitForEval(cdp, `pageText(document.body).includes("Browse Wardwright by promises")`);
+      }
 
       const result = await evaluate(
         cdp,
@@ -544,7 +552,7 @@ async function assertUxExplorationConcepts() {
     }
 
     await cdp.send("Page.navigate", {
-      url: `${appUrl}/admin/ux-exploration/model-config-cleanup?model=browser-smoke-tools#ux-release`
+      url: `${appUrl}/admin/ux-exploration/ops-console?model=browser-smoke-tools#ux-release`
     });
     await cdp.waitFor("Page.loadEventFired");
     await waitForEval(cdp, `pageText(document.body).includes("Admin workspace")`);
@@ -559,10 +567,10 @@ async function assertUxExplorationConcepts() {
     );
 
     await cdp.send("Page.navigate", {
-      url: `${appUrl}/admin/ux-exploration/holistic-control-room?model=browser-smoke-tools`
+      url: `${appUrl}/admin/ux-exploration/model-builder?model=browser-smoke-tools`
     });
     await cdp.waitFor("Page.loadEventFired");
-    await waitForEval(cdp, `pageText(document.body).includes("Holistic control room")`);
+    await waitForEval(cdp, `pageText(document.body).includes("Route graph builder")`);
     await evaluate(
       cdp,
       `(() => {
@@ -573,12 +581,12 @@ async function assertUxExplorationConcepts() {
     await waitForEval(
       cdp,
       `(() => {
-        const spine = allElements(".ux-app-spine")[0];
         const graph = allElements(".state-graph")[0];
-        if (!spine || !graph) return false;
-        const spineRect = spine.getBoundingClientRect();
+        const canvas = allElements(".builder-canvas")[0];
+        if (!canvas || !graph) return false;
+        const canvasRect = canvas.getBoundingClientRect();
         const graphRect = graph.getBoundingClientRect();
-        return graphRect.left > spineRect.right + 8 && graphRect.width > 700;
+        return canvasRect.width > 450 && graphRect.left >= -1 && graphRect.width > 700;
       })()`
     );
 
@@ -589,10 +597,10 @@ async function assertUxExplorationConcepts() {
       mobile: true
     });
     await cdp.send("Page.navigate", {
-      url: `${appUrl}/admin/ux-exploration/holistic-control-room?model=browser-smoke-tools`
+      url: `${appUrl}/admin/ux-exploration/ops-console?model=browser-smoke-tools`
     });
     await cdp.waitFor("Page.loadEventFired");
-    await waitForEval(cdp, `pageText(document.body).includes("Holistic Control Room")`);
+    await waitForEval(cdp, `pageText(document.body).includes("Ops Console")`);
     const clippedTabs = await evaluate(
       cdp,
       `allElements(".ux-tab").map((tab) => {

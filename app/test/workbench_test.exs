@@ -99,11 +99,10 @@ defmodule WardwrightWeb.WorkbenchTest do
 
   test "admin UX concept routes preserve concept and model in the shared runtime" do
     concepts = [
-      "model-config-cleanup",
-      "capability-command-center",
-      "route-topology-map",
-      "guided-change-review",
-      "holistic-control-room"
+      "ops-console",
+      "model-builder",
+      "guided-lab",
+      "capability-catalog"
     ]
 
     for slug <- concepts do
@@ -121,33 +120,51 @@ defmodule WardwrightWeb.WorkbenchTest do
     put_server_tool_model_config()
 
     assert :wardwright@lustre_admin_test_support.ux_exploration_uses_live_model_controls(
-             "capability-command-center",
+             "capability-catalog",
              "server-tool-ui",
              "wardwright_policy_cache_status"
            )
 
     assert :wardwright@lustre_admin_test_support.ux_exploration_uses_live_model_controls(
-             "route-topology-map",
+             "model-builder",
              "server-tool-ui",
              "openai/tool-capable-ui"
            )
 
     assert :wardwright@lustre_admin_test_support.ux_exploration_uses_live_model_controls(
-             "guided-change-review",
+             "guided-lab",
              "server-tool-ui",
              "Access Policy"
            )
+  end
+
+  test "admin UX concepts expose distinct primary work surfaces" do
+    put_server_tool_model_config()
+
+    expected_surfaces = [
+      {"ops-console", "Production watchlist"},
+      {"model-builder", "Route graph builder"},
+      {"guided-lab", "Change runbook"},
+      {"capability-catalog", "Browse Wardwright by promises"}
+    ]
+
+    for {concept, expected_text} <- expected_surfaces do
+      assert :wardwright@lustre_admin_test_support.ux_exploration_uses_live_model_controls(
+               concept,
+               "server-tool-ui",
+               expected_text
+             )
+    end
   end
 
   test "admin UX concepts are standalone end-to-end admin experiences" do
     put_server_tool_model_config()
 
     for concept <- [
-          "model-config-cleanup",
-          "capability-command-center",
-          "route-topology-map",
-          "guided-change-review",
-          "holistic-control-room"
+          "ops-console",
+          "model-builder",
+          "guided-lab",
+          "capability-catalog"
         ] do
       assert :wardwright@lustre_admin_test_support.ux_exploration_is_standalone_end_to_end(
                concept,
@@ -169,7 +186,7 @@ defmodule WardwrightWeb.WorkbenchTest do
     put_server_tool_model_config()
 
     assert :wardwright@lustre_admin_test_support.ux_exploration_toggles_server_tool(
-             "capability-command-center",
+             "capability-catalog",
              "server-tool-ui",
              "Disable",
              "Server Tools"
