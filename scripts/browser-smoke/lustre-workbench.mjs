@@ -558,6 +558,58 @@ async function assertUxExplorationConcepts() {
       })()`
     );
 
+    await cdp.send("Page.navigate", {
+      url: `${appUrl}/admin/ux-exploration/holistic-control-room?model=browser-smoke-tools`
+    });
+    await cdp.waitFor("Page.loadEventFired");
+    await waitForEval(cdp, `pageText(document.body).includes("Holistic control room")`);
+    await evaluate(
+      cdp,
+      `(() => {
+        allElements(".state-graph")[0]?.scrollIntoView();
+        return true;
+      })()`
+    );
+    await waitForEval(
+      cdp,
+      `(() => {
+        const spine = allElements(".ux-app-spine")[0];
+        const graph = allElements(".state-graph")[0];
+        if (!spine || !graph) return false;
+        const spineRect = spine.getBoundingClientRect();
+        const graphRect = graph.getBoundingClientRect();
+        return graphRect.left > spineRect.right + 8 && graphRect.width > 700;
+      })()`
+    );
+
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 3,
+      mobile: true
+    });
+    await cdp.send("Page.navigate", {
+      url: `${appUrl}/admin/ux-exploration/holistic-control-room?model=browser-smoke-tools`
+    });
+    await cdp.waitFor("Page.loadEventFired");
+    await waitForEval(cdp, `pageText(document.body).includes("Holistic Control Room")`);
+    const clippedTabs = await evaluate(
+      cdp,
+      `allElements(".ux-tab").map((tab) => {
+        const rect = tab.getBoundingClientRect();
+        return {
+          text: tab.textContent.trim(),
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          width: Math.round(rect.width),
+          clipped: rect.left < -1 || rect.right > window.innerWidth + 1
+        };
+      }).filter((tab) => tab.clipped)`
+    );
+    if (clippedTabs.length > 0) {
+      throw new Error(`UX exploration mobile tabs clipped: ${JSON.stringify(clippedTabs)}`);
+    }
+
     console.log("ok UX exploration concepts are standalone and render live admin controls");
   } finally {
     cdp.close();

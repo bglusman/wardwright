@@ -913,6 +913,14 @@ pub fn styles() -> String {
     --ux-gap: 16px;
     --ux-pad: 16px;
     --ux-shadow: 0 1px 0 rgba(24, 32, 42, 0.04);
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
+  }
+  .ux-workspace * {
+    box-sizing: border-box;
+    min-width: 0;
   }
   .ux-workspace.theme-studio {
     --ux-panel-soft: #fff8ea;
@@ -946,6 +954,10 @@ pub fn styles() -> String {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 16px;
     align-items: end;
+    max-width: 100%;
+  }
+  .ux-header > * {
+    min-width: 0;
   }
   .ux-header p {
     max-width: 760px;
@@ -955,10 +967,12 @@ pub fn styles() -> String {
     flex-wrap: wrap;
     gap: 10px;
     align-items: center;
+    max-width: 100%;
   }
   .ux-control-group {
     display: grid;
     gap: 6px;
+    max-width: 100%;
   }
   .ux-current-state {
     display: grid;
@@ -991,9 +1005,11 @@ pub fn styles() -> String {
     flex-wrap: wrap;
     gap: 6px;
     border: 0;
+    max-width: 100%;
   }
   .ux-tab, .ux-link-button {
     display: inline-flex;
+    max-width: 100%;
     min-height: 38px;
     align-items: center;
     justify-content: center;
@@ -1005,6 +1021,8 @@ pub fn styles() -> String {
     font-size: 13px;
     font-weight: 800;
     text-decoration: none;
+    text-align: center;
+    overflow-wrap: anywhere;
   }
   .ux-tab.active, .ux-link-button {
     border-color: var(--ux-accent);
@@ -1088,7 +1106,7 @@ pub fn styles() -> String {
     border-left: 3px solid var(--ux-accent);
   }
   .control-room-experience .ux-capability-deck {
-    grid-template-columns: repeat(6, minmax(130px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
   .wide {
     grid-column: 1 / -1;
@@ -1101,10 +1119,27 @@ pub fn styles() -> String {
     box-shadow: var(--ux-shadow);
   }
   .ux-product-surfaces {
-    grid-column: 1 / -1;
+    grid-column: 2 / -1;
     display: grid;
-    grid-template-columns: repeat(4, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: var(--ux-gap);
+  }
+  .ux-end-to-end {
+    grid-column: 2 / -1;
+    display: grid;
+    gap: calc(var(--ux-gap) * 1.5);
+  }
+  .topology-map-experience .ux-product-surfaces,
+  .topology-map-experience .ux-end-to-end {
+    grid-column: 1 / -1;
+  }
+  .ux-embedded-section {
+    display: grid;
+    gap: 12px;
+  }
+  .ux-embedded-heading {
+    display: grid;
+    gap: 4px;
   }
   .ux-masthead, .ux-score-card, .ux-link-panel, .ux-route-map, .ux-review-step, .ux-posture-card, .ux-capability-card, .ux-surface-card {
     min-width: 0;
@@ -1258,6 +1293,10 @@ pub fn styles() -> String {
     .ux-header, .ux-experience, .config-cleanup, .guided-review, .control-room, .capability-command, .topology-map, .ux-capability-deck, .ux-product-surfaces, .capability-command-experience .ux-capability-deck, .control-room-experience .ux-capability-deck {
       grid-template-columns: minmax(0, 1fr);
     }
+    .ux-product-surfaces,
+    .ux-end-to-end {
+      grid-column: 1 / -1;
+    }
     .ux-app-spine {
       position: static;
     }
@@ -1265,6 +1304,22 @@ pub fn styles() -> String {
       width: 100%;
       margin-left: 0;
       grid-template-columns: auto minmax(0, 1fr);
+    }
+  }
+  @media (max-width: 520px) {
+    .ux-controls {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .ux-tabs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .ux-tab {
+      width: 100%;
+    }
+    .ux-current-state {
+      font-size: 11px;
     }
   }
   "
