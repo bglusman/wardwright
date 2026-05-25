@@ -33,6 +33,7 @@ defmodule Wardwright.ServerTools do
   @max_reductions_key "max_reductions"
   @message_key "message"
   @messages_key "messages"
+  @model_key "model"
   @module_key "module"
   @name_key "name"
   @object_type "object"
@@ -42,6 +43,7 @@ defmodule Wardwright.ServerTools do
   @properties_key "properties"
   @provider_metadata_server_tool_finish_reason_key "wardwright_server_tool_first_finish_reason"
   @provider_metadata_server_tools_key "wardwright_server_tools"
+  @provider_kind_key "provider_kind"
   @request_key "request"
   @result_metadata_key "result_metadata"
   @role_key "role"
@@ -51,6 +53,8 @@ defmodule Wardwright.ServerTools do
   @snippet_id_key "snippet_id"
   @status_key "status"
   @stream_key "stream"
+  @error_status "error"
+  @targets_key "targets"
   @timeout_ms_key "timeout_ms"
   @tool_call_id_key "tool_call_id"
   @tool_calls_key "tool_calls"
@@ -64,6 +68,7 @@ defmodule Wardwright.ServerTools do
   @value_key "value"
   @visibility_level_key "visibility_level"
   @wardwright_execution_location "wardwright"
+  @tool_module_cache_key {__MODULE__, :tool_module_cache}
 
   def registered_tool_names, do: Enum.map(builtin_tools(), & &1.name)
 
@@ -73,6 +78,13 @@ defmodule Wardwright.ServerTools do
     cond do
       Map.get(request, @stream_key) == true ->
         Wardwright.complete_selected_model(selected_model, request, config)
+
+      not supports_server_tools?(selected_model, config) ->
+        {request, mediation} = Wardwright.ToolMediation.apply(request, config)
+
+        selected_model
+        |> Wardwright.complete_selected_model(request, config)
+        |> add_tool_mediation_metadata(mediation)
 
       tools == [] ->
         {request, mediation} = Wardwright.ToolMediation.apply(request, config)
@@ -97,34 +109,62 @@ defmodule Wardwright.ServerTools do
     first = Wardwright.complete_selected_model(selected_model, request, config)
 
     with %{response_message: %{} = message} <- first,
-         {:ok, tool_call, tool} <- requested_server_tool(message, tools),
-         {:ok, tool_message, execution} <- execute_tool(tool_call, tool, request, config) do
+         {:ok, requested_tools} <- requested_server_tools(message, tools),
+         {:ok, tool_messages, executions} <- execute_tools(requested_tools, request, config) do
       followup =
         request
-        |> Map.update(@messages_key, [message, tool_message], &(&1 ++ [message, tool_message]))
+        |> Map.update(@messages_key, [message | tool_messages], &(&1 ++ [message | tool_messages]))
 
       selected_model
       |> Wardwright.complete_selected_model(followup, config)
-      |> add_server_tool_metadata(first, execution)
+      |> add_server_tool_metadata(first, executions)
     else
       _no_server_tool -> first
     end
   end
 
-  defp requested_server_tool(message, tools) do
-    message
-    |> Map.get(@tool_calls_key, [])
-    |> Enum.find_value(fn
-      %{@function_key => %{@name_key => name}} = call ->
-        tool = Enum.find(tools, &(Map.get(&1, @name_key) == name))
-        if tool, do: {:ok, call, tool}
+  defp requested_server_tools(message, tools) do
+    calls = Map.get(message, @tool_calls_key, [])
 
-      _call ->
-        nil
+    cond do
+      calls == [] ->
+        :error
+
+      not is_list(calls) ->
+        :error
+
+      true ->
+        requested =
+          Enum.map(calls, fn
+            %{@function_key => %{@name_key => name}} = call ->
+              case Enum.find(tools, &(Map.get(&1, @name_key) == name)) do
+                nil -> :unknown_tool_call
+                tool -> {:ok, call, tool}
+              end
+
+            _call ->
+              :unknown_tool_call
+          end)
+
+        if Enum.all?(requested, &match?({:ok, _call, _tool}, &1)) do
+          {:ok, Enum.map(requested, fn {:ok, call, tool} -> {call, tool} end)}
+        else
+          :error
+        end
+    end
+  end
+
+  defp execute_tools(requested_tools, request, config) do
+    requested_tools
+    |> Enum.reduce_while({[], []}, fn {tool_call, tool}, {messages, executions} ->
+      case execute_tool(tool_call, tool, request, config) do
+        {:ok, tool_message, execution} -> {:cont, {[tool_message | messages], [execution | executions]}}
+        :error -> {:halt, :error}
+      end
     end)
     |> case do
-      nil -> :error
-      result -> result
+      :error -> :error
+      {messages, executions} -> {:ok, Enum.reverse(messages), Enum.reverse(executions)}
     end
   end
 
@@ -134,6 +174,8 @@ defmodule Wardwright.ServerTools do
 
     case run_tool(tool, arguments, request, config) do
       {:ok, result} ->
+        result = json_safe(result)
+
         tool_message = %{
           @content_key => JSON.encode!(result),
           @role_key => @tool_role,
@@ -158,7 +200,7 @@ defmodule Wardwright.ServerTools do
 
         execution =
           tool
-          |> execution_record(call_id, @unsupported_status)
+          |> execution_record(call_id, error_status(reason))
           |> Map.put(@error_key, error)
 
         {:ok, tool_message, execution}
@@ -178,12 +220,12 @@ defmodule Wardwright.ServerTools do
 
   defp parse_arguments(_arguments), do: %{}
 
-  defp add_server_tool_metadata(second, first, execution) do
+  defp add_server_tool_metadata(second, first, executions) do
     provider_metadata =
       second
       |> Map.get(:provider_metadata, %{})
       |> Kernel.||(%{})
-      |> Map.put(@provider_metadata_server_tools_key, [execution])
+      |> Map.put(@provider_metadata_server_tools_key, executions)
       |> Map.put(
         @provider_metadata_server_tool_finish_reason_key,
         get_in(first, [:provider_metadata, @finish_reason_key])
@@ -234,16 +276,22 @@ defmodule Wardwright.ServerTools do
   defp tool_schema(tool) do
     case tool_spec(tool) do
       {:ok, spec} ->
-        [
-          %{
-            @function_key => %{
-              @description_key => Map.get(spec, @description_key, ""),
-              @name_key => Map.fetch!(spec, @name_key),
-              @parameters_key => Map.get(spec, @parameters_key, default_parameters())
-            },
-            @type_key => @function_type
-          }
-        ]
+        case tool_name(tool, spec) do
+          {:ok, name} ->
+            [
+              %{
+                @function_key => %{
+                  @description_key => Map.get(spec, @description_key, ""),
+                  @name_key => name,
+                  @parameters_key => Map.get(spec, @parameters_key, default_parameters())
+                },
+                @type_key => @function_type
+              }
+            ]
+
+          :error ->
+            []
+        end
 
       {:error, _reason} ->
         []
@@ -252,6 +300,26 @@ defmodule Wardwright.ServerTools do
 
   defp tool_schema_name(%{@function_key => %{@name_key => name}}), do: name
   defp tool_schema_name(_schema), do: nil
+
+  defp supports_server_tools?(selected_model, config) do
+    config
+    |> Map.get(@targets_key, [])
+    |> Enum.find(&(Map.get(&1, @model_key) == selected_model))
+    |> provider_kind()
+    |> Kernel.==("openai-compatible")
+  end
+
+  defp provider_kind(nil), do: "mock"
+
+  defp provider_kind(target) do
+    cond do
+      present?(Map.get(target, @provider_kind_key)) -> Map.get(target, @provider_kind_key)
+      target |> target_model() |> String.starts_with?("ollama/") -> "ollama"
+      true -> "mock"
+    end
+  end
+
+  defp target_model(target), do: Map.get(target, @model_key) || ""
 
   defp configured_tools(config) do
     config
@@ -283,8 +351,14 @@ defmodule Wardwright.ServerTools do
       @beam_module_engine ->
         if present?(Map.get(tool, @module_key)) or present?(Map.get(tool, @path_key)) do
           case tool_spec(tool) do
-            {:ok, spec} -> [Map.put(tool, @name_key, Map.fetch!(spec, @name_key))]
-            {:error, _reason} -> []
+            {:ok, spec} ->
+              case tool_name(tool, spec) do
+                {:ok, name} -> [Map.put(tool, @name_key, name)]
+                :error -> []
+              end
+
+            {:error, _reason} ->
+              []
           end
         else
           []
@@ -344,7 +418,7 @@ defmodule Wardwright.ServerTools do
       {:ok, module} ->
         with true <- function_exported?(module, :spec, 0) || {:error, :missing_spec_callback},
              true <- function_exported?(module, :run, 2) || {:error, :missing_run_callback},
-             spec when is_map(spec) <- module.spec() do
+             {:ok, spec} when is_map(spec) <- call_tool_spec(module) do
           {:ok, spec}
         else
           {:error, reason} -> configured_tool_spec(tool, reason)
@@ -368,6 +442,15 @@ defmodule Wardwright.ServerTools do
   end
 
   defp configured_tool_spec(_tool, reason), do: {:error, reason}
+
+  defp tool_name(tool, spec) do
+    with name when is_binary(name) <- Map.get(spec, @name_key) || Map.get(tool, @name_key),
+         true <- present?(name) do
+      {:ok, name}
+    else
+      _missing -> :error
+    end
+  end
 
   defp builtin_tool_spec(tool) do
     %{
@@ -423,8 +506,9 @@ defmodule Wardwright.ServerTools do
   defp run_tool(%{@engine_key => @beam_module_engine} = tool, arguments, request, config) do
     with {:ok, module} <- load_tool_module(tool),
          true <- function_exported?(module, :run, 2) || {:error, :missing_run_callback} do
-      case module.run(arguments, %{@config_key => config, @request_key => request}) do
+      case call_tool_run(module, arguments, %{@config_key => config, @request_key => request}) do
         {:ok, result} when is_map(result) -> {:ok, result}
+        {:ok, result} -> {:ok, %{@value_key => result}}
         {:error, reason} -> {:error, reason}
         result when is_map(result) -> {:ok, result}
         result -> {:ok, %{@value_key => result}}
@@ -433,6 +517,22 @@ defmodule Wardwright.ServerTools do
   end
 
   defp run_tool(_tool, _arguments, _request, _config), do: {:error, :unsupported_server_tool_engine}
+
+  defp call_tool_spec(module) do
+    {:ok, module.spec()}
+  rescue
+    error -> {:error, {:spec_raised, Exception.message(error)}}
+  catch
+    kind, reason -> {:error, {:spec_threw, kind, reason}}
+  end
+
+  defp call_tool_run(module, arguments, context) do
+    module.run(arguments, context)
+  rescue
+    error -> {:error, {:run_raised, Exception.message(error)}}
+  catch
+    kind, reason -> {:error, {:run_threw, kind, reason}}
+  end
 
   defp dune_source(%{@source_key => source}) when is_binary(source) and source != "", do: {:ok, source}
 
@@ -467,27 +567,44 @@ defmodule Wardwright.ServerTools do
     path = Path.expand(path)
     extension = Path.extname(path)
 
-    cond do
-      extension in [".ex", ".exs"] ->
-        case Code.require_file(path) do
-          modules when is_list(modules) -> {:ok, Enum.map(modules, &elem(&1, 0))}
-          nil -> {:ok, []}
-        end
+    with :error <- cached_tool_modules(path) do
+      cond do
+        extension in [".ex", ".exs"] ->
+          load_elixir_tool(path)
 
-      extension == ".erl" ->
-        compile_erlang_tool(path)
+        extension == ".erl" ->
+          compile_erlang_tool(path)
 
-      extension == ".beam" ->
-        load_beam_tool(path)
+        extension == ".beam" ->
+          load_beam_tool(path)
 
-      true ->
-        {:error, :unsupported_beam_tool_path}
+        true ->
+          {:error, :unsupported_beam_tool_path}
+      end
+      |> cache_loaded_tool_modules(path)
     end
   rescue
     error -> {:error, Exception.message(error)}
   end
 
   defp load_tool_path(_path), do: {:ok, []}
+
+  defp load_elixir_tool(path) do
+    case Code.require_file(path) do
+      modules when is_list(modules) and modules != [] -> {:ok, Enum.map(modules, &elem(&1, 0))}
+      _already_loaded -> compile_elixir_tool(path)
+    end
+  end
+
+  defp compile_elixir_tool(path) do
+    path
+    |> Code.compile_file()
+    |> Enum.map(&elem(&1, 0))
+    |> case do
+      [] -> {:error, :no_modules_loaded}
+      modules -> {:ok, modules}
+    end
+  end
 
   defp compile_erlang_tool(path) do
     path_chars = String.to_charlist(path)
@@ -503,6 +620,33 @@ defmodule Wardwright.ServerTools do
 
       {:error, errors, _warnings} ->
         {:error, {:erlang_compile_failed, errors}}
+    end
+  end
+
+  defp cached_tool_modules(path) do
+    signature = path_signature(path)
+
+    @tool_module_cache_key
+    |> :persistent_term.get(%{})
+    |> Map.get(path)
+    |> case do
+      {^signature, modules} -> {:ok, modules}
+      _miss -> :error
+    end
+  end
+
+  defp cache_loaded_tool_modules({:ok, modules}, path) when is_list(modules) do
+    cache = :persistent_term.get(@tool_module_cache_key, %{})
+    :persistent_term.put(@tool_module_cache_key, Map.put(cache, path, {path_signature(path), modules}))
+    {:ok, modules}
+  end
+
+  defp cache_loaded_tool_modules(other, _path), do: other
+
+  defp path_signature(path) do
+    case File.stat(path) do
+      {:ok, stat} -> {stat.mtime, stat.size}
+      _error -> :missing
     end
   end
 
@@ -567,6 +711,29 @@ defmodule Wardwright.ServerTools do
   rescue
     ArgumentError -> nil
   end
+
+  defp json_safe(value) when is_binary(value) or is_boolean(value) or is_nil(value), do: value
+  defp json_safe(value) when is_integer(value), do: value
+  defp json_safe(value) when is_float(value), do: value
+  defp json_safe(value) when is_atom(value), do: Atom.to_string(value)
+  defp json_safe(value) when is_list(value), do: Enum.map(value, &json_safe/1)
+
+  defp json_safe(value) when is_map(value) do
+    value
+    |> Map.new(fn {key, nested} -> {json_key(key), json_safe(nested)} end)
+  end
+
+  defp json_safe(value) when is_tuple(value), do: value |> Tuple.to_list() |> json_safe()
+  defp json_safe(value), do: inspect(value)
+
+  defp json_key(key) when is_binary(key), do: key
+  defp json_key(key) when is_atom(key), do: Atom.to_string(key)
+  defp json_key(key), do: inspect(key)
+
+  defp error_status(reason) when reason in [:unsupported_server_tool_engine, :unsupported_builtin_tool],
+    do: @unsupported_status
+
+  defp error_status(_reason), do: @error_status
 
   defp default_parameters do
     %{

@@ -513,6 +513,8 @@ components:
         input:
           type: object
           description: Optional default Dune input merged with model-provided arguments.
+        limits:
+          $ref: "#/components/schemas/ServerToolLimits"
         module:
           type: string
           description: Trusted BEAM module name exporting spec/0 and run/2.
@@ -530,6 +532,19 @@ components:
           type: string
           enum: [local_verified]
           readOnly: true
+    ServerToolLimits:
+      type: object
+      description: Optional execution limits for trusted local Dune server tools.
+      properties:
+        timeout_ms:
+          type: integer
+          minimum: 1
+        max_reductions:
+          type: integer
+          minimum: 1
+        max_heap_size:
+          type: integer
+          minimum: 1
     ToolMediation:
       type: object
       description: Non-streaming request-side tool catalog patch rules applied before provider calls.

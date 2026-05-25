@@ -116,19 +116,11 @@ defmodule Wardwright.Test.StreamingProvider do
                  }}
 
               server_tool_request?(request) ->
-                {name, call_id, arguments} = requested_server_tool_call(request)
-
                 {"tool_calls",
                  %{
                    "content" => nil,
                    "role" => "assistant",
-                   "tool_calls" => [
-                     %{
-                       "function" => %{"arguments" => arguments, "name" => name},
-                       "id" => call_id,
-                       "type" => "function"
-                     }
-                   ]
+                   "tool_calls" => requested_server_tool_calls(request)
                  }}
 
               forwarded_tool_request?(request) ->
@@ -224,8 +216,33 @@ defmodule Wardwright.Test.StreamingProvider do
     end)
   end
 
+  defp requested_server_tool_calls(request) do
+    if request_content_includes?(request, "use multiple Wardwright server tools") do
+      request
+      |> Map.get("tools", [])
+      |> Enum.flat_map(fn
+        %{"function" => %{"name" => name}} when name in ["wardwright_policy_cache_status", "dune_echo_tool"] ->
+          {name, call_id, arguments} = server_tool_call_tuple(name)
+          [%{"function" => %{"arguments" => arguments, "name" => name}, "id" => call_id, "type" => "function"}]
+
+        _tool ->
+          []
+      end)
+    else
+      {name, call_id, arguments} = requested_server_tool_call(request)
+      [%{"function" => %{"arguments" => arguments, "name" => name}, "id" => call_id, "type" => "function"}]
+    end
+  end
+
+  defp server_tool_call_tuple("wardwright_policy_cache_status"), do: {"wardwright_policy_cache_status", "call_wardwright_status_1", "{}"}
+  defp server_tool_call_tuple("dune_echo_tool"), do: {"dune_echo_tool", "call_dune_echo_tool_1", ~s({"value":"from-model"})}
+
   defp server_tool_response_content(request) do
     cond do
+      server_tool_result_message?(request, "call_wardwright_status_1") and
+          server_tool_result_message?(request, "call_dune_echo_tool_1") ->
+        "Multiple Wardwright server tool results were observed."
+
       server_tool_result_message?(request, "call_wardwright_status_1") ->
         "Wardwright server tool status was observed."
 
@@ -243,6 +260,12 @@ defmodule Wardwright.Test.StreamingProvider do
   defp server_tool_result_message?(request, call_id) do
     Enum.any?(request["messages"] || [], fn message ->
       message["role"] == "tool" and message["tool_call_id"] == call_id
+    end)
+  end
+
+  defp request_content_includes?(request, text) do
+    Enum.any?(request["messages"] || [], fn message ->
+      message["role"] == "user" and is_binary(message["content"]) and String.contains?(message["content"], text)
     end)
   end
 
