@@ -78,6 +78,12 @@ pub fn admin_sidebar(
         admin_href(ControlDebugger, selected_model),
         active_page == ControlDebugger,
       ),
+      rail_admin_link(
+        "UX concepts",
+        "Try alternate admin directions.",
+        "/admin/ux-exploration",
+        False,
+      ),
     ]),
     ..children
   ])

@@ -88,6 +88,52 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert conn.resp_body =~ "tts.no-old-client"
   end
 
+  test "admin UX exploration exposes real app routes for all concept alternatives" do
+    conn = get(build_conn(), "/admin/ux-exploration")
+
+    assert html_response(conn, 200) =~ "Try alternate Wardwright admin directions"
+    assert conn.resp_body =~ "/admin/ux-exploration/model-config-cleanup"
+    assert conn.resp_body =~ "/admin/ux-exploration/capability-command-center"
+    assert conn.resp_body =~ "/admin/ux-exploration/route-topology-map"
+    assert conn.resp_body =~ "/admin/ux-exploration/guided-change-review"
+    assert conn.resp_body =~ "/admin/ux-exploration/holistic-control-room"
+    assert conn.resp_body =~ "https://github.com/bglusman/wardwright/issues/75"
+    assert conn.resp_body =~ "These pages are implemented as protected Wardwright routes"
+  end
+
+  test "admin UX concept pages render app-native prototypes rather than screenshot-only mockups" do
+    concepts = [
+      {"model-config-cleanup", "Current Model Config Cleanup", "Operating decision"},
+      {"capability-command-center", "Capability Command Center", "Agent-visible capability contract"},
+      {"route-topology-map", "Route Topology Map", "Inspector"},
+      {"guided-change-review", "Guided Change Review", "What can agents do?"},
+      {"holistic-control-room", "Holistic Control Room", "Policy Lab"}
+    ]
+
+    for {slug, title, expected_surface} <- concepts do
+      conn = get(build_conn(), "/admin/ux-exploration/#{slug}")
+
+      assert html_response(conn, 200) =~ title
+      assert conn.resp_body =~ expected_surface
+      assert conn.resp_body =~ "This is an app-native prototype route"
+      assert conn.resp_body =~ "Vote for"
+      refute conn.resp_body =~ ".png"
+    end
+  end
+
+  test "admin rail links to UX concept exploration as a recoverable route" do
+    assert {:ok, state} = WardwrightWeb.LustreWorkbenchSocket.init(%{})
+    assert_receive {ref, message} when is_tuple(message), 1_000
+
+    assert {:push, {:text, json}, _state} =
+             WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
+
+    assert json =~ "UX concepts"
+    assert json =~ "/admin/ux-exploration"
+
+    WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
+  end
+
   test "vendored Cytoscape renderer asset is served locally for the graph lab" do
     conn = get(build_conn(), "/vendor/cytoscape/cytoscape.min.js")
 

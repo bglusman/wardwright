@@ -7,7 +7,18 @@ status: exploratory
 # Admin UX Exploration Gallery
 
 This page collects the Wardwright admin UX concepts into one tryable
-exploration surface.
+exploration surface. The concepts are also implemented as protected
+Wardwright app routes so reviewers can experience the alternatives without
+opening static screenshots.
+
+App routes:
+
+- `/admin/ux-exploration`
+- `/admin/ux-exploration/model-config-cleanup`
+- `/admin/ux-exploration/capability-command-center`
+- `/admin/ux-exploration/route-topology-map`
+- `/admin/ux-exploration/guided-change-review`
+- `/admin/ux-exploration/holistic-control-room`
 
 Artifacts:
 
@@ -30,6 +41,6 @@ Feedback and voting:
 5. **Holistic Control Room**: a whole-product admin shell covering Overview,
    Models, Policy Lab, Evidence, Integrations, and Release readiness.
 
-The gallery keeps these concepts separate from implemented product behavior.
-It is a discussion and selection surface, not a claim that any concept is
-already shipped.
+The gallery and app routes keep these concepts separate from implemented
+production admin behavior. They are discussion and selection surfaces, not a
+claim that any concept has replaced `/admin`.

@@ -29,7 +29,13 @@ const overflowPaths = [
   "/admin?model=browser-smoke-model",
   "/admin?view=model_access",
   "/admin?view=model_access&model=browser-smoke-tools",
-  "/admin?view=control_debugger"
+  "/admin?view=control_debugger",
+  "/admin/ux-exploration",
+  "/admin/ux-exploration/model-config-cleanup",
+  "/admin/ux-exploration/capability-command-center",
+  "/admin/ux-exploration/route-topology-map",
+  "/admin/ux-exploration/guided-change-review",
+  "/admin/ux-exploration/holistic-control-room"
 ];
 
 if (!chromePath) {

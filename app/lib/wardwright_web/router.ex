@@ -32,6 +32,8 @@ defmodule WardwrightWeb.Router do
 
     get("/", LustreWorkbenchController, :show)
     get("/admin", LustreWorkbenchController, :show)
+    get("/admin/ux-exploration", UXExplorationController, :index)
+    get("/admin/ux-exploration/:concept", UXExplorationController, :show)
     get("/policies", LustreWorkbenchController, :redirect_legacy_policies)
     get("/policies/*path", LustreWorkbenchController, :redirect_legacy_policies)
     get("/spikes/graph-renderer-lab", GraphRendererLabController, :show)
