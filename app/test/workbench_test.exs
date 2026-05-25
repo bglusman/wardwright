@@ -88,37 +88,80 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert conn.resp_body =~ "tts.no-old-client"
   end
 
-  test "admin UX exploration exposes real app routes for all concept alternatives" do
+  test "admin UX exploration routes mount the shared server component runtime" do
     conn = get(build_conn(), "/admin/ux-exploration")
 
-    assert html_response(conn, 200) =~ "Try alternate Wardwright admin directions"
-    assert conn.resp_body =~ "/admin/ux-exploration/model-config-cleanup"
-    assert conn.resp_body =~ "/admin/ux-exploration/capability-command-center"
-    assert conn.resp_body =~ "/admin/ux-exploration/route-topology-map"
-    assert conn.resp_body =~ "/admin/ux-exploration/guided-change-review"
-    assert conn.resp_body =~ "/admin/ux-exploration/holistic-control-room"
-    assert conn.resp_body =~ "https://github.com/bglusman/wardwright/issues/75"
-    assert conn.resp_body =~ "These pages are implemented as protected Wardwright routes"
+    assert html_response(conn, 200) =~ "lustre-server-component"
+    assert conn.resp_body =~ "<title>Wardwright Admin</title>"
+    assert conn.resp_body =~ "/admin/socket/websocket"
+    assert conn.resp_body =~ "page=ux_exploration"
   end
 
-  test "admin UX concept pages render app-native prototypes rather than screenshot-only mockups" do
+  test "admin UX concept routes preserve concept and model in the shared runtime" do
     concepts = [
-      {"model-config-cleanup", "Current Model Config Cleanup", "Operating decision"},
-      {"capability-command-center", "Capability Command Center", "Agent-visible capability contract"},
-      {"route-topology-map", "Route Topology Map", "Inspector"},
-      {"guided-change-review", "Guided Change Review", "What can agents do?"},
-      {"holistic-control-room", "Holistic Control Room", "Policy Lab"}
+      "model-config-cleanup",
+      "capability-command-center",
+      "route-topology-map",
+      "guided-change-review",
+      "holistic-control-room"
     ]
 
-    for {slug, title, expected_surface} <- concepts do
-      conn = get(build_conn(), "/admin/ux-exploration/#{slug}")
+    for slug <- concepts do
+      conn = get(build_conn(), "/admin/ux-exploration/#{slug}?model=server-tool-ui")
 
-      assert html_response(conn, 200) =~ title
-      assert conn.resp_body =~ expected_surface
-      assert conn.resp_body =~ "This is an app-native prototype route"
-      assert conn.resp_body =~ "Vote for"
+      assert html_response(conn, 200) =~ "lustre-server-component"
+      assert conn.resp_body =~ "page=ux_exploration"
+      assert conn.resp_body =~ "concept=#{slug}"
+      assert conn.resp_body =~ "model=server-tool-ui"
       refute conn.resp_body =~ ".png"
     end
+  end
+
+  test "admin UX exploration renders live model controls instead of static mockups" do
+    put_server_tool_model_config()
+
+    assert :wardwright@lustre_admin_test_support.ux_exploration_uses_live_model_controls(
+             "capability-command-center",
+             "server-tool-ui",
+             "wardwright_policy_cache_status"
+           )
+
+    assert :wardwright@lustre_admin_test_support.ux_exploration_uses_live_model_controls(
+             "route-topology-map",
+             "server-tool-ui",
+             "openai/tool-capable-ui"
+           )
+
+    assert :wardwright@lustre_admin_test_support.ux_exploration_uses_live_model_controls(
+             "guided-change-review",
+             "server-tool-ui",
+             "Access Policy"
+           )
+  end
+
+  test "admin UX exploration themes are switchable independently from live behavior" do
+    put_server_tool_model_config()
+
+    assert :wardwright@lustre_admin_test_support.ux_exploration_theme_switch_updates_sidebar(
+             "server-tool-ui",
+             "Review"
+           )
+  end
+
+  test "admin UX exploration can toggle real model server tools" do
+    put_server_tool_model_config()
+
+    assert :wardwright@lustre_admin_test_support.ux_exploration_toggles_server_tool(
+             "capability-command-center",
+             "server-tool-ui",
+             "Disable",
+             "Server Tools"
+           )
+
+    assert {:ok, config} = Wardwright.model_config("server-tool-ui")
+
+    assert %{"enabled" => false, "name" => "wardwright_policy_cache_status"} =
+             Enum.find(config["server_tools"], &(&1["name"] == "wardwright_policy_cache_status"))
   end
 
   test "admin rail links to UX concept exploration as a recoverable route" do

@@ -21,6 +21,41 @@ pub fn workbench_deep_link_uses_selected_model(
   |> view_contains(expected_text)
 }
 
+pub fn ux_exploration_uses_live_model_controls(
+  concept_id: String,
+  model_id: String,
+  expected_text: String,
+) -> Bool {
+  start("ux_exploration:" <> concept_id <> ":" <> model_id)
+  |> view_contains(expected_text)
+}
+
+pub fn ux_exploration_theme_switch_updates_sidebar(
+  model_id: String,
+  theme_label: String,
+) -> Bool {
+  start("ux_exploration:holistic-control-room:" <> model_id)
+  |> simulate.click(on: query.element(
+    matching: query.tag("button")
+    |> query.and(query.text(theme_label)),
+  ))
+  |> view_contains("<code>" <> theme_label <> "</code>")
+}
+
+pub fn ux_exploration_toggles_server_tool(
+  concept_id: String,
+  model_id: String,
+  action_label: String,
+  expected_text: String,
+) -> Bool {
+  start("ux_exploration:" <> concept_id <> ":" <> model_id)
+  |> simulate.click(on: query.element(
+    matching: query.tag("button")
+    |> query.and(query.text(action_label)),
+  ))
+  |> view_contains(expected_text)
+}
+
 fn start(flags: String) {
   simulate.simple(
     init: lustre_admin.init,

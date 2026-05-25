@@ -7,8 +7,9 @@ status: exploratory
 # Admin UX Exploration Gallery
 
 This page collects the Wardwright admin UX concepts into one tryable
-exploration surface. The concepts are also implemented as protected
-Wardwright app routes so reviewers can experience the alternatives without
+exploration surface. The current app implementation mounts the same protected
+Lustre server-component runtime used by `/admin`, so reviewers can compare
+alternative layouts against live Wardwright model data and controls instead of
 opening static screenshots.
 
 App routes:
@@ -44,3 +45,17 @@ Feedback and voting:
 The gallery and app routes keep these concepts separate from implemented
 production admin behavior. They are discussion and selection surfaces, not a
 claim that any concept has replaced `/admin`.
+
+The in-app exploration now separates two axes:
+
+- **Layout concept**: the five routes above arrange the same live model-access
+  panels around different jobs: configuration, capability inspection, topology,
+  guided review, and a holistic control room.
+- **Visual theme**: the Lustre surface exposes independent Operations, Studio,
+  Topology, and Review themes. This keeps styling experiments mixable without
+  copying the behavior implementation.
+
+The first real behavior wired into the exploration is model-level server-tool
+management. The exploration page reuses the production Models & access summary,
+access policy editor, and server-tool panel, so toggling a tool from a concept
+view changes the same stored model configuration as the production admin page.

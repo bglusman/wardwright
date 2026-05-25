@@ -15,7 +15,26 @@ defmodule WardwrightWeb.LustreWorkbenchController do
       page_html(
         Plug.CSRFProtection.get_csrf_token(),
         page_param(conn.query_params),
-        Map.get(conn.query_params, "model", "")
+        Map.get(conn.query_params, "model", ""),
+        ""
+      )
+    )
+  end
+
+  def show_ux_exploration(conn, params) do
+    conn = fetch_query_params(conn)
+
+    conn
+    |> put_resp_header("cache-control", "no-store")
+    |> put_resp_header("pragma", "no-cache")
+    |> put_resp_header("expires", "0")
+    |> put_resp_content_type("text/html")
+    |> html(
+      page_html(
+        Plug.CSRFProtection.get_csrf_token(),
+        "ux_exploration",
+        Map.get(conn.query_params, "model", ""),
+        Map.get(params, "concept", "")
       )
     )
   end
@@ -33,11 +52,12 @@ defmodule WardwrightWeb.LustreWorkbenchController do
     redirect(conn, to: target)
   end
 
-  defp page_html(csrf_token, page, model) do
+  defp page_html(csrf_token, page, model, concept) do
     socket_route =
       "/admin/socket/websocket?" <>
         URI.encode_query(%{
           "_csrf_token" => csrf_token,
+          "concept" => concept,
           "model" => model,
           "page" => page
         })

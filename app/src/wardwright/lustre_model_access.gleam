@@ -383,7 +383,7 @@ fn notices(model: Model) -> Element(Msg) {
   }
 }
 
-fn model_summary(model: Model) -> Element(Msg) {
+pub fn model_summary(model: Model) -> Element(Msg) {
   html.article([class("panel model-summary-panel")], [
     html.div([class("panel-header")], [
       html.div([], [
@@ -447,7 +447,7 @@ fn metric(label: String, body: String) -> Element(Msg) {
   ])
 }
 
-fn access_policy_editor(model: Model) -> Element(Msg) {
+pub fn access_policy_editor(model: Model) -> Element(Msg) {
   html.article([class("panel access-policy-editor")], [
     html.h2([], [text("Access Policy")]),
     html.form(
@@ -507,7 +507,7 @@ fn access_policy_editor(model: Model) -> Element(Msg) {
   ])
 }
 
-fn server_tools_panel(model: Model) -> Element(Msg) {
+pub fn server_tools_panel(model: Model) -> Element(Msg) {
   let #(mediation_mode, mediation_rule_count) = model.tool_mediation
   let #(advertisement_mode, guaranteed_tools, conditional_tools) =
     model.tool_advertisement
