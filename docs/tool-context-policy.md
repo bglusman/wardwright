@@ -133,7 +133,7 @@ provider tools remain deferred.
 
 Tool mediation is the broader control plane around this first server-tool
 surface. Request-side mediation can inspect agent-declared and Wardwright-added
-tool declarations, patch the provider-visible catalog, and receipt original vs
+tool declarations, patch the provider-visible catalog, and record original vs
 final tool schema hashes under
 `final.provider_metadata.wardwright_tool_mediation`. See
 [Tool Mediation](tool-mediation.html) for the extension modes and backlog.

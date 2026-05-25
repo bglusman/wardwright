@@ -130,7 +130,7 @@ When mediation runs, receipts include:
 }
 ```
 
-The hash records schema change without storing the full schema in every receipt.
+The hash records the schema change without storing the full schema in every receipt.
 Future slices should add argument hashes, result hashes, tool-specific timing,
 approval evidence, and provider-hosted event normalization.
 
