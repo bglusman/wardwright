@@ -18,6 +18,15 @@ type ModelOption =
 type KeyOption =
   #(String, String, String, String)
 
+type ServerToolOption =
+  #(String, String, String, String, String, String, String, String)
+
+type ServerToolTargetOption =
+  #(String, String, String)
+
+type ToolMediationSummary =
+  #(String, Int)
+
 pub type Model {
   Model(
     model_id: String,
@@ -30,6 +39,9 @@ pub type Model {
     status: String,
     error: String,
     receipt_storage_note: String,
+    server_tools: List(ServerToolOption),
+    server_tool_targets: List(ServerToolTargetOption),
+    tool_mediation: ToolMediationSummary,
   )
 }
 
@@ -63,6 +75,15 @@ fn external_access_summary(
 
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "key_options")
 fn external_key_options(model_id: String) -> List(KeyOption)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "server_tool_summary")
+fn external_server_tool_summary(
+  model_id: String,
+) -> #(
+  List(ServerToolOption),
+  List(ServerToolTargetOption),
+  ToolMediationSummary,
+)
 
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "create_key")
 fn external_create_key(
@@ -202,6 +223,9 @@ fn load_model(
   let #(model_id, requires_api_key, unkeyed_access, _, vcr_mode, storage_note) =
     external_access_summary(requested_model_id)
 
+  let #(server_tools, server_tool_targets, tool_mediation) =
+    external_server_tool_summary(model_id)
+
   Model(
     model_id:,
     requires_api_key:,
@@ -213,6 +237,9 @@ fn load_model(
     status:,
     error:,
     receipt_storage_note: storage_note,
+    server_tools:,
+    server_tool_targets:,
+    tool_mediation:,
   )
 }
 
@@ -259,6 +286,7 @@ pub fn workspace(model: Model) -> Element(Msg) {
     html.section([class("model-key-grid")], [
       model_summary(model),
       access_policy_editor(model),
+      server_tools_panel(model),
       model_lifecycle_panel(model),
       create_key_panel(model),
       keys_panel(model),
@@ -281,6 +309,8 @@ pub fn sidebar_controls(model: Model) -> List(Element(Msg)) {
       ]),
       html.span([], [text("Replay capture")]),
       html.code([], [text(vcr_mode_label(model.vcr_mode))]),
+      html.span([], [text("Server tools")]),
+      html.code([], [text(int.to_string(list.length(model.server_tools)))]),
     ]),
   ]
 }
@@ -369,6 +399,7 @@ fn model_summary(model: Model) -> Element(Msg) {
       metric("Replay capture", vcr_mode_label(model.vcr_mode)),
       metric("Receipt store", model.receipt_storage_note),
       metric("Keys", int.to_string(list.length(model.keys))),
+      metric("Server tools", int.to_string(list.length(model.server_tools))),
     ]),
   ])
 }
@@ -450,6 +481,106 @@ fn access_policy_editor(model: Model) -> Element(Msg) {
       ],
     ),
   ])
+}
+
+fn server_tools_panel(model: Model) -> Element(Msg) {
+  let #(mediation_mode, mediation_rule_count) = model.tool_mediation
+
+  html.article([class("panel server-tools-panel")], [
+    html.div([class("panel-header")], [
+      html.div([], [
+        html.h2([], [text("Server Tools")]),
+        html.p([], [
+          text("Model-level Wardwright-hosted tool configuration."),
+        ]),
+      ]),
+      html.span([class("badge")], [
+        text(int.to_string(list.length(model.server_tools)) <> " configured"),
+      ]),
+    ]),
+    html.dl([class("metrics")], [
+      metric("Mediation", mediation_mode),
+      metric("Mediation rules", int.to_string(mediation_rule_count)),
+      metric("Tool-capable targets", int.to_string(tool_capable_count(model))),
+    ]),
+    server_tool_table(model.server_tools),
+    server_tool_targets(model.server_tool_targets),
+  ])
+}
+
+fn server_tool_table(tools: List(ServerToolOption)) -> Element(Msg) {
+  case tools {
+    [] -> html.p([], [text("No server tools configured for this model.")])
+    _ ->
+      html.table([class("server-tool-table")], [
+        html.thead([], [
+          html.tr([], [
+            html.th([], [text("Tool")]),
+            html.th([], [text("Engine")]),
+            html.th([], [text("State")]),
+            html.th([], [text("Source")]),
+            html.th([], [text("Dune limits")]),
+            html.th([], [text("Schema")]),
+          ]),
+        ]),
+        html.tbody([], list.map(tools, server_tool_row)),
+      ])
+  }
+}
+
+fn server_tool_row(tool: ServerToolOption) -> Element(Msg) {
+  let #(
+    name,
+    engine,
+    source,
+    enabled,
+    visibility,
+    limit_summary,
+    parameter_keys,
+    input_keys,
+  ) = tool
+
+  html.tr([], [
+    html.td([], [
+      html.code([], [text(name)]),
+      html.small([], [text(visibility)]),
+    ]),
+    html.td([], [text(engine)]),
+    html.td([], [text(enabled)]),
+    html.td([], [text(source)]),
+    html.td([], [text(limit_summary)]),
+    html.td([], [
+      html.small([], [
+        text("params " <> parameter_keys <> " / input " <> input_keys),
+      ]),
+    ]),
+  ])
+}
+
+fn server_tool_targets(targets: List(ServerToolTargetOption)) -> Element(Msg) {
+  html.div([class("server-tool-targets")], [
+    html.h3([], [text("Provider Targets")]),
+    html.ul([], list.map(targets, server_tool_target_item)),
+  ])
+}
+
+fn server_tool_target_item(target: ServerToolTargetOption) -> Element(Msg) {
+  let #(model, kind, support) = target
+
+  html.li([], [
+    html.code([], [text(model)]),
+    html.span([], [text(kind)]),
+    html.strong([], [text(support)]),
+  ])
+}
+
+fn tool_capable_count(model: Model) -> Int {
+  model.server_tool_targets
+  |> list.filter(fn(target) {
+    let #(_, _, support) = target
+    support == "tool-capable" || support == "Server tools sent to provider"
+  })
+  |> list.length
 }
 
 fn model_lifecycle_panel(_model: Model) -> Element(Msg) {
@@ -737,7 +868,7 @@ pub fn styles() -> String {
     margin: 0 0 6px;
     text-transform: uppercase;
   }
-  h1, h2, p, dl {
+  h1, h2, h3, p, dl {
     margin: 0;
   }
   h1 {
@@ -917,6 +1048,38 @@ pub fn styles() -> String {
     font-size: 12px;
     text-transform: uppercase;
   }
+  .server-tools-panel {
+    grid-column: 1 / -1;
+  }
+  .server-tool-table td:first-child {
+    display: grid;
+    gap: 4px;
+  }
+  .server-tool-targets {
+    display: grid;
+    gap: 8px;
+  }
+  .server-tool-targets h3 {
+    font-size: 14px;
+    line-height: 1.25;
+  }
+  .server-tool-targets ul {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .server-tool-targets li {
+    display: grid;
+    grid-template-columns: minmax(160px, 1fr) minmax(120px, max-content) minmax(130px, max-content);
+    gap: 10px;
+    align-items: center;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fbfcfd;
+  }
   .keys-panel {
     grid-column: 1 / -1;
   }
@@ -949,6 +1112,9 @@ pub fn styles() -> String {
   }
   @media (max-width: 860px) {
     .model-access-app, .model-key-grid, .inline-form {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .server-tool-targets li {
       grid-template-columns: minmax(0, 1fr);
     }
     .workspace {

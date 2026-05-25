@@ -334,6 +334,102 @@ defmodule Wardwright.PublicApiTest do
     refute local.resp_body =~ "do-not-leak"
   end
 
+  test "protected model access endpoint exposes sanitized server tool configuration" do
+    config =
+      unit_policy_config()
+      |> Map.put("model_id", "server-tool-access")
+      |> Map.put("targets", [
+        %{
+          "context_window" => 8192,
+          "model" => "openai/tool-capable-test",
+          "provider_base_url" => "https://example.com/v1",
+          "provider_kind" => "openai-compatible"
+        },
+        %{"context_window" => 4096, "model" => "local/mock-toolless"}
+      ])
+      |> Map.put("dispatchers", [
+        %{
+          "id" => "dispatcher.server-tools",
+          "models" => ["openai/tool-capable-test", "local/mock-toolless"]
+        }
+      ])
+      |> Map.put("route_root", "dispatcher.server-tools")
+      |> Map.put("server_tools", [
+        %{"name" => "wardwright_policy_cache_status"},
+        %{
+          "input" => %{"tenant" => "synthetic"},
+          "limits" => %{"max_heap_size" => 1_000_000, "max_reductions" => 10_000, "timeout_ms" => 500},
+          "name" => "synthetic_dune_tool",
+          "parameters" => %{
+            "properties" => %{
+              "query" => %{"type" => "string"}
+            },
+            "type" => "object"
+          },
+          "source" => "fn private_dune_source() { \"do-not-expose-source\" }"
+        },
+        %{
+          "engine" => "beam_module",
+          "module" => "Wardwright.Test.Tool",
+          "name" => "synthetic_beam_tool",
+          "path" => "/Users/example/private/server_tool.exs"
+        },
+        %{
+          "enabled" => false,
+          "name" => "disabled_dune_tool",
+          "source" => "%{\"disabled\" => true}"
+        }
+      ])
+      |> Map.put("tool_mediation", %{
+        "mode" => "patch",
+        "rules" => [
+          %{"action" => "augment", "id" => "unify-search", "match" => %{"name" => "search"}}
+        ]
+      })
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    local = call(:get, "/admin/model-access")
+    assert local.status == 200
+    body = JSON.decode!(local.resp_body)
+
+    [model] = body["wardwright_models"]
+    assert model["id"] == "server-tool-access"
+    assert get_in(model, ["tool_mediation", "mode"]) == "patch"
+    assert get_in(model, ["tool_mediation", "rule_count"]) == 1
+
+    assert Enum.map(model["server_tools"], & &1["name"]) == [
+             "wardwright_policy_cache_status",
+             "synthetic_dune_tool",
+             "synthetic_beam_tool",
+             "disabled_dune_tool"
+           ]
+
+    dune_tool = Enum.find(model["server_tools"], &(&1["name"] == "synthetic_dune_tool"))
+    assert dune_tool["source"] == "dune_source"
+    assert dune_tool["parameter_keys"] == ["query"]
+    assert dune_tool["input_keys"] == ["tenant"]
+
+    assert dune_tool["limits"] == %{
+             "max_heap_size" => 1_000_000,
+             "max_reductions" => 10_000,
+             "timeout_ms" => 500
+           }
+
+    beam_tool = Enum.find(model["server_tools"], &(&1["name"] == "synthetic_beam_tool"))
+    assert beam_tool["source"] == "beam_path"
+
+    disabled_tool = Enum.find(model["server_tools"], &(&1["name"] == "disabled_dune_tool"))
+    assert disabled_tool["enabled"] == false
+    refute local.resp_body =~ "do-not-expose-source"
+    refute local.resp_body =~ "/Users/example/private"
+    refute local.resp_body =~ "server_tool.exs"
+
+    targets = Map.new(model["server_tool_targets"], &{&1["model"], &1})
+    assert targets["openai/tool-capable-test"]["support"] == "tool-capable"
+    assert targets["local/mock-toolless"]["support"] == "no-tool-injection"
+  end
+
   test "protected policy authoring API exposes projection and tool contracts" do
     rejected = call(:get, "/v1/policy-authoring/tools", nil, [], {203, 0, 113, 10})
     assert rejected.status == 403

@@ -189,6 +189,60 @@ defmodule WardwrightWeb.WorkbenchTest do
     WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
   end
 
+  test "model access UI exposes server tool configuration and target support" do
+    put_server_tool_model_config()
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "Server Tools"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "wardwright_policy_cache_status"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "synthetic_dune_tool"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "disabled_dune_tool"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "disabled"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "timeout 500ms, reductions 10000, heap 1000000"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "openai/tool-capable-ui"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "Server tools sent to provider"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "Server tools not sent"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_omits(
+             "server-tool-ui",
+             "do-not-expose-source"
+           )
+  end
+
   test "transport registration pushes the initial control debugger DOM payload" do
     assert {:ok, state} =
              WardwrightWeb.LustreWorkbenchSocket.init(%{params: %{"page" => "control_debugger"}})
@@ -726,6 +780,34 @@ defmodule WardwrightWeb.WorkbenchTest do
            )
   end
 
+  test "control debugger replays server tool execution evidence from receipts" do
+    receipt =
+      control_debugger_receipt_fixture("rcpt_control_server_tool_replay")
+      |> Map.update!("final", fn final ->
+        Map.put(final, "provider_metadata", %{
+          "wardwright_server_tools" => [
+            %{
+              "call_id" => "call_tool_1",
+              "engine" => "builtin",
+              "execution_location" => "wardwright",
+              "name" => "wardwright_policy_cache_status",
+              "result_metadata" => %{"entry_count" => 3, "topology" => "memory"},
+              "status" => "completed",
+              "visibility_level" => "local_verified"
+            }
+          ]
+        })
+      end)
+
+    Wardwright.ReceiptStore.insert(receipt)
+
+    assert :wardwright@lustre_control_debugger_test_support.replaying_receipt_shows_server_tool_execution(
+             "rcpt_control_server_tool_replay",
+             "wardwright_policy_cache_status",
+             "entry_count"
+           )
+  end
+
   test "control debugger exposes counterfactual fork workflow and runtime readiness" do
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("What-if replay")
 
@@ -911,6 +993,60 @@ defmodule WardwrightWeb.WorkbenchTest do
         %{"id" => "dispatcher.counterfactual-live", "models" => ["canned/counterfactual-live"]}
       ])
       |> Map.put("route_root", "dispatcher.counterfactual-live")
+
+    {:ok, _config} = Wardwright.put_model_config(config)
+  end
+
+  defp put_server_tool_model_config do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "server-tool-ui")
+      |> Map.put("targets", [
+        %{
+          "context_window" => 8192,
+          "model" => "openai/tool-capable-ui",
+          "provider_base_url" => "https://example.com/v1",
+          "provider_kind" => "openai-compatible"
+        },
+        %{"context_window" => 4096, "model" => "local/mock-toolless-ui"}
+      ])
+      |> Map.put("dispatchers", [
+        %{
+          "id" => "dispatcher.server-tools-ui",
+          "models" => ["openai/tool-capable-ui", "local/mock-toolless-ui"]
+        }
+      ])
+      |> Map.put("route_root", "dispatcher.server-tools-ui")
+      |> Map.put("server_tools", [
+        %{"name" => "wardwright_policy_cache_status"},
+        %{
+          "input" => %{"tenant" => "synthetic"},
+          "limits" => %{
+            "max_heap_size" => 1_000_000,
+            "max_reductions" => 10_000,
+            "timeout_ms" => 500
+          },
+          "name" => "synthetic_dune_tool",
+          "parameters" => %{
+            "properties" => %{
+              "query" => %{"type" => "string"}
+            },
+            "type" => "object"
+          },
+          "source" => "fn private_dune_source() { \"do-not-expose-source\" }"
+        },
+        %{
+          "enabled" => false,
+          "name" => "disabled_dune_tool",
+          "source" => "%{\"disabled\" => true}"
+        }
+      ])
+      |> Map.put("tool_mediation", %{
+        "mode" => "patch",
+        "rules" => [
+          %{"action" => "augment", "id" => "unify-search", "match" => %{"name" => "search"}}
+        ]
+      })
 
     {:ok, _config} = Wardwright.put_model_config(config)
   end

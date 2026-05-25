@@ -48,10 +48,104 @@ defmodule WardwrightWeb.ModelAccessProjection do
       "provider_target_models" => config |> Wardwright.provider_targets() |> Enum.map(& &1["model"]),
       "route_root" => Map.get(config, "route_root", "dispatcher.prompt_length"),
       "route_type" => root_route_type(config),
+      "server_tool_targets" => server_tool_target_records(config),
+      "server_tools" => server_tool_records(config),
       "target_models" => config |> Map.get("targets", []) |> Enum.map(& &1["model"]),
+      "tool_mediation" => tool_mediation_record(config),
       "vcr" => Map.get(config, "vcr", %{"mode" => "metadata_only"})
     }
   end
+
+  def server_tool_records(config) when is_map(config) do
+    config
+    |> Map.get("server_tools", [])
+    |> List.wrap()
+    |> Enum.map(&server_tool_record/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  def server_tool_records(_config), do: []
+
+  def server_tool_target_records(config) when is_map(config) do
+    config
+    |> Wardwright.provider_targets()
+    |> Enum.map(fn target ->
+      kind = provider_kind(target)
+
+      %{
+        "kind" => kind,
+        "model" => Map.get(target, "model", ""),
+        "server_tools_supported" => kind == "openai-compatible",
+        "support" => if(kind == "openai-compatible", do: "tool-capable", else: "no-tool-injection")
+      }
+    end)
+  end
+
+  def server_tool_target_records(_config), do: []
+
+  def tool_mediation_record(config) when is_map(config) do
+    mediation = Map.get(config, "tool_mediation", %{})
+    rules = mediation |> Map.get("rules", []) |> then(fn rules -> if is_list(rules), do: rules, else: [] end)
+
+    %{
+      "mode" => Map.get(mediation, "mode", "patch"),
+      "rule_count" => length(rules)
+    }
+  end
+
+  def tool_mediation_record(_config), do: %{"mode" => "patch", "rule_count" => 0}
+
+  defp server_tool_record(%{} = tool) do
+    name = tool |> Map.get("name", "") |> to_string() |> String.trim()
+    engine = tool |> Map.get("engine", "builtin") |> to_string() |> String.trim()
+
+    if name != "" do
+      %{
+        "enabled" => Map.get(tool, "enabled", true) == true,
+        "engine" => if(engine == "", do: "builtin", else: engine),
+        "input_keys" => input_keys(tool),
+        "limits" => public_limits(Map.get(tool, "limits", %{})),
+        "name" => name,
+        "parameter_keys" => parameter_keys(tool),
+        "source" => server_tool_source(tool),
+        "visibility_level" => "local_verified"
+      }
+    end
+  end
+
+  defp server_tool_record(_tool), do: nil
+
+  defp server_tool_source(%{"engine" => "builtin"}), do: "builtin"
+  defp server_tool_source(%{"source" => source}) when is_binary(source) and source != "", do: "dune_source"
+
+  defp server_tool_source(%{"snippet_id" => snippet_id}) when is_binary(snippet_id) and snippet_id != "",
+    do: "dune_snippet"
+
+  defp server_tool_source(%{"path" => path}) when is_binary(path) and path != "", do: "beam_path"
+  defp server_tool_source(%{"module" => module}) when is_binary(module) and module != "", do: "beam_module"
+  defp server_tool_source(%{"engine" => engine}) when is_binary(engine) and engine != "", do: engine
+  defp server_tool_source(_tool), do: "builtin"
+
+  defp public_limits(limits) when is_map(limits) do
+    limits
+    |> Map.take(["timeout_ms", "max_reductions", "max_heap_size"])
+    |> Enum.filter(fn {_key, value} -> is_integer(value) and value > 0 end)
+    |> Map.new()
+  end
+
+  defp public_limits(_limits), do: %{}
+
+  defp parameter_keys(tool) do
+    tool
+    |> get_in(["parameters", "properties"])
+    |> case do
+      properties when is_map(properties) -> properties |> Map.keys() |> Enum.sort()
+      _properties -> []
+    end
+  end
+
+  defp input_keys(%{"input" => input}) when is_map(input), do: input |> Map.keys() |> Enum.sort()
+  defp input_keys(_tool), do: []
 
   defp provider_model_access_records(config, provider_statuses) do
     provider_runtime =

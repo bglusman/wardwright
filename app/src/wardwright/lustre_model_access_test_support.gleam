@@ -25,6 +25,14 @@ pub fn initial_model_view_contains(
   |> view_contains(expected_text)
 }
 
+pub fn initial_model_view_omits(
+  model_id: String,
+  unwanted_text: String,
+) -> Bool {
+  start_with_model(model_id)
+  |> view_omits(unwanted_text)
+}
+
 pub fn creating_key_shows_secret(model_id: String, label: String) -> Bool {
   start()
   |> change_select("model", model_id)

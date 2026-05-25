@@ -121,6 +121,14 @@ server_tools:
 and Erlang modules use the same BEAM contract. These modules run inside the
 Wardwright BEAM and are trusted operator code, not a sandbox boundary.
 
+The model access page exposes this per-model server-tool configuration for
+operators. It shows configured tool names, enabled/disabled state,
+engine/source class, bounded Dune limits, parameter/input keys, tool mediation
+mode and rule count, and which provider targets can receive
+Wardwright-injected tools. It intentionally does not show inline Dune source or
+local BEAM file paths in the model-access projection; the full protected model
+artifact remains the place to inspect operator-owned source paths.
+
 In non-streaming Chat Completions, Wardwright advertises that tool to the
 selected provider, executes a matching model-requested call once, appends a tool
 result message, and asks the provider for the final answer. Receipts record
@@ -128,8 +136,11 @@ result message, and asks the provider for the final answer. Receipts record
 `execution_location: wardwright`, `visibility_level: local_verified`, status,
 engine, and result or error metadata. Extension authors should return
 receipt-safe metadata because Wardwright does not yet redact arbitrary local tool
-output. Streaming, side-effecting tools, remote MCP passthrough, and hidden
-provider tools remain deferred.
+output. Session replay summarizes those execution records so operators can see
+which Wardwright-hosted tools ran, their engine, call id, completion/error
+status, and compact result or error metadata without calling a provider.
+Streaming, side-effecting tools, remote MCP passthrough, and hidden provider
+tools remain deferred.
 
 Tool mediation is the broader control plane around this first server-tool
 surface. Request-side mediation can inspect agent-declared and Wardwright-added

@@ -1098,8 +1098,11 @@ defmodule Wardwright do
   defp normalize_server_tools(tools) when is_list(tools) do
     tools
     |> Enum.flat_map(fn
-      %{@enabled_key => false} ->
-        []
+      %{@enabled_key => false} = tool ->
+        tool
+        |> Map.delete(@enabled_key)
+        |> normalize_server_tool()
+        |> Enum.map(&Map.put(&1, @enabled_key, false))
 
       %{} = tool ->
         normalize_server_tool(tool)

@@ -28,6 +28,7 @@ const overflowPaths = [
   "/admin",
   "/admin?model=browser-smoke-model",
   "/admin?view=model_access",
+  "/admin?view=model_access&model=browser-smoke-tools",
   "/admin?view=control_debugger"
 ];
 
@@ -81,12 +82,14 @@ try {
   await waitForHttp(`${appUrl}/admin`, "Wardwright", serverStartTimeoutMs);
   await waitForHttp(`http://127.0.0.1:${chromePort}/json/version`, "webSocketDebuggerUrl");
   await seedRegisteredModelWorkbench();
+  await seedServerToolModelAccess();
 
   for (const viewport of viewports) {
     await runViewportSmoke(viewport);
   }
 
   await assertSelectedModelWorkbench();
+  await assertServerToolModelAccess();
   await assertControlDebuggerSaveScenario();
   await assertAdapterStatusPanel();
 
@@ -127,6 +130,70 @@ async function seedRegisteredModelWorkbench() {
   if (!response.ok) {
     throw new Error(
       `Could not seed registered model workbench fixture: ${response.status} ${await response.text()}`
+    );
+  }
+}
+
+async function seedServerToolModelAccess() {
+  const response = await fetch(`${appUrl}/v1/policy-authoring/wardwright-models`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      artifact: {
+        model_id: "browser-smoke-tools",
+        version: "browser-smoke",
+        description: "Browser smoke model with Wardwright-hosted server tools.",
+        targets: [
+          {
+            model: "openai/browser-smoke-tools",
+            context_window: 8192,
+            provider_kind: "openai-compatible",
+            provider_base_url: "https://example.com/v1"
+          },
+          { model: "local/browser-smoke-toolless", context_window: 4096 }
+        ],
+        dispatchers: [
+          {
+            id: "dispatcher.browser-smoke-tools",
+            models: ["openai/browser-smoke-tools", "local/browser-smoke-toolless"]
+          }
+        ],
+        route_root: "dispatcher.browser-smoke-tools",
+        server_tools: [
+          { name: "wardwright_policy_cache_status" },
+          {
+            name: "browser_smoke_dune_tool",
+            source: `%{"visible" => input["value"]}`,
+            input: { tenant: "browser-smoke" },
+            limits: { timeout_ms: 500, max_reductions: 10000, max_heap_size: 1000000 },
+            parameters: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                value: { type: "string" }
+              }
+            }
+          },
+          {
+            enabled: false,
+            name: "browser_smoke_disabled_tool",
+            source: `%{"disabled" => true}`
+          }
+        ],
+        tool_mediation: {
+          mode: "patch",
+          rules: [
+            { id: "browser-smoke-search", action: "augment", match: { name: "search" } }
+          ]
+        },
+        auth: { unkeyed_model_access: "public" }
+      }
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Could not seed server-tool model access fixture: ${response.status} ${await response.text()}`
     );
   }
 }
@@ -249,6 +316,59 @@ async function assertSelectedModelWorkbench() {
     }
 
     console.log("ok selected model workbench renders Lustre model surface");
+  } finally {
+    cdp.close();
+  }
+}
+
+async function assertServerToolModelAccess() {
+  const target = await createChromeTarget();
+  const cdp = await connectCdp(target.webSocketDebuggerUrl);
+
+  try {
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 1280,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false
+    });
+
+    await cdp.send("Page.navigate", {
+      url: `${appUrl}/admin?view=model_access&model=browser-smoke-tools`
+    });
+    await cdp.waitFor("Page.loadEventFired");
+    await waitForEval(cdp, `pageText(document.body).includes("Server Tools")`);
+    await waitForEval(cdp, `pageText(document.body).includes("browser_smoke_dune_tool")`);
+
+    const result = await evaluate(
+      cdp,
+      `(() => {
+        const text = pageText(document.body);
+        return {
+          hasEnabledTool: text.includes("wardwright_policy_cache_status"),
+          hasDuneLimits: text.includes("timeout 500ms") &&
+            text.includes("reductions 10000") &&
+            text.includes("heap 1000000"),
+          hasDisabledTool: text.includes("browser_smoke_disabled_tool") &&
+            text.includes("disabled"),
+          hasProviderSupport: text.includes("Server tools sent to provider") &&
+            text.includes("Server tools not sent")
+        };
+      })()`
+    );
+
+    if (
+      !result.hasEnabledTool ||
+      !result.hasDuneLimits ||
+      !result.hasDisabledTool ||
+      !result.hasProviderSupport
+    ) {
+      throw new Error(`server-tool model access smoke failed: ${JSON.stringify(result)}`);
+    }
+
+    console.log("ok model access renders server-tool config and target support");
   } finally {
     cdp.close();
   }
