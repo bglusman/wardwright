@@ -1,0 +1,969 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wardwright Holistic Admin UX Concepts</title>
+  <style>
+    :root {
+      --ink: #1c2326;
+      --muted: #5b656b;
+      --line: #b7c0c5;
+      --paper: #f7f6f1;
+      --panel: #ffffff;
+      --wash: #edf2f0;
+      --blue: #2b5b84;
+      --green: #28745a;
+      --yellow: #b6841d;
+      --red: #b0443f;
+      --violet: #68548a;
+      --shadow: 0 1px 0 rgba(28, 35, 38, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #e7e3d8;
+      color: var(--ink);
+      font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif;
+      letter-spacing: 0;
+    }
+
+    main {
+      max-width: 1460px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 34px;
+      line-height: 1.08;
+    }
+
+    h2 {
+      font-size: 24px;
+      line-height: 1.12;
+    }
+
+    h3 {
+      font-size: 16px;
+      line-height: 1.2;
+    }
+
+    p,
+    li,
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .page-title {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: end;
+      margin-bottom: 22px;
+    }
+
+    .note {
+      max-width: 680px;
+      padding: 12px 14px;
+      border: 2px dashed var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.55);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .frame {
+      overflow: hidden;
+      margin-bottom: 30px;
+      border: 2px solid var(--ink);
+      border-radius: 8px;
+      background: var(--paper);
+      box-shadow: 0 16px 30px rgba(28, 35, 38, 0.16);
+    }
+
+    .bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      min-height: 56px;
+      padding: 12px 18px;
+      border-bottom: 2px solid var(--ink);
+      background: #fdfbf5;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .mark {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border: 2px solid var(--ink);
+      border-radius: 7px;
+      background: var(--blue);
+      color: white;
+      font-weight: 800;
+    }
+
+    .bar-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .chip,
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 32px;
+      padding: 6px 10px;
+      border: 2px solid var(--ink);
+      border-radius: 6px;
+      background: white;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .button.primary {
+      background: var(--green);
+      color: white;
+    }
+
+    .button.warn {
+      background: #f3d894;
+    }
+
+    .app-shell {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      min-height: 780px;
+    }
+
+    .rail {
+      display: grid;
+      align-content: start;
+      gap: 8px;
+      padding: 16px;
+      border-right: 2px solid var(--ink);
+      background: #fbfaf4;
+    }
+
+    .rail a {
+      display: grid;
+      gap: 3px;
+      padding: 10px;
+      border: 2px solid transparent;
+      border-radius: 6px;
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .rail a.active,
+    .rail a:hover {
+      border-color: var(--ink);
+      background: var(--wash);
+    }
+
+    .rail strong {
+      font-size: 13px;
+    }
+
+    .rail span {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .workspace {
+      display: grid;
+      gap: 16px;
+      padding: 18px;
+    }
+
+    .screen-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .screen-head p {
+      max-width: 780px;
+      margin-top: 6px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .panel,
+    .card,
+    .tile {
+      min-width: 0;
+      border: 2px solid var(--ink);
+      border-radius: 7px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .panel {
+      padding: 14px;
+    }
+
+    .panel > header {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .tile {
+      display: grid;
+      gap: 7px;
+      padding: 12px;
+    }
+
+    .metric {
+      font-size: 26px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .status-row,
+    .list-row,
+    .ledger-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .status-row:first-child,
+    .list-row:first-child,
+    .ledger-row:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .dot {
+      width: 11px;
+      height: 11px;
+      border: 2px solid var(--ink);
+      border-radius: 99px;
+      background: var(--line);
+    }
+
+    .dot.pass {
+      background: var(--green);
+    }
+
+    .dot.warn {
+      background: var(--yellow);
+    }
+
+    .dot.fail {
+      background: var(--red);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 24px;
+      padding: 3px 8px;
+      border: 1px solid var(--ink);
+      border-radius: 999px;
+      background: #f9f7ef;
+      color: var(--ink);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .badge.green {
+      background: #dfeee6;
+    }
+
+    .badge.yellow {
+      background: #f7e8bd;
+    }
+
+    .badge.red {
+      background: #f1d2d0;
+    }
+
+    .canvas {
+      position: relative;
+      min-height: 410px;
+      padding: 18px;
+      border: 2px dashed var(--line);
+      border-radius: 7px;
+      background:
+        linear-gradient(rgba(28, 35, 38, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(28, 35, 38, 0.045) 1px, transparent 1px),
+        #fbfaf4;
+      background-size: 26px 26px;
+    }
+
+    .node {
+      position: absolute;
+      display: grid;
+      gap: 4px;
+      width: 180px;
+      padding: 10px;
+      border: 2px solid var(--ink);
+      border-radius: 7px;
+      background: white;
+      box-shadow: var(--shadow);
+    }
+
+    .node.model {
+      left: 38px;
+      top: 150px;
+      border-width: 3px;
+    }
+
+    .node.route {
+      left: 270px;
+      top: 70px;
+    }
+
+    .node.policy {
+      left: 270px;
+      top: 238px;
+    }
+
+    .node.provider-a {
+      left: 520px;
+      top: 38px;
+    }
+
+    .node.provider-b {
+      left: 520px;
+      top: 176px;
+    }
+
+    .node.receipts {
+      left: 760px;
+      top: 82px;
+      border-color: var(--violet);
+    }
+
+    .node.adapters {
+      left: 760px;
+      top: 238px;
+      border-color: var(--blue);
+    }
+
+    .connector {
+      position: absolute;
+      height: 2px;
+      background: var(--ink);
+      transform-origin: left center;
+    }
+
+    .c1 { left: 218px; top: 185px; width: 84px; transform: rotate(-35deg); }
+    .c2 { left: 218px; top: 208px; width: 85px; transform: rotate(28deg); }
+    .c3 { left: 450px; top: 112px; width: 82px; transform: rotate(-18deg); }
+    .c4 { left: 450px; top: 250px; width: 92px; transform: rotate(-22deg); }
+    .c5 { left: 698px; top: 96px; width: 78px; transform: rotate(14deg); }
+    .c6 { left: 698px; top: 210px; width: 78px; transform: rotate(24deg); }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
+      gap: 12px;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 10px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+      padding: 10px;
+      border: 2px solid var(--ink);
+      border-radius: 7px;
+      background: white;
+    }
+
+    .step-number {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border: 2px solid var(--ink);
+      border-radius: 999px;
+      background: var(--wash);
+      font-weight: 900;
+    }
+
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tab {
+      padding: 8px 10px;
+      border: 2px solid var(--ink);
+      border-radius: 6px;
+      background: white;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .tab.active {
+      background: var(--blue);
+      color: white;
+    }
+
+    .integration-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .integration-card {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      border: 2px solid var(--ink);
+      border-radius: 7px;
+      background: white;
+    }
+
+    .mobile-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .phone {
+      min-width: 0;
+      min-height: 460px;
+      padding: 12px;
+      border: 3px solid var(--ink);
+      border-radius: 24px;
+      background: #fbfaf4;
+    }
+
+    .phone-screen {
+      display: grid;
+      gap: 10px;
+      min-height: 430px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: white;
+    }
+
+    .phone-nav {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 5px;
+      margin-top: auto;
+    }
+
+    .phone-nav span {
+      min-height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: var(--wash);
+    }
+
+    .caption {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    @media (max-width: 980px) {
+      main {
+        padding: 16px;
+      }
+
+      .page-title,
+      .screen-head,
+      .split,
+      .app-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .rail {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        border-right: 0;
+        border-bottom: 2px solid var(--ink);
+      }
+
+      .grid-4,
+      .grid-3,
+      .grid-2,
+      .integration-grid,
+      .mobile-strip {
+        grid-template-columns: 1fr;
+      }
+
+      .canvas {
+        display: grid;
+        gap: 10px;
+        min-height: 0;
+      }
+
+      .node {
+        position: static;
+        width: auto;
+      }
+
+      .connector {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="page-title">
+      <div>
+        <h1>Wardwright admin UX, holistic concept</h1>
+        <p>This pass rethinks the whole operator surface: model contracts, route and policy design, validation evidence, receipts, adapters, framework recipes, and release readiness.</p>
+      </div>
+      <div class="note">Wireframe artifact, not implementation. The prior freeform pass is treated as a feature-area study for tool advertisement, not the product IA.</div>
+    </section>
+
+    <section class="frame">
+      <div class="bar">
+        <div class="brand">
+          <div class="mark">W</div>
+          <div>
+            <h3>Wardwright Control Room</h3>
+            <p>Stable model contracts with route, policy, evidence, and integration visibility.</p>
+          </div>
+        </div>
+        <div class="bar-actions">
+          <span class="chip">0.1.0 release candidate</span>
+          <span class="button warn">3 claims need evidence</span>
+          <span class="button primary">Run validation</span>
+        </div>
+      </div>
+      <div class="app-shell">
+        <nav class="rail">
+          <a class="active" href="#"><strong>Overview</strong><span>Readiness, health, next action</span></a>
+          <a href="#"><strong>Models</strong><span>Contracts, routes, tools, access</span></a>
+          <a href="#"><strong>Policy Lab</strong><span>Author, simulate, compare</span></a>
+          <a href="#"><strong>Evidence</strong><span>Receipts, replay, checks</span></a>
+          <a href="#"><strong>Integrations</strong><span>Frameworks and local agents</span></a>
+          <a href="#"><strong>Release</strong><span>Claims, artifacts, blockers</span></a>
+        </nav>
+        <section class="workspace">
+          <div class="screen-head">
+            <div>
+              <h2>Overview</h2>
+              <p>The first screen answers whether Wardwright is safe to use, what changed recently, and what evidence supports the current release claim.</p>
+            </div>
+            <div class="tabs">
+              <span class="tab active">Operate</span>
+              <span class="tab">Review</span>
+              <span class="tab">Release</span>
+            </div>
+          </div>
+
+          <div class="grid-4">
+            <article class="tile">
+              <span class="small">Gateway health</span>
+              <span class="metric">OK</span>
+              <span class="badge green">local + package smoke</span>
+            </article>
+            <article class="tile">
+              <span class="small">Model contracts</span>
+              <span class="metric">4</span>
+              <span class="badge yellow">1 conditional capability</span>
+            </article>
+            <article class="tile">
+              <span class="small">Adapter evidence</span>
+              <span class="metric">8/12</span>
+              <span class="badge yellow">basic-call coverage</span>
+            </article>
+            <article class="tile">
+              <span class="small">Release blockers</span>
+              <span class="metric">2</span>
+              <span class="badge red">claim mismatch risk</span>
+            </article>
+          </div>
+
+          <div class="grid-3">
+            <article class="panel">
+              <header>
+                <h3>Next best actions</h3>
+                <span class="badge yellow">review</span>
+              </header>
+              <div class="status-row">
+                <span class="dot warn"></span>
+                <div><h3>Resolve conditional tool claim</h3><p>Model supports server tools only on one routed target.</p></div>
+                <span class="button">Open model</span>
+              </div>
+              <div class="status-row">
+                <span class="dot warn"></span>
+                <div><h3>Separate SDK recipes from agent adapters</h3><p>Docs are accurate; UI should make the distinction explicit.</p></div>
+                <span class="button">Open integrations</span>
+              </div>
+              <div class="status-row">
+                <span class="dot pass"></span>
+                <div><h3>Package smoke passed</h3><p>Local artifact starts and installs an adapter in a temp workspace.</p></div>
+                <span class="badge green">done</span>
+              </div>
+            </article>
+
+            <article class="panel">
+              <header>
+                <h3>Recent evidence</h3>
+                <span class="badge green">live ledger</span>
+              </header>
+              <div class="ledger-row">
+                <span class="dot pass"></span>
+                <div><h3>Browser smoke</h3><p>Admin, model access, replay, mobile overflow.</p></div>
+                <span class="small">13:23</span>
+              </div>
+              <div class="ledger-row">
+                <span class="dot pass"></span>
+                <div><h3>Mutation pass</h3><p>Server-tool decision path killed all valid mutants.</p></div>
+                <span class="small">yesterday</span>
+              </div>
+              <div class="ledger-row">
+                <span class="dot warn"></span>
+                <div><h3>Framework recipes</h3><p>Basic-call smoke, no native tool-loop fidelity claim.</p></div>
+                <span class="small">known limit</span>
+              </div>
+            </article>
+
+            <article class="panel">
+              <header>
+                <h3>Release readiness</h3>
+                <span class="badge yellow">candidate</span>
+              </header>
+              <div class="status-row">
+                <span class="dot pass"></span>
+                <div><h3>Version and docs</h3><p>Public docs use 0.1.0 naming.</p></div>
+                <span class="badge green">ready</span>
+              </div>
+              <div class="status-row">
+                <span class="dot pass"></span>
+                <div><h3>Artifact install</h3><p>Burrito binary and adapter install smoke passed.</p></div>
+                <span class="badge green">ready</span>
+              </div>
+              <div class="status-row">
+                <span class="dot warn"></span>
+                <div><h3>UI polish</h3><p>Functional admin exists; holistic shell not implemented.</p></div>
+                <span class="badge yellow">decision</span>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="frame">
+      <div class="bar">
+        <div>
+          <h2>Models as the central canvas</h2>
+          <p>Routes, policy, capabilities, access, receipts, and integrations are arranged around the stable public model contract.</p>
+        </div>
+        <div class="bar-actions">
+          <span class="chip">model: wardwright/ops-agent</span>
+          <span class="button primary">Validate change</span>
+        </div>
+      </div>
+      <div class="workspace">
+        <div class="split">
+          <div class="panel">
+            <header>
+              <div>
+                <h3>Contract map</h3>
+                <p>Graph-first view with a non-graph fallback in the side panel.</p>
+              </div>
+              <span class="badge yellow">1 conditional capability</span>
+            </header>
+            <div class="canvas">
+              <div class="connector c1"></div>
+              <div class="connector c2"></div>
+              <div class="connector c3"></div>
+              <div class="connector c4"></div>
+              <div class="connector c5"></div>
+              <div class="connector c6"></div>
+              <div class="node model"><h3>Stable model</h3><p>wardwright/ops-agent</p><span class="badge green">public contract</span></div>
+              <div class="node route"><h3>Route graph</h3><p>dispatcher with fallback</p><span class="badge yellow">mixed targets</span></div>
+              <div class="node policy"><h3>Policy stack</h3><p>cache, guard, receipt rules</p><span class="badge green">validated</span></div>
+              <div class="node provider-a"><h3>OpenAI-compatible</h3><p>tools + JSON supported</p><span class="badge green">tool-capable</span></div>
+              <div class="node provider-b"><h3>Local model target</h3><p>no server-tool loop</p><span class="badge yellow">fallback only</span></div>
+              <div class="node receipts"><h3>Receipts</h3><p>metadata and policy evidence</p><span class="badge green">recording</span></div>
+              <div class="node adapters"><h3>Integrations</h3><p>SDK recipes + local agents</p><span class="badge yellow">basic-call</span></div>
+            </div>
+          </div>
+
+          <aside class="panel">
+            <header>
+              <h3>Model inspector</h3>
+              <span class="badge green">selected</span>
+            </header>
+            <div class="status-row">
+              <span class="dot pass"></span>
+              <div><h3>Advertised contract</h3><p>Text, JSON mode, receipt metadata, no blind tool union.</p></div>
+              <span class="button">Edit</span>
+            </div>
+            <div class="status-row">
+              <span class="dot warn"></span>
+              <div><h3>Capability difference</h3><p>Server tools are available only after routing to compatible targets.</p></div>
+              <span class="button warn">Explain</span>
+            </div>
+            <div class="status-row">
+              <span class="dot pass"></span>
+              <div><h3>Access policy</h3><p>Public unkeyed access disabled; API keys required.</p></div>
+              <span class="button">Keys</span>
+            </div>
+            <div class="status-row">
+              <span class="dot pass"></span>
+              <div><h3>Recording policy</h3><p>Metadata receipts plus replay capture for verified adapters.</p></div>
+              <span class="button">Evidence</span>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="frame">
+      <div class="bar">
+        <div>
+          <h2>Policy Lab and Evidence ledger</h2>
+          <p>Authoring, simulation, replay, and release checks become one validation story.</p>
+        </div>
+        <span class="button primary">Promote validated draft</span>
+      </div>
+      <div class="workspace">
+        <div class="grid-2">
+          <article class="panel">
+            <header>
+              <div>
+                <h3>Policy Lab</h3>
+                <p>Combines today's Model lab simulation with draft authoring and scenario fixtures.</p>
+              </div>
+              <span class="badge yellow">draft active</span>
+            </header>
+            <div class="timeline">
+              <div class="step">
+                <span class="step-number">1</span>
+                <div><h3>Describe the behavior</h3><p>Ask the authoring agent for a lightweight model-specific policy.</p></div>
+                <span class="badge">draft</span>
+              </div>
+              <div class="step">
+                <span class="step-number">2</span>
+                <div><h3>Run saved scenarios</h3><p>Replay known user inputs, model outputs, retries, and stream guards.</p></div>
+                <span class="badge green">passed</span>
+              </div>
+              <div class="step">
+                <span class="step-number">3</span>
+                <div><h3>Compare against receipts</h3><p>Use counterfactual replay to show what would have changed.</p></div>
+                <span class="badge yellow">2 diffs</span>
+              </div>
+              <div class="step">
+                <span class="step-number">4</span>
+                <div><h3>Activate with evidence</h3><p>Save the policy only with an attached validation bundle.</p></div>
+                <span class="button primary">Activate</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <header>
+              <div>
+                <h3>Evidence ledger</h3>
+                <p>Receipts, replay, browser checks, package smoke, adapter checks, and known limits in one place.</p>
+              </div>
+              <span class="badge green">auditable</span>
+            </header>
+            <div class="ledger-row">
+              <span class="dot pass"></span>
+              <div><h3>Receipt: req_018f...</h3><p>Route decision, caller provenance, policy actions, final status.</p></div>
+              <span class="button">Open</span>
+            </div>
+            <div class="ledger-row">
+              <span class="dot pass"></span>
+              <div><h3>Counterfactual: cache policy</h3><p>Output unchanged, receipt annotations changed.</p></div>
+              <span class="button">Compare</span>
+            </div>
+            <div class="ledger-row">
+              <span class="dot pass"></span>
+              <div><h3>Package smoke: darwin arm64</h3><p>Binary starts, adapter list works, Claude adapter installs.</p></div>
+              <span class="badge green">release</span>
+            </div>
+            <div class="ledger-row">
+              <span class="dot warn"></span>
+              <div><h3>Framework SDK recipes</h3><p>Basic call smoke only; native framework loop not claimed.</p></div>
+              <span class="badge yellow">limit</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="frame">
+      <div class="bar">
+        <div>
+          <h2>Integrations without mixing product surfaces</h2>
+          <p>Framework SDK recipes and local coding-agent adapters share evidence patterns but stay visually and semantically separate.</p>
+        </div>
+        <span class="button">Install adapter</span>
+      </div>
+      <div class="workspace">
+        <div class="integration-grid">
+          <article class="panel">
+            <header>
+              <div>
+                <h3>Framework SDK recipes</h3>
+                <p>Application frameworks call Wardwright through OpenAI-compatible APIs.</p>
+              </div>
+              <span class="badge yellow">recipe/basic-call</span>
+            </header>
+            <div class="integration-card">
+              <h3>OpenAI Agents SDK</h3>
+              <p>Basic call smoke, stable model name, receipt-id propagation notes.</p>
+              <span class="badge green">tested recipe</span>
+            </div>
+            <div class="integration-card">
+              <h3>LangChain / LangGraph</h3>
+              <p>OpenAI-compatible recipe with explicit no native graph replay claim.</p>
+              <span class="badge green">tested recipe</span>
+            </div>
+            <div class="integration-card">
+              <h3>LlamaIndex, Pydantic AI, Vercel AI SDK, Microsoft Extensions AI</h3>
+              <p>Show each SDK's tested call path, unsupported tool-loop fidelity, and doc recipe.</p>
+              <span class="badge yellow">partial matrix</span>
+            </div>
+          </article>
+
+          <article class="panel">
+            <header>
+              <div>
+                <h3>Local coding-agent adapters</h3>
+                <p>Agent runtime handoff, local config install, identity, and fidelity warnings.</p>
+              </div>
+              <span class="badge yellow">handoff fidelity</span>
+            </header>
+            <div class="integration-card">
+              <h3>Claude Code and Codex</h3>
+              <p>Local metadata install, adapter identity, best-effort prompt handoff.</p>
+              <span class="badge green">install smoke</span>
+            </div>
+            <div class="integration-card">
+              <h3>OpenCode and OpenClaw</h3>
+              <p>Distinct first-class local surfaces, not aliases for framework SDK integrations.</p>
+              <span class="badge yellow">surface review</span>
+            </div>
+            <div class="integration-card">
+              <h3>Pi and oh-my-pi / OMP</h3>
+              <p>Runtime equivalence probes, recording policy, and explicit missing state fidelity.</p>
+              <span class="badge green">adapter evidence</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="frame">
+      <div class="bar">
+        <div>
+          <h2>Mobile sketches</h2>
+          <p>Mobile should expose the same workflow, with compact evidence and model health first.</p>
+        </div>
+      </div>
+      <div class="workspace">
+        <div class="mobile-strip">
+          <div>
+            <div class="phone">
+              <div class="phone-screen">
+                <h3>Overview</h3>
+                <div class="tile"><span class="small">Gateway</span><span class="metric">OK</span><span class="badge green">ready</span></div>
+                <div class="tile"><span class="small">Blockers</span><span class="metric">2</span><span class="badge yellow">review</span></div>
+                <div class="status-row"><span class="dot warn"></span><div><h3>Conditional tools</h3><p>Open model contract.</p></div></div>
+                <div class="phone-nav"><span></span><span></span><span></span></div>
+              </div>
+            </div>
+            <div class="caption">Overview: readiness and next action.</div>
+          </div>
+          <div>
+            <div class="phone">
+              <div class="phone-screen">
+                <h3>Model</h3>
+                <div class="tile"><span class="small">wardwright/ops-agent</span><span class="badge yellow">1 mismatch</span></div>
+                <div class="status-row"><span class="dot pass"></span><div><h3>Route</h3><p>Dispatcher with fallback.</p></div></div>
+                <div class="status-row"><span class="dot warn"></span><div><h3>Capabilities</h3><p>Conditional server tools.</p></div></div>
+                <div class="status-row"><span class="dot pass"></span><div><h3>Receipts</h3><p>Metadata recording.</p></div></div>
+                <div class="phone-nav"><span></span><span></span><span></span></div>
+              </div>
+            </div>
+            <div class="caption">Model: contract summary before details.</div>
+          </div>
+          <div>
+            <div class="phone">
+              <div class="phone-screen">
+                <h3>Evidence</h3>
+                <div class="status-row"><span class="dot pass"></span><div><h3>Browser smoke</h3><p>Admin responsive.</p></div></div>
+                <div class="status-row"><span class="dot pass"></span><div><h3>Package smoke</h3><p>Artifact install.</p></div></div>
+                <div class="status-row"><span class="dot warn"></span><div><h3>SDK recipes</h3><p>Basic-call fidelity.</p></div></div>
+                <div class="button primary">Open release checklist</div>
+                <div class="phone-nav"><span></span><span></span><span></span></div>
+              </div>
+            </div>
+            <div class="caption">Evidence: release confidence without desktop tables.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
