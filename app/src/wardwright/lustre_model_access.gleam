@@ -27,6 +27,9 @@ type ServerToolTargetOption =
 type ToolMediationSummary =
   #(String, Int)
 
+type ToolAdvertisementSummary =
+  #(String, Int, Int)
+
 pub type Model {
   Model(
     model_id: String,
@@ -42,6 +45,7 @@ pub type Model {
     server_tools: List(ServerToolOption),
     server_tool_targets: List(ServerToolTargetOption),
     tool_mediation: ToolMediationSummary,
+    tool_advertisement: ToolAdvertisementSummary,
   )
 }
 
@@ -57,6 +61,7 @@ pub type Msg {
   ArchiveModel
   RestoreArchivedModel(String)
   DeleteArchivedModel(String)
+  ToggleServerTool(String, Bool)
 }
 
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "default_model_id")
@@ -83,7 +88,15 @@ fn external_server_tool_summary(
   List(ServerToolOption),
   List(ServerToolTargetOption),
   ToolMediationSummary,
+  ToolAdvertisementSummary,
 )
+
+@external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "toggle_server_tool")
+fn external_toggle_server_tool(
+  model_id: String,
+  tool_name: String,
+  enabled: Bool,
+) -> #(Bool, String)
 
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "create_key")
 fn external_create_key(
@@ -211,6 +224,16 @@ pub fn update(model: Model, msg: Msg) -> Model {
         False -> load_model(model.model_id, "", message, "")
       }
     }
+
+    ToggleServerTool(tool_name, enabled) -> {
+      let #(ok, message) =
+        external_toggle_server_tool(model.model_id, tool_name, enabled)
+
+      case ok {
+        True -> load_model(model.model_id, message, "", "")
+        False -> load_model(model.model_id, "", message, "")
+      }
+    }
   }
 }
 
@@ -223,7 +246,7 @@ fn load_model(
   let #(model_id, requires_api_key, unkeyed_access, _, vcr_mode, storage_note) =
     external_access_summary(requested_model_id)
 
-  let #(server_tools, server_tool_targets, tool_mediation) =
+  let #(server_tools, server_tool_targets, tool_mediation, tool_advertisement) =
     external_server_tool_summary(model_id)
 
   Model(
@@ -240,6 +263,7 @@ fn load_model(
     server_tools:,
     server_tool_targets:,
     tool_mediation:,
+    tool_advertisement:,
   )
 }
 
@@ -485,6 +509,8 @@ fn access_policy_editor(model: Model) -> Element(Msg) {
 
 fn server_tools_panel(model: Model) -> Element(Msg) {
   let #(mediation_mode, mediation_rule_count) = model.tool_mediation
+  let #(advertisement_mode, guaranteed_tools, conditional_tools) =
+    model.tool_advertisement
 
   html.article([class("panel server-tools-panel")], [
     html.div([class("panel-header")], [
@@ -502,10 +528,31 @@ fn server_tools_panel(model: Model) -> Element(Msg) {
       metric("Mediation", mediation_mode),
       metric("Mediation rules", int.to_string(mediation_rule_count)),
       metric("Tool-capable targets", int.to_string(tool_capable_count(model))),
+      metric("Advertise", advertisement_mode),
+      metric("Guaranteed tools", int.to_string(guaranteed_tools)),
+      metric("Conditional tools", int.to_string(conditional_tools)),
     ]),
+    server_tool_routing_note(model),
     server_tool_table(model.server_tools),
     server_tool_targets(model.server_tool_targets),
   ])
+}
+
+fn server_tool_routing_note(model: Model) -> Element(Msg) {
+  let capable = tool_capable_count(model)
+  let total = list.length(model.server_tool_targets)
+
+  let message = case total, capable {
+    0, _ -> "No provider targets are configured for this model."
+    _, 0 ->
+      "No current provider target can receive Wardwright-hosted tools; tools stay configured at model level but are not injected."
+    _, _ if capable == total ->
+      "Enabled Wardwright-hosted tools are applied after routing; every current provider target can receive them."
+    _, _ ->
+      "Tool availability differs by raw target, like context-window differences. Enabled Wardwright-hosted tools are applied after routing and sent only to the selected tool-capable provider target."
+  }
+
+  html.p([class("server-tool-routing-note")], [text(message)])
 }
 
 fn server_tool_table(tools: List(ServerToolOption)) -> Element(Msg) {
@@ -521,6 +568,7 @@ fn server_tool_table(tools: List(ServerToolOption)) -> Element(Msg) {
             html.th([], [text("Source")]),
             html.th([], [text("Dune limits")]),
             html.th([], [text("Schema")]),
+            html.th([], [text("Action")]),
           ]),
         ]),
         html.tbody([], list.map(tools, server_tool_row)),
@@ -553,6 +601,21 @@ fn server_tool_row(tool: ServerToolOption) -> Element(Msg) {
       html.small([], [
         text("params " <> parameter_keys <> " / input " <> input_keys),
       ]),
+    ]),
+    html.td([attribute("data-label", "Action")], [
+      button.button(
+        [
+          button.variant(button.Default),
+          type_("button"),
+          event.on_click(ToggleServerTool(name, enabled != "enabled")),
+        ],
+        [
+          text(case enabled {
+            "enabled" -> "Disable"
+            _ -> "Enable"
+          }),
+        ],
+      ),
     ]),
   ])
 }
@@ -1063,6 +1126,15 @@ pub fn styles() -> String {
   }
   .server-tool-table th:nth-child(5) {
     min-width: 210px;
+  }
+  .server-tool-routing-note {
+    padding: 10px 12px;
+    border: 1px solid #d6e5ea;
+    border-radius: 8px;
+    background: #f7fbfc;
+    color: #344454;
+    font-size: 13px;
+    font-weight: 700;
   }
   .server-tool-table td:first-child {
     display: grid;

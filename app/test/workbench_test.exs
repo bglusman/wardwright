@@ -237,10 +237,52 @@ defmodule WardwrightWeb.WorkbenchTest do
              "Server tools not sent"
            )
 
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "Tool availability differs by raw target"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "Guaranteed tools"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "Conditional tools"
+           )
+
     assert :wardwright@lustre_model_access_test_support.initial_model_view_omits(
              "server-tool-ui",
              "do-not-expose-source"
            )
+  end
+
+  test "model access UI toggles configured server tools at model level" do
+    put_server_tool_model_config()
+
+    assert :wardwright@lustre_model_access_test_support.toggling_server_tool_updates_state(
+             "server-tool-ui",
+             "Disable",
+             "Server tool wardwright_policy_cache_status disabled."
+           )
+
+    assert {:ok, config} = Wardwright.model_config("server-tool-ui")
+
+    assert %{"enabled" => false, "name" => "wardwright_policy_cache_status"} =
+             Enum.find(config["server_tools"], &(&1["name"] == "wardwright_policy_cache_status"))
+
+    assert :wardwright@lustre_model_access_test_support.toggling_server_tool_updates_state(
+             "server-tool-ui",
+             "Enable",
+             "Server tool wardwright_policy_cache_status enabled."
+           )
+
+    assert {:ok, config} = Wardwright.model_config("server-tool-ui")
+
+    enabled_tool = Enum.find(config["server_tools"], &(&1["name"] == "wardwright_policy_cache_status"))
+    assert enabled_tool["name"] == "wardwright_policy_cache_status"
+    refute enabled_tool["enabled"] == false
   end
 
   test "transport registration pushes the initial control debugger DOM payload" do

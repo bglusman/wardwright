@@ -127,7 +127,28 @@ engine/source class, bounded Dune limits, parameter/input keys, tool mediation
 mode and rule count, and which provider targets can receive
 Wardwright-injected tools. It intentionally does not show inline Dune source or
 local BEAM file paths in the model-access projection; the full protected model
-artifact remains the place to inspect operator-owned source paths.
+artifact remains the place to inspect operator-owned source paths. Operators
+can enable or disable already configured server tools from the model page, but
+tool creation, Dune source changes, BEAM paths, and mediation rules still go
+through the protected model artifact/API flow.
+
+For composed Wardwright models, server tools are configured at the Wardwright
+model level but applied after routing. Wardwright does not build a blind union
+of every raw provider's native tool surface. Tool availability differences are
+surfaced like context-window differences: operators can see which targets are
+tool-capable, but only tools supported across the effective route set should be
+treated as guaranteed Wardwright-model capabilities. The model-access
+projection reports `tool_advertisement.mode: intersection`, a guaranteed count,
+and a conditional count so agents and operators do not mistake conditional
+tools for a stable contract. On a non-streaming request, the provider-visible
+catalog is the caller-declared tools plus enabled Wardwright-hosted tools, after
+mediation, for the selected raw target. If the selected target is not
+tool-capable, Wardwright-hosted tools remain configured but are not injected on
+that call. Provider-native hosted tools are not discovered or normalized in
+`0.1.0`; raw target config changes are reflected on the next request/projection
+from the active model config. A future advertisement policy can make this
+explicit as `intersection` for stable model contracts or `conditional_union`
+when tool-aware routing can force compatible targets.
 
 In non-streaming Chat Completions, Wardwright advertises that tool to the
 selected provider, executes a matching model-requested call once, appends a tool

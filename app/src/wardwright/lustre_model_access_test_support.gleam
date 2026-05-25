@@ -117,6 +117,19 @@ pub fn selecting_model_shows(model_id: String, expected_text: String) -> Bool {
   |> view_contains(expected_text)
 }
 
+pub fn toggling_server_tool_updates_state(
+  model_id: String,
+  action_label: String,
+  expected_text: String,
+) -> Bool {
+  start_with_model(model_id)
+  |> simulate.click(on: query.element(
+    matching: query.tag("button")
+    |> query.and(query.text(action_label)),
+  ))
+  |> view_contains(expected_text)
+}
+
 pub fn archiving_model_hides_active_and_shows_archive(
   model_id: String,
   remaining_model_id: String,

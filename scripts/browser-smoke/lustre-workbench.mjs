@@ -354,7 +354,13 @@ async function assertServerToolModelAccess() {
           hasDisabledTool: text.includes("browser_smoke_disabled_tool") &&
             text.includes("disabled"),
           hasProviderSupport: text.includes("Server tools sent to provider") &&
-            text.includes("Server tools not sent")
+            text.includes("Server tools not sent"),
+          hasToggleControls: text.includes("Disable") && text.includes("Enable"),
+          hasAdvertisementSummary: text.includes("Advertise") &&
+            text.includes("Guaranteed tools") &&
+            text.includes("Conditional tools"),
+          hasRoutingScope: text.includes("Tool availability differs by raw target") &&
+            text.includes("selected tool-capable provider target")
         };
       })()`
     );
@@ -363,7 +369,10 @@ async function assertServerToolModelAccess() {
       !result.hasEnabledTool ||
       !result.hasDuneLimits ||
       !result.hasDisabledTool ||
-      !result.hasProviderSupport
+      !result.hasProviderSupport ||
+      !result.hasToggleControls ||
+      !result.hasAdvertisementSummary ||
+      !result.hasRoutingScope
     ) {
       throw new Error(`server-tool model access smoke failed: ${JSON.stringify(result)}`);
     }

@@ -51,6 +51,7 @@ defmodule WardwrightWeb.ModelAccessProjection do
       "server_tool_targets" => server_tool_target_records(config),
       "server_tools" => server_tool_records(config),
       "target_models" => config |> Map.get("targets", []) |> Enum.map(& &1["model"]),
+      "tool_advertisement" => tool_advertisement_record(config),
       "tool_mediation" => tool_mediation_record(config),
       "vcr" => Map.get(config, "vcr", %{"mode" => "metadata_only"})
     }
@@ -94,6 +95,38 @@ defmodule WardwrightWeb.ModelAccessProjection do
   end
 
   def tool_mediation_record(_config), do: %{"mode" => "patch", "rule_count" => 0}
+
+  def tool_advertisement_record(config) when is_map(config) do
+    tools = server_tool_records(config)
+    targets = server_tool_target_records(config)
+    enabled_tools = Enum.count(tools, &(&1["enabled"] != false))
+    target_count = length(targets)
+    tool_capable_targets = Enum.count(targets, &(&1["server_tools_supported"] == true))
+
+    guaranteed =
+      if target_count > 0 and tool_capable_targets == target_count do
+        enabled_tools
+      else
+        0
+      end
+
+    conditional =
+      if tool_capable_targets > 0 and tool_capable_targets < target_count do
+        enabled_tools
+      else
+        0
+      end
+
+    %{
+      "conditional_server_tools" => conditional,
+      "guaranteed_server_tools" => guaranteed,
+      "mode" => "intersection"
+    }
+  end
+
+  def tool_advertisement_record(_config) do
+    %{"conditional_server_tools" => 0, "guaranteed_server_tools" => 0, "mode" => "intersection"}
+  end
 
   defp server_tool_record(%{} = tool) do
     name = tool |> Map.get("name", "") |> to_string() |> String.trim()

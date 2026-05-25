@@ -397,6 +397,9 @@ defmodule Wardwright.PublicApiTest do
     assert model["id"] == "server-tool-access"
     assert get_in(model, ["tool_mediation", "mode"]) == "patch"
     assert get_in(model, ["tool_mediation", "rule_count"]) == 1
+    assert get_in(model, ["tool_advertisement", "mode"]) == "intersection"
+    assert get_in(model, ["tool_advertisement", "guaranteed_server_tools"]) == 0
+    assert get_in(model, ["tool_advertisement", "conditional_server_tools"]) == 3
 
     assert Enum.map(model["server_tools"], & &1["name"]) == [
              "wardwright_policy_cache_status",
@@ -428,6 +431,45 @@ defmodule Wardwright.PublicApiTest do
     targets = Map.new(model["server_tool_targets"], &{&1["model"], &1})
     assert targets["openai/tool-capable-test"]["support"] == "tool-capable"
     assert targets["local/mock-toolless"]["support"] == "no-tool-injection"
+  end
+
+  test "server tool model-level toggles preserve runtime disabled tools in config" do
+    config =
+      unit_policy_config()
+      |> Map.put("model_id", "server-tool-toggle")
+      |> Map.put("server_tools", [
+        %{"name" => "wardwright_policy_cache_status"},
+        %{
+          "enabled" => false,
+          "name" => "disabled_dune_tool",
+          "source" => "%{\"disabled\" => true}"
+        }
+      ])
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    assert {true, "Server tool wardwright_policy_cache_status disabled."} =
+             WardwrightWeb.LustreModelAccessData.toggle_server_tool(
+               "server-tool-toggle",
+               "wardwright_policy_cache_status",
+               false
+             )
+
+    assert {:ok, config} = Wardwright.model_config("server-tool-toggle")
+    assert [%{"enabled" => false, "name" => "wardwright_policy_cache_status"}, _] = config["server_tools"]
+
+    assert {true, "Server tool disabled_dune_tool enabled."} =
+             WardwrightWeb.LustreModelAccessData.toggle_server_tool(
+               "server-tool-toggle",
+               "disabled_dune_tool",
+               true
+             )
+
+    assert {:ok, config} = Wardwright.model_config("server-tool-toggle")
+
+    enabled_tool = Enum.find(config["server_tools"], &(&1["name"] == "disabled_dune_tool"))
+    assert enabled_tool["name"] == "disabled_dune_tool"
+    refute enabled_tool["enabled"] == false
   end
 
   test "protected policy authoring API exposes projection and tool contracts" do

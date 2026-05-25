@@ -43,10 +43,12 @@ defmodule WardwrightWeb.LustreModelAccessData do
 
   def server_tool_summary(model_id) do
     config = selected_config(model_id)
+    tool_records = WardwrightWeb.ModelAccessProjection.server_tool_records(config)
+    target_records = WardwrightWeb.ModelAccessProjection.server_tool_target_records(config)
+    advertisement = WardwrightWeb.ModelAccessProjection.tool_advertisement_record(config)
 
     {
-      config
-      |> WardwrightWeb.ModelAccessProjection.server_tool_records()
+      tool_records
       |> Enum.map(fn tool ->
         {
           tool["name"] || "",
@@ -59,8 +61,7 @@ defmodule WardwrightWeb.LustreModelAccessData do
           key_summary(tool["input_keys"] || [])
         }
       end),
-      config
-      |> WardwrightWeb.ModelAccessProjection.server_tool_target_records()
+      target_records
       |> Enum.map(fn target ->
         {
           target["model"] || "",
@@ -75,8 +76,53 @@ defmodule WardwrightWeb.LustreModelAccessData do
           mediation["mode"] || "patch",
           mediation["rule_count"] || 0
         }
-      end)
+      end),
+      {
+        advertisement["mode"] || "intersection",
+        advertisement["guaranteed_server_tools"] || 0,
+        advertisement["conditional_server_tools"] || 0
+      }
     }
+  end
+
+  def toggle_server_tool(model_id, tool_name, enabled) do
+    config = selected_config(model_id)
+    tool_name = tool_name |> to_string() |> String.trim()
+
+    if tool_name == "" do
+      {false, "Choose a server tool to update."}
+    else
+      {server_tools, found?} =
+        config
+        |> Map.get("server_tools", [])
+        |> List.wrap()
+        |> Enum.map_reduce(false, fn
+          %{"name" => ^tool_name} = tool, _found? ->
+            {Map.put(tool, "enabled", enabled), true}
+
+          name, _found? when is_binary(name) and name == tool_name ->
+            {%{"enabled" => enabled, "name" => tool_name}, true}
+
+          tool, found? ->
+            {tool, found?}
+        end)
+
+      if found? do
+        config
+        |> Map.put("server_tools", server_tools)
+        |> Wardwright.put_model_config()
+        |> case do
+          {:ok, _config} ->
+            state = if(enabled, do: "enabled", else: "disabled")
+            {true, "Server tool #{tool_name} #{state}."}
+
+          {:error, message} ->
+            {false, message}
+        end
+      else
+        {false, "Server tool #{tool_name} was not found on this model."}
+      end
+    end
   end
 
   def key_options(model_id) do
