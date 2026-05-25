@@ -96,6 +96,7 @@ try {
 
   await assertSelectedModelWorkbench();
   await assertServerToolModelAccess();
+  await assertUxExplorationConcepts();
   await assertControlDebuggerSaveScenario();
   await assertAdapterStatusPanel();
 
@@ -451,6 +452,66 @@ async function assertControlDebuggerSaveScenario() {
     );
 
     console.log("ok control debugger saves read-before-edit scenario to tool-governance");
+  } finally {
+    cdp.close();
+  }
+}
+
+async function assertUxExplorationConcepts() {
+  const target = await createChromeTarget();
+  const cdp = await connectCdp(target.webSocketDebuggerUrl);
+  const concepts = [
+    "model-config-cleanup",
+    "capability-command-center",
+    "route-topology-map",
+    "guided-change-review",
+    "holistic-control-room"
+  ];
+
+  try {
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 1280,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false
+    });
+
+    for (const concept of concepts) {
+      await cdp.send("Page.navigate", {
+        url: `${appUrl}/admin/ux-exploration/${concept}?model=browser-smoke-tools`
+      });
+      await cdp.waitFor("Page.loadEventFired");
+      await waitForEval(cdp, `pageText(document.body).includes("Admin workspace")`);
+      await waitForEval(cdp, `pageText(document.body).includes("browser_smoke_dune_tool")`);
+
+      const result = await evaluate(
+        cdp,
+        `(() => {
+          const hrefs = allElements("a").map((link) => link.getAttribute("href") || "");
+          return {
+            hasWorkbench: hrefs.includes("/admin?model=browser-smoke-tools"),
+            hasModelAccess: hrefs.includes("/admin?view=model_access&model=browser-smoke-tools"),
+            hasDebugger: hrefs.includes("/admin?view=control_debugger&model=browser-smoke-tools"),
+            hasIntegrations: hrefs.includes("#ux-integrations"),
+            hasRelease: hrefs.includes("#ux-release")
+          };
+        })()`
+      );
+
+      if (
+        !result.hasWorkbench ||
+        !result.hasModelAccess ||
+        !result.hasDebugger ||
+        !result.hasIntegrations ||
+        !result.hasRelease
+      ) {
+        throw new Error(`UX exploration ${concept} recovery links failed: ${JSON.stringify(result)}`);
+      }
+    }
+
+    console.log("ok UX exploration concepts expose full admin links and live model controls");
   } finally {
     cdp.close();
   }

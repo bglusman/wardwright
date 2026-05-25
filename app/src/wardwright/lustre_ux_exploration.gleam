@@ -93,9 +93,7 @@ fn header(model: Model) -> Element(Msg) {
       html.p([class("eyebrow")], [text("Live UX exploration")]),
       html.h1([], [text(concept_label(model.concept))]),
       html.p([], [
-        text(
-          "These alternatives reuse live Wardwright model controls and data. Switch themes independently to compare layout and visual direction.",
-        ),
+        text(concept_header_copy(model.concept)),
       ]),
     ]),
     html.div([class("ux-header-actions")], [
@@ -186,20 +184,32 @@ fn concept_body(model: Model) -> Element(Msg) {
 fn model_config_cleanup(
   model_access: lustre_model_access.Model,
 ) -> Element(Msg) {
-  html.section([class("ux-layout config-cleanup")], [
-    html.div([class("ux-live-panel")], [
-      map(lustre_model_access.model_summary(model_access), ModelAccessMsg),
-    ]),
-    html.div([class("ux-live-panel")], [
-      map(
-        lustre_model_access.access_policy_editor(model_access),
-        ModelAccessMsg,
-      ),
-    ]),
-    html.div([class("ux-live-panel wide")], [
-      map(lustre_model_access.server_tools_panel(model_access), ModelAccessMsg),
-    ]),
-  ])
+  experience_frame(
+    model_access,
+    "config-cleanup-experience",
+    "Progressive model management",
+    "Lead with the current model promise, then reveal access, tools, replay, and lifecycle controls in the order an operator usually needs them.",
+    "Operators get task lanes for model contract, access, tool exposure, replay, integrations, and release evidence without leaving the selected model.",
+    [
+      html.section([class("ux-layout config-cleanup")], [
+        html.div([class("ux-live-panel")], [
+          map(lustre_model_access.model_summary(model_access), ModelAccessMsg),
+        ]),
+        html.div([class("ux-live-panel")], [
+          map(
+            lustre_model_access.access_policy_editor(model_access),
+            ModelAccessMsg,
+          ),
+        ]),
+        html.div([class("ux-live-panel wide")], [
+          map(
+            lustre_model_access.server_tools_panel(model_access),
+            ModelAccessMsg,
+          ),
+        ]),
+      ]),
+    ],
+  )
 }
 
 fn capability_command_center(
@@ -208,108 +218,310 @@ fn capability_command_center(
   let #(mode, guaranteed_tools, conditional_tools) =
     model_access.tool_advertisement
 
-  html.section([class("ux-layout capability-command")], [
-    html.article([class("ux-masthead")], [
-      html.p([class("eyebrow")], [text("Agent-visible contract")]),
-      html.h2([], [text(model_access.model_id)]),
-      html.p([], [
-        text(
-          "The first question is what an agent can rely on, then which target differences change that promise.",
-        ),
+  experience_frame(
+    model_access,
+    "capability-command-experience",
+    "Capability command center",
+    "Put the agent-visible contract above implementation detail so operators can tell what is guaranteed, conditional, or blocked before editing config.",
+    "Every module starts from what downstream agents can rely on, then drills into route targets, tool mediation, replay evidence, and adapter support.",
+    [
+      html.section([class("ux-layout capability-command")], [
+        score_card("Advertise", mode),
+        score_card("Guaranteed tools", int.to_string(guaranteed_tools)),
+        score_card("Conditional tools", int.to_string(conditional_tools)),
+        score_card("Model", model_access.model_id),
+        html.div([class("ux-live-panel wide")], [
+          map(
+            lustre_model_access.server_tools_panel(model_access),
+            ModelAccessMsg,
+          ),
+        ]),
       ]),
-    ]),
-    score_card("Advertise", mode),
-    score_card("Guaranteed tools", int.to_string(guaranteed_tools)),
-    score_card("Conditional tools", int.to_string(conditional_tools)),
-    html.div([class("ux-live-panel wide")], [
-      map(lustre_model_access.server_tools_panel(model_access), ModelAccessMsg),
-    ]),
-  ])
+    ],
+  )
 }
 
 fn route_topology_map(model_access: lustre_model_access.Model) -> Element(Msg) {
-  html.section([class("ux-layout topology-map")], [
-    html.article([class("ux-route-map")], [
-      route_node("Stable model", model_access.model_id, "contract"),
-      route_node("Access", access_label(model_access), "caller gate"),
-      route_node(
-        "Server tools",
-        int.to_string(list.length(model_access.server_tools)),
-        "Wardwright hosted",
-      ),
-      route_node("Replay", model_access.vcr_mode, "evidence"),
-      ..target_nodes(model_access.server_tool_targets)
-    ]),
-    html.div([class("ux-live-panel")], [
-      map(lustre_model_access.model_summary(model_access), ModelAccessMsg),
-    ]),
-    html.div([class("ux-live-panel")], [
-      map(lustre_model_access.server_tools_panel(model_access), ModelAccessMsg),
-    ]),
-  ])
+  experience_frame(
+    model_access,
+    "topology-map-experience",
+    "Topology-first operations",
+    "Show Wardwright as a graph of promises, routes, targets, tools, and evidence so composition risks are visible before a model is changed.",
+    "The selected model stays at the center while raw targets, caller gates, hosted tools, replay proof, adapters, and release checks remain adjacent.",
+    [
+      html.section([class("ux-layout topology-map")], [
+        html.article([class("ux-route-map")], [
+          route_node("Stable model", model_access.model_id, "contract"),
+          route_node("Model lab", "simulate", "test behavior"),
+          route_node("Access", access_label(model_access), "caller gate"),
+          route_node(
+            "Server tools",
+            int.to_string(list.length(model_access.server_tools)),
+            "Wardwright hosted",
+          ),
+          route_node("Replay", model_access.vcr_mode, "evidence"),
+          route_node("Adapters", "recipes", "framework + local agents"),
+          route_node("Release", "checks", "browser + package smoke"),
+          ..target_nodes(model_access.server_tool_targets)
+        ]),
+        html.div([class("ux-live-panel")], [
+          map(lustre_model_access.model_summary(model_access), ModelAccessMsg),
+        ]),
+        html.div([class("ux-live-panel")], [
+          map(
+            lustre_model_access.server_tools_panel(model_access),
+            ModelAccessMsg,
+          ),
+        ]),
+      ]),
+    ],
+  )
 }
 
 fn guided_change_review(
   model_access: lustre_model_access.Model,
 ) -> Element(Msg) {
-  html.section([class("ux-layout guided-review")], [
-    review_step("1", "Choose model contract", model_access.model_id),
-    review_step("2", "Confirm access", access_label(model_access)),
-    review_step(
-      "3",
-      "Confirm tool advertisement",
-      advertisement_label(model_access),
-    ),
-    review_step("4", "Capture evidence", model_access.vcr_mode),
-    html.div([class("ux-live-panel")], [
-      map(
-        lustre_model_access.access_policy_editor(model_access),
-        ModelAccessMsg,
-      ),
-    ]),
-    html.div([class("ux-live-panel")], [
-      map(lustre_model_access.server_tools_panel(model_access), ModelAccessMsg),
-    ]),
-  ])
+  experience_frame(
+    model_access,
+    "guided-review-experience",
+    "Guided change review",
+    "Turn risky admin work into an evidence-gated flow: understand the promise, change one thing, prove behavior, then promote.",
+    "Operators move through contract, access, tool advertisement, simulation, receipt replay, and promotion proof before a release-sensitive change lands.",
+    [
+      html.section([class("ux-layout guided-review")], [
+        review_step("1", "Choose model contract", model_access.model_id),
+        review_step("2", "Confirm access", access_label(model_access)),
+        review_step(
+          "3",
+          "Confirm tool advertisement",
+          advertisement_label(model_access),
+        ),
+        review_step("4", "Run simulation", "Model lab scenario evidence"),
+        review_step("5", "Replay receipt", model_access.vcr_mode),
+        review_step("6", "Promote", "Package and browser smoke required"),
+        html.div([class("ux-live-panel")], [
+          map(
+            lustre_model_access.access_policy_editor(model_access),
+            ModelAccessMsg,
+          ),
+        ]),
+        html.div([class("ux-live-panel")], [
+          map(
+            lustre_model_access.server_tools_panel(model_access),
+            ModelAccessMsg,
+          ),
+        ]),
+      ]),
+    ],
+  )
 }
 
 fn holistic_control_room(
   model_access: lustre_model_access.Model,
 ) -> Element(Msg) {
-  html.section([class("ux-layout control-room")], [
-    html.article([class("ux-masthead wide")], [
-      html.p([class("eyebrow")], [text("Whole-product workspace")]),
-      html.h2([], [text("Control Room")]),
-      html.p([], [
-        text(
-          "A single operator workspace can combine model contract, policy, tools, replay evidence, and release checks without hiding the current production controls.",
-        ),
+  experience_frame(
+    model_access,
+    "control-room-experience",
+    "Holistic control room",
+    "Give operators one command surface for model contracts, policy authoring, tools, replay evidence, integration posture, and release readiness.",
+    "The broad overview keeps live configuration, policy work, replay evidence, integration posture, and release readiness in one selected-model workspace.",
+    [
+      html.section([class("ux-layout control-room")], [
+        html.div([class("ux-live-panel")], [
+          map(lustre_model_access.model_summary(model_access), ModelAccessMsg),
+        ]),
+        html.div([class("ux-live-panel")], [
+          map(
+            lustre_model_access.access_policy_editor(model_access),
+            ModelAccessMsg,
+          ),
+        ]),
+        html.div([class("ux-live-panel wide")], [
+          map(
+            lustre_model_access.server_tools_panel(model_access),
+            ModelAccessMsg,
+          ),
+        ]),
+        html.article([class("ux-link-panel")], [
+          html.h2([], [text("Evidence")]),
+          html.p([], [
+            text(
+              "Open replay, run the lab, and compare package/browser smoke before promoting a change.",
+            ),
+          ]),
+          link_button(
+            "/admin?view=control_debugger&model=" <> model_access.model_id,
+            "Open replay",
+          ),
+        ]),
       ]),
-    ]),
-    html.div([class("ux-live-panel")], [
-      map(lustre_model_access.model_summary(model_access), ModelAccessMsg),
-    ]),
-    html.div([class("ux-live-panel")], [
-      map(
-        lustre_model_access.access_policy_editor(model_access),
-        ModelAccessMsg,
-      ),
-    ]),
-    html.div([class("ux-live-panel wide")], [
-      map(lustre_model_access.server_tools_panel(model_access), ModelAccessMsg),
-    ]),
-    html.article([class("ux-link-panel")], [
-      html.h2([], [text("Evidence")]),
-      html.p([], [
-        text(
-          "Open replay, run the lab, and compare package/browser smoke before promoting a change.",
-        ),
+    ],
+  )
+}
+
+fn experience_frame(
+  model_access: lustre_model_access.Model,
+  class_name: String,
+  title: String,
+  body: String,
+  theory: String,
+  children: List(Element(Msg)),
+) -> Element(Msg) {
+  html.section([class("ux-experience " <> class_name)], [
+    app_spine(model_access),
+    html.div([class("ux-experience-main")], [
+      html.article([class("ux-masthead wide")], [
+        html.p([class("eyebrow")], [text("Admin workspace")]),
+        html.h2([], [text(title)]),
+        html.p([], [text(body)]),
       ]),
-      link_button(
-        "/admin?view=control_debugger&model=" <> model_access.model_id,
-        "Open replay",
-      ),
+      posture_card(theory),
+      capability_deck(model_access),
+      ..children
     ]),
+    product_surface_strip(model_access),
+  ])
+}
+
+fn app_spine(model_access: lustre_model_access.Model) -> Element(Msg) {
+  html.aside([class("ux-app-spine")], [
+    html.strong([], [text("Wardwright")]),
+    html.span([], [text(model_access.model_id)]),
+    spine_link("Overview", "#ux-overview"),
+    spine_link("Model lab", "/admin?model=" <> model_access.model_id),
+    spine_link(
+      "Models & access",
+      "/admin?view=model_access&model=" <> model_access.model_id,
+    ),
+    spine_link("Policy lab", "/admin?model=" <> model_access.model_id),
+    spine_link(
+      "Evidence",
+      "/admin?view=control_debugger&model=" <> model_access.model_id,
+    ),
+    spine_link("Integrations", "#ux-integrations"),
+    spine_link("Release", "#ux-release"),
+  ])
+}
+
+fn spine_link(label: String, href: String) -> Element(Msg) {
+  element("a", [attribute("href", href)], [text(label)])
+}
+
+fn posture_card(body: String) -> Element(Msg) {
+  html.article([class("ux-posture-card")], [
+    html.h2([], [text("Operating model")]),
+    html.p([], [text(body)]),
+  ])
+}
+
+fn capability_deck(model_access: lustre_model_access.Model) -> Element(Msg) {
+  html.section([id_attr("ux-overview"), class("ux-capability-deck")], [
+    capability_card(
+      "Model lab",
+      "Simulate turns and inspect policy behavior.",
+      "Run scenarios",
+      "/admin?model=" <> model_access.model_id,
+    ),
+    capability_card(
+      "Models & access",
+      "Manage contracts, access, keys, replay, and server tools.",
+      access_label(model_access),
+      "/admin?view=model_access&model=" <> model_access.model_id,
+    ),
+    capability_card(
+      "Policy lab",
+      "Author, compare, and activate changes with evidence.",
+      "Draft + simulate",
+      "/admin?model=" <> model_access.model_id,
+    ),
+    capability_card(
+      "Session replay",
+      "Load receipts, fork traces, and save evidence.",
+      model_access.vcr_mode,
+      "/admin?view=control_debugger&model=" <> model_access.model_id,
+    ),
+    capability_card(
+      "Integrations",
+      "Separate framework recipes from local coding-agent adapters.",
+      "Adapters",
+      "#ux-integrations",
+    ),
+    capability_card(
+      "Release readiness",
+      "Package, browser, docs, and adapter smoke evidence.",
+      "Checks",
+      "#ux-release",
+    ),
+  ])
+}
+
+fn capability_card(
+  title: String,
+  body: String,
+  status: String,
+  href: String,
+) -> Element(Msg) {
+  html.article([class("ux-capability-card")], [
+    html.div([], [
+      html.h2([], [text(title)]),
+      html.p([], [text(body)]),
+    ]),
+    html.strong([], [text(status)]),
+    link_button(href, "Open"),
+  ])
+}
+
+fn product_surface_strip(
+  model_access: lustre_model_access.Model,
+) -> Element(Msg) {
+  html.section([class("ux-product-surfaces")], [
+    surface_card(
+      "Provider runtime",
+      "Route target support, context-window differences, provider tool-call support, and server-tool mediation stay visible as model-level risk.",
+      "Inspect in Models & access",
+      "/admin?view=model_access&model=" <> model_access.model_id,
+      "",
+    ),
+    surface_card(
+      "Integrations",
+      "Framework recipes remain separate from OpenCode and OpenClaw local coding-agent adapters so support claims stay explicit.",
+      "Review adapter recipes",
+      "#ux-integrations",
+      "ux-integrations",
+    ),
+    surface_card(
+      "Evidence",
+      "Receipt replay, simulator cases, and counterfactual forks provide the proof path before config changes are promoted.",
+      "Open replay",
+      "/admin?view=control_debugger&model=" <> model_access.model_id,
+      "",
+    ),
+    surface_card(
+      "Release readiness",
+      "Browser smoke, docs checks, package installation smoke, and adapter evidence are treated as visible product state.",
+      "Review checks",
+      "#ux-release",
+      "ux-release",
+    ),
+  ])
+}
+
+fn surface_card(
+  title: String,
+  body: String,
+  action: String,
+  href: String,
+  marker: String,
+) -> Element(Msg) {
+  let attrs = case marker {
+    "" -> [class("ux-surface-card")]
+    _ -> [id_attr(marker), class("ux-surface-card")]
+  }
+
+  html.article(attrs, [
+    html.h2([], [text(title)]),
+    html.p([], [text(body)]),
+    link_button(href, action),
   ])
 }
 
@@ -348,6 +560,10 @@ fn review_step(number: String, label: String, value: String) -> Element(Msg) {
 
 fn link_button(href: String, label: String) -> Element(Msg) {
   element("a", [class("ux-link-button"), attribute("href", href)], [text(label)])
+}
+
+fn id_attr(id: String) {
+  attribute("id", id)
 }
 
 fn access_label(model_access: lustre_model_access.Model) -> String {
@@ -408,6 +624,21 @@ fn concept_label(concept: Concept) -> String {
     RouteTopologyMap -> "Route Topology Map"
     GuidedChangeReview -> "Guided Change Review"
     HolisticControlRoom -> "Holistic Control Room"
+  }
+}
+
+fn concept_header_copy(concept: Concept) -> String {
+  case concept {
+    ModelConfigCleanup ->
+      "A progressive-disclosure version of the full admin: preserve the left navigation spine, but stage model, access, tools, replay, integrations, and release checks around the current operator task."
+    CapabilityCommandCenter ->
+      "A capability-first version of the full admin: every surface starts from what agents can rely on, then lets operators drill into route, tool, evidence, and integration detail."
+    RouteTopologyMap ->
+      "A topology-first version of the full admin: model contracts, raw targets, tools, replay, adapters, and release evidence are arranged as a system map."
+    GuidedChangeReview ->
+      "A workflow-first version of the full admin: risky changes move through explicit review steps with live controls embedded where proof is needed."
+    HolisticControlRoom ->
+      "A command-center version of the full admin: broad situational awareness first, with model configuration, policy work, replay evidence, integrations, and release readiness in one coherent workspace."
   }
 }
 
@@ -474,21 +705,37 @@ pub fn styles() -> String {
     --ux-accent: #16605a;
     --ux-accent-2: #245a82;
     --ux-line: #d7dde3;
+    --ux-radius: 8px;
+    --ux-gap: 16px;
+    --ux-pad: 16px;
+    --ux-shadow: 0 1px 0 rgba(24, 32, 42, 0.04);
   }
   .ux-workspace.theme-studio {
     --ux-panel-soft: #fff8ea;
     --ux-accent: #8b4f00;
     --ux-accent-2: #7b3b5f;
+    --ux-radius: 18px;
+    --ux-gap: 20px;
+    --ux-pad: 20px;
+    --ux-shadow: 0 10px 26px rgba(70, 52, 20, 0.10);
   }
   .ux-workspace.theme-topology {
     --ux-panel-soft: #eef5ff;
     --ux-accent: #245a82;
     --ux-accent-2: #16605a;
+    --ux-radius: 4px;
+    --ux-gap: 12px;
+    --ux-pad: 14px;
+    --ux-shadow: none;
   }
   .ux-workspace.theme-review {
     --ux-panel-soft: #f4f2ff;
     --ux-accent: #5541a5;
     --ux-accent-2: #915930;
+    --ux-radius: 12px;
+    --ux-gap: 18px;
+    --ux-pad: 18px;
+    --ux-shadow: 0 0 0 3px rgba(85, 65, 165, 0.08);
   }
   .ux-header {
     display: grid;
@@ -542,8 +789,54 @@ pub fn styles() -> String {
   }
   .ux-layout {
     display: grid;
-    gap: 16px;
+    gap: var(--ux-gap);
     align-items: start;
+  }
+  .ux-experience {
+    display: grid;
+    grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
+    gap: var(--ux-gap);
+    min-width: 0;
+  }
+  .ux-experience-main {
+    display: grid;
+    gap: var(--ux-gap);
+    min-width: 0;
+  }
+  .ux-app-spine {
+    position: sticky;
+    top: 18px;
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    min-width: 0;
+    padding: var(--ux-pad);
+    border: 1px solid var(--ux-line);
+    border-radius: var(--ux-radius);
+    background: var(--ux-panel-soft);
+    box-shadow: var(--ux-shadow);
+  }
+  .ux-app-spine strong {
+    color: var(--ux-accent);
+    font-size: 16px;
+  }
+  .ux-app-spine span {
+    color: var(--muted-foreground);
+    font-size: 12px;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+  }
+  .ux-app-spine a {
+    display: block;
+    padding: 8px 10px;
+    border-radius: calc(var(--ux-radius) * 0.7);
+    color: var(--ux-ink);
+    font-size: 13px;
+    font-weight: 800;
+    text-decoration: none;
+  }
+  .ux-app-spine a:hover {
+    background: #fff;
   }
   .config-cleanup, .guided-review, .control-room {
     grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.1fr);
@@ -554,6 +847,25 @@ pub fn styles() -> String {
   .topology-map {
     grid-template-columns: minmax(360px, 1fr) minmax(320px, 0.7fr);
   }
+  .capability-command-experience .ux-capability-deck {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .topology-map-experience {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .topology-map-experience .ux-app-spine {
+    position: static;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  }
+  .guided-review-experience {
+    grid-template-columns: minmax(240px, 0.34fr) minmax(0, 1fr);
+  }
+  .guided-review-experience .ux-app-spine a {
+    border-left: 3px solid var(--ux-accent);
+  }
+  .control-room-experience .ux-capability-deck {
+    grid-template-columns: repeat(6, minmax(130px, 1fr));
+  }
   .wide {
     grid-column: 1 / -1;
   }
@@ -561,17 +873,60 @@ pub fn styles() -> String {
     height: 100%;
     border-color: var(--ux-line);
     background: var(--ux-panel);
+    border-radius: var(--ux-radius);
+    box-shadow: var(--ux-shadow);
   }
-  .ux-masthead, .ux-score-card, .ux-link-panel, .ux-route-map, .ux-review-step {
+  .ux-product-surfaces {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(150px, 1fr));
+    gap: var(--ux-gap);
+  }
+  .ux-masthead, .ux-score-card, .ux-link-panel, .ux-route-map, .ux-review-step, .ux-posture-card, .ux-capability-card, .ux-surface-card {
     min-width: 0;
-    padding: 16px;
+    padding: var(--ux-pad);
     border: 1px solid var(--ux-line);
-    border-radius: 8px;
+    border-radius: var(--ux-radius);
     background: var(--ux-panel-soft);
+    box-shadow: var(--ux-shadow);
   }
   .ux-masthead {
     display: grid;
     gap: 8px;
+  }
+  .ux-posture-card {
+    display: grid;
+    gap: 6px;
+    border-color: color-mix(in srgb, var(--ux-accent), var(--ux-line) 60%);
+    background: #fff;
+  }
+  .ux-capability-deck {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--ux-gap);
+  }
+  .ux-capability-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: start;
+    background: #fff;
+  }
+  .ux-capability-card .ux-link-button {
+    grid-column: 1 / -1;
+    width: fit-content;
+  }
+  .ux-capability-card strong {
+    color: var(--ux-accent);
+    font-size: 12px;
+  }
+  .ux-surface-card {
+    display: grid;
+    gap: 10px;
+    background: #fff;
+  }
+  .ux-surface-card .ux-link-button {
+    width: fit-content;
   }
   .ux-score-card {
     display: grid;
@@ -609,6 +964,47 @@ pub fn styles() -> String {
     border-radius: 8px;
     background: #fff;
   }
+  .theme-studio .ux-tab, .theme-studio .ux-link-button {
+    border-radius: 999px;
+    min-height: 42px;
+  }
+  .theme-studio .ux-capability-card,
+  .theme-studio .ux-surface-card {
+    border: 0;
+    background: linear-gradient(180deg, #fff, var(--ux-panel-soft));
+  }
+  .theme-topology .ux-tab, .theme-topology .ux-link-button {
+    border-radius: 3px;
+    min-height: 34px;
+    padding: 6px 10px;
+    text-transform: uppercase;
+  }
+  .theme-topology .ux-app-spine,
+  .theme-topology .ux-route-node,
+  .theme-topology .ux-score-card strong {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", monospace;
+  }
+  .theme-review .ux-tab, .theme-review .ux-link-button {
+    border-radius: 10px;
+    border-width: 2px;
+  }
+  .theme-review .ux-capability-card,
+  .theme-review .ux-surface-card,
+  .theme-review .ux-review-step {
+    border-left: 5px solid var(--ux-accent);
+  }
+  .theme-topology .ux-live-panel > .panel,
+  .theme-topology .ux-masthead,
+  .theme-topology .ux-score-card,
+  .theme-topology .ux-link-panel,
+  .theme-topology .ux-route-map,
+  .theme-topology .ux-review-step,
+  .theme-topology .ux-posture-card,
+  .theme-topology .ux-capability-card,
+  .theme-topology .ux-surface-card,
+  .theme-topology .ux-app-spine {
+    border-style: dashed;
+  }
   .ux-route-node span, .ux-route-node small {
     color: var(--muted-foreground);
     font-size: 12px;
@@ -635,8 +1031,11 @@ pub fn styles() -> String {
     font-weight: 900;
   }
   @media (max-width: 980px) {
-    .ux-header, .config-cleanup, .guided-review, .control-room, .capability-command, .topology-map {
+    .ux-header, .ux-experience, .config-cleanup, .guided-review, .control-room, .capability-command, .topology-map, .ux-capability-deck, .ux-product-surfaces, .capability-command-experience .ux-capability-deck, .control-room-experience .ux-capability-deck {
       grid-template-columns: minmax(0, 1fr);
+    }
+    .ux-app-spine {
+      position: static;
     }
   }
   "

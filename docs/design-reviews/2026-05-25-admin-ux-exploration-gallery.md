@@ -48,14 +48,57 @@ claim that any concept has replaced `/admin`.
 
 The in-app exploration now separates two axes:
 
-- **Layout concept**: the five routes above arrange the same live model-access
-  panels around different jobs: configuration, capability inspection, topology,
-  guided review, and a holistic control room.
-- **Visual theme**: the Lustre surface exposes independent Operations, Studio,
-  Topology, and Review themes. This keeps styling experiments mixable without
-  copying the behavior implementation.
+- **UX concept**: the five routes above are whole-admin candidates, not single
+  page mockups. Each route keeps live model controls visible while also exposing
+  recoverable paths for the Workbench, Models & access, Policy Lab, Evidence,
+  Integrations, and Release readiness.
+- **Look and feel**: the Lustre surface exposes independent Operations, Studio,
+  Topology, and Review treatments. They vary density, radius, borders, shadow,
+  typography treatment, and component emphasis so reviewers can mix the UX
+  concept and visual system independently.
 
 The first real behavior wired into the exploration is model-level server-tool
 management. The exploration page reuses the production Models & access summary,
 access policy editor, and server-tool panel, so toggling a tool from a concept
 view changes the same stored model configuration as the production admin page.
+
+## Design Rationale
+
+This pass follows three design constraints rather than a purely aesthetic theme
+exercise:
+
+- Complex admin products need persistent, predictable navigation. Material
+  Design recommends side navigation for many top-level views and deep structures,
+  and cross-links for moving directly between non-adjacent scenes. Wardwright's
+  exploration therefore keeps durable anchors into `/admin`,
+  `/admin?view=model_access`, and `/admin?view=control_debugger` instead of
+  hiding the rest of the app behind a single concept page.
+- Progressive disclosure is the right default for risky model configuration:
+  start with the current model promise, expose access/tool/evidence controls
+  where they are needed, and keep release proof adjacent to the decision. NN/g's
+  application-design examples frame this as moving from dashboard-level health
+  into data-intensive graph or grid detail only when a user drills in.
+- Component systems should preserve functional consistency while allowing
+  product-specific composition. Carbon describes components as reusable solutions
+  that work together as a whole, so this exploration keeps shared live controls
+  and changes the shell, density, navigation, and card treatment around them.
+
+References used for this pass:
+
+- [Material Design navigation patterns](https://m1.material.io/patterns/navigation.html)
+- [Material Design layout structure](https://m1.material.io/layout/structure.html)
+- [Carbon Design System component overview](https://carbondesignsystem.com/components/overview/components/)
+- [NN/g Application Design Showcase, 2008](https://media.nngroup.com/media/reports/free/Application_Design_Showcase_1st_edition.pdf)
+
+## Current Implementation Notes
+
+- Every concept uses the same live Wardwright model state and action dispatchers,
+  but owns its presentation. Tests assert shared behavior and recoverable app
+  reachability, not a fixed panel order.
+- The UI now includes five UX buttons and four look-and-feel buttons. Reviewers
+  can compare a conservative config flow, capability-first console, topology
+  map, guided review flow, and holistic control room under the same four visual
+  treatments.
+- The exploration remains non-production. It is a live evaluation surface for
+  choosing which shell, density, and component treatment should graduate into
+  the protected `/admin` app.

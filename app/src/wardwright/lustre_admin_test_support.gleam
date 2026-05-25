@@ -42,6 +42,27 @@ pub fn ux_exploration_theme_switch_updates_sidebar(
   |> view_contains("<code>" <> theme_label <> "</code>")
 }
 
+pub fn ux_exploration_exposes_full_admin_recovery_links(
+  concept_id: String,
+  model_id: String,
+) -> Bool {
+  let view =
+    start("ux_exploration:" <> concept_id <> ":" <> model_id)
+    |> simulate.view
+    |> element.to_string
+
+  string.contains(view, "/admin?model=" <> model_id)
+  && contains_href(view, "/admin?view=model_access&model=" <> model_id)
+  && contains_href(view, "/admin?view=control_debugger&model=" <> model_id)
+  && string.contains(view, "#ux-integrations")
+  && string.contains(view, "#ux-release")
+}
+
+fn contains_href(view: String, href: String) -> Bool {
+  string.contains(view, href)
+  || string.contains(view, string.replace(href, "&", "&amp;"))
+}
+
 pub fn ux_exploration_toggles_server_tool(
   concept_id: String,
   model_id: String,

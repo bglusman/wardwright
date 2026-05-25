@@ -139,6 +139,23 @@ defmodule WardwrightWeb.WorkbenchTest do
            )
   end
 
+  test "admin UX concepts expose the whole admin app as recoverable routes" do
+    put_server_tool_model_config()
+
+    for concept <- [
+          "model-config-cleanup",
+          "capability-command-center",
+          "route-topology-map",
+          "guided-change-review",
+          "holistic-control-room"
+        ] do
+      assert :wardwright@lustre_admin_test_support.ux_exploration_exposes_full_admin_recovery_links(
+               concept,
+               "server-tool-ui"
+             )
+    end
+  end
+
   test "admin UX exploration themes are switchable independently from live behavior" do
     put_server_tool_model_config()
 
