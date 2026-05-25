@@ -486,6 +486,8 @@ components:
           description: Explicit Wardwright-hosted server-tool extension surface for built-ins, trusted local Dune functions, and trusted BEAM modules.
           items:
             $ref: "#/components/schemas/ServerTool"
+        tool_mediation:
+          $ref: "#/components/schemas/ToolMediation"
     ServerTool:
       type: object
       properties:
@@ -528,6 +530,44 @@ components:
           type: string
           enum: [local_verified]
           readOnly: true
+    ToolMediation:
+      type: object
+      description: Non-streaming request-side tool catalog patch rules applied before provider calls.
+      properties:
+        mode:
+          type: string
+          enum: [observe, patch, mutate, execute]
+          default: patch
+          description: Current implementation applies rules only in patch mode; observe is non-mutating and mutate/execute are trusted extension modes reserved for later slices.
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/ToolMediationRule"
+    ToolMediationRule:
+      type: object
+      properties:
+        id:
+          type: string
+        enabled:
+          type: boolean
+          default: true
+        action:
+          type: string
+          enum: [hide, augment, replace]
+        match:
+          type: object
+          properties:
+            name:
+              type: string
+        description_append:
+          type: string
+          description: Text appended to a matched function-tool description when action is augment.
+        parameters:
+          type: object
+          description: Replacement JSON Schema parameters for a matched function tool when action is augment.
+        tool:
+          type: object
+          description: Replacement OpenAI-compatible tool schema when action is replace.
     RouteGraph:
       type: object
       required: [root, nodes]
@@ -912,6 +952,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ServerTool"
+        tool_mediation:
+          $ref: "#/components/schemas/ToolMediation"
     TestRouteTarget:
       type: object
       required: [model, context_window]

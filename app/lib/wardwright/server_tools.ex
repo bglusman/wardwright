@@ -55,6 +55,7 @@ defmodule Wardwright.ServerTools do
   @tool_call_id_key "tool_call_id"
   @tool_calls_key "tool_calls"
   @tool_choice_key "tool_choice"
+  @tool_mediation_key "wardwright_tool_mediation"
   @tool_role "tool"
   @tools_key "tools"
   @topology_key "topology"
@@ -69,12 +70,26 @@ defmodule Wardwright.ServerTools do
   def complete_selected_model(selected_model, request, config) when is_map(request) and is_map(config) do
     tools = configured_tools(config)
 
-    if tools == [] or Map.get(request, @stream_key) == true do
-      Wardwright.complete_selected_model(selected_model, request, config)
-    else
-      request
-      |> inject_tools(tools)
-      |> complete_with_tool_loop(selected_model, config, tools)
+    cond do
+      Map.get(request, @stream_key) == true ->
+        Wardwright.complete_selected_model(selected_model, request, config)
+
+      tools == [] ->
+        {request, mediation} = Wardwright.ToolMediation.apply(request, config)
+
+        selected_model
+        |> Wardwright.complete_selected_model(request, config)
+        |> add_tool_mediation_metadata(mediation)
+
+      true ->
+        {request, mediation} =
+          request
+          |> inject_tools(tools)
+          |> Wardwright.ToolMediation.apply(config)
+
+        request
+        |> complete_with_tool_loop(selected_model, config, tools)
+        |> add_tool_mediation_metadata(mediation)
     end
   end
 
@@ -179,6 +194,18 @@ defmodule Wardwright.ServerTools do
     second
     |> Map.put(:provider_metadata, provider_metadata)
     |> Map.put(:latency_ms, latency_ms)
+  end
+
+  defp add_tool_mediation_metadata(outcome, nil), do: outcome
+
+  defp add_tool_mediation_metadata(outcome, mediation) when is_map(mediation) do
+    provider_metadata =
+      outcome
+      |> Map.get(:provider_metadata, %{})
+      |> Kernel.||(%{})
+      |> Map.put(@tool_mediation_key, mediation)
+
+    Map.put(outcome, :provider_metadata, provider_metadata)
   end
 
   defp execution_record(tool, call_id, status) do

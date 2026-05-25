@@ -406,6 +406,550 @@ defmodule Wardwright.StreamProviderTransportTest do
     assert get_in(receipt, ["final", "provider_metadata", "usage", "total_tokens"]) == 5
   end
 
+  test "tool mediation can hide agent-declared tools before the provider sees them" do
+    base_url = streaming_provider_base_url("/openai")
+    System.put_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS", "1")
+    System.put_env("WARDWRIGHT_TEST_OPENAI_KEY", "test-openai-key")
+
+    on_exit(fn ->
+      System.delete_env("WARDWRIGHT_TEST_OPENAI_KEY")
+      System.delete_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS")
+    end)
+
+    config =
+      unit_policy_config()
+      |> Map.put("targets", [
+        %{
+          "context_window" => 256,
+          "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY",
+          "model" => "openai-compatible/live-test",
+          "provider_base_url" => base_url,
+          "provider_kind" => "openai-compatible"
+        }
+      ])
+      |> Map.put("governance", [])
+      |> Map.put("tool_mediation", %{
+        "mode" => "patch",
+        "rules" => [
+          %{
+            "action" => "hide",
+            "id" => "hide-pr-creation",
+            "match" => %{"name" => "create_pull_request"}
+          }
+        ]
+      })
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        messages: [
+          %{content: "prepare a pull request", role: "user"},
+          %{
+            content: nil,
+            role: "assistant",
+            tool_calls: [%{function: %{arguments: "{}", name: "create_pull_request"}, id: "call_1", type: "function"}]
+          },
+          %{content: "created", role: "tool", tool_call_id: "call_1"}
+        ],
+        model: "unit-model",
+        tool_choice: "auto",
+        tools: [%{function: %{name: "create_pull_request", parameters: %{type: "object"}}, type: "function"}]
+      })
+
+    assert conn.status == 200
+
+    body = JSON.decode!(conn.resp_body)
+
+    assert get_in(body, ["choices", Access.at(0), "message", "content"]) == "openai-compatible text response"
+    refute get_in(body, ["choices", Access.at(0), "message", "tool_calls"])
+
+    [receipt_id] = get_resp_header(conn, "x-wardwright-receipt-id")
+    receipt = Wardwright.ReceiptStore.get(receipt_id)
+    mediation = get_in(receipt, ["final", "provider_metadata", "wardwright_tool_mediation"])
+
+    assert mediation["schema"] == "wardwright.tool_mediation.v1"
+
+    assert [%{"action" => "hide", "id" => "hide-pr-creation", "matched_tools" => ["create_pull_request"]}] =
+             mediation["applied_rules"]
+
+    assert [%{"declared_by" => "agent", "name" => "create_pull_request", "type" => "function"}] =
+             Enum.map(mediation["original_tools"], &Map.take(&1, ["declared_by", "name", "type"]))
+
+    assert mediation["provider_visible_tools"] == []
+  end
+
+  test "tool mediation observe mode does not patch provider-visible tools" do
+    base_url = streaming_provider_base_url("/openai")
+    System.put_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS", "1")
+    System.put_env("WARDWRIGHT_TEST_OPENAI_KEY", "test-openai-key")
+
+    on_exit(fn ->
+      System.delete_env("WARDWRIGHT_TEST_OPENAI_KEY")
+      System.delete_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS")
+    end)
+
+    config =
+      unit_policy_config()
+      |> Map.put("targets", [
+        %{
+          "context_window" => 256,
+          "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY",
+          "model" => "openai-compatible/live-test",
+          "provider_base_url" => base_url,
+          "provider_kind" => "openai-compatible"
+        }
+      ])
+      |> Map.put("governance", [])
+      |> Map.put("tool_mediation", %{
+        "mode" => "observe",
+        "rules" => [
+          %{
+            "action" => "hide",
+            "id" => "observe-only-hide",
+            "match" => %{"name" => "create_pull_request"}
+          }
+        ]
+      })
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        messages: [
+          %{content: "prepare a pull request", role: "user"},
+          %{
+            content: nil,
+            role: "assistant",
+            tool_calls: [%{function: %{arguments: "{}", name: "create_pull_request"}, id: "call_1", type: "function"}]
+          },
+          %{content: "created", role: "tool", tool_call_id: "call_1"}
+        ],
+        model: "unit-model",
+        tool_choice: "auto",
+        tools: [%{function: %{name: "create_pull_request", parameters: %{type: "object"}}, type: "function"}]
+      })
+
+    assert conn.status == 200
+
+    body = JSON.decode!(conn.resp_body)
+
+    assert get_in(body, ["choices", Access.at(0), "message", "tool_calls", Access.at(0), "function", "name"]) ==
+             "create_pull_request"
+
+    [receipt_id] = get_resp_header(conn, "x-wardwright-receipt-id")
+    receipt = Wardwright.ReceiptStore.get(receipt_id)
+    refute get_in(receipt, ["final", "provider_metadata", "wardwright_tool_mediation"])
+  end
+
+  test "tool mediation reserved mutate mode remains non-mutating until extension execution lands" do
+    base_url = streaming_provider_base_url("/openai")
+    System.put_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS", "1")
+    System.put_env("WARDWRIGHT_TEST_OPENAI_KEY", "test-openai-key")
+
+    on_exit(fn ->
+      System.delete_env("WARDWRIGHT_TEST_OPENAI_KEY")
+      System.delete_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS")
+    end)
+
+    config =
+      unit_policy_config()
+      |> Map.put("targets", [
+        %{
+          "context_window" => 256,
+          "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY",
+          "model" => "openai-compatible/live-test",
+          "provider_base_url" => base_url,
+          "provider_kind" => "openai-compatible"
+        }
+      ])
+      |> Map.put("governance", [])
+      |> Map.put("tool_mediation", %{
+        "mode" => "mutate",
+        "rules" => [
+          %{
+            "action" => "hide",
+            "id" => "reserved-mutate-hide",
+            "match" => %{"name" => "create_pull_request"}
+          }
+        ]
+      })
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        messages: [
+          %{content: "prepare a pull request", role: "user"},
+          %{
+            content: nil,
+            role: "assistant",
+            tool_calls: [%{function: %{arguments: "{}", name: "create_pull_request"}, id: "call_1", type: "function"}]
+          },
+          %{content: "created", role: "tool", tool_call_id: "call_1"}
+        ],
+        model: "unit-model",
+        tool_choice: "auto",
+        tools: [%{function: %{name: "create_pull_request", parameters: %{type: "object"}}, type: "function"}]
+      })
+
+    assert conn.status == 200
+
+    body = JSON.decode!(conn.resp_body)
+
+    assert get_in(body, ["choices", Access.at(0), "message", "tool_calls", Access.at(0), "function", "name"]) ==
+             "create_pull_request"
+
+    [receipt_id] = get_resp_header(conn, "x-wardwright-receipt-id")
+    receipt = Wardwright.ReceiptStore.get(receipt_id)
+    refute get_in(receipt, ["final", "provider_metadata", "wardwright_tool_mediation"])
+  end
+
+  test "tool mediation can replace agent tools with arbitrary provider-visible function schemas" do
+    base_url = streaming_provider_base_url("/openai")
+    System.put_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS", "1")
+    System.put_env("WARDWRIGHT_TEST_OPENAI_KEY", "test-openai-key")
+
+    on_exit(fn ->
+      System.delete_env("WARDWRIGHT_TEST_OPENAI_KEY")
+      System.delete_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS")
+    end)
+
+    replacement_tool = %{
+      "function" => %{
+        "description" => "Dispatch a provider-visible dynamic debugging tool.",
+        "name" => "provider_dynamic_debug",
+        "parameters" => %{
+          "additionalProperties" => false,
+          "properties" => %{
+            "value" => %{"description" => "Value selected by the provider.", "type" => "string"}
+          },
+          "required" => ["value"],
+          "type" => "object"
+        }
+      },
+      "type" => "function"
+    }
+
+    config =
+      unit_policy_config()
+      |> Map.put("targets", [
+        %{
+          "context_window" => 256,
+          "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY",
+          "model" => "openai-compatible/live-test",
+          "provider_base_url" => base_url,
+          "provider_kind" => "openai-compatible"
+        }
+      ])
+      |> Map.put("governance", [])
+      |> Map.put("tool_mediation", %{
+        "mode" => "patch",
+        "rules" => [
+          %{
+            "action" => "replace",
+            "id" => "replace-with-dynamic-debug-tool",
+            "match" => %{"name" => "create_pull_request"},
+            "tool" => replacement_tool
+          }
+        ]
+      })
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        messages: [
+          %{content: "debug provider tool behavior", role: "user"},
+          %{
+            content: nil,
+            role: "assistant",
+            tool_calls: [%{function: %{arguments: "{}", name: "create_pull_request"}, id: "call_1", type: "function"}]
+          },
+          %{content: "created", role: "tool", tool_call_id: "call_1"}
+        ],
+        model: "unit-model",
+        tool_choice: "auto",
+        tools: [
+          %{
+            function: %{
+              name: "create_pull_request",
+              parameters: %{additionalProperties: false, properties: %{title: %{type: "string"}}, type: "object"}
+            },
+            type: "function"
+          }
+        ]
+      })
+
+    assert conn.status == 200
+
+    body = JSON.decode!(conn.resp_body)
+
+    assert get_in(body, ["choices", Access.at(0), "message", "tool_calls", Access.at(0), "function", "name"]) ==
+             "provider_dynamic_debug"
+
+    assert get_in(body, ["choices", Access.at(0), "message", "tool_calls", Access.at(0), "function", "arguments"]) ==
+             ~s({"value":"Forwarded tools"})
+
+    [receipt_id] = get_resp_header(conn, "x-wardwright-receipt-id")
+    receipt = Wardwright.ReceiptStore.get(receipt_id)
+    mediation = get_in(receipt, ["final", "provider_metadata", "wardwright_tool_mediation"])
+
+    assert [%{"action" => "replace", "id" => "replace-with-dynamic-debug-tool"}] =
+             Enum.map(mediation["applied_rules"], &Map.take(&1, ["action", "id"]))
+
+    assert [%{"declared_by" => "agent", "name" => "create_pull_request"}] =
+             Enum.map(mediation["original_tools"], &Map.take(&1, ["declared_by", "name"]))
+
+    assert [%{"declared_by" => "agent", "name" => "provider_dynamic_debug"}] =
+             Enum.map(mediation["provider_visible_tools"], &Map.take(&1, ["declared_by", "name"]))
+  end
+
+  test "tool mediation does not receipt matched patch rules that make no request change" do
+    base_url = streaming_provider_base_url("/openai")
+    System.put_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS", "1")
+    System.put_env("WARDWRIGHT_TEST_OPENAI_KEY", "test-openai-key")
+
+    on_exit(fn ->
+      System.delete_env("WARDWRIGHT_TEST_OPENAI_KEY")
+      System.delete_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS")
+    end)
+
+    config =
+      unit_policy_config()
+      |> Map.put("targets", [
+        %{
+          "context_window" => 256,
+          "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY",
+          "model" => "openai-compatible/live-test",
+          "provider_base_url" => base_url,
+          "provider_kind" => "openai-compatible"
+        }
+      ])
+      |> Map.put("governance", [])
+      |> Map.put("tool_mediation", %{
+        "mode" => "patch",
+        "rules" => [
+          %{
+            "action" => "augment",
+            "id" => "missing-augment-payload",
+            "match" => %{"name" => "create_pull_request"}
+          },
+          %{
+            "action" => "replace",
+            "id" => "missing-replacement-tool",
+            "match" => %{"name" => "create_pull_request"}
+          }
+        ]
+      })
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        messages: [
+          %{content: "prepare a pull request", role: "user"},
+          %{
+            content: nil,
+            role: "assistant",
+            tool_calls: [%{function: %{arguments: "{}", name: "create_pull_request"}, id: "call_1", type: "function"}]
+          },
+          %{content: "created", role: "tool", tool_call_id: "call_1"}
+        ],
+        model: "unit-model",
+        tool_choice: "auto",
+        tools: [%{function: %{name: "create_pull_request", parameters: %{type: "object"}}, type: "function"}]
+      })
+
+    assert conn.status == 200
+
+    body = JSON.decode!(conn.resp_body)
+
+    assert get_in(body, ["choices", Access.at(0), "message", "tool_calls", Access.at(0), "function", "name"]) ==
+             "create_pull_request"
+
+    [receipt_id] = get_resp_header(conn, "x-wardwright-receipt-id")
+    receipt = Wardwright.ReceiptStore.get(receipt_id)
+    refute get_in(receipt, ["final", "provider_metadata", "wardwright_tool_mediation"])
+  end
+
+  test "tool mediation receipt hashes use canonical tool schema encoding" do
+    first_hash =
+      tool_mediation_schema_hash(%{
+        "function" => %{
+          "description" => "Probe canonical schema hashing.",
+          "name" => "canonical_schema_probe",
+          "parameters" =>
+            Map.new([
+              {"additionalProperties", false},
+              {"required", ["value"]},
+              {"type", "object"},
+              {:properties, %{"value" => %{"type" => "string"}}}
+            ])
+        },
+        "type" => "function"
+      })
+
+    second_hash =
+      tool_mediation_schema_hash(%{
+        "function" => %{
+          "description" => "Probe canonical schema hashing.",
+          "name" => "canonical_schema_probe",
+          "parameters" =>
+            Map.new([
+              {"properties", %{"value" => %{"type" => "string"}}},
+              {"required", ["value"]},
+              {"type", "object"},
+              {:additionalProperties, false}
+            ])
+        },
+        "type" => "function"
+      })
+
+    assert first_hash == second_hash
+  end
+
+  test "tool mediation deduplicates provider-visible tools after replacement name collisions" do
+    base_url = streaming_provider_base_url("/openai")
+    System.put_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS", "1")
+    System.put_env("WARDWRIGHT_TEST_OPENAI_KEY", "test-openai-key")
+
+    on_exit(fn ->
+      System.delete_env("WARDWRIGHT_TEST_OPENAI_KEY")
+      System.delete_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS")
+    end)
+
+    config =
+      unit_policy_config()
+      |> Map.put("targets", [
+        %{
+          "context_window" => 256,
+          "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY",
+          "model" => "openai-compatible/live-test",
+          "provider_base_url" => base_url,
+          "provider_kind" => "openai-compatible"
+        }
+      ])
+      |> Map.put("governance", [])
+      |> Map.put("server_tools", [%{"name" => "wardwright_policy_cache_status"}])
+      |> Map.put("tool_mediation", %{
+        "mode" => "patch",
+        "rules" => [
+          %{
+            "action" => "replace",
+            "id" => "replace-with-existing-server-tool",
+            "match" => %{"name" => "create_pull_request"},
+            "tool" => %{
+              "function" => %{
+                "description" => "Collides with an injected Wardwright server tool.",
+                "name" => "wardwright_policy_cache_status",
+                "parameters" => %{"additionalProperties" => false, "properties" => %{}, "type" => "object"}
+              },
+              "type" => "function"
+            }
+          }
+        ]
+      })
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "prepare then check Wardwright policy cache status", role: "user"}],
+        model: "unit-model",
+        tool_choice: "auto",
+        tools: [%{function: %{name: "create_pull_request", parameters: %{type: "object"}}, type: "function"}]
+      })
+
+    assert conn.status == 200
+
+    [receipt_id] = get_resp_header(conn, "x-wardwright-receipt-id")
+    receipt = Wardwright.ReceiptStore.get(receipt_id)
+    mediation = get_in(receipt, ["final", "provider_metadata", "wardwright_tool_mediation"])
+
+    assert [%{"action" => "replace", "id" => "replace-with-existing-server-tool"}] =
+             Enum.map(mediation["applied_rules"], &Map.take(&1, ["action", "id"]))
+
+    provider_visible_names = Enum.map(mediation["provider_visible_tools"], & &1["name"])
+    assert provider_visible_names == Enum.uniq(provider_visible_names)
+    assert provider_visible_names == ["wardwright_policy_cache_status"]
+
+    assert [server_tool] = get_in(receipt, ["final", "provider_metadata", "wardwright_server_tools"])
+    assert server_tool["name"] == "wardwright_policy_cache_status"
+    assert server_tool["status"] == "completed"
+  end
+
+  test "tool mediation can augment Wardwright-hosted tools before provider choice" do
+    base_url = streaming_provider_base_url("/openai")
+    System.put_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS", "1")
+    System.put_env("WARDWRIGHT_TEST_OPENAI_KEY", "test-openai-key")
+
+    on_exit(fn ->
+      System.delete_env("WARDWRIGHT_TEST_OPENAI_KEY")
+      System.delete_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS")
+    end)
+
+    config =
+      unit_policy_config()
+      |> Map.put("targets", [
+        %{
+          "context_window" => 256,
+          "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY",
+          "model" => "openai-compatible/live-test",
+          "provider_base_url" => base_url,
+          "provider_kind" => "openai-compatible"
+        }
+      ])
+      |> Map.put("governance", [])
+      |> Map.put("server_tools", [%{"name" => "wardwright_policy_cache_status"}])
+      |> Map.put("tool_mediation", %{
+        "rules" => [
+          %{
+            "action" => "augment",
+            "description_append" => "Only call this when policy-cache status is directly relevant.",
+            "id" => "policy-cache-context",
+            "match" => %{"name" => "wardwright_policy_cache_status"}
+          }
+        ]
+      })
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    assert {:ok, _event} =
+             Wardwright.PolicyCache.add(%{
+               "created_at_unix_ms" => 1,
+               "key" => "browser:read",
+               "kind" => "tool_call",
+               "scope" => %{"session_id" => "server-tool-mediation"}
+             })
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "check Wardwright policy cache status", role: "user"}],
+        model: "unit-model"
+      })
+
+    assert conn.status == 200
+
+    [receipt_id] = get_resp_header(conn, "x-wardwright-receipt-id")
+    receipt = Wardwright.ReceiptStore.get(receipt_id)
+    mediation = get_in(receipt, ["final", "provider_metadata", "wardwright_tool_mediation"])
+
+    assert [%{"action" => "augment", "id" => "policy-cache-context"}] =
+             Enum.map(mediation["applied_rules"], &Map.take(&1, ["action", "id"]))
+
+    assert [%{"declared_by" => "wardwright", "name" => "wardwright_policy_cache_status"}] =
+             Enum.map(mediation["provider_visible_tools"], &Map.take(&1, ["declared_by", "name"]))
+
+    [original] = mediation["original_tools"]
+    [visible] = mediation["provider_visible_tools"]
+    assert original["schema_hash"] != visible["schema_hash"]
+
+    assert [server_tool] = get_in(receipt, ["final", "provider_metadata", "wardwright_server_tools"])
+    assert server_tool["name"] == "wardwright_policy_cache_status"
+    assert server_tool["status"] == "completed"
+  end
+
   test "openai-compatible targets use the Wardwright-hosted server-tool framework for registered tools" do
     base_url = streaming_provider_base_url("/openai")
     System.put_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS", "1")
@@ -534,6 +1078,78 @@ defmodule Wardwright.StreamProviderTransportTest do
     assert get_in(server_tool, ["result_metadata", "echo"]) == "from-model"
   end
 
+  test "openai-compatible targets run arbitrary dynamic Dune server tools in execute mode" do
+    base_url = streaming_provider_base_url("/openai")
+    System.put_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS", "1")
+    System.put_env("WARDWRIGHT_TEST_OPENAI_KEY", "test-openai-key")
+
+    on_exit(fn ->
+      System.delete_env("WARDWRIGHT_TEST_OPENAI_KEY")
+      System.delete_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS")
+    end)
+
+    config =
+      unit_policy_config()
+      |> Map.put("targets", [
+        %{
+          "context_window" => 256,
+          "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY",
+          "model" => "openai-compatible/live-test",
+          "provider_base_url" => base_url,
+          "provider_kind" => "openai-compatible"
+        }
+      ])
+      |> Map.put("governance", [])
+      |> Map.put("server_tools", [
+        %{
+          "description" => "Classify a topic through a trusted local Dune server function.",
+          "engine" => "dune",
+          "name" => "wardwright_dynamic_topic_classifier",
+          "parameters" => %{
+            "additionalProperties" => false,
+            "properties" => %{
+              "score" => %{"minimum" => 0, "type" => "number"},
+              "topic" => %{"type" => "string"}
+            },
+            "required" => ["topic", "score"],
+            "type" => "object"
+          },
+          "source" => ~S(%{"classified_topic" => input["topic"], "confidence" => input["score"]})
+        }
+      ])
+      |> Map.put("tool_mediation", %{"mode" => "execute", "rules" => []})
+
+    assert call(:post, "/__test/config", config).status == 200
+
+    conn =
+      call(:post, "/v1/chat/completions", %{
+        messages: [%{content: "classify dynamic provider tool topic", role: "user"}],
+        model: "unit-model"
+      })
+
+    assert conn.status == 200
+
+    body = JSON.decode!(conn.resp_body)
+
+    assert get_in(body, ["choices", Access.at(0), "message", "content"]) ==
+             "Wardwright dynamic server tool result was observed."
+
+    [receipt_id] = get_resp_header(conn, "x-wardwright-receipt-id")
+    receipt = Wardwright.ReceiptStore.get(receipt_id)
+
+    assert [server_tool] = get_in(receipt, ["final", "provider_metadata", "wardwright_server_tools"])
+    assert server_tool["call_id"] == "call_wardwright_dynamic_topic_classifier_1"
+    assert server_tool["engine"] == "dune"
+    assert server_tool["execution_location"] == "wardwright"
+    assert server_tool["name"] == "wardwright_dynamic_topic_classifier"
+    assert server_tool["status"] == "completed"
+    assert server_tool["visibility_level"] == "local_verified"
+    assert get_in(server_tool, ["result_metadata", "classified_topic"]) == "provider-tools"
+    assert get_in(server_tool, ["result_metadata", "confidence"]) == 0.9
+
+    refute get_in(receipt, ["final", "provider_metadata", "wardwright_tool_mediation"])
+  end
+
   test "openai-compatible targets run trusted BEAM module server tools loaded from path" do
     base_url = streaming_provider_base_url("/openai")
     module_name = "WardwrightBeamReverseTool#{System.unique_integer([:positive])}"
@@ -631,5 +1247,26 @@ defmodule Wardwright.StreamProviderTransportTest do
     end)
     |> Enum.reject(&(&1 == "[DONE]"))
     |> Enum.map(&JSON.decode!/1)
+  end
+
+  defp tool_mediation_schema_hash(tool) do
+    {_request, mediation} =
+      Wardwright.ToolMediation.apply(
+        %{"tool_choice" => "auto", "tools" => [tool]},
+        %{
+          "tool_mediation" => %{
+            "mode" => "patch",
+            "rules" => [
+              %{
+                "action" => "hide",
+                "id" => "hide-canonical-probe",
+                "match" => %{"name" => "canonical_schema_probe"}
+              }
+            ]
+          }
+        }
+      )
+
+    get_in(mediation, ["original_tools", Access.at(0), "schema_hash"])
   end
 end

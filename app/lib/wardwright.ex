@@ -45,6 +45,8 @@ defmodule Wardwright do
   @server_tool_policy_cache_status "wardwright_policy_cache_status"
   @server_tool_snippet_id_key "snippet_id"
   @server_tool_source_key "source"
+  @tool_mediation_key "tool_mediation"
+  @tool_mediation_rules_key "rules"
   @delta_key "delta"
   @preserved_delta_fields_key "preserved_delta_fields"
   @system_fingerprint_key "system_fingerprint"
@@ -103,7 +105,8 @@ defmodule Wardwright do
         @recording_adapted_agents_key => @recording_auto_mode,
         @recording_default_key => @recording_manual_mode,
         @recording_generic_clients_key => @recording_manual_mode
-      }
+      },
+      @tool_mediation_key => %{@tool_mediation_rules_key => []}
     }
   end
 
@@ -948,7 +951,8 @@ defmodule Wardwright do
         end),
       @description_key => normalize_description(config),
       @recording_key => normalize_recording(Map.get(config, @recording_key, %{})),
-      @server_tools_key => normalize_server_tools(Map.get(config, @server_tools_key, []))
+      @server_tools_key => normalize_server_tools(Map.get(config, @server_tools_key, [])),
+      @tool_mediation_key => normalize_tool_mediation(Map.get(config, @tool_mediation_key, %{}))
     }
   end
 
@@ -1079,6 +1083,17 @@ defmodule Wardwright do
   end
 
   defp normalize_vcr(_), do: %{"mode" => "metadata_only"}
+
+  defp normalize_tool_mediation(%{@tool_mediation_rules_key => rules} = mediation) when is_list(rules) do
+    mediation
+    |> Map.take(["mode", @tool_mediation_rules_key])
+    |> Map.put(@tool_mediation_rules_key, Enum.filter(rules, &is_map/1))
+  end
+
+  defp normalize_tool_mediation(rules) when is_list(rules),
+    do: %{@tool_mediation_rules_key => Enum.filter(rules, &is_map/1)}
+
+  defp normalize_tool_mediation(_mediation), do: %{@tool_mediation_rules_key => []}
 
   defp normalize_server_tools(tools) when is_list(tools) do
     tools
