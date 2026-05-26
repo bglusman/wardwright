@@ -59,6 +59,14 @@ unstated project knowledge. If a workflow can only be completed in one surface,
 that is either a deliberate product decision that needs documentation or a
 capability gap to file from the run.
 
+For the `v0.0.11` release line, the API/MCP proof run exercises a real
+authoring/debugging loop: activate a canned Wardwright model through the
+protected policy-authoring API, call it through `/v1/chat/completions`, capture
+the receipt id, discover MCP tools through `tools/list`, and load the resulting
+control-debugger trace with the `load_control_debugger_trace` MCP tool. That
+proves agents can drive and inspect the loop without UI scraping. It does not
+make all HTTP scenario-management endpoints available as MCP tools.
+
 Agents should not ask users to paste raw provider API keys into model artifacts.
 For OpenAI-compatible targets, reference `credential_fnox_key` when fnox is
 configured on the host, or `credential_env` for local development and smoke

@@ -107,7 +107,7 @@ Risks:
 
 ## Recommendation
 
-For a polished public `0.1.0` admin experience, use Concept 1 as the immediate
+For a polished public `0.0.11` admin experience, use Concept 1 as the immediate
 direction and borrow the graph inspector from Concept 2 as the richer future
 state. Concept 3 should influence any save flow that can materially change what
 agents are allowed to do.

@@ -140,7 +140,7 @@ smoke, mutation/property tests, known limits, and open claims.
 ## Recommendation
 
 Use this holistic direction, not the prior tool-advertising concept, as the
-north star for the public admin UX. For `0.1.0`, the current implemented UI can
+north star for the public admin UX. For `0.0.11`, the current implemented UI can
 still ship if the release is positioned as a technical first release. If the
 release should present a polished product surface, implement the shell and
 overview/evidence ledger first, then migrate model capability and replay into

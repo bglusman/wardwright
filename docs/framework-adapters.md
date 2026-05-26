@@ -21,7 +21,7 @@ framework: a stable Wardwright model id is requested, caller provenance reaches
 Wardwright, `x-wardwright-receipt-id` is captured in framework-visible
 metadata, fallback generic OpenAI-compatible usage stays honest, and privacy
 limits are enforced by synthetic app-local smokes. The default test suite does
-not install live framework packages. The `0.1.0` release validation pass also
+not install live framework packages. The `0.0.11` release validation pass also
 ran live npm/pip package-manager smokes where the local machine had the needed
 runtime, plus a Proxmox LXC NuGet smoke for the .NET recipe. None of
 those checks prove broad tool-call preservation, native framework state, or
@@ -31,7 +31,7 @@ Wardwright also does not claim native framework tool-loop integration through
 the OpenAI-compatible Chat Completions recipes. Vercel AI SDK,
 LangChain/LangGraph, OpenAI Agents SDK, Microsoft.Extensions.AI, and Semantic
 Kernel each have their own local tool execution, provider-hosted tool,
-approval, tracing, or graph state semantics. Wardwright `0.1.0` keeps those
+approval, tracing, or graph state semantics. Wardwright `0.0.11` keeps those
 semantics visible: it can normalize and receipt request-visible or
 provider-exposed tool facts, and it has a minimal Wardwright-hosted server-tool
 extension framework with a read-only built-in plus trusted local Dune and BEAM
@@ -40,7 +40,7 @@ framework-native approval, graph checkpoint, or planner state.
 
 ## Current Support And Backlog
 
-The `0.1.0` scope should stay honest about proof level:
+The `0.0.11` scope should stay honest about proof level:
 
 | Surface | Status | What is proven | Before claiming more |
 | --- | --- | --- | --- |
@@ -62,7 +62,7 @@ NuGet execution evidence for basic chat and Semantic Kernel registration, but
 receipt propagation still needs a wrapper because the native response object did
 not expose Wardwright headers.
 
-Watch or follow-up candidates remain outside the `0.1.0` support claim:
+Watch or follow-up candidates remain outside the `0.0.11` support claim:
 Alloy/Alloy EX, Gleam `glopenai`, Gleam `starlet`, Gleam `glean`, Aider,
 CrewAI, Agno, AutoGen/AG2, DSPy, Haystack, Mastra, Spring AI, LangChain4j, n8n,
 Dify, Flowise, OpenHands, CloudWeGo Eino, Genkit, Open Interpreter, AutoGPT,
@@ -78,7 +78,7 @@ additional proof before any support claim.
 ## Live Package-Manager Recipe Checks
 
 On 2026-05-24, the release validation pass started the local
-`wardwright_darwin_arm64` Burrito artifact from the `0.1.0` release-prep tree
+`wardwright_darwin_arm64` Burrito artifact from the `0.0.11` release-prep tree
 and ran these package-manager smokes against `http://127.0.0.1:8798/v1`:
 
 - `ai@6.0.191` and `@ai-sdk/openai-compatible@2.0.48`: `generateText` returned

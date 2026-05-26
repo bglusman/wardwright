@@ -6,7 +6,7 @@ description: Release, native binary, and Homebrew packaging plan for Wardwright.
 
 # Packaging
 
-Status: initial Burrito/Tinfoil packaging path in place. Release `v0.1.0`
+Status: initial Burrito/Tinfoil packaging path in place. Release `v0.0.11`
 adds the Lustre workbench migration, framework-adapter recipe smokes, and local
 agent-adapter install/probe support.
 
@@ -57,7 +57,7 @@ curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/in
 For a pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.1.0
+curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.11
 ```
 
 The script downloads the matching release archive, requires
@@ -147,10 +147,10 @@ agents. The JSON form is generated from the same registry used by the protected
 `/v1/policy-authoring/tools` endpoint, so scripts can discover the available
 authoring surface without scraping the UI. The advertised HTTP surface includes
 draft model creation, local model activation, draft-only rule-change proposals,
-validation, projection explanation, simulation, Dune snippet, and scenario
-record/import/export/retention tools. The MCP endpoint currently exposes the
-projection, simulation, Dune snippet, draft/activate/propose, and validation
-subset; scenario write tools remain HTTP-only. The
+validation, projection explanation, simulation, Dune snippet, debugger, harness,
+and scenario record/import/export/retention tools. The MCP endpoint exposes the
+core authoring loop plus trace/debugger, Dune snippet, validation, and harness
+read/export tools; some scenario management endpoints remain HTTP-only. The
 [Agent Authoring Guide](agent-authoring.html) explains when an agent should use
 each tool and which operations are draft-only versus write-capable.
 
@@ -245,8 +245,8 @@ The Homebrew update job needs a `HOMEBREW_TAP_TOKEN` repository secret with
 write access to `bglusman/homebrew-tap`. Tinfoil also supports deploy-key auth,
 which is preferable once release automation is no longer experimental.
 
-Dev tags such as `v0.1.0-dev` are published as GitHub prereleases but do not
-update the Homebrew tap. The `v0.1.0` stable tag updates the tap after release
+Dev tags such as `v0.0.11-dev` are published as GitHub prereleases but do not
+update the Homebrew tap. The `v0.0.11` stable tag updates the tap after release
 artifacts and checksums publish successfully.
 
 ## Known Gaps
@@ -268,7 +268,7 @@ artifacts and checksums publish successfully.
 - Release `v0.0.10` preserves the unified `/admin` workbench shell from
   `v0.0.9` and fixes packaged releases so the Gleam/Lustre runtime modules are
   included in the Burrito payload.
-- Release `v0.1.0` adds the Lustre workbench migration, framework-adapter
+- Release `v0.0.11` adds the Lustre workbench migration, framework-adapter
   recipe foundation, and local agent-adapter install/probe lifecycle. It does
   not imply exact cross-agent replay or native framework state fidelity. It also
   adds a Wardwright-hosted server-tool framework with one registered read-only

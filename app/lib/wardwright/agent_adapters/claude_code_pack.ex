@@ -4,7 +4,7 @@ defmodule Wardwright.AgentAdapters.ClaudeCodePack do
   alias Wardwright.AgentAdapters.CanonicalJson
 
   @adapter_id "wardwright-claude-code"
-  @adapter_version "0.1.0"
+  @adapter_version "0.0.11"
   @config_path ".wardwright/adapters/claude-code-adapter.json"
   @default_gateway_url "http://127.0.0.1:8787"
   @fidelity "prompt_handoff"

@@ -58,7 +58,7 @@ They should not be hidden broad execution authority inside the
 OpenAI-compatible Chat Completions path. Current Chat Completions tool support
 mostly stays pass-through and policy evidence: clients or providers execute
 tools, while Wardwright normalizes visible `tools`, `tool_choice`, `tool_calls`,
-tool results, and provider-exposed hosted tool events. The `0.1.0` spike adds a
+tool results, and provider-exposed hosted tool events. The `0.0.11` spike adds a
 small server-tool registry and execution loop with three explicit engines:
 read-only built-ins, trusted local Dune functions, and trusted BEAM modules
 loaded from a local path. The first built-in tool is
@@ -145,7 +145,7 @@ catalog is the caller-declared tools plus enabled Wardwright-hosted tools, after
 mediation, for the selected raw target. If the selected target is not
 tool-capable, Wardwright-hosted tools remain configured but are not injected on
 that call. Provider-native hosted tools are not discovered or normalized in
-`0.1.0`; raw target config changes are reflected on the next request/projection
+`0.0.11`; raw target config changes are reflected on the next request/projection
 from the active model config. A future advertisement policy can make this
 explicit as `intersection` for stable model contracts or `conditional_union`
 when tool-aware routing can force compatible targets.

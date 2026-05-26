@@ -178,7 +178,7 @@ defmodule Wardwright.AgentAdapterRecordingTest do
         Map.merge(
           %{
             "adapter_id" => "wardwright-omp",
-            "adapter_version" => "0.1.0",
+            "adapter_version" => "0.0.11",
             "gateway_url" => "http://127.0.0.1:8787",
             "runtime" => "omp",
             "target" => "omp",

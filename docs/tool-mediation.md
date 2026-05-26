@@ -135,7 +135,7 @@ receipt. Schema hashes use canonical JSON encoding so semantically equivalent
 tool schemas do not appear different only because map keys arrived in a
 different order.
 
-The `0.1.0` review pass also tightened three request-side edge cases:
+The `0.0.11` review pass also tightened three request-side edge cases:
 
 - Patch rules that match a tool but make no provider request change do not
   create `wardwright_tool_mediation` receipt metadata.

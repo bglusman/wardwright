@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Wardwright Model Middleware API
-  version: 0.1.0
+  version: 0.0.11
   description: |
-    Contract for the Wardwright 0.1.0 serving surface. The serving surface is
+    Contract for the Wardwright 0.0.11 serving surface. The serving surface is
     OpenAI-compatible where possible, with additional Wardwright model,
     simulation, receipt, adapter, server-tool, and admin endpoints.
 servers:

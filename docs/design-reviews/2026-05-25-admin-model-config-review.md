@@ -115,7 +115,7 @@ The included wireframe proposes:
 ## Release Recommendation
 
 The current UI is not broken and the latest smoke coverage is meaningful. For
-`0.1.0`, this is acceptable if the release goal is a technical RC-quality admin
+`0.0.11`, this is acceptable if the release goal is a technical RC-quality admin
 surface. If the release goal is a polished first public admin experience, the
 Models & access page should get the information-architecture pass shown in the
 mockup before tagging.

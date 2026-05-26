@@ -26,7 +26,7 @@ individual models can be configured for API-key or open access.
 
 ## Install
 
-Wardwright publishes early native binaries for macOS and Linux. The `v0.1.0`
+Wardwright publishes early native binaries for macOS and Linux. The `v0.0.11`
 release adds the Lustre workbench migration, framework-adapter recipes, and
 local agent-adapter install/probe support while keeping stronger
 state-fidelity claims explicitly limited.
@@ -59,7 +59,7 @@ WARDWRIGHT_BIND=127.0.0.1:8787 \
 For a pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.1.0
+curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.11
 ```
 
 Set `WARDWRIGHT_ADMIN_TOKEN` before exposing Wardwright beyond loopback. See

@@ -6,7 +6,7 @@ description: Install, verify, and remove Wardwright local agent adapters.
 
 # Agent Adapters
 
-Status: adapter install support is part of the `0.1.0` release line.
+Status: adapter install support is part of the `0.0.11` release line.
 
 Wardwright works as a normal OpenAI-compatible gateway without a local agent
 adapter. Adapters add local identity, install-time checks, and runtime probes

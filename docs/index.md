@@ -28,7 +28,7 @@ description: A governed model gateway for AI agents.
 
 <div class="notice">
   <strong>Status:</strong> Wardwright is early but installable. The
-  <code>v0.1.0</code> release line includes the Lustre workbench migration,
+  <code>v0.0.11</code> release line includes the Lustre workbench migration,
   framework-adapter recipes, local agent-adapter install/probe support, and the
   first Wardwright-hosted server-tool plus tool-mediation controls.
 </div>
