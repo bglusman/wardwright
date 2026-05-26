@@ -91,6 +91,12 @@ defmodule WardwrightWeb.PolicyAuthoringDrafts do
     |> Wardwright.normalize_config()
   end
 
+  defp artifact_from_body(%{"model_definition_version" => _version, "route_root" => _route_root} = artifact) do
+    Wardwright.default_config()
+    |> Map.merge(string_keys(artifact))
+    |> Wardwright.normalize_config()
+  end
+
   defp artifact_from_body(body) do
     body = string_keys(body)
     route = route_body(body)

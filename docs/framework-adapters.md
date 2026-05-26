@@ -131,6 +131,14 @@ WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=16384
 WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000
 ```
 
+For a local Gemma 4 26B dogfood baseline, register
+`config/local-gemma-authoring.model.json` and set
+`WARDWRIGHT_AUTHORING_AGENT_MODEL=local-gemma-authoring`. That model routes to
+`ollama/gemma4:26b-a4b-it-q4_K_M` with no governance, stream, prompt-transform,
+or tool-mediation rules. The structured-output schema is intentionally retained
+because the Jido-backed in-page assistant needs Wardwright to validate tool-plan
+JSON before it executes authoring tools.
+
 Dogfood mode is intentionally stricter than direct-provider mode. The selected
 local Wardwright model must expose
 `structured_output.schemas.authoring_tool_plan_v1`, so Wardwright validates the
