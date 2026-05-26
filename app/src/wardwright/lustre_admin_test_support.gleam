@@ -21,6 +21,75 @@ pub fn workbench_deep_link_uses_selected_model(
   |> view_contains(expected_text)
 }
 
+pub fn ux_exploration_uses_live_model_controls(
+  concept_id: String,
+  model_id: String,
+  expected_text: String,
+) -> Bool {
+  start("ux_exploration:" <> concept_id <> ":" <> model_id)
+  |> view_contains(expected_text)
+}
+
+pub fn ux_exploration_theme_switch_updates_sidebar(
+  model_id: String,
+  theme_label: String,
+) -> Bool {
+  start("ux_exploration:ops-console:" <> model_id)
+  |> simulate.click(on: query.element(
+    matching: query.tag("button")
+    |> query.and(query.text(theme_label)),
+  ))
+  |> view_contains("<code>" <> theme_label <> "</code>")
+}
+
+pub fn ux_exploration_is_standalone_end_to_end(
+  concept_id: String,
+  model_id: String,
+) -> Bool {
+  let view =
+    start("ux_exploration:" <> concept_id <> ":" <> model_id)
+    |> simulate.view
+    |> element.to_string
+
+  let concept_path =
+    "/admin/ux-exploration/" <> concept_id <> "?model=" <> model_id
+
+  contains_href(view, concept_path <> "#ux-model-lab")
+  && contains_href(view, concept_path <> "#ux-model-config")
+  && contains_href(view, concept_path <> "#ux-policy-lab")
+  && contains_href(view, concept_path <> "#ux-evidence")
+  && string.contains(view, "#ux-integrations")
+  && string.contains(view, "#ux-release")
+  && string.contains(view, "Simulate a turn")
+  && string.contains(view, "Model authoring")
+  && string.contains(view, "Access Policy")
+  && string.contains(view, "Create Key")
+  && string.contains(view, "Replay receipts")
+  && string.contains(view, "Create simulator case")
+  && string.contains(view, "Adapter install status")
+  && string.contains(view, "Browser smoke")
+  && string.contains(view, "/admin?") == False
+}
+
+fn contains_href(view: String, href: String) -> Bool {
+  string.contains(view, href)
+  || string.contains(view, string.replace(href, "&", "&amp;"))
+}
+
+pub fn ux_exploration_toggles_server_tool(
+  concept_id: String,
+  model_id: String,
+  action_label: String,
+  expected_text: String,
+) -> Bool {
+  start("ux_exploration:" <> concept_id <> ":" <> model_id)
+  |> simulate.click(on: query.element(
+    matching: query.tag("button")
+    |> query.and(query.text(action_label)),
+  ))
+  |> view_contains(expected_text)
+}
+
 fn start(flags: String) {
   simulate.simple(
     init: lustre_admin.init,

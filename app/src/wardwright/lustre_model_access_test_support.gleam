@@ -25,6 +25,14 @@ pub fn initial_model_view_contains(
   |> view_contains(expected_text)
 }
 
+pub fn initial_model_view_omits(
+  model_id: String,
+  unwanted_text: String,
+) -> Bool {
+  start_with_model(model_id)
+  |> view_omits(unwanted_text)
+}
+
 pub fn creating_key_shows_secret(model_id: String, label: String) -> Bool {
   start()
   |> change_select("model", model_id)
@@ -106,6 +114,19 @@ pub fn selecting_unkeyed_mode_shows_unkeyed_options() -> Bool {
 pub fn selecting_model_shows(model_id: String, expected_text: String) -> Bool {
   start()
   |> change_select("model", model_id)
+  |> view_contains(expected_text)
+}
+
+pub fn toggling_server_tool_updates_state(
+  model_id: String,
+  action_label: String,
+  expected_text: String,
+) -> Bool {
+  start_with_model(model_id)
+  |> simulate.click(on: query.element(
+    matching: query.tag("button")
+    |> query.and(query.text(action_label)),
+  ))
   |> view_contains(expected_text)
 }
 

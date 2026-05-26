@@ -113,11 +113,14 @@ Use the simplest integration that matches the agent:
   Wardwright intentionally supports broader Responses API behavior.
 
 The current framework recipes prove provenance and receipt correlation with
-app-local smokes. The `0.1.0-rc.1` validation pass also exercised live package
+app-local smokes. The `0.0.11` validation pass also exercised live package
 installs for Vercel AI SDK, LangChain/LangGraph, Pydantic AI, OpenAI Agents SDK,
-and LlamaIndex. They still do not prove streaming, tool-call preservation,
-native framework state, retrieval lineage, or exact replay. Treat the first
-live feed monitor as an integration test and keep the receipts.
+LlamaIndex, and Microsoft.Extensions.AI/Semantic Kernel. Vercel AI SDK
+streaming receipt capture is proven through the Wardwright fetch wrapper;
+LangChain streaming returns text but did not expose receipt headers in stream
+chunk metadata. These recipes still do not prove broad tool-call preservation,
+native framework state, retrieval lineage, or exact replay. Treat the first live
+feed monitor as an integration test and keep the receipts.
 
 ## Debugging A Bad Result
 
@@ -147,7 +150,7 @@ A tutorial like this becomes release-quality when it has:
 - saved scenarios that fail before the policy/model change and pass after it;
 - docs that state which parts are real and which parts are still recipes.
 
-For `0.1.0-rc.1`, the core product claim should stay conservative: Wardwright
+For `0.0.11`, the core product claim should stay conservative: Wardwright
 can help build, inspect, and debug a specialized lightweight model agent by
 owning the model contract and receipts. It should not claim the framework
 recipes are published packages or that a local model can monitor live news

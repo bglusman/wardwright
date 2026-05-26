@@ -41,6 +41,90 @@ defmodule WardwrightWeb.LustreModelAccessData do
      receipt_storage_note()}
   end
 
+  def server_tool_summary(model_id) do
+    config = selected_config(model_id)
+    tool_records = WardwrightWeb.ModelAccessProjection.server_tool_records(config)
+    target_records = WardwrightWeb.ModelAccessProjection.server_tool_target_records(config)
+    advertisement = WardwrightWeb.ModelAccessProjection.tool_advertisement_record(config)
+
+    {
+      tool_records
+      |> Enum.map(fn tool ->
+        {
+          tool["name"] || "",
+          tool["engine"] || "",
+          tool["source"] || "",
+          if(tool["enabled"] == false, do: "disabled", else: "enabled"),
+          tool["visibility_level"] || "",
+          limit_summary(tool["limits"] || %{}),
+          key_summary(tool["parameter_keys"] || []),
+          key_summary(tool["input_keys"] || [])
+        }
+      end),
+      target_records
+      |> Enum.map(fn target ->
+        {
+          target["model"] || "",
+          target["kind"] || "",
+          target_support_label(target["support"] || "")
+        }
+      end),
+      config
+      |> WardwrightWeb.ModelAccessProjection.tool_mediation_record()
+      |> then(fn mediation ->
+        {
+          mediation["mode"] || "patch",
+          mediation["rule_count"] || 0
+        }
+      end),
+      {
+        advertisement["mode"] || "intersection",
+        advertisement["guaranteed_server_tools"] || 0,
+        advertisement["conditional_server_tools"] || 0
+      }
+    }
+  end
+
+  def toggle_server_tool(model_id, tool_name, enabled) do
+    config = selected_config(model_id)
+    tool_name = tool_name |> to_string() |> String.trim()
+
+    if tool_name == "" do
+      {false, "Choose a server tool to update."}
+    else
+      {server_tools, found?} =
+        config
+        |> Map.get("server_tools", [])
+        |> List.wrap()
+        |> Enum.map_reduce(false, fn
+          %{"name" => ^tool_name} = tool, _found? ->
+            {Map.put(tool, "enabled", enabled), true}
+
+          name, _found? when is_binary(name) and name == tool_name ->
+            {%{"enabled" => enabled, "name" => tool_name}, true}
+
+          tool, found? ->
+            {tool, found?}
+        end)
+
+      if found? do
+        config
+        |> Map.put("server_tools", server_tools)
+        |> Wardwright.put_model_config()
+        |> case do
+          {:ok, _config} ->
+            state = if(enabled, do: "enabled", else: "disabled")
+            {true, "Server tool #{tool_name} #{state}."}
+
+          {:error, message} ->
+            {false, message}
+        end
+      else
+        {false, "Server tool #{tool_name} was not found on this model."}
+      end
+    end
+  end
+
   def key_options(model_id) do
     model_id
     |> selected_config()
@@ -141,6 +225,46 @@ defmodule WardwrightWeb.LustreModelAccessData do
       _health -> "unknown storage"
     end
   end
+
+  defp limit_summary(limits) when is_map(limits) do
+    [
+      limit_part(limits, "timeout_ms", "timeout", "ms"),
+      limit_part(limits, "max_reductions", "reductions", ""),
+      limit_part(limits, "max_heap_size", "heap", "")
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(", ")
+    |> case do
+      "" -> "default"
+      summary -> summary
+    end
+  end
+
+  defp limit_summary(_limits), do: "default"
+
+  defp limit_part(limits, key, label, suffix) do
+    case Map.get(limits, key) do
+      value when is_integer(value) -> "#{label} #{value}#{suffix}"
+      _value -> nil
+    end
+  end
+
+  defp key_summary(keys) when is_list(keys) do
+    keys
+    |> Enum.map(&to_string/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join(", ")
+    |> case do
+      "" -> "none"
+      summary -> summary
+    end
+  end
+
+  defp key_summary(_keys), do: "none"
+
+  defp target_support_label("tool-capable"), do: "Server tools sent to provider"
+  defp target_support_label("no-tool-injection"), do: "Server tools not sent"
+  defp target_support_label(support), do: support
 
   defp selected_model_id(model_id), do: selected_config(model_id)["model_id"] || default_model_id()
 

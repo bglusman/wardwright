@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wardwright Admin UX Exploration</title>
+  <style>
+    :root {
+      --ink: #182024;
+      --muted: #56636a;
+      --line: #bcc5c9;
+      --paper: #f5f3ec;
+      --panel: #ffffff;
+      --blue: #245a82;
+      --green: #28775e;
+      --yellow: #f3d98b;
+      --red: #efd0cc;
+      --wash: #edf3f1;
+      --shadow: 0 18px 35px rgba(24, 32, 36, 0.16);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #e6e1d6;
+      color: var(--ink);
+      font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif;
+      letter-spacing: 0;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    main {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 980px;
+      font-size: 38px;
+      line-height: 1.06;
+    }
+
+    h2 {
+      font-size: 23px;
+      line-height: 1.12;
+    }
+
+    h3 {
+      font-size: 16px;
+      line-height: 1.2;
+    }
+
+    p,
+    li {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 22px;
+      align-items: end;
+      margin-bottom: 24px;
+    }
+
+    .hero p {
+      max-width: 900px;
+      margin-top: 10px;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+      padding: 8px 12px;
+      border: 2px solid var(--ink);
+      border-radius: 7px;
+      background: var(--panel);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 900;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .button.primary {
+      background: var(--green);
+      color: white;
+    }
+
+    .button.blue {
+      background: var(--blue);
+      color: white;
+    }
+
+    .frame {
+      overflow: hidden;
+      margin-bottom: 24px;
+      border: 2px solid var(--ink);
+      border-radius: 8px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+
+    .bar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+      padding: 16px 18px;
+      border-bottom: 2px solid var(--ink);
+      background: #fcfaf4;
+    }
+
+    .bar p {
+      margin-top: 5px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      padding: 18px;
+    }
+
+    .tile,
+    .concept-card,
+    .note {
+      min-width: 0;
+      border: 2px solid var(--ink);
+      border-radius: 7px;
+      background: var(--panel);
+    }
+
+    .tile {
+      display: grid;
+      gap: 7px;
+      padding: 13px;
+    }
+
+    .metric {
+      font-size: 28px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: fit-content;
+      min-height: 25px;
+      padding: 4px 9px;
+      border: 1px solid var(--ink);
+      border-radius: 999px;
+      background: var(--wash);
+      color: var(--ink);
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .badge.yellow {
+      background: var(--yellow);
+    }
+
+    .badge.red {
+      background: var(--red);
+    }
+
+    .concept-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      padding: 18px;
+    }
+
+    .concept-card {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .concept-card.featured {
+      grid-column: 1 / -1;
+      grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+      grid-template-rows: auto auto auto;
+      align-items: start;
+    }
+
+    .concept-card header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .preview {
+      overflow: hidden;
+      height: 300px;
+      min-height: 270px;
+      border: 2px solid var(--ink);
+      border-radius: 7px;
+      background: #fbfaf5;
+    }
+
+    .featured .preview {
+      height: 560px;
+      min-height: 460px;
+      grid-row: 1 / span 3;
+      grid-column: 2;
+    }
+
+    .preview img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      min-height: inherit;
+      object-fit: cover;
+      object-position: top left;
+    }
+
+    .preview.small img {
+      object-position: top center;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .rank {
+      display: grid;
+      grid-template-columns: 36px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+    }
+
+    .rank span:first-child {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border: 2px solid var(--ink);
+      border-radius: 99px;
+      background: var(--blue);
+      color: white;
+      font-weight: 900;
+    }
+
+    .notes {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      padding: 18px;
+      border-top: 2px solid var(--ink);
+      background: #fbfaf4;
+    }
+
+    .note {
+      padding: 13px;
+    }
+
+    .note h3 {
+      margin-bottom: 6px;
+    }
+
+    @media (max-width: 960px) {
+      main {
+        padding: 16px;
+      }
+
+      .hero,
+      .bar,
+      .summary-grid,
+      .concept-grid,
+      .concept-card.featured,
+      .notes {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-actions {
+        justify-content: flex-start;
+      }
+
+      .featured .preview {
+        grid-column: auto;
+        grid-row: auto;
+        height: 360px;
+        min-height: 330px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div>
+        <h1>Wardwright admin UX exploration</h1>
+        <p>Try the competing directions for the admin/workbench surface, then vote or comment in GitHub. These are exploratory prototypes, not shipped behavior.</p>
+      </div>
+      <div class="hero-actions">
+        <a class="button blue" href="https://github.com/bglusman/wardwright/issues/75">Open voting issue</a>
+        <a class="button primary" href="holistic-admin-ux-concepts.html">Open leading concept</a>
+      </div>
+    </section>
+
+    <section class="frame">
+      <div class="bar">
+        <div>
+          <h2>Choose what Wardwright should optimize for first</h2>
+          <p>Each concept makes a different bet about the product: incremental cleanup, capability clarity, graph comprehension, safer changes, or a whole control-room shell.</p>
+        </div>
+        <span class="badge yellow">Issue #75 collects votes</span>
+      </div>
+
+      <div class="summary-grid">
+        <article class="tile">
+          <span class="badge">Concepts</span>
+          <span class="metric">5</span>
+          <p>Three existing artifacts plus two named options extracted from the freeform pass.</p>
+        </article>
+        <article class="tile">
+          <span class="badge">Best near-term</span>
+          <span class="metric">A</span>
+          <p>Current model config cleanup is the smallest implementation step.</p>
+        </article>
+        <article class="tile">
+          <span class="badge yellow">Best north star</span>
+          <span class="metric">E</span>
+          <p>The holistic Control Room is the broadest product direction.</p>
+        </article>
+        <article class="tile">
+          <span class="badge red">Open risk</span>
+          <span class="metric">UX</span>
+          <p>None of these concepts is implemented in the production admin shell.</p>
+        </article>
+      </div>
+
+      <div class="concept-grid">
+        <article class="concept-card featured">
+          <header>
+            <div class="rank"><span>E</span><div><h2>Holistic Control Room</h2><p>Whole-product operator workspace.</p></div></div>
+            <span class="badge yellow">north star</span>
+          </header>
+          <p>Reorganizes Wardwright around Overview, Models, Policy Lab, Evidence, Integrations, and Release readiness. This is the clearest answer if the public admin should feel cohesive instead of feature-shaped.</p>
+          <div class="actions">
+            <a class="button primary" href="holistic-admin-ux-concepts.html">Try concept</a>
+            <a class="button" href="holistic-admin-ux-concepts.png">View screenshot</a>
+            <a class="button blue" href="https://github.com/bglusman/wardwright/issues/75#issuecomment-4534975916">Vote for E</a>
+          </div>
+          <div class="preview">
+            <a href="holistic-admin-ux-concepts.html"><img src="holistic-admin-ux-concepts.png" alt="Holistic Wardwright Control Room concept preview"></a>
+          </div>
+        </article>
+
+        <article class="concept-card">
+          <header>
+            <div class="rank"><span>A</span><div><h2>Current Model Config Cleanup</h2><p>Conservative IA pass.</p></div></div>
+            <span class="badge">near-term</span>
+          </header>
+          <p>Simplifies the existing Models & access surface with a clearer selected-model summary, tabbed sections, and mobile task cards while preserving the current product shape.</p>
+          <div class="preview small">
+            <a href="model-config-wireframes.html"><img src="model-config-wireframes.png" alt="Current model config cleanup wireframe preview"></a>
+          </div>
+          <div class="actions">
+            <a class="button primary" href="model-config-wireframes.html">Try concept</a>
+            <a class="button blue" href="https://github.com/bglusman/wardwright/issues/75#issuecomment-4534975919">Vote for A</a>
+          </div>
+        </article>
+
+        <article class="concept-card">
+          <header>
+            <div class="rank"><span>B</span><div><h2>Capability Command Center</h2><p>Capability-first operations.</p></div></div>
+            <span class="badge yellow">feature area</span>
+          </header>
+          <p>Starts from what agents can safely believe a model can do. Strong for tool advertisement, target support differences, and release-readiness decisions.</p>
+          <div class="preview small">
+            <a href="freeform-admin-concepts.html"><img src="freeform-admin-concepts.png" alt="Capability command center concept preview"></a>
+          </div>
+          <div class="actions">
+            <a class="button primary" href="freeform-admin-concepts.html">Try concept</a>
+            <a class="button blue" href="https://github.com/bglusman/wardwright/issues/75#issuecomment-4534975938">Vote for B</a>
+          </div>
+        </article>
+
+        <article class="concept-card">
+          <header>
+            <div class="rank"><span>C</span><div><h2>Route Topology Map</h2><p>Graph-first comprehension.</p></div></div>
+            <span class="badge yellow">visual</span>
+          </header>
+          <p>Shows stable model, dispatcher, provider targets, server tools, receipts, and adapters as inspectable nodes. Best when composition and mismatch visibility matter most.</p>
+          <div class="preview small">
+            <a href="freeform-admin-concepts.html"><img src="freeform-admin-concepts.png" alt="Route topology concept preview"></a>
+          </div>
+          <div class="actions">
+            <a class="button primary" href="freeform-admin-concepts.html#route-topology">Try concept</a>
+            <a class="button blue" href="https://github.com/bglusman/wardwright/issues/75#issuecomment-4534975930">Vote for C</a>
+          </div>
+        </article>
+
+        <article class="concept-card">
+          <header>
+            <div class="rank"><span>D</span><div><h2>Guided Change Review</h2><p>Safety-first workflow.</p></div></div>
+            <span class="badge">workflow</span>
+          </header>
+          <p>Turns risky model changes into a review flow: what agents can do, who can call it, what is recorded, what proves it, and when to apply it.</p>
+          <div class="preview small">
+            <a href="freeform-admin-concepts.html"><img src="freeform-admin-concepts.png" alt="Guided change review concept preview"></a>
+          </div>
+          <div class="actions">
+            <a class="button primary" href="freeform-admin-concepts.html#guided-change">Try concept</a>
+            <a class="button blue" href="https://github.com/bglusman/wardwright/issues/75#issuecomment-4534975928">Vote for D</a>
+          </div>
+        </article>
+      </div>
+
+      <div class="notes">
+        <article class="note">
+          <h3>Voting rule</h3>
+          <p>React to the matching concept comment in issue #75. Written comments should explain what task the concept makes easier or harder.</p>
+        </article>
+        <article class="note">
+          <h3>Selection rule</h3>
+          <p>Pick a north-star direction separately from the first implementation slice. The likely first slice is smaller than the whole chosen concept.</p>
+        </article>
+        <article class="note">
+          <h3>Release rule</h3>
+          <p>Do not treat any mockup as shipped behavior. Release notes should only claim the current implemented admin surface and documented limits.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,888 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wardwright Freeform Admin UX Concepts</title>
+  <style>
+    :root {
+      --ink: #15202b;
+      --muted: #64707d;
+      --paper: #fffdfa;
+      --panel: #ffffff;
+      --line: #d3dce2;
+      --teal: #1d766b;
+      --teal-2: #e2f3ef;
+      --mint: #a9d7c8;
+      --amber: #d4871c;
+      --amber-2: #fff2d8;
+      --red: #b42318;
+      --violet: #7157a8;
+      --blue: #30638e;
+      --graph: #eef2f4;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 28px;
+      background: #e6ebef;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    .page {
+      display: grid;
+      gap: 28px;
+      max-width: 1480px;
+      margin: 0 auto;
+    }
+
+    .concept {
+      overflow: hidden;
+      border: 1px solid #bfccd5;
+      border-radius: 16px;
+      background: var(--paper);
+      box-shadow: 0 18px 45px rgba(21, 32, 43, 0.14);
+    }
+
+    .concept-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 24px 28px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(90deg, #ffffff, #f6faf9);
+    }
+
+    .concept-header h1 {
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+
+    .concept-header p {
+      max-width: 880px;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.45;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 30px;
+      padding: 5px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .badge.good {
+      border-color: #a5d5ca;
+      background: var(--teal-2);
+      color: var(--teal);
+    }
+
+    .badge.warn {
+      border-color: #edcf99;
+      background: var(--amber-2);
+      color: #8c540b;
+    }
+
+    .badge.red {
+      border-color: #efc0bc;
+      background: #fff0ee;
+      color: var(--red);
+    }
+
+    .badge.violet {
+      border-color: #d7ceef;
+      background: #f5f0ff;
+      color: var(--violet);
+    }
+
+    .screen {
+      padding: 24px;
+    }
+
+    .command-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr 360px;
+      gap: 18px;
+    }
+
+    .surface {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+    }
+
+    .rail {
+      display: grid;
+      align-content: start;
+      gap: 16px;
+      min-height: 760px;
+      padding: 18px;
+      background: #f9fbfa;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 900;
+    }
+
+    .mark {
+      display: grid;
+      place-items: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: var(--teal);
+      color: white;
+      font-weight: 900;
+    }
+
+    .nav {
+      display: grid;
+      gap: 8px;
+    }
+
+    .nav div {
+      padding: 12px;
+      border-radius: 10px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .nav .active {
+      background: var(--teal-2);
+      color: var(--ink);
+    }
+
+    .model-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .model-list div {
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .main-stack {
+      display: grid;
+      gap: 18px;
+      align-content: start;
+    }
+
+    .hero {
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fbf8ef;
+    }
+
+    .hero-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .hero h2 {
+      font-size: 30px;
+      line-height: 1.1;
+    }
+
+    .hero p {
+      margin-top: 8px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      padding: 8px 14px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 850;
+      text-decoration: none;
+    }
+
+    .btn.primary {
+      border-color: var(--teal);
+      background: var(--teal);
+      color: #fff;
+    }
+
+    .btn.danger {
+      border-color: var(--red);
+      background: var(--red);
+      color: #fff;
+    }
+
+    .score-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .score {
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+
+    .score span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .score strong {
+      display: block;
+      margin-top: 5px;
+      font-size: 24px;
+    }
+
+    .lane {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+    }
+
+    .lane-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .tool-card {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+
+    .tool-card strong {
+      display: block;
+      font-size: 16px;
+    }
+
+    .tool-card small {
+      color: var(--muted);
+      font-weight: 750;
+    }
+
+    .side {
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+
+    .side-panel {
+      padding: 16px;
+    }
+
+    .side-panel h3 {
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .target {
+      display: grid;
+      gap: 6px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    .topology-layout {
+      display: grid;
+      grid-template-columns: 1fr 390px;
+      gap: 18px;
+      min-height: 800px;
+    }
+
+    .map {
+      position: relative;
+      min-height: 800px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background:
+        linear-gradient(90deg, rgba(21, 32, 43, 0.05) 1px, transparent 1px),
+        linear-gradient(rgba(21, 32, 43, 0.05) 1px, transparent 1px),
+        var(--graph);
+      background-size: 32px 32px;
+      overflow: hidden;
+    }
+
+    .node {
+      position: absolute;
+      width: 220px;
+      padding: 14px;
+      border: 2px solid #25323b;
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 6px 8px 0 rgba(21, 32, 43, 0.12);
+    }
+
+    .node h3 {
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+
+    .node p {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .node.model { left: 52px; top: 80px; border-color: var(--teal); }
+    .node.dispatch { left: 350px; top: 90px; border-color: var(--blue); }
+    .node.openai { left: 690px; top: 52px; border-color: var(--teal); }
+    .node.local { left: 690px; top: 260px; border-color: var(--amber); }
+    .node.tools { left: 318px; top: 390px; border-color: var(--violet); width: 300px; }
+    .node.recording { left: 70px; top: 575px; border-color: var(--blue); }
+    .node.keys { left: 690px; top: 555px; border-color: var(--red); }
+
+    .edge {
+      position: absolute;
+      height: 3px;
+      background: #25323b;
+      transform-origin: left center;
+      opacity: 0.68;
+    }
+
+    .e1 { left: 270px; top: 160px; width: 92px; }
+    .e2 { left: 560px; top: 150px; width: 135px; transform: rotate(-12deg); }
+    .e3 { left: 560px; top: 190px; width: 150px; transform: rotate(28deg); }
+    .e4 { left: 440px; top: 360px; width: 140px; transform: rotate(-70deg); }
+    .e5 { left: 585px; top: 500px; width: 120px; transform: rotate(22deg); }
+
+    .inspector {
+      display: grid;
+      gap: 14px;
+      align-content: start;
+      padding: 18px;
+    }
+
+    .inspector h2 {
+      font-size: 26px;
+    }
+
+    .property {
+      display: grid;
+      grid-template-columns: 130px 1fr;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .property span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .workflow-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 18px;
+    }
+
+    .steps {
+      display: grid;
+      align-content: start;
+      gap: 10px;
+      padding: 16px;
+      background: #f9fbfa;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+
+    .step-num {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      background: #eef2f4;
+      font-weight: 900;
+    }
+
+    .step.active {
+      border-color: var(--teal);
+      background: var(--teal-2);
+    }
+
+    .step.active .step-num {
+      background: var(--teal);
+      color: white;
+    }
+
+    .work-area {
+      display: grid;
+      gap: 16px;
+    }
+
+    .review-card {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+    }
+
+    .review-card h2 {
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+
+    .option-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .option {
+      min-height: 170px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+    }
+
+    .option.selected {
+      border: 2px solid var(--teal);
+      background: var(--teal-2);
+    }
+
+    .option h3 {
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+
+    .option p {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .diff {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .diff-box {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f8fafb;
+    }
+
+    .diff-box h3 {
+      margin-bottom: 10px;
+    }
+
+    .diff-box ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      line-height: 1.6;
+      font-weight: 700;
+    }
+
+    .mobile-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      padding: 0 24px 24px;
+    }
+
+    .phone {
+      min-height: 560px;
+      padding: 14px;
+      border: 2px solid #263238;
+      border-radius: 28px;
+      background: #fff;
+    }
+
+    .phone h3 {
+      font-size: 18px;
+      margin: 14px 0 10px;
+    }
+
+    .phone-card {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fbfa;
+    }
+
+    .phone .btn {
+      width: 100%;
+      min-height: 42px;
+    }
+
+    @media (max-width: 1050px) {
+      .command-layout,
+      .topology-layout,
+      .workflow-layout,
+      .mobile-strip {
+        grid-template-columns: 1fr;
+      }
+      .rail { min-height: auto; }
+      .map { min-height: 980px; }
+      .score-grid, .option-grid, .diff {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="concept" id="capability-command-center">
+      <div class="concept-header">
+        <div>
+          <h1>Concept 1: Capability Command Center</h1>
+          <p>Freeform direction: make model configuration feel like an operations console. The first screen answers what agents can do, what is conditional, and what operator action is needed. Details are still present, but they are subordinated to capability state.</p>
+        </div>
+        <span class="badge warn">new look</span>
+      </div>
+      <div class="screen command-layout">
+        <aside class="surface rail">
+          <div class="brand"><span class="mark">W</span><span>Wardwright</span></div>
+          <div class="nav">
+            <div>Overview</div>
+            <div class="active">Capability contracts</div>
+            <div>Replay lab</div>
+            <div>Adapter fleet</div>
+          </div>
+          <div class="model-list">
+            <div>browser-smoke-tools</div>
+            <div>coding-balanced</div>
+            <div>counterfactual-ui-demo</div>
+          </div>
+        </aside>
+
+        <section class="main-stack">
+          <div class="hero">
+            <div class="hero-top">
+              <div>
+                <h2>browser-smoke-tools</h2>
+                <p>Public model contract for OpenAI-compatible callers. Wardwright-hosted tools are configured, but only some raw targets can receive them.</p>
+              </div>
+              <span class="badge warn">Action recommended</span>
+            </div>
+            <div class="hero-actions">
+              <a class="btn primary" href="#">Fix advertisement</a>
+              <a class="btn" href="#">Test selected route</a>
+              <a class="btn" href="#">Export config</a>
+            </div>
+          </div>
+
+          <div class="score-grid">
+            <div class="score"><span>Stable model tools</span><strong>0</strong></div>
+            <div class="score"><span>Conditional tools</span><strong>2</strong></div>
+            <div class="score"><span>Tool-capable targets</span><strong>1 / 2</strong></div>
+            <div class="score"><span>Replay capture</span><strong>Metadata</strong></div>
+          </div>
+
+          <section class="surface lane">
+            <div class="lane-title">
+              <div>
+                <h2>Agent-visible tool contract</h2>
+                <p class="muted">Show the promise first; keep implementation detail secondary.</p>
+              </div>
+              <span class="badge warn">Advertise intersection</span>
+            </div>
+            <div class="tool-card">
+              <div><strong>policy_cache_status</strong><small> enabled, builtin, read-only, conditional</small></div>
+              <span class="badge warn">openai target only</span>
+            </div>
+            <div class="tool-card">
+              <div><strong>dune_echo_tool</strong><small> enabled, Dune, 500ms limit, conditional</small></div>
+              <span class="badge warn">openai target only</span>
+            </div>
+            <div class="tool-card">
+              <div><strong>disabled_tool</strong><small> configured but hidden from provider requests</small></div>
+              <span class="badge">not advertised</span>
+            </div>
+          </section>
+        </section>
+
+        <aside class="side">
+          <section class="surface side-panel">
+            <h3>Recommended next action</h3>
+            <p>Keep the advertised catalog empty until routing can force a tool-capable target, or remove the toolless target from this public model.</p>
+            <div class="hero-actions">
+              <a class="btn primary" href="#">Choose policy</a>
+              <a class="btn" href="#">Dismiss</a>
+            </div>
+          </section>
+          <section class="surface side-panel stack">
+            <h3>Route target support</h3>
+            <div class="target"><strong>openai/browser-smoke-tools</strong><span class="badge good">tools sent</span></div>
+            <div class="target"><strong>local/browser-smoke-toolless</strong><span class="badge warn">tools not sent</span></div>
+          </section>
+          <section class="surface side-panel stack">
+            <h3>Admin controls</h3>
+            <a class="btn" href="#">Access policy</a>
+            <a class="btn" href="#">Debug recording</a>
+            <a class="btn" href="#">API keys</a>
+            <a class="btn danger" href="#">Archive model</a>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <section class="concept" id="route-topology">
+      <div class="concept-header">
+        <div>
+          <h1>Concept 2: Route Topology Map</h1>
+          <p>Freeform direction: make composed model complexity visible as a graph. Operators inspect the route, target capability, server tools, keys, and recording as connected nodes instead of reading a long settings page.</p>
+        </div>
+        <span class="badge violet">graph-first</span>
+      </div>
+      <div class="screen topology-layout">
+        <section class="map">
+          <div class="edge e1"></div>
+          <div class="edge e2"></div>
+          <div class="edge e3"></div>
+          <div class="edge e4"></div>
+          <div class="edge e5"></div>
+
+          <div class="node model">
+            <h3>Wardwright model</h3>
+            <p>browser-smoke-tools public contract</p>
+            <span class="badge good">callable</span>
+          </div>
+          <div class="node dispatch">
+            <h3>Dispatcher</h3>
+            <p>Chooses between two raw targets.</p>
+            <span class="badge warn">mixed support</span>
+          </div>
+          <div class="node openai">
+            <h3>OpenAI-compatible target</h3>
+            <p>Receives Wardwright-hosted tools after routing.</p>
+            <span class="badge good">tools supported</span>
+          </div>
+          <div class="node local">
+            <h3>Local target</h3>
+            <p>No chat-completions tool injection.</p>
+            <span class="badge warn">tools hidden</span>
+          </div>
+          <div class="node tools">
+            <h3>Server tools</h3>
+            <p>2 enabled, 1 disabled. Contract is conditional unless routing narrows target choice.</p>
+            <span class="badge warn">not guaranteed</span>
+          </div>
+          <div class="node recording">
+            <h3>Replay capture</h3>
+            <p>Metadata only. Full payload capture requires operator opt-in.</p>
+            <span class="badge">privacy first</span>
+          </div>
+          <div class="node keys">
+            <h3>Access keys</h3>
+            <p>No scoped model keys exist. Public unkeyed access is enabled.</p>
+            <span class="badge red">review access</span>
+          </div>
+        </section>
+
+        <aside class="surface inspector">
+          <span class="badge warn">Selected: Server tools</span>
+          <h2>Tool availability is conditional</h2>
+          <p>Only one of two raw targets can receive Wardwright-hosted tools. The model should not advertise a union until route choice can be constrained.</p>
+          <div class="property"><span>Advertise</span><strong>intersection</strong></div>
+          <div class="property"><span>Guaranteed</span><strong>0 tools</strong></div>
+          <div class="property"><span>Conditional</span><strong>2 tools</strong></div>
+          <div class="property"><span>Runtime rule</span><strong>inject after route selection</strong></div>
+          <div class="property"><span>Recommended</span><strong>force compatible target or keep hidden</strong></div>
+          <div class="hero-actions">
+            <a class="btn primary" href="#">Simulate route</a>
+            <a class="btn" href="#">Open tool list</a>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="concept" id="guided-change">
+      <div class="concept-header">
+        <div>
+          <h1>Concept 3: Guided Change Review</h1>
+          <p>Freeform direction: stop treating model configuration as a settings page. Treat every risky change as a review flow that compares current behavior, proposed behavior, and validation evidence before save.</p>
+        </div>
+        <span class="badge good">workflow-first</span>
+      </div>
+      <div class="screen workflow-layout">
+        <aside class="surface steps">
+          <div class="step active">
+            <div class="step-num">1</div>
+            <div><strong>What can agents do?</strong><br><span class="badge warn">conditional tools</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div><strong>Who can call it?</strong><br><span class="badge">public unkeyed</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div><strong>What gets recorded?</strong><br><span class="badge">metadata only</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <div><strong>Prove it works</strong><br><span class="badge">smoke pending</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num">5</div>
+            <div><strong>Apply change</strong><br><span class="badge">requires review</span></div>
+          </div>
+        </aside>
+
+        <section class="work-area">
+          <div class="review-card">
+            <h2>Choose the tool advertisement policy</h2>
+            <p>This choice determines what agents believe the model can do before the raw target has been selected.</p>
+            <div class="option-grid">
+              <div class="option selected">
+                <span class="badge good">recommended</span>
+                <h3>Advertise intersection</h3>
+                <p>Only guarantee tools available across every effective target. Safest stable public contract.</p>
+              </div>
+              <div class="option">
+                <span class="badge warn">future</span>
+                <h3>Conditional union</h3>
+                <p>Expose target-specific tools only if routing can force a compatible target when the agent chooses one.</p>
+              </div>
+              <div class="option">
+                <span class="badge red">unsafe now</span>
+                <h3>Blind union</h3>
+                <p>Advertise all known tools without route constraints. Agents may choose tools the selected target cannot receive.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="review-card">
+            <h2>Before / after review</h2>
+            <div class="diff">
+              <div class="diff-box">
+                <h3>Current behavior</h3>
+                <ul>
+                  <li>3 tools configured</li>
+                  <li>2 tools enabled</li>
+                  <li>0 tools guaranteed</li>
+                  <li>2 tools conditional</li>
+                </ul>
+              </div>
+              <div class="diff-box">
+                <h3>After recommended choice</h3>
+                <ul>
+                  <li>Provider catalog stays route-scoped</li>
+                  <li>Public contract does not overpromise</li>
+                  <li>Operator sees target mismatch before save</li>
+                  <li>Future route-forcing can unlock conditional union</li>
+                </ul>
+              </div>
+            </div>
+            <div class="hero-actions">
+              <a class="btn primary" href="#">Save reviewed policy</a>
+              <a class="btn" href="#">Run replay smoke</a>
+              <a class="btn" href="#">Open raw artifact</a>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="concept">
+      <div class="concept-header">
+        <div>
+          <h1>Mobile sketches for the new directions</h1>
+          <p>These are not compressed versions of the current page. They show three possible first screens for mobile operators: state summary, graph selection, and guided review.</p>
+        </div>
+        <span class="badge">mobile</span>
+      </div>
+      <div class="mobile-strip">
+        <div class="phone">
+          <span class="badge warn">Command</span>
+          <h3>Capability contract</h3>
+          <div class="phone-card"><strong>Conditional tools</strong><span>2 enabled, 0 guaranteed</span></div>
+          <div class="phone-card"><strong>Target mismatch</strong><span>1 of 2 targets can receive tools</span></div>
+          <a class="btn primary" href="#">Fix advertisement</a>
+        </div>
+        <div class="phone">
+          <span class="badge violet">Topology</span>
+          <h3>Route map</h3>
+          <div class="phone-card"><strong>Model -> Dispatcher</strong><span>mixed target support</span></div>
+          <div class="phone-card"><strong>Server tools</strong><span>conditional edge highlighted</span></div>
+          <a class="btn primary" href="#">Inspect node</a>
+        </div>
+        <div class="phone">
+          <span class="badge good">Review</span>
+          <h3>Change checklist</h3>
+          <div class="phone-card"><strong>1. Agent tools</strong><span>intersection selected</span></div>
+          <div class="phone-card"><strong>2. Access</strong><span>public unkeyed needs review</span></div>
+          <a class="btn primary" href="#">Continue review</a>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

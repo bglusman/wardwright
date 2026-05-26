@@ -12,6 +12,7 @@ defmodule Wardwright.ToolContext do
   @available_tools_key "available_tools"
   @confidence_key "confidence"
   @content_key "content"
+  @execution_location_key "execution_location"
   @function_key "function"
   @metadata_key "metadata"
   @id_key "id"
@@ -34,6 +35,7 @@ defmodule Wardwright.ToolContext do
   @tool_context_key "tool_context"
   @tools_key "tools"
   @type_key "type"
+  @visibility_level_key "visibility_level"
   @tool_role "tool"
 
   @confidence_declared "declared"
@@ -50,7 +52,9 @@ defmodule Wardwright.ToolContext do
   @phase_values ~w(planning argument_repair result_interpretation loop_governance unknown)
   @result_status_values ~w(success error timeout rejected unknown)
   @risk_values ~w(read_only write irreversible external_side_effect unknown)
-  @source_values ~w(declared_tool tool_choice assistant_tool_call tool_result caller_metadata inferred)
+  @source_values ~w(declared_tool tool_choice assistant_tool_call tool_result caller_metadata inferred wardwright_hosted provider_declared remote_mcp)
+  @execution_location_values ~w(client wardwright provider remote_mcp unknown)
+  @visibility_level_values ~w(local_verified remote_observed provider_attested opaque)
 
   def normalize(request, opts \\ [])
 
@@ -145,16 +149,31 @@ defmodule Wardwright.ToolContext do
       |> Map.get(@available_tools_key, [])
       |> normalize_tool_list("caller_metadata")
 
+    primary_tool =
+      context
+      |> Map.get(@primary_tool_key)
+      |> normalize_tool_identity(@source_caller_metadata)
+
+    execution_location =
+      context
+      |> Map.get(@execution_location_key)
+      |> enum_value(@execution_location_values, tool_execution_location(primary_tool))
+
     %{
       @argument_hash_key => hash_value(Map.get(context, @argument_hash_key)),
       @available_tools_key => available_tools,
       @confidence_key => enum_value(Map.get(context, @confidence_key), @confidence_values, @confidence_declared),
+      @execution_location_key => execution_location,
       @phase_key => enum_value(Map.get(context, @phase_key), @phase_values, @phase_unknown),
-      @primary_tool_key => context |> Map.get(@primary_tool_key) |> normalize_tool_identity(@source_caller_metadata),
+      @primary_tool_key => primary_tool,
       @result_hash_key => hash_value(Map.get(context, @result_hash_key)),
       @result_status_key => enum_value(Map.get(context, @result_status_key), @result_status_values, nil),
       @schema_key => @schema,
-      @tool_call_id_key => text_value(Map.get(context, @tool_call_id_key))
+      @tool_call_id_key => text_value(Map.get(context, @tool_call_id_key)),
+      @visibility_level_key =>
+        context
+        |> Map.get(@visibility_level_key)
+        |> enum_value(@visibility_level_values, tool_visibility_level(execution_location))
     }
     |> compact()
   end
@@ -174,16 +193,20 @@ defmodule Wardwright.ToolContext do
       )
 
     if phase do
+      execution_location = tool_execution_location(primary_tool)
+
       %{
         @argument_hash_key => assistant_tool_argument_hash(request),
         @available_tools_key => available_tools,
         @confidence_key => inferred_confidence(chosen_tool, assistant_tool, available_tools, tool_result?),
+        @execution_location_key => execution_location,
         @phase_key => phase,
         @primary_tool_key => primary_tool,
         @result_hash_key => tool_result_hash(request),
         @result_status_key => result_status(tool_result?),
         @schema_key => @schema,
-        @tool_call_id_key => tool_result_call_id(request) || assistant_tool_call_id(request)
+        @tool_call_id_key => tool_result_call_id(request) || assistant_tool_call_id(request),
+        @visibility_level_key => tool_visibility_level(execution_location)
       }
       |> compact()
     end
@@ -320,6 +343,19 @@ defmodule Wardwright.ToolContext do
 
   defp result_status(tool_result?) do
     :wardwright@tool_context_core.result_status(tool_result?) |> blank_to_nil()
+  end
+
+  defp tool_execution_location(%{} = tool) do
+    :wardwright@tool_context_core.execution_location(
+      Map.get(tool, @namespace_key) || "",
+      Map.get(tool, @source_key) || ""
+    )
+  end
+
+  defp tool_execution_location(_tool), do: "unknown"
+
+  defp tool_visibility_level(execution_location) do
+    :wardwright@tool_context_core.visibility_level(execution_location || "unknown")
   end
 
   defp inferred_confidence(chosen_tool, assistant_tool, available_tools, tool_result?) do

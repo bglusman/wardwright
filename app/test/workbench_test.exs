@@ -88,6 +88,129 @@ defmodule WardwrightWeb.WorkbenchTest do
     assert conn.resp_body =~ "tts.no-old-client"
   end
 
+  test "admin UX exploration routes mount the shared server component runtime" do
+    conn = get(build_conn(), "/admin/ux-exploration")
+
+    assert html_response(conn, 200) =~ "lustre-server-component"
+    assert conn.resp_body =~ "<title>Wardwright Admin</title>"
+    assert conn.resp_body =~ "/admin/socket/websocket"
+    assert conn.resp_body =~ "page=ux_exploration"
+  end
+
+  test "admin UX concept routes preserve concept and model in the shared runtime" do
+    concepts = [
+      "ops-console",
+      "model-builder",
+      "guided-lab",
+      "capability-catalog"
+    ]
+
+    for slug <- concepts do
+      conn = get(build_conn(), "/admin/ux-exploration/#{slug}?model=server-tool-ui")
+
+      assert html_response(conn, 200) =~ "lustre-server-component"
+      assert conn.resp_body =~ "page=ux_exploration"
+      assert conn.resp_body =~ "concept=#{slug}"
+      assert conn.resp_body =~ "model=server-tool-ui"
+      refute conn.resp_body =~ ".png"
+    end
+  end
+
+  test "admin UX exploration renders live model controls instead of static mockups" do
+    put_server_tool_model_config()
+
+    assert :wardwright@lustre_admin_test_support.ux_exploration_uses_live_model_controls(
+             "capability-catalog",
+             "server-tool-ui",
+             "wardwright_policy_cache_status"
+           )
+
+    assert :wardwright@lustre_admin_test_support.ux_exploration_uses_live_model_controls(
+             "model-builder",
+             "server-tool-ui",
+             "openai/tool-capable-ui"
+           )
+
+    assert :wardwright@lustre_admin_test_support.ux_exploration_uses_live_model_controls(
+             "guided-lab",
+             "server-tool-ui",
+             "Access Policy"
+           )
+  end
+
+  test "admin UX concepts expose distinct primary work surfaces" do
+    put_server_tool_model_config()
+
+    expected_surfaces = [
+      {"ops-console", "Production watchlist"},
+      {"model-builder", "Route graph builder"},
+      {"guided-lab", "Change runbook"},
+      {"capability-catalog", "Browse Wardwright by promises"}
+    ]
+
+    for {concept, expected_text} <- expected_surfaces do
+      assert :wardwright@lustre_admin_test_support.ux_exploration_uses_live_model_controls(
+               concept,
+               "server-tool-ui",
+               expected_text
+             )
+    end
+  end
+
+  test "admin UX concepts are standalone end-to-end admin experiences" do
+    put_server_tool_model_config()
+
+    for concept <- [
+          "ops-console",
+          "model-builder",
+          "guided-lab",
+          "capability-catalog"
+        ] do
+      assert :wardwright@lustre_admin_test_support.ux_exploration_is_standalone_end_to_end(
+               concept,
+               "server-tool-ui"
+             )
+    end
+  end
+
+  test "admin UX exploration themes are switchable independently from live behavior" do
+    put_server_tool_model_config()
+
+    assert :wardwright@lustre_admin_test_support.ux_exploration_theme_switch_updates_sidebar(
+             "server-tool-ui",
+             "Review"
+           )
+  end
+
+  test "admin UX exploration can toggle real model server tools" do
+    put_server_tool_model_config()
+
+    assert :wardwright@lustre_admin_test_support.ux_exploration_toggles_server_tool(
+             "capability-catalog",
+             "server-tool-ui",
+             "Disable",
+             "Server Tools"
+           )
+
+    assert {:ok, config} = Wardwright.model_config("server-tool-ui")
+
+    assert %{"enabled" => false, "name" => "wardwright_policy_cache_status"} =
+             Enum.find(config["server_tools"], &(&1["name"] == "wardwright_policy_cache_status"))
+  end
+
+  test "admin rail links to UX concept exploration as a recoverable route" do
+    assert {:ok, state} = WardwrightWeb.LustreWorkbenchSocket.init(%{})
+    assert_receive {ref, message} when is_tuple(message), 1_000
+
+    assert {:push, {:text, json}, _state} =
+             WardwrightWeb.LustreWorkbenchSocket.handle_info({ref, message}, state)
+
+    assert json =~ "UX concepts"
+    assert json =~ "/admin/ux-exploration"
+
+    WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
+  end
+
   test "vendored Cytoscape renderer asset is served locally for the graph lab" do
     conn = get(build_conn(), "/vendor/cytoscape/cytoscape.min.js")
 
@@ -187,6 +310,102 @@ defmodule WardwrightWeb.WorkbenchTest do
     refute json =~ "Gleam UI"
 
     WardwrightWeb.LustreWorkbenchSocket.terminate(:normal, state)
+  end
+
+  test "model access UI exposes server tool configuration and target support" do
+    put_server_tool_model_config()
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "Server Tools"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "wardwright_policy_cache_status"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "synthetic_dune_tool"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "disabled_dune_tool"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "disabled"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "timeout 500ms, reductions 10000, heap 1000000"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "openai/tool-capable-ui"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "Server tools sent to provider"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "Server tools not sent"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "Tool availability differs by raw target"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "Guaranteed tools"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_contains(
+             "server-tool-ui",
+             "Conditional tools"
+           )
+
+    assert :wardwright@lustre_model_access_test_support.initial_model_view_omits(
+             "server-tool-ui",
+             "do-not-expose-source"
+           )
+  end
+
+  test "model access UI toggles configured server tools at model level" do
+    put_server_tool_model_config()
+
+    assert :wardwright@lustre_model_access_test_support.toggling_server_tool_updates_state(
+             "server-tool-ui",
+             "Disable",
+             "Server tool wardwright_policy_cache_status disabled."
+           )
+
+    assert {:ok, config} = Wardwright.model_config("server-tool-ui")
+
+    assert %{"enabled" => false, "name" => "wardwright_policy_cache_status"} =
+             Enum.find(config["server_tools"], &(&1["name"] == "wardwright_policy_cache_status"))
+
+    assert :wardwright@lustre_model_access_test_support.toggling_server_tool_updates_state(
+             "server-tool-ui",
+             "Enable",
+             "Server tool wardwright_policy_cache_status enabled."
+           )
+
+    assert {:ok, config} = Wardwright.model_config("server-tool-ui")
+
+    enabled_tool = Enum.find(config["server_tools"], &(&1["name"] == "wardwright_policy_cache_status"))
+    assert enabled_tool["name"] == "wardwright_policy_cache_status"
+    refute enabled_tool["enabled"] == false
   end
 
   test "transport registration pushes the initial control debugger DOM payload" do
@@ -726,6 +945,34 @@ defmodule WardwrightWeb.WorkbenchTest do
            )
   end
 
+  test "control debugger replays server tool execution evidence from receipts" do
+    receipt =
+      control_debugger_receipt_fixture("rcpt_control_server_tool_replay")
+      |> Map.update!("final", fn final ->
+        Map.put(final, "provider_metadata", %{
+          "wardwright_server_tools" => [
+            %{
+              "call_id" => "call_tool_1",
+              "engine" => "builtin",
+              "execution_location" => "wardwright",
+              "name" => "wardwright_policy_cache_status",
+              "result_metadata" => %{"entry_count" => 3, "topology" => "memory"},
+              "status" => "completed",
+              "visibility_level" => "local_verified"
+            }
+          ]
+        })
+      end)
+
+    Wardwright.ReceiptStore.insert(receipt)
+
+    assert :wardwright@lustre_control_debugger_test_support.replaying_receipt_shows_server_tool_execution(
+             "rcpt_control_server_tool_replay",
+             "wardwright_policy_cache_status",
+             "entry_count"
+           )
+  end
+
   test "control debugger exposes counterfactual fork workflow and runtime readiness" do
     assert :wardwright@lustre_control_debugger_test_support.initial_view_contains("What-if replay")
 
@@ -911,6 +1158,60 @@ defmodule WardwrightWeb.WorkbenchTest do
         %{"id" => "dispatcher.counterfactual-live", "models" => ["canned/counterfactual-live"]}
       ])
       |> Map.put("route_root", "dispatcher.counterfactual-live")
+
+    {:ok, _config} = Wardwright.put_model_config(config)
+  end
+
+  defp put_server_tool_model_config do
+    config =
+      Wardwright.default_config()
+      |> Map.put("model_id", "server-tool-ui")
+      |> Map.put("targets", [
+        %{
+          "context_window" => 8192,
+          "model" => "openai/tool-capable-ui",
+          "provider_base_url" => "https://example.com/v1",
+          "provider_kind" => "openai-compatible"
+        },
+        %{"context_window" => 4096, "model" => "local/mock-toolless-ui"}
+      ])
+      |> Map.put("dispatchers", [
+        %{
+          "id" => "dispatcher.server-tools-ui",
+          "models" => ["openai/tool-capable-ui", "local/mock-toolless-ui"]
+        }
+      ])
+      |> Map.put("route_root", "dispatcher.server-tools-ui")
+      |> Map.put("server_tools", [
+        %{"name" => "wardwright_policy_cache_status"},
+        %{
+          "input" => %{"tenant" => "synthetic"},
+          "limits" => %{
+            "max_heap_size" => 1_000_000,
+            "max_reductions" => 10_000,
+            "timeout_ms" => 500
+          },
+          "name" => "synthetic_dune_tool",
+          "parameters" => %{
+            "properties" => %{
+              "query" => %{"type" => "string"}
+            },
+            "type" => "object"
+          },
+          "source" => "fn private_dune_source() { \"do-not-expose-source\" }"
+        },
+        %{
+          "enabled" => false,
+          "name" => "disabled_dune_tool",
+          "source" => "%{\"disabled\" => true}"
+        }
+      ])
+      |> Map.put("tool_mediation", %{
+        "mode" => "patch",
+        "rules" => [
+          %{"action" => "augment", "id" => "unify-search", "match" => %{"name" => "search"}}
+        ]
+      })
 
     {:ok, _config} = Wardwright.put_model_config(config)
   end

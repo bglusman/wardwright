@@ -1,11 +1,11 @@
 openapi: 3.1.0
 info:
   title: Wardwright Model Middleware API
-  version: 0.1.0-draft
+  version: 0.0.11
   description: |
-    Draft contract for backend and frontend prototypes. The serving surface is
+    Contract for the Wardwright 0.0.11 serving surface. The serving surface is
     OpenAI-compatible where possible, with additional Wardwright model,
-    simulation, receipt, and admin endpoints.
+    simulation, receipt, adapter, server-tool, and admin endpoints.
 servers:
   - url: http://127.0.0.1:8787
     description: Local prototype server
@@ -481,6 +481,108 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GovernanceRule"
+        server_tools:
+          type: array
+          description: Explicit Wardwright-hosted server-tool extension surface for built-ins, trusted local Dune functions, and trusted BEAM modules.
+          items:
+            $ref: "#/components/schemas/ServerTool"
+        tool_mediation:
+          $ref: "#/components/schemas/ToolMediation"
+    ServerTool:
+      type: object
+      properties:
+        engine:
+          type: string
+          enum: [builtin, dune, beam_module, elixir_module]
+          default: builtin
+          description: elixir_module is accepted as an alias for beam_module; Gleam, Erlang, and Elixir modules all use the BEAM module contract.
+        name:
+          type: string
+          description: Tool name advertised to the selected provider. Built-in support currently includes wardwright_policy_cache_status. Dune tools declare a name here; BEAM modules may return it from spec/0.
+        description:
+          type: string
+        parameters:
+          type: object
+          description: JSON Schema object advertised for the function arguments.
+        source:
+          type: string
+          description: Trusted local Dune source used when engine is dune.
+        snippet_id:
+          type: string
+          description: Saved Dune snippet id used when engine is dune and source is omitted.
+        input:
+          type: object
+          description: Optional default Dune input merged with model-provided arguments.
+        limits:
+          $ref: "#/components/schemas/ServerToolLimits"
+        module:
+          type: string
+          description: Trusted BEAM module name exporting spec/0 and run/2.
+        path:
+          type: string
+          description: Trusted local .ex/.exs, .erl, or .beam path to load before calling the BEAM module.
+        enabled:
+          type: boolean
+          default: true
+        execution_location:
+          type: string
+          enum: [wardwright]
+          readOnly: true
+        visibility_level:
+          type: string
+          enum: [local_verified]
+          readOnly: true
+    ServerToolLimits:
+      type: object
+      description: Optional execution limits for trusted local Dune server tools.
+      properties:
+        timeout_ms:
+          type: integer
+          minimum: 1
+        max_reductions:
+          type: integer
+          minimum: 1
+        max_heap_size:
+          type: integer
+          minimum: 1
+    ToolMediation:
+      type: object
+      description: Non-streaming request-side tool catalog patch rules applied before provider calls.
+      properties:
+        mode:
+          type: string
+          enum: [observe, patch, mutate, execute]
+          default: patch
+          description: Current implementation applies rules only in patch mode; observe is non-mutating and mutate/execute are trusted extension modes reserved for later slices.
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/ToolMediationRule"
+    ToolMediationRule:
+      type: object
+      properties:
+        id:
+          type: string
+        enabled:
+          type: boolean
+          default: true
+        action:
+          type: string
+          enum: [hide, augment, replace]
+        match:
+          type: object
+          properties:
+            name:
+              type: string
+        description_append:
+          type: string
+          description: Text appended to a matched function-tool description when action is augment.
+        parameters:
+          type: object
+          description: Replacement JSON Schema parameters for a matched function tool when action is augment.
+        tool:
+          type: object
+          description: Replacement OpenAI-compatible tool schema when action is replace.
     RouteGraph:
       type: object
       required: [root, nodes]
@@ -550,7 +652,7 @@ components:
         id: { type: string }
         kind:
           type: string
-          enum: [request_guard, request_transform, route_gate, stream_guard, structured_output, receipt_annotation, history_threshold, history_regex_threshold, tool_selector, tool_loop_threshold, tool_sequence, custom]
+          enum: [request_guard, request_transform, route_gate, stream_guard, structured_output, receipt_annotation, history_threshold, history_regex_threshold, allowed_tools, tool_selector, tool_loop_threshold, tool_sequence, custom]
         action:
           type: string
           enum: [pass, transform, validate_or_block, inject_reminder_and_retry, restrict_routes, switch_model, reroute, escalate, alert_async, block, block_final, annotate, state_transition]
@@ -861,6 +963,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GovernanceRule"
+        server_tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServerTool"
+        tool_mediation:
+          $ref: "#/components/schemas/ToolMediation"
     TestRouteTarget:
       type: object
       required: [model, context_window]

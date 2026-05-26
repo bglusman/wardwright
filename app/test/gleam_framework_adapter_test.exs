@@ -15,6 +15,12 @@ defmodule Wardwright.GleamFrameworkAdapterTest do
     assert :wardwright@framework_adapter.surface_family("microsoft-extensions-ai") == "framework_sdk"
     assert :wardwright@framework_adapter.surface_family("semantic-kernel") == "framework_sdk"
     assert :wardwright@framework_adapter.surface_family("llamaindex") == "framework_sdk"
+    assert :wardwright@framework_adapter.surface_family("jido") == "framework_sdk"
+    assert :wardwright@framework_adapter.surface_family("jido-ai") == "framework_sdk"
+    assert :wardwright@framework_adapter.surface_family("alloy-ex") == "framework_sdk"
+    assert :wardwright@framework_adapter.surface_family("glopenai") == "framework_sdk"
+    assert :wardwright@framework_adapter.surface_family("starlet") == "framework_sdk"
+    assert :wardwright@framework_adapter.surface_family("glean") == "framework_sdk"
 
     assert :wardwright@framework_adapter.surface_family("opencode") == "local_coding_agent"
     assert :wardwright@framework_adapter.surface_family("openclaw") == "local_coding_agent"
@@ -70,6 +76,12 @@ defmodule Wardwright.GleamFrameworkAdapterTest do
   test "framework receipt correlation requires a framework surface plus provenance and receipt evidence" do
     assert :wardwright@framework_adapter.framework_receipt_correlation_ready(
              "vercel-ai-sdk",
+             true,
+             true
+           )
+
+    assert :wardwright@framework_adapter.framework_receipt_correlation_ready(
+             "jido-ai",
              true,
              true
            )

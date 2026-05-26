@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wardwright Model Config Wireframes</title>
+  <style>
+    :root {
+      --ink: #263238;
+      --muted: #687480;
+      --line: #263238;
+      --paper: #fffdf7;
+      --shade: #f3f0e8;
+      --accent: #1f6f65;
+      --warn: #b66a00;
+      --danger: #b42318;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #e8ecef;
+      color: var(--ink);
+      font-family: "Comic Sans MS", "Bradley Hand", "Marker Felt", system-ui, sans-serif;
+    }
+    .sheet {
+      width: min(1320px, 100%);
+      margin: 0 auto 28px;
+      padding: 20px;
+      border: 3px solid var(--line);
+      border-radius: 12px 8px 14px 10px;
+      background: var(--paper);
+      box-shadow: 8px 8px 0 rgba(38, 50, 56, 0.18);
+    }
+    .caption {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 14px;
+      border-bottom: 3px dashed var(--line);
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 28px; }
+    .note { color: var(--muted); font-size: 15px; font-weight: 700; }
+    .frame {
+      display: grid;
+      grid-template-columns: 228px 1fr;
+      gap: 18px;
+      padding-top: 18px;
+    }
+    .rail, .box, .pill, .btn, .field, .row, .drawer {
+      border: 3px solid var(--line);
+      border-radius: 10px 7px 12px 8px;
+      background: #fff;
+    }
+    .rail {
+      min-height: 720px;
+      padding: 16px;
+      background: #f9faf8;
+    }
+    .brand { font-size: 20px; font-weight: 900; margin-bottom: 28px; }
+    .nav {
+      display: grid;
+      gap: 10px;
+    }
+    .nav div {
+      padding: 12px;
+      border: 2px solid var(--line);
+      border-radius: 9px;
+      background: #fff;
+      font-weight: 800;
+    }
+    .nav .active { background: #e7f2ef; box-shadow: 4px 4px 0 rgba(31, 111, 101, 0.25); }
+    .content {
+      display: grid;
+      gap: 16px;
+      align-content: start;
+    }
+    .topline {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 14px;
+    }
+    .box {
+      padding: 16px;
+    }
+    .box h2 {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+    .box h3 {
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+    .stack { display: grid; gap: 12px; }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .metric {
+      padding: 12px;
+      border: 2px solid var(--line);
+      border-radius: 8px;
+      background: var(--shade);
+    }
+    .metric strong {
+      display: block;
+      font-size: 22px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      padding: 6px 12px;
+      font-weight: 900;
+      background: #f6fbff;
+    }
+    .pill.warn { color: var(--warn); background: #fff5df; }
+    .pill.ok { color: var(--accent); background: #e8f5ef; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .btn {
+      padding: 10px 14px;
+      background: #fff;
+      font-weight: 900;
+    }
+    .btn.primary { color: #fff; background: var(--accent); }
+    .btn.danger { color: #fff; background: var(--danger); }
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .tab {
+      padding: 8px 12px;
+      border: 2px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      font-weight: 900;
+    }
+    .tab.active { background: #e7f2ef; }
+    .table {
+      display: grid;
+      gap: 8px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: minmax(210px, 1.1fr) 130px 120px minmax(180px, 1fr) 140px;
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+    }
+    .row.header {
+      background: var(--shade);
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .cell-muted { color: var(--muted); font-weight: 800; }
+    .drawer {
+      padding: 14px;
+      background: #fbfbfa;
+      border-style: dashed;
+    }
+    .twocol {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .callout {
+      border: 3px dashed var(--line);
+      border-radius: 10px;
+      padding: 14px;
+      background: #f9fbff;
+      font-weight: 800;
+    }
+    .mobile-frame {
+      width: 420px;
+      max-width: 100%;
+      margin: 18px auto 0;
+      padding: 16px;
+      border: 4px solid var(--line);
+      border-radius: 28px;
+      background: #fff;
+    }
+    .mobile-frame .mini-rail {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      font-weight: 900;
+    }
+    .mobile-frame .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .mobile-card {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      border: 2px solid var(--line);
+      border-radius: 10px;
+    }
+    .mobile-card .btn { width: 100%; text-align: center; }
+    @media (max-width: 900px) {
+      .frame, .topline, .twocol { grid-template-columns: 1fr; }
+      .rail { min-height: auto; }
+      .row { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <section class="sheet">
+    <div class="caption">
+      <div>
+        <h1>Wireframe A: model config prioritizes operating decision</h1>
+        <p class="note">Intent: make “what is safe to advertise?” visible before detailed tool rows.</p>
+      </div>
+      <span class="pill warn">Balsamiq-style draft</span>
+    </div>
+
+    <div class="frame">
+      <aside class="rail">
+        <div class="brand">Wardwright Admin</div>
+        <div class="nav">
+          <div>Model lab</div>
+          <div class="active">Models & access</div>
+          <div>Session replay</div>
+        </div>
+      </aside>
+
+      <main class="content">
+        <div class="topline">
+          <section class="box stack">
+            <h2>browser-smoke-tools</h2>
+            <p class="note">OpenAI-compatible model contract exposed to agents.</p>
+            <div class="metrics">
+              <div class="metric"><span>Access</span><strong>Public</strong></div>
+              <div class="metric"><span>Replay</span><strong>Metadata</strong></div>
+              <div class="metric"><span>Tools</span><strong>3</strong></div>
+              <div class="metric"><span>Targets</span><strong>2</strong></div>
+            </div>
+          </section>
+
+          <section class="box stack">
+            <h2>Advertised capability</h2>
+            <span class="pill warn">Conditional: 2 server tools</span>
+            <p>One raw target can receive Wardwright-hosted tools. One cannot. The stable model contract should advertise the intersection only.</p>
+            <div class="toolbar">
+              <div class="btn primary">Review target support</div>
+              <div class="btn">Show advanced policy</div>
+            </div>
+          </section>
+        </div>
+
+        <section class="box">
+          <div class="tabs">
+            <span class="tab active">Server tools</span>
+            <span class="tab">Access</span>
+            <span class="tab">Recording</span>
+            <span class="tab">Keys</span>
+            <span class="tab">Lifecycle</span>
+          </div>
+          <div class="callout">Recommendation: keep only guaranteed facts in the top summary; reveal per-target conditional detail in this section.</div>
+          <div class="table" style="margin-top: 12px;">
+            <div class="row header">
+              <div>Tool</div><div>Status</div><div>Engine</div><div>Availability</div><div>Action</div>
+            </div>
+            <div class="row">
+              <div><strong>policy_cache_status</strong><br><span class="cell-muted">builtin, read-only</span></div>
+              <div><span class="pill ok">Enabled</span></div>
+              <div>builtin</div>
+              <div>Conditional: openai/browser-smoke-tools only</div>
+              <div class="btn">Disable</div>
+            </div>
+            <div class="row">
+              <div><strong>dune_echo_tool</strong><br><span class="cell-muted">timeout 500ms</span></div>
+              <div><span class="pill ok">Enabled</span></div>
+              <div>dune</div>
+              <div>Conditional: openai/browser-smoke-tools only</div>
+              <div class="btn">Disable</div>
+            </div>
+            <div class="row">
+              <div><strong>disabled_tool</strong><br><span class="cell-muted">hidden from provider requests</span></div>
+              <div><span class="pill">Disabled</span></div>
+              <div>dune</div>
+              <div>Not advertised</div>
+              <div class="btn primary">Enable</div>
+            </div>
+          </div>
+        </section>
+
+        <div class="twocol">
+          <section class="box">
+            <h3>Provider targets</h3>
+            <div class="stack">
+              <div class="drawer"><strong>openai/browser-smoke-tools</strong><br>Tool injection supported</div>
+              <div class="drawer"><strong>local/browser-smoke-toolless</strong><br>No tool injection; route may hide tools</div>
+            </div>
+          </section>
+          <section class="box">
+            <h3>Advanced settings</h3>
+            <div class="stack">
+              <div class="drawer">Access policy radio group</div>
+              <div class="drawer">Debug recording radio group</div>
+              <div class="drawer">Archive and hard-delete actions</div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </section>
+
+  <section class="sheet">
+    <div class="caption">
+      <div>
+        <h1>Wireframe B: mobile converts dense config into task cards</h1>
+        <p class="note">Intent: avoid a 4,000px inspection stack by making the first screen decision-oriented.</p>
+      </div>
+      <span class="pill warn">Mobile draft</span>
+    </div>
+    <div class="mobile-frame">
+      <div class="mini-rail">
+        <span>Wardwright</span>
+        <span class="pill">Models</span>
+      </div>
+      <section class="box stack">
+        <h2>browser-smoke-tools</h2>
+        <div class="metrics">
+          <div class="metric"><span>Access</span><strong>Public</strong></div>
+          <div class="metric"><span>Replay</span><strong>Metadata</strong></div>
+          <div class="metric"><span>Guaranteed</span><strong>0</strong></div>
+          <div class="metric"><span>Conditional</span><strong>2</strong></div>
+        </div>
+        <div class="callout">Tools differ by target. Advertise intersection unless routing can force a compatible target.</div>
+      </section>
+      <section class="box stack" style="margin-top: 14px;">
+        <h2>Server tools</h2>
+        <div class="mobile-card">
+          <strong>policy_cache_status</strong>
+          <span class="cell-muted">enabled · builtin · conditional</span>
+          <div class="btn">Disable</div>
+        </div>
+        <div class="mobile-card">
+          <strong>dune_echo_tool</strong>
+          <span class="cell-muted">enabled · 500ms · conditional</span>
+          <div class="btn">Disable</div>
+        </div>
+        <div class="mobile-card">
+          <strong>disabled_tool</strong>
+          <span class="cell-muted">disabled · not advertised</span>
+          <div class="btn primary">Enable</div>
+        </div>
+      </section>
+      <section class="box stack" style="margin-top: 14px;">
+        <h2>Later</h2>
+        <div class="drawer">Access policy</div>
+        <div class="drawer">Debug recording</div>
+        <div class="drawer">Keys and lifecycle</div>
+      </section>
+    </div>
+  </section>
+</body>
+</html>

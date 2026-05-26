@@ -493,9 +493,10 @@ defmodule WardwrightWeb.ControlDebuggerData do
       {"Selected model", selected_model(replay)},
       {"Route", route_summary(replay)},
       {"Policy actions", policy_summary(replay)},
+      {"Server tool executions", server_tool_summary(receipt)},
       {"Request shape", request_summary(replay)},
       {"Warnings", warnings_summary(replay)}
-    ]
+    ] ++ server_tool_facts(receipt)
   end
 
   defp recording_summary(replay, receipt) do
@@ -557,6 +558,55 @@ defmodule WardwrightWeb.ControlDebuggerData do
 
     "#{length(actions)} action(s); #{alert_count} alert(s)"
   end
+
+  defp server_tool_summary(receipt) do
+    tools = server_tool_executions(receipt)
+
+    if tools == [] do
+      "none"
+    else
+      status_counts =
+        tools
+        |> Enum.frequencies_by(&(Map.get(&1, "status") || "unknown"))
+        |> Enum.map(fn {status, count} -> "#{status}=#{count}" end)
+        |> Enum.sort()
+        |> Enum.join("; ")
+
+      "#{length(tools)} call(s); #{status_counts}"
+    end
+  end
+
+  defp server_tool_facts(receipt) do
+    receipt
+    |> server_tool_executions()
+    |> Enum.with_index(1)
+    |> Enum.map(fn {tool, index} ->
+      {"Server tool #{index}", server_tool_detail(tool)}
+    end)
+  end
+
+  defp server_tool_executions(receipt) do
+    case get_in(receipt, ["final", "provider_metadata", "wardwright_server_tools"]) do
+      tools when is_list(tools) -> Enum.filter(tools, &is_map/1)
+      _tools -> []
+    end
+  end
+
+  defp server_tool_detail(tool) do
+    [
+      "call_id=#{Map.get(tool, "call_id") || "unknown"}",
+      "name=#{Map.get(tool, "name") || "unknown"}",
+      "engine=#{Map.get(tool, "engine") || "unknown"}",
+      "status=#{Map.get(tool, "status") || "unknown"}",
+      server_tool_payload_summary(tool)
+    ]
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join("; ")
+  end
+
+  defp server_tool_payload_summary(%{"error" => error}), do: "error=#{compact_json(error)}"
+  defp server_tool_payload_summary(%{"result_metadata" => result}), do: "result=#{compact_json(result)}"
+  defp server_tool_payload_summary(_tool), do: ""
 
   defp request_summary(replay) do
     request = replay["request"] || %{}

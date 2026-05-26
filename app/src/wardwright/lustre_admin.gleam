@@ -7,6 +7,7 @@ import lustre/element/html
 import wardwright/lustre_control_debugger
 import wardwright/lustre_model_access
 import wardwright/lustre_shell
+import wardwright/lustre_ux_exploration
 import wardwright/lustre_workbench
 
 pub type Model {
@@ -15,6 +16,7 @@ pub type Model {
     workbench: lustre_workbench.Model,
     model_access: lustre_model_access.Model,
     control_debugger: lustre_control_debugger.Model,
+    ux_exploration: lustre_ux_exploration.Model,
   )
 }
 
@@ -22,6 +24,7 @@ pub type Msg {
   WorkbenchMsg(lustre_workbench.Msg)
   ModelAccessMsg(lustre_model_access.Msg)
   ControlDebuggerMsg(lustre_control_debugger.Msg)
+  UXExplorationMsg(lustre_ux_exploration.Msg)
 }
 
 pub fn component() {
@@ -37,6 +40,7 @@ pub fn init(flags: String) -> Model {
     workbench: lustre_workbench.init(selected_model),
     model_access: lustre_model_access.init(selected_model),
     control_debugger: lustre_control_debugger.init(Nil),
+    ux_exploration: lustre_ux_exploration.init(flags),
   )
 }
 
@@ -65,6 +69,12 @@ pub fn update(model: Model, msg: Msg) -> Model {
         lustre_control_debugger.update(model.control_debugger, msg)
 
       Model(..model, control_debugger: control_debugger)
+    }
+    UXExplorationMsg(msg) -> {
+      let ux_exploration =
+        lustre_ux_exploration.update(model.ux_exploration, msg)
+
+      Model(..model, ux_exploration: ux_exploration)
     }
   }
 }
@@ -95,26 +105,46 @@ fn sync_workbench(
 }
 
 pub fn view(model: Model) -> Element(Msg) {
-  html.div([class("admin-app")], [
+  let content = case model.page {
+    lustre_shell.UXExploration -> [
+      map(
+        lustre_ux_exploration.workspace(model.ux_exploration),
+        UXExplorationMsg,
+      ),
+    ]
+    _ -> [
+      lustre_shell.admin_sidebar(
+        model.page,
+        current_model_id(model),
+        "Admin",
+        sidebar_controls(model),
+      ),
+      case model.page {
+        lustre_shell.Workbench ->
+          map(lustre_workbench.workspace(model.workbench), WorkbenchMsg)
+        lustre_shell.ModelAccess ->
+          map(lustre_model_access.workspace(model.model_access), ModelAccessMsg)
+        lustre_shell.ControlDebugger ->
+          map(
+            lustre_control_debugger.workspace(model.control_debugger),
+            ControlDebuggerMsg,
+          )
+        lustre_shell.UXExploration -> html.div([], [])
+      },
+    ]
+  }
+
+  html.div([class(admin_app_class(model.page))], [
     html.style([], styles()),
-    lustre_shell.admin_sidebar(
-      model.page,
-      current_model_id(model),
-      "Admin",
-      sidebar_controls(model),
-    ),
-    case model.page {
-      lustre_shell.Workbench ->
-        map(lustre_workbench.workspace(model.workbench), WorkbenchMsg)
-      lustre_shell.ModelAccess ->
-        map(lustre_model_access.workspace(model.model_access), ModelAccessMsg)
-      lustre_shell.ControlDebugger ->
-        map(
-          lustre_control_debugger.workspace(model.control_debugger),
-          ControlDebuggerMsg,
-        )
-    },
+    ..content
   ])
+}
+
+fn admin_app_class(page: lustre_shell.Page) -> String {
+  case page {
+    lustre_shell.UXExploration -> "admin-app ux-admin-app"
+    _ -> "admin-app"
+  }
 }
 
 fn sidebar_controls(model: Model) -> List(Element(Msg)) {
@@ -128,6 +158,10 @@ fn sidebar_controls(model: Model) -> List(Element(Msg)) {
       |> lustre_model_access.sidebar_controls
       |> list.map(fn(control) { map(control, ModelAccessMsg) })
     lustre_shell.ControlDebugger -> []
+    lustre_shell.UXExploration ->
+      model.ux_exploration
+      |> lustre_ux_exploration.sidebar_controls
+      |> list.map(fn(control) { map(control, UXExplorationMsg) })
   }
 }
 
@@ -136,6 +170,7 @@ fn current_model_id(model: Model) -> String {
     lustre_shell.Workbench -> model.workbench.model_id
     lustre_shell.ModelAccess -> model.model_access.model_id
     lustre_shell.ControlDebugger -> model.workbench.model_id
+    lustre_shell.UXExploration -> model.ux_exploration.model_access.model_id
   }
 }
 
@@ -143,10 +178,13 @@ fn selected_page(flags: String) -> lustre_shell.Page {
   case flags {
     "control_debugger" -> lustre_shell.ControlDebugger
     "model_access" -> lustre_shell.ModelAccess
+    "ux_exploration" -> lustre_shell.UXExploration
     _ ->
       case string.split(flags, ":") {
         ["model_access", _model_id] -> lustre_shell.ModelAccess
         ["control_debugger", _model_id] -> lustre_shell.ControlDebugger
+        ["ux_exploration", _concept_id] -> lustre_shell.UXExploration
+        ["ux_exploration", _concept_id, _model_id] -> lustre_shell.UXExploration
         _ -> lustre_shell.Workbench
       }
   }
@@ -157,6 +195,7 @@ fn selected_model(flags: String) -> String {
     ["model_access", model_id] -> model_id
     ["control_debugger", model_id] -> model_id
     ["workbench", model_id] -> model_id
+    ["ux_exploration", _concept_id, model_id] -> model_id
     _ -> ""
   }
 }
@@ -165,6 +204,7 @@ fn styles() -> String {
   lustre_workbench.styles()
   <> lustre_model_access.styles()
   <> lustre_control_debugger.styles()
+  <> lustre_ux_exploration.styles()
   <> "
   .admin-app {
     min-height: 100vh;
@@ -172,6 +212,9 @@ fn styles() -> String {
     grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
     background: var(--background);
     color: var(--foreground);
+  }
+  .admin-app.ux-admin-app {
+    grid-template-columns: minmax(0, 1fr);
   }
   @media (max-width: 860px) {
     .admin-app {

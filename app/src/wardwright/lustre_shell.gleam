@@ -6,6 +6,7 @@ pub type Page {
   Workbench
   ModelAccess
   ControlDebugger
+  UXExploration
 }
 
 pub fn sidebar(
@@ -78,6 +79,12 @@ pub fn admin_sidebar(
         admin_href(ControlDebugger, selected_model),
         active_page == ControlDebugger,
       ),
+      rail_admin_link(
+        "UX concepts",
+        "Compare live admin arrangements.",
+        admin_href(UXExploration, selected_model),
+        active_page == UXExploration,
+      ),
     ]),
     ..children
   ])
@@ -141,6 +148,11 @@ fn admin_href(page: Page, selected_model: String) -> String {
       }
     ModelAccess -> "/admin?view=model_access" <> model_query
     ControlDebugger -> "/admin?view=control_debugger" <> model_query
+    UXExploration ->
+      case selected_model {
+        "" -> "/admin/ux-exploration"
+        _ -> "/admin/ux-exploration?model=" <> selected_model
+      }
   }
 }
 

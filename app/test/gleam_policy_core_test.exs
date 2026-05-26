@@ -486,6 +486,12 @@ defmodule Wardwright.GleamPolicyCoreTest do
     assert :wardwright@tool_context_core.default_namespace(false, "function") ==
              ToolContextCoreReference.default_namespace(false, "function")
 
+    assert :wardwright@tool_context_core.execution_location("wardwright.server", "wardwright_hosted") ==
+             ToolContextCoreReference.execution_location("wardwright.server", "wardwright_hosted")
+
+    assert :wardwright@tool_context_core.visibility_level("wardwright") ==
+             ToolContextCoreReference.visibility_level("wardwright")
+
     assert :wardwright@tool_context_core.list_matches(["shell.exec"], "shell.exec") ==
              ToolContextCoreReference.list_matches?(["shell.exec"], "shell.exec")
 

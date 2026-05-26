@@ -25,7 +25,7 @@ defmodule Wardwright.AgentAdapterIdentityTest do
     pair_conn =
       call(:post, "/v1/agent-adapters/pair", %{
         "adapter_id" => "wardwright-omp",
-        "adapter_version" => "0.1.0-rc.1",
+        "adapter_version" => "0.0.11",
         "gateway_url" => "http://127.0.0.1:8787",
         "runtime" => "omp",
         "target" => "omp",
@@ -55,7 +55,7 @@ defmodule Wardwright.AgentAdapterIdentityTest do
     pair_conn =
       call(:post, "/v1/agent-adapters/pair", %{
         "adapter_id" => "wardwright-pi",
-        "adapter_version" => "0.1.0-rc.1",
+        "adapter_version" => "0.0.11",
         "gateway_url" => "http://127.0.0.1:8787",
         "runtime" => "pi",
         "target" => "pi",
@@ -86,7 +86,7 @@ defmodule Wardwright.AgentAdapterIdentityTest do
     pair_conn =
       call(:post, "/v1/agent-adapters/pair", %{
         "adapter_id" => "wardwright-claude-code",
-        "adapter_version" => "0.1.0-rc.1",
+        "adapter_version" => "0.0.11",
         "gateway_url" => "http://127.0.0.1:8787",
         "runtime" => "claude-cli",
         "target" => "claude-code",
@@ -150,7 +150,7 @@ defmodule Wardwright.AgentAdapterIdentityTest do
     pair_conn =
       call(:post, "/v1/agent-adapters/pair", %{
         "adapter_id" => "wardwright-opencode",
-        "adapter_version" => "0.1.0-rc.1",
+        "adapter_version" => "0.0.11",
         "gateway_url" => "http://127.0.0.1:8787",
         "runtime" => "opencode-native",
         "target" => "opencode",
@@ -171,7 +171,7 @@ defmodule Wardwright.AgentAdapterIdentityTest do
         Map.merge(
           %{
             "adapter_id" => "wardwright-omp",
-            "adapter_version" => "0.1.0-rc.1",
+            "adapter_version" => "0.0.11",
             "gateway_url" => "http://127.0.0.1:8787",
             "runtime" => "omp",
             "target" => "omp",

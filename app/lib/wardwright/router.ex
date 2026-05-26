@@ -1112,7 +1112,7 @@ defmodule Wardwright.Router do
       request
       |> Map.put("wardwright_attempt_index", attempt_index)
       |> Wardwright.StructuredOutputRetryFeedback.add(attempt_index, structured_config)
-      |> then(&Wardwright.complete_selected_model(decision.selected_model, &1, config))
+      |> then(&Wardwright.ServerTools.complete_selected_model(decision.selected_model, &1, config))
       |> Map.put_new(:structured_output, nil)
     end)
   end

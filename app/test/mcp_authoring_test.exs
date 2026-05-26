@@ -468,6 +468,48 @@ defmodule Wardwright.MCPAuthoringTest do
            ]
   end
 
+  test "release smoke drives a model authoring and debugger loop through HTTP API and MCP" do
+    session_id = "release-api-mcp-#{System.unique_integer([:positive])}"
+    artifact = release_smoke_artifact(session_id)
+
+    activated =
+      build_conn()
+      |> put_req_header("content-type", "application/json")
+      |> post("/v1/policy-authoring/wardwright-models", JSON.encode!(artifact))
+
+    assert activated.status == 201
+    assert get_in(JSON.decode!(activated.resp_body), ["artifact", "model_id"]) == "release-api-mcp-smoke"
+
+    completion =
+      build_conn()
+      |> put_req_header("content-type", "application/json")
+      |> put_req_header("x-wardwright-tenant-id", "release-smoke")
+      |> put_req_header("x-wardwright-application-id", "api-mcp-proof")
+      |> put_req_header("x-wardwright-consuming-agent-id", "release-check")
+      |> put_req_header("x-wardwright-session-id", session_id)
+      |> put_req_header("x-wardwright-run-id", "run-#{session_id}")
+      |> post(
+        "/v1/chat/completions",
+        JSON.encode!(%{
+          "messages" => [%{"content" => "prove the release authoring loop", "role" => "user"}],
+          "model" => "release-api-mcp-smoke"
+        })
+      )
+
+    assert completion.status == 200
+    assert [receipt_id] = get_resp_header(completion, "x-wardwright-receipt-id")
+    assert JSON.decode!(completion.resp_body)["choices"] |> hd() |> get_in(["message", "content"]) =~ "API/MCP"
+
+    {mcp_session_id, tool_names} = initialize_mcp_and_list_tools()
+    assert "load_control_debugger_trace" in tool_names
+
+    trace = call_mcp_tool(mcp_session_id, "load_control_debugger_trace", %{"receipt_id" => receipt_id})
+
+    assert get_in(trace, ["result", "structuredContent", "receipt_id"]) == receipt_id
+    assert get_in(trace, ["result", "structuredContent", "session_id"]) == session_id
+    assert Enum.any?(get_in(trace, ["result", "structuredContent", "events"]), &(&1["type"] == "model.response"))
+  end
+
   test "protected access plug rejects non-local callers without an admin token" do
     original_prototype_access = Application.get_env(:wardwright, :allow_prototype_access)
     original_admin_token = Application.get_env(:wardwright, :admin_token)
@@ -497,6 +539,114 @@ defmodule Wardwright.MCPAuthoringTest do
 
   defp temp_workspace_dir(prefix) do
     Path.join(System.tmp_dir!(), "#{prefix}-#{System.unique_integer([:positive])}")
+  end
+
+  defp initialize_mcp_and_list_tools do
+    initialize =
+      build_conn()
+      |> put_req_header("content-type", "application/json")
+      |> put_req_header("accept", "application/json, text/event-stream")
+      |> post(
+        "/mcp",
+        JSON.encode!(%{
+          "id" => 101,
+          "jsonrpc" => "2.0",
+          "method" => "initialize",
+          "params" => %{
+            "capabilities" => %{},
+            "clientInfo" => %{"name" => "wardwright-release-smoke", "version" => "0"},
+            "protocolVersion" => "2025-03-26"
+          }
+        })
+      )
+
+    assert initialize.status == 200
+    [session_id] = get_resp_header(initialize, "mcp-session-id")
+
+    initialized =
+      build_conn()
+      |> put_req_header("content-type", "application/json")
+      |> put_req_header("accept", "application/json, text/event-stream")
+      |> put_req_header("mcp-session-id", session_id)
+      |> post(
+        "/mcp",
+        JSON.encode!(%{
+          "jsonrpc" => "2.0",
+          "method" => "notifications/initialized",
+          "params" => %{}
+        })
+      )
+
+    assert initialized.status == 202
+
+    listed =
+      build_conn()
+      |> put_req_header("content-type", "application/json")
+      |> put_req_header("accept", "application/json, text/event-stream")
+      |> put_req_header("mcp-session-id", session_id)
+      |> post(
+        "/mcp",
+        JSON.encode!(%{
+          "id" => 102,
+          "jsonrpc" => "2.0",
+          "method" => "tools/list",
+          "params" => %{}
+        })
+      )
+
+    assert listed.status == 200
+
+    tool_names =
+      listed.resp_body
+      |> JSON.decode!()
+      |> get_in(["result", "tools"])
+      |> Enum.map(& &1["name"])
+
+    {session_id, tool_names}
+  end
+
+  defp call_mcp_tool(session_id, name, arguments) do
+    response =
+      build_conn()
+      |> put_req_header("content-type", "application/json")
+      |> put_req_header("accept", "application/json, text/event-stream")
+      |> put_req_header("mcp-session-id", session_id)
+      |> post(
+        "/mcp",
+        JSON.encode!(%{
+          "id" => 103,
+          "jsonrpc" => "2.0",
+          "method" => "tools/call",
+          "params" => %{"arguments" => arguments, "name" => name}
+        })
+      )
+
+    assert response.status == 200
+    JSON.decode!(response.resp_body)
+  end
+
+  defp release_smoke_artifact(session_id) do
+    %{
+      "auth" => %{"unkeyed_model_access" => "public"},
+      "description" => "Release smoke model proving API activation and MCP trace inspection.",
+      "dispatchers" => [
+        %{"id" => "dispatcher.release-api-mcp", "models" => ["canned/release-api-mcp"]}
+      ],
+      "model_definition_version" => 1,
+      "model_id" => "release-api-mcp-smoke",
+      "requires_api_key" => false,
+      "route_root" => "dispatcher.release-api-mcp",
+      "targets" => [
+        %{
+          "canned_outputs" => ["API/MCP release smoke response for #{session_id}."],
+          "context_window" => 1024,
+          "model" => "canned/release-api-mcp",
+          "provider_kind" => "canned_sequence"
+        }
+      ],
+      "vcr" => %{"mode" => "full_session"},
+      "version" => "release-api-mcp-smoke"
+    }
   end
 
   defp recorded_session_id! do

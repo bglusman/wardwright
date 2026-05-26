@@ -18,6 +18,7 @@ defmodule Wardwright do
   @choice_index_key "index"
   @choices_key "choices"
   @content_key "content"
+  @enabled_key "enabled"
   @finish_reason_key "finish_reason"
   @message_key "message"
   @messages_key "messages"
@@ -30,6 +31,22 @@ defmodule Wardwright do
   @recording_manual_mode "manual"
   @refusal_key "refusal"
   @role_key "role"
+  @server_tool_beam_module_engine "beam_module"
+  @server_tool_builtin_engine "builtin"
+  @server_tool_dune_engine "dune"
+  @server_tool_elixir_module_engine "elixir_module"
+  @server_tool_engine_key "engine"
+  @server_tool_input_key "input"
+  @server_tool_limits_key "limits"
+  @server_tool_module_key "module"
+  @server_tool_parameters_key "parameters"
+  @server_tool_path_key "path"
+  @server_tools_key "server_tools"
+  @server_tool_policy_cache_status "wardwright_policy_cache_status"
+  @server_tool_snippet_id_key "snippet_id"
+  @server_tool_source_key "source"
+  @tool_mediation_key "tool_mediation"
+  @tool_mediation_rules_key "rules"
   @delta_key "delta"
   @preserved_delta_fields_key "preserved_delta_fields"
   @system_fingerprint_key "system_fingerprint"
@@ -88,7 +105,8 @@ defmodule Wardwright do
         @recording_adapted_agents_key => @recording_auto_mode,
         @recording_default_key => @recording_manual_mode,
         @recording_generic_clients_key => @recording_manual_mode
-      }
+      },
+      @tool_mediation_key => %{@tool_mediation_rules_key => []}
     }
   end
 
@@ -932,7 +950,9 @@ defmodule Wardwright do
           version -> version
         end),
       @description_key => normalize_description(config),
-      @recording_key => normalize_recording(Map.get(config, @recording_key, %{}))
+      @recording_key => normalize_recording(Map.get(config, @recording_key, %{})),
+      @server_tools_key => normalize_server_tools(Map.get(config, @server_tools_key, [])),
+      @tool_mediation_key => normalize_tool_mediation(Map.get(config, @tool_mediation_key, %{}))
     }
   end
 
@@ -1063,6 +1083,138 @@ defmodule Wardwright do
   end
 
   defp normalize_vcr(_), do: %{"mode" => "metadata_only"}
+
+  defp normalize_tool_mediation(%{@tool_mediation_rules_key => rules} = mediation) when is_list(rules) do
+    mediation
+    |> Map.take(["mode", @tool_mediation_rules_key])
+    |> Map.put(@tool_mediation_rules_key, Enum.filter(rules, &is_map/1))
+  end
+
+  defp normalize_tool_mediation(rules) when is_list(rules),
+    do: %{@tool_mediation_rules_key => Enum.filter(rules, &is_map/1)}
+
+  defp normalize_tool_mediation(_mediation), do: %{@tool_mediation_rules_key => []}
+
+  defp normalize_server_tools(tools) when is_list(tools) do
+    tools
+    |> Enum.flat_map(fn
+      %{@enabled_key => false} = tool ->
+        tool
+        |> Map.delete(@enabled_key)
+        |> normalize_server_tool()
+        |> Enum.map(&Map.put(&1, @enabled_key, false))
+
+      %{} = tool ->
+        normalize_server_tool(tool)
+
+      @server_tool_policy_cache_status ->
+        [%{@name_key => @server_tool_policy_cache_status, @server_tool_engine_key => @server_tool_builtin_engine}]
+
+      _tool ->
+        []
+    end)
+  end
+
+  defp normalize_server_tools(_tools), do: []
+
+  defp normalize_server_tool(tool) do
+    engine = normalize_server_tool_engine(Map.get(tool, @server_tool_engine_key), tool)
+
+    cond do
+      engine == @server_tool_builtin_engine ->
+        tool
+        |> Map.get(@name_key, "")
+        |> to_string()
+        |> String.trim()
+        |> case do
+          @server_tool_policy_cache_status ->
+            [%{@name_key => @server_tool_policy_cache_status, @server_tool_engine_key => @server_tool_builtin_engine}]
+
+          _other ->
+            []
+        end
+
+      engine == @server_tool_dune_engine ->
+        tool
+        |> normalize_dune_server_tool()
+        |> List.wrap()
+
+      engine == @server_tool_beam_module_engine ->
+        tool
+        |> normalize_beam_module_server_tool()
+        |> List.wrap()
+
+      true ->
+        []
+    end
+  end
+
+  defp normalize_server_tool_engine(@server_tool_elixir_module_engine, _tool), do: @server_tool_beam_module_engine
+
+  defp normalize_server_tool_engine(engine, _tool)
+       when engine in [@server_tool_builtin_engine, @server_tool_dune_engine, @server_tool_beam_module_engine],
+       do: engine
+
+  defp normalize_server_tool_engine(_engine, tool) do
+    cond do
+      present_string?(Map.get(tool, @server_tool_source_key)) or
+          present_string?(Map.get(tool, @server_tool_snippet_id_key)) ->
+        @server_tool_dune_engine
+
+      present_string?(Map.get(tool, @server_tool_module_key)) or present_string?(Map.get(tool, @server_tool_path_key)) ->
+        @server_tool_beam_module_engine
+
+      true ->
+        @server_tool_builtin_engine
+    end
+  end
+
+  defp normalize_dune_server_tool(tool) do
+    name = tool |> Map.get(@name_key, "") |> to_string() |> String.trim()
+
+    if name != "" and
+         (present_string?(Map.get(tool, @server_tool_source_key)) or
+            present_string?(Map.get(tool, @server_tool_snippet_id_key))) do
+      tool
+      |> Map.take([
+        @description_key,
+        @name_key,
+        @server_tool_input_key,
+        @server_tool_limits_key,
+        @server_tool_parameters_key,
+        @server_tool_snippet_id_key,
+        @server_tool_source_key
+      ])
+      |> Map.put(@server_tool_engine_key, @server_tool_dune_engine)
+      |> Map.put(@name_key, name)
+    end
+  end
+
+  defp normalize_beam_module_server_tool(tool) do
+    module = tool |> Map.get(@server_tool_module_key, "") |> to_string() |> String.trim()
+    path = tool |> Map.get(@server_tool_path_key, "") |> to_string() |> String.trim()
+
+    if module != "" or path != "" do
+      tool
+      |> Map.take([
+        @description_key,
+        @name_key,
+        @server_tool_module_key,
+        @server_tool_parameters_key,
+        @server_tool_path_key
+      ])
+      |> Map.put(@server_tool_engine_key, @server_tool_beam_module_engine)
+      |> put_present(@name_key, tool |> Map.get(@name_key, "") |> to_string() |> String.trim())
+      |> put_present(@server_tool_module_key, module)
+      |> put_present(@server_tool_path_key, path)
+    end
+  end
+
+  defp present_string?(value) when is_binary(value), do: String.trim(value) != ""
+  defp present_string?(_value), do: false
+
+  defp put_present(map, _key, ""), do: map
+  defp put_present(map, key, value), do: Map.put(map, key, value)
 
   defp validate_config(%{"model_id" => model_id, "targets" => targets} = config) do
     cond do

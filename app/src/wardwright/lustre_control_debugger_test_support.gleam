@@ -42,6 +42,22 @@ pub fn replaying_receipt_shows_facts(
   && view_contains(simulation, "Original provider")
 }
 
+pub fn replaying_receipt_shows_server_tool_execution(
+  receipt_id: String,
+  expected_tool: String,
+  expected_result: String,
+) -> Bool {
+  let simulation =
+    start()
+    |> input("control_receipt_id_text", receipt_id)
+    |> click_button("Explain receipt")
+
+  view_contains(simulation, "Server tool executions")
+  && view_contains(simulation, expected_tool)
+  && view_contains(simulation, "status=completed")
+  && view_contains(simulation, expected_result)
+}
+
 pub fn receipt_text_input_is_controlled(receipt_id: String) -> Bool {
   start()
   |> input("control_receipt_id_text", receipt_id)

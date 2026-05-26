@@ -677,3 +677,59 @@ Execution constraints:
 - Next open item: run a real .NET package smoke on a machine with `dotnet`
   installed, then decide whether to promote any helper into a published package
   or keep recipes as documentation-only examples.
+
+### Post-RC Framework Gap Mitigation
+
+- Timestamp: 2026-05-24T16:45-04:00.
+- Starting commit: `d33b7ac`.
+- Intended ending commit: documentation update for mitigated .NET and
+  streaming probes before deciding whether to cut `0.1.0`.
+- Scope: use the available Proxmox node rather than treating the local macOS
+  machine as the only validation environment. Create a temporary Proxmox LXC
+  and run a real NuGet smoke against the released Linux `v0.1.0-rc.1`
+  artifact; also test the highest-priority streaming recipe paths.
+- Validation:
+  - Proxmox node: private local node running Proxmox `9.1.8`; temporary
+    Ubuntu 24.04 LXC `9091`.
+  - Container .NET SDK: `8.0.126`.
+  - Released Linux artifact installed with `scripts/install.sh --version
+    v0.1.0-rc.1` and served `/v1/chat/completions` locally.
+  - NuGet packages installed and executed:
+    `Microsoft.Extensions.AI@10.6.0`,
+    `Microsoft.Extensions.AI.OpenAI@10.6.0`, `OpenAI@2.10.0`, and
+    `Microsoft.SemanticKernel@1.76.0`.
+  - Real .NET smoke passed: `OpenAIClient.GetChatClient("coding-balanced")
+    .AsIChatClient()` returned a working `Microsoft.Extensions.AI.OpenAIChatClient`,
+    `ChatResponse.Text` contained a Wardwright completion, and Semantic Kernel
+    registered/resolved the same `IChatClient`.
+  - Native .NET response-header probe: `ChatResponse.AdditionalProperties`
+    was empty, so native receipt propagation is not proven through
+    `OpenAIChatClient`; the documented delegating/owned HTTP wrapper remains
+    required for receipt capture.
+  - Vercel AI SDK streaming smoke passed with current `ai` and
+    `@ai-sdk/openai-compatible`: `streamText` returned text and the
+    Wardwright fetch wrapper captured a real receipt id.
+  - LangChain streaming smoke passed for text output with current
+    `langchain`, `langchain-openai`, and `langgraph`, but stream chunk
+    metadata did not expose Wardwright response headers.
+- Skipped probes: no tool-call preservation probe was added for framework SDKs,
+  no Semantic Kernel function/plugin filter path was executed, no LangGraph
+  durable checkpointer was tested, no OpenAI Agents `/v1/responses` parity was
+  claimed, and no native framework state or exact replay claim was added.
+- Adversarial review:
+  - Architecture: no blocker found. The .NET smoke uses a disposable Proxmox
+    LXC and the released Linux artifact, so it validates package execution
+    without installing runtime dependencies on the Proxmox host or moving
+    NuGet-specific behavior into Wardwright core.
+  - Code/comment quality: no blocker found. This pass records evidence and
+    limits in docs only. It improves the previous wording that treated .NET as
+    untested, while preserving the important caveat that native
+    `OpenAIChatClient` did not expose receipt headers.
+  - Test quality: no blocker found. The probes are capable of failing for
+    missing package APIs, broken OpenAI-compatible routing, missing Vercel
+    streaming receipt capture, or absent .NET/Semantic Kernel wiring. They do
+    not prove framework tool-call fidelity, native state, or exact replay, and
+    those limits remain explicit.
+- Next open item: if cutting `0.1.0`, update version/docs to stable, run the
+  same release checks, and decide whether Node 20 workflow warnings should be
+  fixed before or immediately after the stable tag.

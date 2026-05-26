@@ -1,0 +1,115 @@
+{
+  "model_definition_version": 1,
+  "model_id": "local-gemma-authoring",
+  "version": "2026-05-26.gemma-pass-through",
+  "description": "Local Gemma 4 26B authoring model for Wardwright/Jido dogfood. Route and policy behavior are pass-through; structured output only enforces the in-page assistant tool-plan envelope.",
+  "auth": {
+    "unkeyed_model_access": "public"
+  },
+  "requires_api_key": false,
+  "targets": [
+    {
+      "model": "ollama/gemma4:26b-a4b-it-q4_K_M",
+      "context_window": 131072,
+      "provider_kind": "ollama",
+      "provider_base_url": "http://127.0.0.1:11434"
+    }
+  ],
+  "route_root": "dispatcher.local-gemma-authoring",
+  "dispatchers": [
+    {
+      "id": "dispatcher.local-gemma-authoring",
+      "name": "Pass authoring requests to local Gemma 4 26B",
+      "models": [
+        "ollama/gemma4:26b-a4b-it-q4_K_M"
+      ]
+    }
+  ],
+  "cascades": [],
+  "alloys": [],
+  "governance": [],
+  "stream_rules": [],
+  "prompt_transforms": {},
+  "structured_output": {
+    "guard_loop": {
+      "max_attempts": 2,
+      "max_failures_per_rule": 1,
+      "on_violation": "retry_with_validation_feedback"
+    },
+    "schemas": {
+      "authoring_tool_plan_v1": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "answer": {
+            "type": "string",
+            "minLength": 1
+          },
+          "next_steps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tool_calls": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "required": [
+                "name",
+                "arguments"
+              ]
+            }
+          }
+        },
+        "required": [
+          "answer",
+          "tool_calls"
+        ]
+      }
+    }
+  },
+  "policy_cache": {
+    "max_entries": 64,
+    "recent_limit": 20
+  },
+  "sinks": [
+    {
+      "id": "policy-alerts",
+      "kind": "memory_alert",
+      "delivery": {
+        "capacity": 16,
+        "on_full": "dead_letter"
+      },
+      "redaction": "metadata",
+      "select": {
+        "types": [
+          "policy.alert"
+        ]
+      }
+    }
+  ],
+  "vcr": {
+    "mode": "metadata_only"
+  },
+  "recording": {
+    "default": "manual",
+    "generic_clients": "manual",
+    "adapted_agents": "auto"
+  },
+  "tool_mediation": {
+    "rules": []
+  }
+}

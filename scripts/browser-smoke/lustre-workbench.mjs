@@ -28,7 +28,13 @@ const overflowPaths = [
   "/admin",
   "/admin?model=browser-smoke-model",
   "/admin?view=model_access",
-  "/admin?view=control_debugger"
+  "/admin?view=model_access&model=browser-smoke-tools",
+  "/admin?view=control_debugger",
+  "/admin/ux-exploration",
+  "/admin/ux-exploration/ops-console",
+  "/admin/ux-exploration/model-builder",
+  "/admin/ux-exploration/guided-lab",
+  "/admin/ux-exploration/capability-catalog"
 ];
 
 if (!chromePath) {
@@ -81,12 +87,15 @@ try {
   await waitForHttp(`${appUrl}/admin`, "Wardwright", serverStartTimeoutMs);
   await waitForHttp(`http://127.0.0.1:${chromePort}/json/version`, "webSocketDebuggerUrl");
   await seedRegisteredModelWorkbench();
+  await seedServerToolModelAccess();
 
   for (const viewport of viewports) {
     await runViewportSmoke(viewport);
   }
 
   await assertSelectedModelWorkbench();
+  await assertServerToolModelAccess();
+  await assertUxExplorationConcepts();
   await assertControlDebuggerSaveScenario();
   await assertAdapterStatusPanel();
 
@@ -127,6 +136,70 @@ async function seedRegisteredModelWorkbench() {
   if (!response.ok) {
     throw new Error(
       `Could not seed registered model workbench fixture: ${response.status} ${await response.text()}`
+    );
+  }
+}
+
+async function seedServerToolModelAccess() {
+  const response = await fetch(`${appUrl}/v1/policy-authoring/wardwright-models`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      artifact: {
+        model_id: "browser-smoke-tools",
+        version: "browser-smoke",
+        description: "Browser smoke model with Wardwright-hosted server tools.",
+        targets: [
+          {
+            model: "openai/browser-smoke-tools",
+            context_window: 8192,
+            provider_kind: "openai-compatible",
+            provider_base_url: "https://example.com/v1"
+          },
+          { model: "local/browser-smoke-toolless", context_window: 4096 }
+        ],
+        dispatchers: [
+          {
+            id: "dispatcher.browser-smoke-tools",
+            models: ["openai/browser-smoke-tools", "local/browser-smoke-toolless"]
+          }
+        ],
+        route_root: "dispatcher.browser-smoke-tools",
+        server_tools: [
+          { name: "wardwright_policy_cache_status" },
+          {
+            name: "browser_smoke_dune_tool",
+            source: `%{"visible" => input["value"]}`,
+            input: { tenant: "browser-smoke" },
+            limits: { timeout_ms: 500, max_reductions: 10000, max_heap_size: 1000000 },
+            parameters: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                value: { type: "string" }
+              }
+            }
+          },
+          {
+            enabled: false,
+            name: "browser_smoke_disabled_tool",
+            source: `%{"disabled" => true}`
+          }
+        ],
+        tool_mediation: {
+          mode: "patch",
+          rules: [
+            { id: "browser-smoke-search", action: "augment", match: { name: "search" } }
+          ]
+        },
+        auth: { unkeyed_model_access: "public" }
+      }
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Could not seed server-tool model access fixture: ${response.status} ${await response.text()}`
     );
   }
 }
@@ -254,6 +327,98 @@ async function assertSelectedModelWorkbench() {
   }
 }
 
+async function assertServerToolModelAccess() {
+  const target = await createChromeTarget();
+  const cdp = await connectCdp(target.webSocketDebuggerUrl);
+
+  try {
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 1280,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false
+    });
+
+    await cdp.send("Page.navigate", {
+      url: `${appUrl}/admin?view=model_access&model=browser-smoke-tools`
+    });
+    await cdp.waitFor("Page.loadEventFired");
+    await waitForEval(cdp, `pageText(document.body).includes("Server Tools")`);
+    await waitForEval(cdp, `pageText(document.body).includes("browser_smoke_dune_tool")`);
+
+    const result = await evaluate(
+      cdp,
+      `(() => {
+        const text = pageText(document.body);
+        return {
+          hasEnabledTool: text.includes("wardwright_policy_cache_status"),
+          hasDuneLimits: text.includes("timeout 500ms") &&
+            text.includes("reductions 10000") &&
+            text.includes("heap 1000000"),
+          hasDisabledTool: text.includes("browser_smoke_disabled_tool") &&
+            text.includes("disabled"),
+          hasProviderSupport: text.includes("Server tools sent to provider") &&
+            text.includes("Server tools not sent"),
+          hasToggleControls: text.includes("Disable") && text.includes("Enable"),
+          hasAdvertisementSummary: text.includes("Advertise") &&
+            text.includes("Guaranteed tools") &&
+            text.includes("Conditional tools"),
+          hasRoutingScope: text.includes("Tool availability differs by raw target") &&
+            text.includes("selected tool-capable provider target")
+        };
+      })()`
+    );
+
+    if (
+      !result.hasEnabledTool ||
+      !result.hasDuneLimits ||
+      !result.hasDisabledTool ||
+      !result.hasProviderSupport ||
+      !result.hasToggleControls ||
+      !result.hasAdvertisementSummary ||
+      !result.hasRoutingScope
+    ) {
+      throw new Error(`server-tool model access smoke failed: ${JSON.stringify(result)}`);
+    }
+
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 3,
+      mobile: true
+    });
+    await cdp.send("Page.navigate", {
+      url: `${appUrl}/admin?view=model_access&model=browser-smoke-tools`
+    });
+    await cdp.waitFor("Page.loadEventFired");
+    await waitForEval(cdp, `pageText(document.body).includes("browser_smoke_dune_tool")`);
+
+    const mobileLayout = await evaluate(
+      cdp,
+      `(() => {
+        const thead = allElements(".server-tool-table thead")[0];
+        const row = allElements(".server-tool-table tbody tr")[0];
+        const cell = allElements(".server-tool-table tbody td")[0];
+        return {
+          hidesHeader: thead ? getComputedStyle(thead).display === "none" : false,
+          stacksRows: row ? getComputedStyle(row).display === "block" : false,
+          labelsCells: cell ? getComputedStyle(cell, "::before").content.includes("Tool") : false
+        };
+      })()`
+    );
+
+    if (!mobileLayout.hidesHeader || !mobileLayout.stacksRows || !mobileLayout.labelsCells) {
+      throw new Error(`server-tool mobile table layout smoke failed: ${JSON.stringify(mobileLayout)}`);
+    }
+
+    console.log("ok model access renders server-tool config and target support");
+  } finally {
+    cdp.close();
+  }
+}
+
 async function assertControlDebuggerSaveScenario() {
   const target = await createChromeTarget();
   const cdp = await connectCdp(target.webSocketDebuggerUrl);
@@ -286,6 +451,174 @@ async function assertControlDebuggerSaveScenario() {
     );
 
     console.log("ok control debugger saves read-before-edit scenario to tool-governance");
+  } finally {
+    cdp.close();
+  }
+}
+
+async function assertUxExplorationConcepts() {
+  const target = await createChromeTarget();
+  const cdp = await connectCdp(target.webSocketDebuggerUrl);
+  const concepts = [
+    "ops-console",
+    "model-builder",
+    "guided-lab",
+    "capability-catalog"
+  ];
+
+  try {
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 1280,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false
+    });
+
+    for (const concept of concepts) {
+      await cdp.send("Page.navigate", {
+        url: `${appUrl}/admin/ux-exploration/${concept}?model=browser-smoke-tools`
+      });
+      await cdp.waitFor("Page.loadEventFired");
+      await waitForEval(cdp, `pageText(document.body).includes("Admin workspace")`);
+      await waitForEval(cdp, `pageText(document.body).includes("browser_smoke_dune_tool")`);
+      await waitForEval(cdp, `pageText(document.body).includes("Simulate a turn")`);
+      await waitForEval(cdp, `pageText(document.body).includes("Create simulator case")`);
+      await waitForEval(cdp, `pageText(document.body).includes("Adapter install status")`);
+      if (concept === "ops-console") {
+        await waitForEval(cdp, `pageText(document.body).includes("Production watchlist")`);
+      } else if (concept === "model-builder") {
+        await waitForEval(cdp, `pageText(document.body).includes("Route graph builder")`);
+        await waitForEval(cdp, `allElements(".builder-canvas .ux-route-node").length >= 6`);
+      } else if (concept === "guided-lab") {
+        await waitForEval(cdp, `pageText(document.body).includes("Change runbook")`);
+      } else if (concept === "capability-catalog") {
+        await waitForEval(cdp, `pageText(document.body).includes("Browse Wardwright by promises")`);
+      }
+
+      const result = await evaluate(
+        cdp,
+        `(() => {
+          const hrefs = allElements("a").map((link) => link.getAttribute("href") || "");
+          const conceptBase = "/admin/ux-exploration/${concept}?model=browser-smoke-tools";
+          return {
+            escapingLinks: hrefs.filter((href) => href.startsWith("/admin?")),
+            hasModelLab: hrefs.includes(conceptBase + "#ux-model-lab"),
+            hasModelConfig: hrefs.includes(conceptBase + "#ux-model-config"),
+            hasPolicyLab: hrefs.includes(conceptBase + "#ux-policy-lab"),
+            hasEvidence: hrefs.includes(conceptBase + "#ux-evidence"),
+            hasIntegrations: hrefs.includes(conceptBase + "#ux-integrations"),
+            hasRelease: hrefs.includes(conceptBase + "#ux-release")
+          };
+        })()`
+      );
+
+      if (
+        result.escapingLinks.length > 0 ||
+        !result.hasModelLab ||
+        !result.hasModelConfig ||
+        !result.hasPolicyLab ||
+        !result.hasEvidence ||
+        !result.hasIntegrations ||
+        !result.hasRelease
+      ) {
+        throw new Error(`UX exploration ${concept} standalone links failed: ${JSON.stringify(result)}`);
+      }
+
+      await evaluate(
+        cdp,
+        `(() => {
+          const conceptBase = "/admin/ux-exploration/${concept}?model=browser-smoke-tools";
+          const releaseLink = allElements("a").find((link) =>
+            link.getAttribute("href") === conceptBase + "#ux-release"
+          );
+          if (!releaseLink) return false;
+          window.scrollTo(0, 0);
+          releaseLink.click();
+          return true;
+        })()`
+      );
+      await waitForEval(cdp, `location.hash === "#ux-release"`);
+      await waitForEval(
+        cdp,
+        `(() => {
+          const target = allElements("#ux-release")[0];
+          if (!target) return false;
+          const rect = target.getBoundingClientRect();
+          return rect.top < window.innerHeight - 40 && rect.bottom > 40;
+        })()`
+      );
+    }
+
+    await cdp.send("Page.navigate", {
+      url: `${appUrl}/admin/ux-exploration/ops-console?model=browser-smoke-tools#ux-release`
+    });
+    await cdp.waitFor("Page.loadEventFired");
+    await waitForEval(cdp, `pageText(document.body).includes("Admin workspace")`);
+    await waitForEval(
+      cdp,
+      `(() => {
+        const target = allElements("#ux-release")[0];
+        if (!target) return false;
+        const rect = target.getBoundingClientRect();
+        return rect.top < window.innerHeight - 40 && rect.bottom > 40;
+      })()`
+    );
+
+    await cdp.send("Page.navigate", {
+      url: `${appUrl}/admin/ux-exploration/model-builder?model=browser-smoke-tools`
+    });
+    await cdp.waitFor("Page.loadEventFired");
+    await waitForEval(cdp, `pageText(document.body).includes("Route graph builder")`);
+    await evaluate(
+      cdp,
+      `(() => {
+        allElements(".state-graph")[0]?.scrollIntoView();
+        return true;
+      })()`
+    );
+    await waitForEval(
+      cdp,
+      `(() => {
+        const graph = allElements(".state-graph")[0];
+        const canvas = allElements(".builder-canvas")[0];
+        if (!canvas || !graph) return false;
+        const canvasRect = canvas.getBoundingClientRect();
+        const graphRect = graph.getBoundingClientRect();
+        return canvasRect.width > 450 && graphRect.left >= -1 && graphRect.width > 700;
+      })()`
+    );
+
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 3,
+      mobile: true
+    });
+    await cdp.send("Page.navigate", {
+      url: `${appUrl}/admin/ux-exploration/ops-console?model=browser-smoke-tools`
+    });
+    await cdp.waitFor("Page.loadEventFired");
+    await waitForEval(cdp, `pageText(document.body).includes("Ops Console")`);
+    const clippedTabs = await evaluate(
+      cdp,
+      `allElements(".ux-tab").map((tab) => {
+        const rect = tab.getBoundingClientRect();
+        return {
+          text: tab.textContent.trim(),
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          width: Math.round(rect.width),
+          clipped: rect.left < -1 || rect.right > window.innerWidth + 1
+        };
+      }).filter((tab) => tab.clipped)`
+    );
+    if (clippedTabs.length > 0) {
+      throw new Error(`UX exploration mobile tabs clipped: ${JSON.stringify(clippedTabs)}`);
+    }
+
+    console.log("ok UX exploration concepts are standalone and render live admin controls");
   } finally {
     cdp.close();
   }

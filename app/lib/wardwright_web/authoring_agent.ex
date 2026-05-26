@@ -616,6 +616,9 @@ defmodule WardwrightWeb.AuthoringAgent do
       is_binary(response) ->
         response
 
+      match?(%{content: content} when is_binary(content), response) ->
+        response.content
+
       is_struct(response, ReqLLM.Response) ->
         ReqLLM.Response.text(response)
 

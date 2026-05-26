@@ -18,6 +18,18 @@ type ModelOption =
 type KeyOption =
   #(String, String, String, String)
 
+type ServerToolOption =
+  #(String, String, String, String, String, String, String, String)
+
+type ServerToolTargetOption =
+  #(String, String, String)
+
+type ToolMediationSummary =
+  #(String, Int)
+
+type ToolAdvertisementSummary =
+  #(String, Int, Int)
+
 pub type Model {
   Model(
     model_id: String,
@@ -30,6 +42,10 @@ pub type Model {
     status: String,
     error: String,
     receipt_storage_note: String,
+    server_tools: List(ServerToolOption),
+    server_tool_targets: List(ServerToolTargetOption),
+    tool_mediation: ToolMediationSummary,
+    tool_advertisement: ToolAdvertisementSummary,
   )
 }
 
@@ -45,6 +61,7 @@ pub type Msg {
   ArchiveModel
   RestoreArchivedModel(String)
   DeleteArchivedModel(String)
+  ToggleServerTool(String, Bool)
 }
 
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "default_model_id")
@@ -63,6 +80,23 @@ fn external_access_summary(
 
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "key_options")
 fn external_key_options(model_id: String) -> List(KeyOption)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "server_tool_summary")
+fn external_server_tool_summary(
+  model_id: String,
+) -> #(
+  List(ServerToolOption),
+  List(ServerToolTargetOption),
+  ToolMediationSummary,
+  ToolAdvertisementSummary,
+)
+
+@external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "toggle_server_tool")
+fn external_toggle_server_tool(
+  model_id: String,
+  tool_name: String,
+  enabled: Bool,
+) -> #(Bool, String)
 
 @external(erlang, "Elixir.WardwrightWeb.LustreModelAccessData", "create_key")
 fn external_create_key(
@@ -190,6 +224,16 @@ pub fn update(model: Model, msg: Msg) -> Model {
         False -> load_model(model.model_id, "", message, "")
       }
     }
+
+    ToggleServerTool(tool_name, enabled) -> {
+      let #(ok, message) =
+        external_toggle_server_tool(model.model_id, tool_name, enabled)
+
+      case ok {
+        True -> load_model(model.model_id, message, "", "")
+        False -> load_model(model.model_id, "", message, "")
+      }
+    }
   }
 }
 
@@ -202,6 +246,9 @@ fn load_model(
   let #(model_id, requires_api_key, unkeyed_access, _, vcr_mode, storage_note) =
     external_access_summary(requested_model_id)
 
+  let #(server_tools, server_tool_targets, tool_mediation, tool_advertisement) =
+    external_server_tool_summary(model_id)
+
   Model(
     model_id:,
     requires_api_key:,
@@ -213,6 +260,10 @@ fn load_model(
     status:,
     error:,
     receipt_storage_note: storage_note,
+    server_tools:,
+    server_tool_targets:,
+    tool_mediation:,
+    tool_advertisement:,
   )
 }
 
@@ -259,6 +310,22 @@ pub fn workspace(model: Model) -> Element(Msg) {
     html.section([class("model-key-grid")], [
       model_summary(model),
       access_policy_editor(model),
+      server_tools_panel(model),
+      model_lifecycle_panel(model),
+      create_key_panel(model),
+      keys_panel(model),
+      archived_models_panel(),
+    ]),
+  ])
+}
+
+pub fn embedded_workspace(model: Model) -> Element(Msg) {
+  html.div([class("embedded-model-access-workspace")], [
+    notices(model),
+    html.section([class("model-key-grid")], [
+      model_summary(model),
+      access_policy_editor(model),
+      server_tools_panel(model),
       model_lifecycle_panel(model),
       create_key_panel(model),
       keys_panel(model),
@@ -281,6 +348,8 @@ pub fn sidebar_controls(model: Model) -> List(Element(Msg)) {
       ]),
       html.span([], [text("Replay capture")]),
       html.code([], [text(vcr_mode_label(model.vcr_mode))]),
+      html.span([], [text("Server tools")]),
+      html.code([], [text(int.to_string(list.length(model.server_tools)))]),
     ]),
   ]
 }
@@ -329,7 +398,7 @@ fn notices(model: Model) -> Element(Msg) {
   }
 }
 
-fn model_summary(model: Model) -> Element(Msg) {
+pub fn model_summary(model: Model) -> Element(Msg) {
   html.article([class("panel model-summary-panel")], [
     html.div([class("panel-header")], [
       html.div([], [
@@ -369,6 +438,7 @@ fn model_summary(model: Model) -> Element(Msg) {
       metric("Replay capture", vcr_mode_label(model.vcr_mode)),
       metric("Receipt store", model.receipt_storage_note),
       metric("Keys", int.to_string(list.length(model.keys))),
+      metric("Server tools", int.to_string(list.length(model.server_tools))),
     ]),
   ])
 }
@@ -392,7 +462,7 @@ fn metric(label: String, body: String) -> Element(Msg) {
   ])
 }
 
-fn access_policy_editor(model: Model) -> Element(Msg) {
+pub fn access_policy_editor(model: Model) -> Element(Msg) {
   html.article([class("panel access-policy-editor")], [
     html.h2([], [text("Access Policy")]),
     html.form(
@@ -450,6 +520,145 @@ fn access_policy_editor(model: Model) -> Element(Msg) {
       ],
     ),
   ])
+}
+
+pub fn server_tools_panel(model: Model) -> Element(Msg) {
+  let #(mediation_mode, mediation_rule_count) = model.tool_mediation
+  let #(advertisement_mode, guaranteed_tools, conditional_tools) =
+    model.tool_advertisement
+
+  html.article([class("panel server-tools-panel")], [
+    html.div([class("panel-header")], [
+      html.div([], [
+        html.h2([], [text("Server Tools")]),
+        html.p([], [
+          text("Model-level Wardwright-hosted tool configuration."),
+        ]),
+      ]),
+      html.span([class("badge")], [
+        text(int.to_string(list.length(model.server_tools)) <> " configured"),
+      ]),
+    ]),
+    html.dl([class("metrics")], [
+      metric("Mediation", mediation_mode),
+      metric("Mediation rules", int.to_string(mediation_rule_count)),
+      metric("Tool-capable targets", int.to_string(tool_capable_count(model))),
+      metric("Advertise", advertisement_mode),
+      metric("Guaranteed tools", int.to_string(guaranteed_tools)),
+      metric("Conditional tools", int.to_string(conditional_tools)),
+    ]),
+    server_tool_routing_note(model),
+    server_tool_table(model.server_tools),
+    server_tool_targets(model.server_tool_targets),
+  ])
+}
+
+fn server_tool_routing_note(model: Model) -> Element(Msg) {
+  let capable = tool_capable_count(model)
+  let total = list.length(model.server_tool_targets)
+
+  let message = case total, capable {
+    0, _ -> "No provider targets are configured for this model."
+    _, 0 ->
+      "No current provider target can receive Wardwright-hosted tools; tools stay configured at model level but are not injected."
+    _, _ if capable == total ->
+      "Enabled Wardwright-hosted tools are applied after routing; every current provider target can receive them."
+    _, _ ->
+      "Tool availability differs by raw target, like context-window differences. Enabled Wardwright-hosted tools are applied after routing and sent only to the selected tool-capable provider target."
+  }
+
+  html.p([class("server-tool-routing-note")], [text(message)])
+}
+
+fn server_tool_table(tools: List(ServerToolOption)) -> Element(Msg) {
+  case tools {
+    [] -> html.p([], [text("No server tools configured for this model.")])
+    _ ->
+      html.table([class("server-tool-table")], [
+        html.thead([], [
+          html.tr([], [
+            html.th([], [text("Tool")]),
+            html.th([], [text("Engine")]),
+            html.th([], [text("State")]),
+            html.th([], [text("Source")]),
+            html.th([], [text("Dune limits")]),
+            html.th([], [text("Schema")]),
+            html.th([], [text("Action")]),
+          ]),
+        ]),
+        html.tbody([], list.map(tools, server_tool_row)),
+      ])
+  }
+}
+
+fn server_tool_row(tool: ServerToolOption) -> Element(Msg) {
+  let #(
+    name,
+    engine,
+    source,
+    enabled,
+    visibility,
+    limit_summary,
+    parameter_keys,
+    input_keys,
+  ) = tool
+
+  html.tr([], [
+    html.td([attribute("data-label", "Tool")], [
+      html.code([], [text(name)]),
+      html.small([], [text(visibility)]),
+    ]),
+    html.td([attribute("data-label", "Engine")], [text(engine)]),
+    html.td([attribute("data-label", "State")], [text(enabled)]),
+    html.td([attribute("data-label", "Source")], [text(source)]),
+    html.td([attribute("data-label", "Dune limits")], [text(limit_summary)]),
+    html.td([attribute("data-label", "Schema")], [
+      html.small([], [
+        text("params " <> parameter_keys <> " / input " <> input_keys),
+      ]),
+    ]),
+    html.td([attribute("data-label", "Action")], [
+      button.button(
+        [
+          button.variant(button.Default),
+          type_("button"),
+          event.on_click(ToggleServerTool(name, enabled != "enabled")),
+        ],
+        [
+          text(case enabled {
+            "enabled" -> "Disable"
+            _ -> "Enable"
+          }),
+        ],
+      ),
+    ]),
+  ])
+}
+
+fn server_tool_targets(targets: List(ServerToolTargetOption)) -> Element(Msg) {
+  html.div([class("server-tool-targets")], [
+    html.h3([], [text("Provider Targets")]),
+    html.ul([], list.map(targets, server_tool_target_item)),
+  ])
+}
+
+fn server_tool_target_item(target: ServerToolTargetOption) -> Element(Msg) {
+  let #(model, kind, support) = target
+
+  html.li([], [
+    html.code([], [text(model)]),
+    html.span([], [text(kind)]),
+    html.strong([], [text(support)]),
+  ])
+}
+
+fn tool_capable_count(model: Model) -> Int {
+  model.server_tool_targets
+  |> list.filter(fn(target) {
+    let #(_, _, support) = target
+    support == "tool-capable" || support == "Server tools sent to provider"
+  })
+  |> list.length
 }
 
 fn model_lifecycle_panel(_model: Model) -> Element(Msg) {
@@ -737,7 +946,7 @@ pub fn styles() -> String {
     margin: 0 0 6px;
     text-transform: uppercase;
   }
-  h1, h2, p, dl {
+  h1, h2, h3, p, dl {
     margin: 0;
   }
   h1 {
@@ -904,6 +1113,7 @@ pub fn styles() -> String {
   table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: auto;
   }
   th, td {
     border-bottom: 1px solid var(--border);
@@ -911,11 +1121,64 @@ pub fn styles() -> String {
     text-align: left;
     vertical-align: top;
   }
+  td {
+    overflow-wrap: anywhere;
+  }
   th {
     background: #eef3f5;
     color: #4a5865;
     font-size: 12px;
     text-transform: uppercase;
+  }
+  .server-tools-panel {
+    grid-column: 1 / -1;
+  }
+  .server-tool-table {
+    font-size: 14px;
+  }
+  .server-tool-table th:nth-child(1) {
+    min-width: 190px;
+  }
+  .server-tool-table th:nth-child(5) {
+    min-width: 210px;
+  }
+  .server-tool-routing-note {
+    padding: 10px 12px;
+    border: 1px solid #d6e5ea;
+    border-radius: 8px;
+    background: #f7fbfc;
+    color: #344454;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .server-tool-table td:first-child {
+    display: grid;
+    gap: 4px;
+  }
+  .server-tool-targets {
+    display: grid;
+    gap: 8px;
+  }
+  .server-tool-targets h3 {
+    font-size: 14px;
+    line-height: 1.25;
+  }
+  .server-tool-targets ul {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .server-tool-targets li {
+    display: grid;
+    grid-template-columns: minmax(160px, 1fr) minmax(120px, max-content) minmax(130px, max-content);
+    gap: 10px;
+    align-items: center;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fbfcfd;
   }
   .keys-panel {
     grid-column: 1 / -1;
@@ -949,6 +1212,56 @@ pub fn styles() -> String {
   }
   @media (max-width: 860px) {
     .model-access-app, .model-key-grid, .inline-form {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .server-tool-table,
+    .server-tool-table tbody,
+    .server-tool-table tr,
+    .server-tool-table td {
+      display: block;
+      width: 100%;
+    }
+    .server-tool-table {
+      border-collapse: separate;
+      border-spacing: 0 10px;
+      font-size: 15px;
+    }
+    .server-tool-table thead {
+      display: none;
+    }
+    .server-tool-table tr {
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fbfcfd;
+    }
+    .server-tool-table td {
+      display: grid;
+      grid-template-columns: minmax(92px, max-content) minmax(0, 1fr);
+      gap: 12px;
+      padding: 7px 0;
+      border-bottom: 0;
+    }
+    .server-tool-table td::before {
+      content: attr(data-label);
+      color: var(--muted-foreground);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .server-tool-table td:first-child {
+      display: grid;
+      grid-template-columns: minmax(92px, max-content) minmax(0, 1fr);
+      gap: 12px;
+    }
+    .server-tool-table td:first-child code,
+    .server-tool-table td:first-child small {
+      grid-column: 2;
+    }
+    .server-tool-table td:first-child::before {
+      grid-row: 1 / span 2;
+    }
+    .server-tool-targets li {
       grid-template-columns: minmax(0, 1fr);
     }
     .workspace {

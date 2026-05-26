@@ -14,55 +14,82 @@ OpenClaw, Pi, OMP, Aider, Claude Code, and Codex stay documented in
 [`agent-adapters.md`](agent-adapters.html). This page covers SDK and
 application-framework integrations such as Vercel AI SDK, LangChain,
 LangGraph, Pydantic AI, OpenAI Agents SDK, Microsoft.Extensions.AI, Semantic
-Kernel, and LlamaIndex.
+Kernel, LlamaIndex, and the Jido-backed in-page authoring assistant.
 
 The completed recipe-only track proves a common baseline for each implemented
 framework: a stable Wardwright model id is requested, caller provenance reaches
 Wardwright, `x-wardwright-receipt-id` is captured in framework-visible
 metadata, fallback generic OpenAI-compatible usage stays honest, and privacy
 limits are enforced by synthetic app-local smokes. The default test suite does
-not install live framework packages. The `0.1.0-rc.1` release-candidate pass
-also ran live npm/pip package-manager smokes where this machine had the needed
-runtime. None of those checks prove streaming, tool-call preservation, native
-framework state, or exact replay.
+not install live framework packages. The `0.0.11` release validation pass also
+ran live npm/pip package-manager smokes where the local machine had the needed
+runtime, plus a Proxmox LXC NuGet smoke for the .NET recipe. None of
+those checks prove broad tool-call preservation, native framework state, or
+exact replay.
+
+Wardwright also does not claim native framework tool-loop integration through
+the OpenAI-compatible Chat Completions recipes. Vercel AI SDK,
+LangChain/LangGraph, OpenAI Agents SDK, Microsoft.Extensions.AI, and Semantic
+Kernel each have their own local tool execution, provider-hosted tool,
+approval, tracing, or graph state semantics. Wardwright `0.0.11` keeps those
+semantics visible: it can normalize and receipt request-visible or
+provider-exposed tool facts, and it has a minimal Wardwright-hosted server-tool
+extension framework with a read-only built-in plus trusted local Dune and BEAM
+module extension points, but it does not make those tools participate in
+framework-native approval, graph checkpoint, or planner state.
 
 ## Current Support And Backlog
 
-The `0.1.0-rc.1` scope should stay honest about proof level:
+The `0.0.11` scope should stay honest about proof level:
 
-| Surface | RC status | What is proven | Before claiming more |
+| Surface | Status | What is proven | Before claiming more |
 | --- | --- | --- | --- |
-| Vercel AI SDK | Implemented recipe-only helper and smoke. | OpenAI-compatible provider options route current `ai` and `@ai-sdk/openai-compatible` packages to Wardwright, pass provenance headers, capture `x-wardwright-receipt-id`, and keep generic fallback honest. | Add streaming receipt capture only after it is tested. |
-| LangChain and LangGraph | Implemented recipe-only helper and smoke. | Current `langchain`, `langchain-openai`, and `langgraph` packages can call Wardwright through `ChatOpenAI`, expose receipt headers, and carry the receipt through minimal graph state. | Test real callbacks/checkpointers before claiming graph durability. |
+| Vercel AI SDK | Implemented recipe-only helper and smoke. | OpenAI-compatible provider options route current `ai` and `@ai-sdk/openai-compatible` packages to Wardwright, pass provenance headers, capture `x-wardwright-receipt-id`, and keep generic fallback honest. Current `streamText` also captures the receipt through the same fetch wrapper. | Test tool-call preservation before claiming tool fidelity. |
+| LangChain and LangGraph | Implemented recipe-only helper and smoke. | Current `langchain`, `langchain-openai`, and `langgraph` packages can call Wardwright through `ChatOpenAI`, expose receipt headers for non-streaming calls, and carry the receipt through minimal graph state. Current `ChatOpenAI.stream()` returns text but does not expose Wardwright receipt headers in stream chunk metadata. | Test real callbacks/checkpointers before claiming graph durability or streaming receipt correlation. |
 | Pydantic AI | Implemented recipe-only helper and smoke. | Current `pydantic-ai` can construct `OpenAIProvider`/`OpenAIChatModel` against Wardwright and run a basic agent call. | Test structured-output and tool-call capability checks before claiming fidelity there. |
 | OpenAI Agents SDK | Implemented recipe-only helper and smoke. | Current `openai-agents` can use `OpenAIChatCompletionsModel` with Wardwright without claiming Responses API parity. | Add `/v1/responses` behavior intentionally before claiming full Agents SDK parity. |
-| Microsoft.Extensions.AI and Semantic Kernel | Implemented recipe-only Python smoke that models the .NET metadata contract. | `IChatClient`/Semantic Kernel-style metadata paths are documented and receipt correlation is represented. | Run a real .NET smoke with `Microsoft.Extensions.AI`; add Semantic Kernel filters/plugins only after package execution is tested. |
+| Microsoft.Extensions.AI and Semantic Kernel | Implemented recipe-only Python smoke plus live NuGet smoke. | Current `Microsoft.Extensions.AI.OpenAI`, `OpenAI`, and `Microsoft.SemanticKernel` packages can call Wardwright through `OpenAIChatClient`, and Semantic Kernel can register the same `IChatClient`. The native `ChatResponse` did not expose Wardwright response headers. | Keep receipt correlation behind a delegating or owned HTTP client; test filters/plugins before claiming Semantic Kernel planner/tool fidelity. |
 | LlamaIndex | Implemented recipe-only helper and smoke. | Current `llama-index-llms-openai-like` can use `OpenAILike` against Wardwright without claiming index lineage ownership. | Test callbacks/workflows before claiming retrieval/tool fidelity. |
+| Jido / Jido AI in-page authoring | Implemented in-product recipe and app-local smoke. | Wardwright's `WardwrightWeb.AuthoringAgent` can run through its Jido-compatible client seam to a local Wardwright `/v1/chat/completions` model, pass caller provenance headers, require the `authoring_tool_plan_v1` structured-output schema in dogfood mode, and capture `x-wardwright-receipt-id` in adapter-visible response metadata. | Test a live `Jido.AI` package call against a released artifact before claiming live package-manager evidence; test `Jido.AI.Agent` tools/streaming before claiming native Jido runtime fidelity. |
 
-The highest-value integration targets for the release candidate are
+The highest-value integration targets for the release are
 LangChain/LangGraph and Vercel AI SDK. They now have live package-manager
 evidence in addition to app-local smokes. Pydantic AI, OpenAI Agents SDK, and
-LlamaIndex also have live basic-call evidence. The .NET track remains
-recipe-only until a machine with `dotnet` installed runs the NuGet smoke.
+LlamaIndex also have live basic-call evidence. Jido now has app-local dogfood
+evidence through Wardwright's in-page authoring adapter, but it does not yet
+have a live external package-manager smoke. The .NET track now has live
+NuGet execution evidence for basic chat and Semantic Kernel registration, but
+receipt propagation still needs a wrapper because the native response object did
+not expose Wardwright headers.
 
-Watch or follow-up candidates remain outside the RC support claim: Aider,
+Watch or follow-up candidates remain outside the `0.0.11` support claim:
+Alloy/Alloy EX, Gleam `glopenai`, Gleam `starlet`, Gleam `glean`, Aider,
 CrewAI, Agno, AutoGen/AG2, DSPy, Haystack, Mastra, Spring AI, LangChain4j, n8n,
 Dify, Flowise, OpenHands, CloudWeGo Eino, Genkit, Open Interpreter, AutoGPT,
 and smolagents. These should start as recipes or integration tests unless one
 of them exposes a durable hook that lets Wardwright verify more than generic
-OpenAI-compatible traffic.
+OpenAI-compatible traffic. Current research puts Alloy at recipe-only backlog
+because its OpenAI-compatible provider can pass provenance headers but does not
+yet expose response headers for receipt correlation. Among Gleam packages,
+`glopenai` is the best first recipe candidate because its sans-IO shape lets
+the caller own HTTP headers and receipt capture; `starlet` and `glean` need
+additional proof before any support claim.
 
 ## Live Package-Manager Recipe Checks
 
-On 2026-05-24, the release-candidate pass started the local
-`wardwright_darwin_arm64` Burrito artifact at `0.1.0-rc.1` and ran these
-package-manager smokes against `http://127.0.0.1:8798/v1`:
+On 2026-05-24, the release validation pass started the local
+`wardwright_darwin_arm64` Burrito artifact from the `0.0.11` release-prep tree
+and ran these package-manager smokes against `http://127.0.0.1:8798/v1`:
 
 - `ai@6.0.191` and `@ai-sdk/openai-compatible@2.0.48`: `generateText` returned
-  a completion and the Wardwright fetch wrapper captured a real receipt id.
+  a completion and the Wardwright fetch wrapper captured a real receipt id. A
+  follow-up `streamText` smoke also returned streamed text and captured a real
+  receipt id through the same fetch wrapper.
 - `langchain@1.3.1`, `langchain-openai@1.2.2`, and `langgraph@1.2.1`:
   `ChatOpenAI` returned a completion with Wardwright response headers, and a
-  minimal `StateGraph` carried the receipt id through graph state.
+  minimal `StateGraph` carried the receipt id through graph state. A follow-up
+  `ChatOpenAI.stream()` smoke returned streamed text, but streamed chunk
+  metadata did not expose Wardwright response headers.
 - `pydantic-ai@1.102.0`: `OpenAIProvider` and `OpenAIChatModel` ran a basic
   `Agent.run_sync` call against Wardwright.
 - `openai-agents@0.17.3`: `OpenAIChatCompletionsModel` and `Runner.run` called
@@ -70,9 +97,62 @@ package-manager smokes against `http://127.0.0.1:8798/v1`:
   because no OpenAI tracing key was configured; the model call passed.
 - `llama-index-llms-openai-like@0.7.2`: `OpenAILike.complete` called
   Wardwright successfully.
+- Proxmox LXC Ubuntu 24.04, .NET SDK `8.0.126`,
+  `Microsoft.Extensions.AI@10.6.0`, `Microsoft.Extensions.AI.OpenAI@10.6.0`,
+  `OpenAI@2.10.0`, and `Microsoft.SemanticKernel@1.76.0`: a real
+  `OpenAIChatClient` call reached the released Linux Wardwright artifact and
+  Semantic Kernel registered the same `IChatClient`.
 
-The same pass skipped a real Microsoft.Extensions.AI/Semantic Kernel smoke
-because this machine did not have `dotnet` installed.
+The .NET smoke found that `ChatResponse.AdditionalProperties` was empty for the
+native `OpenAIChatClient` response, so Wardwright receipt capture still needs
+the documented delegating client or another owned HTTP-client wrapper.
+
+## Jido / Jido AI In-Page Authoring
+
+Current support tier: `recipe_only`.
+
+Current fidelity label after the committed smoke passes:
+`framework_receipt_correlated`.
+
+Wardwright uses `jido_ai` for the experimental in-page model-authoring
+assistant. The integration stays behind `WardwrightWeb.AuthoringAgent` so the
+UI, prompt contract, local route selection, structured-output guard, and tool
+execution boundary are testable without provider credentials.
+
+Direct-provider mode calls an OpenAI-compatible backend through Jido AI. Dogfood
+mode routes the same assistant through a local Wardwright model:
+
+```sh
+WARDWRIGHT_AUTHORING_AGENT_ENABLED=1
+WARDWRIGHT_AUTHORING_AGENT_ROUTE=wardwright
+WARDWRIGHT_AUTHORING_AGENT_MODEL=local-fast-draft
+WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY_FILE=/path/to/local/model-key
+WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=16384
+WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000
+```
+
+For a local Gemma 4 26B dogfood baseline, register
+`config/local-gemma-authoring.model.json` and set
+`WARDWRIGHT_AUTHORING_AGENT_MODEL=local-gemma-authoring`. That model routes to
+`ollama/gemma4:26b-a4b-it-q4_K_M` with no governance, stream, prompt-transform,
+or tool-mediation rules. The structured-output schema is intentionally retained
+because the Jido-backed in-page assistant needs Wardwright to validate tool-plan
+JSON before it executes authoring tools.
+
+Dogfood mode is intentionally stricter than direct-provider mode. The selected
+local Wardwright model must expose
+`structured_output.schemas.authoring_tool_plan_v1`, so Wardwright validates the
+assistant's `{answer, tool_calls, next_steps}` JSON before read-only or
+draft-only authoring tools execute.
+
+The committed `app/test/jido_adapter_smoke_test.exs` smoke starts an app-local
+Wardwright router, configures the in-page assistant for the Wardwright route,
+uses a Jido-compatible client seam to make a real `/v1/chat/completions`
+request, passes synthetic caller provenance headers, and captures
+`x-wardwright-receipt-id` in adapter-visible response metadata. That proves the
+in-product dogfood path. It does not claim a live package-manager Jido install,
+Jido `AgentServer` state, Jido runtime tool registration, streaming receipt
+propagation, native Jido telemetry, or exact replay.
 
 ## Vercel AI SDK
 
@@ -140,7 +220,9 @@ smoke starts from the same OpenAI-compatible provider options and proves:
 - `x-wardwright-receipt-id` is captured in adapter-owned state;
 - generic OpenAI-compatible fallback still works without claiming
   framework-aware receipt propagation;
-- streaming support is deferred instead of implied.
+- streaming receipt capture is proven for `streamText` through the same fetch
+  wrapper;
+- tool-call preservation is deferred instead of implied.
 
 ## LangChain And LangGraph
 
@@ -217,8 +299,10 @@ That smoke proves:
 - the same receipt id is present in LangGraph-style checkpoint metadata;
 - generic OpenAI-compatible fallback still works without claiming
   framework-aware receipt propagation;
-- LangGraph checkpoint durability and streaming support are deferred instead
-  of implied.
+- LangGraph checkpoint durability is deferred instead of implied;
+- streaming text is proven for `ChatOpenAI.stream()`, but streaming receipt
+  capture is not proven because current chunk metadata did not expose
+  Wardwright response headers.
 
 ## Pydantic AI
 
@@ -408,10 +492,10 @@ The first Microsoft.Extensions.AI slice uses the `IChatClient` pipeline shape:
 configure the underlying OpenAI-compatible chat client with Wardwright as the
 `base_url`, pass caller provenance as request headers, and wrap the client with
 a delegating client that copies `x-wardwright-receipt-id` into
-`ChatResponse.AdditionalProperties`. It does not ship a NuGet package, does
-not execute the real Microsoft.Extensions.AI package in the default smoke, and
-does not claim streaming, tool-calling, Semantic Kernel planner behavior,
-native framework state, or exact replay fidelity.
+`ChatResponse.AdditionalProperties`. It does not ship a NuGet package and does
+not claim native header propagation from `OpenAIChatClient`, streaming,
+tool-calling, Semantic Kernel planner behavior, native framework state, or
+exact replay fidelity.
 
 Install normal .NET dependencies in the framework project when using the
 recipe against real Microsoft.Extensions.AI or Semantic Kernel code:
@@ -478,18 +562,30 @@ do not prove kernel state import.
 The committed helper source lives at
 `app/priv/framework_adapters/microsoft_extensions_ai/wardwright_microsoft_extensions_ai.py`.
 The default test suite runs a local Python smoke without downloading NuGet
-packages or requiring a `dotnet` runtime. That smoke proves:
+packages or requiring a `dotnet` runtime. The Proxmox LXC smoke installed the
+current NuGet packages and proved that:
+
+- a released Linux Wardwright artifact serves the OpenAI-compatible endpoint;
+- `OpenAIClient.GetChatClient("coding-balanced").AsIChatClient()` returns a
+  working `Microsoft.Extensions.AI.OpenAIChatClient`;
+- `ChatResponse.Text` contains a Wardwright completion;
+- Semantic Kernel can register and resolve that same `IChatClient`;
+- native `ChatResponse.AdditionalProperties` is empty for this path, so
+  Wardwright receipt capture still needs a delegating or owned HTTP wrapper.
+
+Together, the default and live smokes prove:
 
 - a stable Wardwright model id is requested;
 - caller provenance reaches Wardwright as headers;
 - `x-wardwright-receipt-id` is captured in Microsoft.Extensions.AI-style
-  `ChatResponse.AdditionalProperties`;
+  `ChatResponse.AdditionalProperties` when using the Wardwright-owned helper
+  wrapper;
 - Semantic Kernel is documented as guidance on the same `IChatClient` path,
   not as separate planner or native-state support;
 - generic OpenAI-compatible fallback still works without claiming
   framework-aware receipt propagation;
-- .NET package execution, streaming, tool calling, Semantic Kernel filters,
-  and native framework state are deferred instead of implied.
+- streaming, tool calling, Semantic Kernel filters, and native framework state
+  are deferred instead of implied.
 
 ## LlamaIndex
 

@@ -6,10 +6,9 @@ description: Release, native binary, and Homebrew packaging plan for Wardwright.
 
 # Packaging
 
-Status: initial Burrito/Tinfoil packaging path in place. Release `v0.0.10` is
-the latest stable published usable early release. The current source tree is
-preparing `v0.1.0-rc.1` with the Lustre workbench migration, framework-adapter
-recipe smokes, and local agent-adapter install/probe support.
+Status: initial Burrito/Tinfoil packaging path in place. Release `v0.0.11`
+adds the Lustre workbench migration, framework-adapter recipe smokes, and local
+agent-adapter install/probe support.
 
 Wardwright is a BEAM application with a Phoenix/Lustre operator UI and Gleam
 decision cores. The packaging goal is a user-facing binary that does not require
@@ -58,13 +57,7 @@ curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/in
 For a pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.10
-```
-
-For the release candidate after it is tagged:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.1.0-rc.1
+curl -fsSL https://raw.githubusercontent.com/bglusman/wardwright/main/scripts/install.sh | sh -s -- --version v0.0.11
 ```
 
 The script downloads the matching release archive, requires
@@ -154,10 +147,10 @@ agents. The JSON form is generated from the same registry used by the protected
 `/v1/policy-authoring/tools` endpoint, so scripts can discover the available
 authoring surface without scraping the UI. The advertised HTTP surface includes
 draft model creation, local model activation, draft-only rule-change proposals,
-validation, projection explanation, simulation, Dune snippet, and scenario
-record/import/export/retention tools. The MCP endpoint currently exposes the
-projection, simulation, Dune snippet, draft/activate/propose, and validation
-subset; scenario write tools remain HTTP-only. The
+validation, projection explanation, simulation, Dune snippet, debugger, harness,
+and scenario record/import/export/retention tools. The MCP endpoint exposes the
+core authoring loop plus trace/debugger, Dune snippet, validation, and harness
+read/export tools; some scenario management endpoints remain HTTP-only. The
 [Agent Authoring Guide](agent-authoring.html) explains when an agent should use
 each tool and which operations are draft-only versus write-capable.
 
@@ -169,6 +162,9 @@ configured. Service installs should put its settings in
 `WARDWRIGHT_AUTHORING_AGENT_CONFIG_FILE` to point at a different file. This
 keeps `brew services` and `wardwright admin` launches from silently losing the
 local model/provider selection that was only present in one shell session.
+For local Gemma dogfooding, register `config/local-gemma-authoring.model.json`
+with the local Wardwright server and set
+`WARDWRIGHT_AUTHORING_AGENT_MODEL=local-gemma-authoring` in that env file.
 
 `WARDWRIGHT_ADMIN_TOKEN` remains optional for loopback-only use. For browser
 access to the operator workbench and protected control APIs beyond loopback, set
@@ -249,9 +245,9 @@ The Homebrew update job needs a `HOMEBREW_TAP_TOKEN` repository secret with
 write access to `bglusman/homebrew-tap`. Tinfoil also supports deploy-key auth,
 which is preferable once release automation is no longer experimental.
 
-Dev tags such as `v0.1.0-dev` are published as GitHub prereleases but do not
-update the Homebrew tap. The `0.1.0` milestone is reserved for the first release
-where the policy UI and validation story are useful enough to promote.
+Dev tags such as `v0.0.11-dev` are published as GitHub prereleases but do not
+update the Homebrew tap. The `v0.0.11` stable tag updates the tap after release
+artifacts and checksums publish successfully.
 
 ## Known Gaps
 
@@ -272,13 +268,18 @@ where the policy UI and validation story are useful enough to promote.
 - Release `v0.0.10` preserves the unified `/admin` workbench shell from
   `v0.0.9` and fixes packaged releases so the Gleam/Lustre runtime modules are
   included in the Burrito payload.
-- Release `v0.1.0-rc.1` is the first release-candidate target for the Lustre
-  workbench migration, framework-adapter recipe foundation, and local
-  agent-adapter install/probe lifecycle. It remains a prerelease and should not
-  imply exact cross-agent replay or native framework state fidelity.
+- Release `v0.0.11` adds the Lustre workbench migration, framework-adapter
+  recipe foundation, and local agent-adapter install/probe lifecycle. It does
+  not imply exact cross-agent replay or native framework state fidelity. It also
+  adds a Wardwright-hosted server-tool framework with one registered read-only
+  built-in, `wardwright_policy_cache_status`, trusted Dune function tools, and
+  trusted BEAM module tools loaded from explicit `.ex/.exs`, `.erl`, or `.beam`
+  paths. Receipts record explicit engine, execution-location, visibility, status,
+  and result metadata; these extension tools are trusted local operator code,
+  not a sandbox or side-effect approval system.
 - Fnox-backed provider credentials are runtime-supported but not package-managed;
   fnox installation/profile management and product authorization remain
-  hardening work beyond this RC.
+  hardening work beyond this release.
 - The first CI run may expose platform-specific Burrito, Zig, or NIF issues.
   macOS builds intentionally install Homebrew `zig@0.15` because upstream Zig
   0.15.2 can fail to link on newer macOS/Xcode combinations.

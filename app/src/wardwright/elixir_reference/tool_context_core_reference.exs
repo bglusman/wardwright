@@ -11,12 +11,7 @@ defmodule Wardwright.ElixirReference.ToolContextCore do
     end
   end
 
-  def inferred_confidence(
-        has_chosen_tool,
-        has_assistant_tool,
-        available_tool_count,
-        has_tool_result
-      ) do
+  def inferred_confidence(has_chosen_tool, has_assistant_tool, available_tool_count, has_tool_result) do
     cond do
       has_chosen_tool or has_assistant_tool -> "exact"
       has_tool_result -> "inferred"
@@ -27,6 +22,19 @@ defmodule Wardwright.ElixirReference.ToolContextCore do
 
   def result_status(true), do: "unknown"
   def result_status(false), do: ""
+
+  def execution_location(_namespace, "wardwright_hosted"), do: "wardwright"
+  def execution_location(_namespace, "provider_declared"), do: "provider"
+  def execution_location(_namespace, "remote_mcp"), do: "remote_mcp"
+  def execution_location("openai.tool", _source), do: "provider"
+  def execution_location("", _source), do: "unknown"
+  def execution_location(_namespace, _source), do: "client"
+
+  def visibility_level("wardwright"), do: "local_verified"
+  def visibility_level("provider"), do: "provider_attested"
+  def visibility_level("remote_mcp"), do: "remote_observed"
+  def visibility_level("client"), do: "remote_observed"
+  def visibility_level(_execution_location), do: "opaque"
 
   def default_namespace(true, _tool_type), do: ""
   def default_namespace(false, "function"), do: "openai.function"

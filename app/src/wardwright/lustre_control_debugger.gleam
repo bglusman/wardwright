@@ -572,14 +572,26 @@ pub fn workspace(model: Model) -> Element(Msg) {
 pub fn panel(model: Model) -> Element(Msg) {
   html.section([class("control-debugger-panel")], [
     receipt_picker(model),
-    html.div([class("debugger-actions")], [
-      import_card(model),
-      replay_card(model),
-      counterfactual_card(model),
-      harness_adapter_card(model),
-    ]),
+    debugger_actions(model),
     adapter_status_card(),
     transcript_card(model),
+  ])
+}
+
+pub fn evidence_panel(model: Model) -> Element(Msg) {
+  html.section([class("control-debugger-panel")], [
+    receipt_picker(model),
+    debugger_actions(model),
+    transcript_card(model),
+  ])
+}
+
+fn debugger_actions(model: Model) -> Element(Msg) {
+  html.div([class("debugger-actions")], [
+    import_card(model),
+    replay_card(model),
+    counterfactual_card(model),
+    harness_adapter_card(model),
   ])
 }
 
@@ -780,7 +792,7 @@ fn harness_adapter_card(model: Model) -> Element(Msg) {
   ])
 }
 
-fn adapter_status_card() -> Element(Msg) {
+pub fn adapter_status_card() -> Element(Msg) {
   html.article([class("panel debugger-card adapter-status-card")], [
     html.div([class("panel-heading")], [
       html.div([], [

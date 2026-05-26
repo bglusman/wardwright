@@ -35,6 +35,27 @@ pub fn result_status(has_tool_result: Bool) -> String {
   }
 }
 
+pub fn execution_location(namespace: String, source: String) -> String {
+  case source, namespace {
+    "wardwright_hosted", _ -> "wardwright"
+    "provider_declared", _ -> "provider"
+    "remote_mcp", _ -> "remote_mcp"
+    _, "openai.tool" -> "provider"
+    _, "" -> "unknown"
+    _, _ -> "client"
+  }
+}
+
+pub fn visibility_level(execution_location: String) -> String {
+  case execution_location {
+    "wardwright" -> "local_verified"
+    "provider" -> "provider_attested"
+    "remote_mcp" -> "remote_observed"
+    "client" -> "remote_observed"
+    _ -> "opaque"
+  }
+}
+
 pub fn default_namespace(
   has_explicit_namespace: Bool,
   tool_type: String,

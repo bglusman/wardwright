@@ -107,21 +107,40 @@ defmodule Wardwright.Test.StreamingProvider do
           conn
         else
           {finish_reason, message} =
-            if forwarded_tool_request?(request) do
-              {"tool_calls",
-               %{
-                 "content" => nil,
-                 "role" => "assistant",
-                 "tool_calls" => [
-                   %{
-                     "function" => %{"arguments" => ~s({"title":"Forwarded tools"}), "name" => "create_pull_request"},
-                     "id" => "call_forwarded_1",
-                     "type" => "function"
-                   }
-                 ]
-               }}
-            else
-              {"stop", %{"content" => "openai-compatible text response", "role" => "assistant"}}
+            cond do
+              server_tool_result_request?(request) ->
+                {"stop",
+                 %{
+                   "content" => server_tool_response_content(request),
+                   "role" => "assistant"
+                 }}
+
+              server_tool_request?(request) ->
+                {"tool_calls",
+                 %{
+                   "content" => nil,
+                   "role" => "assistant",
+                   "tool_calls" => requested_server_tool_calls(request)
+                 }}
+
+              forwarded_tool_request?(request) ->
+                {name, arguments} = forwarded_tool_call(request)
+
+                {"tool_calls",
+                 %{
+                   "content" => nil,
+                   "role" => "assistant",
+                   "tool_calls" => [
+                     %{
+                       "function" => %{"arguments" => arguments, "name" => name},
+                       "id" => "call_forwarded_1",
+                       "type" => "function"
+                     }
+                   ]
+                 }}
+
+              true ->
+                {"stop", %{"content" => "openai-compatible text response", "role" => "assistant"}}
             end
 
           Plug.Conn.send_resp(
@@ -146,6 +165,126 @@ defmodule Wardwright.Test.StreamingProvider do
         is_list(message["tool_calls"]) or message["tool_call_id"] == "call_1" or message["role"] == "tool"
       end)
   end
+
+  defp forwarded_tool_call(request) do
+    name =
+      request
+      |> Map.get("tools", [])
+      |> first_tool_name()
+
+    {name, forwarded_tool_arguments(name)}
+  end
+
+  defp forwarded_tool_arguments("create_pull_request"), do: ~s({"title":"Forwarded tools"})
+  defp forwarded_tool_arguments(_name), do: ~s({"value":"Forwarded tools"})
+
+  defp server_tool_request?(request) do
+    is_list(request["tools"]) and
+      Enum.any?(request["tools"], fn tool ->
+        name = get_in(tool, ["function", "name"])
+
+        name in [
+          "wardwright_policy_cache_status",
+          "dune_echo_tool",
+          "beam_reverse_tool"
+        ] or dynamic_server_tool_name?(name)
+      end) and not server_tool_result_request?(request)
+  end
+
+  defp server_tool_result_request?(request) do
+    Enum.any?(request["messages"] || [], fn message ->
+      message["role"] == "tool" and
+        (message["tool_call_id"] in [
+           "call_wardwright_status_1",
+           "call_dune_echo_tool_1",
+           "call_beam_reverse_tool_1"
+         ] or dynamic_server_tool_call_id?(message["tool_call_id"]))
+    end)
+  end
+
+  defp requested_server_tool_call(request) do
+    request
+    |> Map.get("tools", [])
+    |> Enum.find_value(fn tool ->
+      case get_in(tool, ["function", "name"]) do
+        "wardwright_policy_cache_status" -> {"wardwright_policy_cache_status", "call_wardwright_status_1", "{}"}
+        "dune_echo_tool" -> {"dune_echo_tool", "call_dune_echo_tool_1", ~s({"value":"from-model"})}
+        "beam_reverse_tool" -> {"beam_reverse_tool", "call_beam_reverse_tool_1", ~s({"text":"stressed"})}
+        "wardwright_dynamic_" <> _rest = name -> {name, "call_#{name}_1", dynamic_server_tool_arguments(name)}
+        _other -> nil
+      end
+    end)
+  end
+
+  defp requested_server_tool_calls(request) do
+    if request_content_includes?(request, "use multiple Wardwright server tools") do
+      request
+      |> Map.get("tools", [])
+      |> Enum.flat_map(fn
+        %{"function" => %{"name" => name}} when name in ["wardwright_policy_cache_status", "dune_echo_tool"] ->
+          {name, call_id, arguments} = server_tool_call_tuple(name)
+          [%{"function" => %{"arguments" => arguments, "name" => name}, "id" => call_id, "type" => "function"}]
+
+        _tool ->
+          []
+      end)
+    else
+      {name, call_id, arguments} = requested_server_tool_call(request)
+      [%{"function" => %{"arguments" => arguments, "name" => name}, "id" => call_id, "type" => "function"}]
+    end
+  end
+
+  defp server_tool_call_tuple("wardwright_policy_cache_status"), do: {"wardwright_policy_cache_status", "call_wardwright_status_1", "{}"}
+  defp server_tool_call_tuple("dune_echo_tool"), do: {"dune_echo_tool", "call_dune_echo_tool_1", ~s({"value":"from-model"})}
+
+  defp server_tool_response_content(request) do
+    cond do
+      server_tool_result_message?(request, "call_wardwright_status_1") and
+          server_tool_result_message?(request, "call_dune_echo_tool_1") ->
+        "Multiple Wardwright server tool results were observed."
+
+      server_tool_result_message?(request, "call_wardwright_status_1") ->
+        "Wardwright server tool status was observed."
+
+      server_tool_result_message?(request, "call_dune_echo_tool_1") ->
+        "Wardwright Dune server tool result was observed."
+
+      server_tool_result_message?(request, "call_beam_reverse_tool_1") ->
+        "Wardwright BEAM server tool result was observed."
+
+      Enum.any?(request["messages"] || [], &dynamic_server_tool_result_message?/1) ->
+        "Wardwright dynamic server tool result was observed."
+    end
+  end
+
+  defp server_tool_result_message?(request, call_id) do
+    Enum.any?(request["messages"] || [], fn message ->
+      message["role"] == "tool" and message["tool_call_id"] == call_id
+    end)
+  end
+
+  defp request_content_includes?(request, text) do
+    Enum.any?(request["messages"] || [], fn message ->
+      message["role"] == "user" and is_binary(message["content"]) and String.contains?(message["content"], text)
+    end)
+  end
+
+  defp first_tool_name([%{"function" => %{"name" => name}} | _tools]) when is_binary(name), do: name
+  defp first_tool_name([_tool | tools]), do: first_tool_name(tools)
+  defp first_tool_name([]), do: "dynamic_provider_tool"
+
+  defp dynamic_server_tool_name?(name) when is_binary(name), do: String.starts_with?(name, "wardwright_dynamic_")
+  defp dynamic_server_tool_name?(_name), do: false
+
+  defp dynamic_server_tool_call_id?(call_id) when is_binary(call_id),
+    do: String.starts_with?(call_id, "call_wardwright_dynamic_")
+
+  defp dynamic_server_tool_call_id?(_call_id), do: false
+
+  defp dynamic_server_tool_arguments(_name), do: ~s({"topic":"provider-tools","score":0.9})
+
+  defp dynamic_server_tool_result_message?(message),
+    do: message["role"] == "tool" and dynamic_server_tool_call_id?(message["tool_call_id"])
 
   defp streamed_tool_request?(request) do
     is_list(request["tools"]) and request["tools"] != [] and request["tool_choice"] == "auto"

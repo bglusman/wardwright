@@ -120,6 +120,12 @@ fn classify_surface(surface: String) -> SurfaceFamily {
     "microsoft-extensions-ai" -> FrameworkSdk
     "semantic-kernel" -> FrameworkSdk
     "llamaindex" -> FrameworkSdk
+    "jido" -> FrameworkSdk
+    "jido-ai" -> FrameworkSdk
+    "alloy-ex" -> FrameworkSdk
+    "glopenai" -> FrameworkSdk
+    "starlet" -> FrameworkSdk
+    "glean" -> FrameworkSdk
     "opencode" -> LocalCodingAgent
     "openclaw" -> LocalCodingAgent
     "aider" -> LocalCodingAgent
