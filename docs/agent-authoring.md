@@ -88,12 +88,15 @@ state. Do not treat Tidewave as an end-user policy-authoring tool. It is more
 powerful than the Wardwright MCP surface and should remain local/developer
 scoped unless a human explicitly chooses otherwise.
 
-## Optional In-Page Assistant Spike
+## Jido-Backed In-Page Assistant
 
-The local workbench may expose an experimental **Authoring Agent** panel when it
-is enabled. It uses `jido_ai` through a small `WardwrightWeb.AuthoringAgent`
-boundary and prompts the model with the same authoring tool names used by
-MCP/API clients.
+The local workbench may expose an experimental **Authoring Agent** panel when
+it is enabled. It uses `jido_ai` through a small
+`WardwrightWeb.AuthoringAgent` boundary and prompts the model with the same
+authoring tool names used by MCP/API clients. This is also Wardwright's first
+in-product framework dogfood recipe; the app-local smoke proves that dogfood
+mode can reach Wardwright and capture a receipt, but it does not claim native
+Jido runtime state or streaming fidelity.
 
 To try it locally with an OpenAI-compatible backend:
 
