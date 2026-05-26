@@ -207,7 +207,9 @@ Screenshot evidence:
 
 ## Agent Framework Candidates
 
-Alloy and Jido are the two relevant Elixir agent candidates currently visible.
+Jido and Alloy are the two relevant Elixir agent candidates currently visible;
+Gleam has promising SDK/client candidates but no first-class agent framework
+support claim yet.
 
 Alloy is a narrow OTP agent engine: provider abstraction, tools, supervised
 agent servers, streaming, middleware, and small dependency footprint. It fits a
@@ -219,13 +221,20 @@ signals, AI package, telemetry, and multi-agent workflows. It fits longer-lived
 policy-review agents, escalation workflows, and operational automation if those
 become product features.
 
-The current spike reverses that order for one narrow question: can a
-Jido-backed in-page assistant, prompted with Wardwright's existing MCP/API tool
-registry, give users a useful local authoring loop without requiring them to
-wire a separate agent client first? Treat the first version as a prompt and
-integration experiment; production use still needs explicit tool execution
-gates, nonblocking LiveView calls, redaction policy, and clearer dependency
-cost review.
+The current implementation answers one narrow question first: a Jido-backed
+in-page assistant, prompted with Wardwright's existing MCP/API tool registry,
+can route through a local Wardwright model and capture receipt metadata in an
+app-local smoke. Production use still needs explicit tool execution gates,
+nonblocking LiveView calls, redaction policy, clearer dependency cost review,
+and live package-manager evidence before claiming broader Jido runtime fidelity.
+
+Alloy/Alloy EX remains a recipe-only backlog candidate because its
+OpenAI-compatible provider can pass Wardwright provenance headers, but current
+research did not find a native response-header capture path for
+`x-wardwright-receipt-id`. The best first Gleam recipe candidate is `glopenai`
+because its sans-IO request/response shape lets the recipe own HTTP headers and
+receipt capture. `starlet` and the newer `glean` agent package stay watchlist
+items until smoke tests prove receipt correlation.
 
 ## References
 
@@ -233,6 +242,8 @@ cost review.
   tools, middleware, streaming, and supervised agents.
 - [Jido](https://jido.run/) for a broader Elixir agent framework and ecosystem
   with actions, signals, AI packages, telemetry, and multi-agent workflows.
+- [glopenai](https://hexdocs.pm/glopenai/) for a Gleam sans-IO OpenAI-compatible
+  SDK candidate.
 - [Cytoscape.js](https://js.cytoscape.org/) for interactive graph
   visualization when policy graphs outgrow native SVG.
 - [ContEx](https://contex-charts.org/) for server-side Elixir charting that may

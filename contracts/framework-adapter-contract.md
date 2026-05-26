@@ -8,9 +8,10 @@ description: Shared support, provenance, receipt, smoke-test, and fidelity rules
 
 This contract covers SDK and application-framework integrations such as Vercel
 AI SDK, LangChain, LangGraph, Pydantic AI, OpenAI Agents SDK,
-Microsoft.Extensions.AI, Semantic Kernel, and LlamaIndex. It is separate from
-local coding-agent adapters such as OpenCode, OpenClaw, Pi, OMP, Aider, Claude
-Code, and Codex.
+Microsoft.Extensions.AI, Semantic Kernel, LlamaIndex, Jido/Jido AI, Alloy EX,
+and Gleam OpenAI-compatible SDKs such as glopenai. It is separate from local
+coding-agent adapters such as OpenCode, OpenClaw, Pi, OMP, Aider, Claude Code,
+and Codex.
 
 Framework adapters make framework-owned model calls go through Wardwright as a
 governed OpenAI-compatible endpoint. They should preserve caller provenance,
@@ -32,7 +33,7 @@ namespaces:
 
 | Family | Examples | Rule |
 | --- | --- | --- |
-| `framework_sdk` | Vercel AI SDK, LangChain, LangGraph, Pydantic AI, OpenAI Agents SDK, Microsoft.Extensions.AI, Semantic Kernel, LlamaIndex | Framework-level helpers, middleware, callbacks, tracing processors, providers, advisors, recipes, or client wrappers. |
+| `framework_sdk` | Vercel AI SDK, LangChain, LangGraph, Pydantic AI, OpenAI Agents SDK, Microsoft.Extensions.AI, Semantic Kernel, LlamaIndex, Jido/Jido AI, Alloy EX, glopenai | Framework-level helpers, middleware, callbacks, tracing processors, providers, advisors, recipes, or client wrappers. |
 | `local_coding_agent` | OpenCode, OpenClaw, Aider, Pi, OMP, Claude Code, Codex | Local agent installation, pairing, probing, import/export, or CLI handoff. Do not collapse these into framework SDK support. |
 | `unsupported` | Unknown or unreviewed surfaces | No support claim beyond generic OpenAI-compatible use. |
 
@@ -195,3 +196,16 @@ This proves `framework_receipt_correlated` for the tested non-streaming path.
 It does not claim an installed LlamaIndex package, retrieval lineage ownership,
 index durability, native framework state import, tool-call fidelity, streaming
 receipt propagation, or exact replay fidelity.
+
+Jido/Jido AI support is backed by Wardwright's in-page authoring assistant
+smoke. It uses the existing `WardwrightWeb.AuthoringAgent` Jido-compatible
+client seam, routes dogfood mode through a local Wardwright `/v1/chat/completions`
+model, maps caller provenance into Wardwright headers, requires the
+`authoring_tool_plan_v1` structured-output schema before executing draft/read
+tools, and records the Wardwright receipt id in adapter-visible response
+metadata.
+
+This proves `framework_receipt_correlated` for the app-local dogfood path. It
+does not claim a live external `jido_ai` package-manager smoke, Jido
+`AgentServer` state, dynamic Jido tool registration fidelity, streaming receipt
+propagation, native Jido telemetry, or exact replay fidelity.

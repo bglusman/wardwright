@@ -14,7 +14,7 @@ OpenClaw, Pi, OMP, Aider, Claude Code, and Codex stay documented in
 [`agent-adapters.md`](agent-adapters.html). This page covers SDK and
 application-framework integrations such as Vercel AI SDK, LangChain,
 LangGraph, Pydantic AI, OpenAI Agents SDK, Microsoft.Extensions.AI, Semantic
-Kernel, and LlamaIndex.
+Kernel, LlamaIndex, and the Jido-backed in-page authoring assistant.
 
 The completed recipe-only track proves a common baseline for each implemented
 framework: a stable Wardwright model id is requested, caller provenance reaches
@@ -50,21 +50,30 @@ The `0.1.0` scope should stay honest about proof level:
 | OpenAI Agents SDK | Implemented recipe-only helper and smoke. | Current `openai-agents` can use `OpenAIChatCompletionsModel` with Wardwright without claiming Responses API parity. | Add `/v1/responses` behavior intentionally before claiming full Agents SDK parity. |
 | Microsoft.Extensions.AI and Semantic Kernel | Implemented recipe-only Python smoke plus live NuGet smoke. | Current `Microsoft.Extensions.AI.OpenAI`, `OpenAI`, and `Microsoft.SemanticKernel` packages can call Wardwright through `OpenAIChatClient`, and Semantic Kernel can register the same `IChatClient`. The native `ChatResponse` did not expose Wardwright response headers. | Keep receipt correlation behind a delegating or owned HTTP client; test filters/plugins before claiming Semantic Kernel planner/tool fidelity. |
 | LlamaIndex | Implemented recipe-only helper and smoke. | Current `llama-index-llms-openai-like` can use `OpenAILike` against Wardwright without claiming index lineage ownership. | Test callbacks/workflows before claiming retrieval/tool fidelity. |
+| Jido / Jido AI in-page authoring | Implemented in-product recipe and app-local smoke. | Wardwright's `WardwrightWeb.AuthoringAgent` can run through its Jido-compatible client seam to a local Wardwright `/v1/chat/completions` model, pass caller provenance headers, require the `authoring_tool_plan_v1` structured-output schema in dogfood mode, and capture `x-wardwright-receipt-id` in adapter-visible response metadata. | Test a live `Jido.AI` package call against a released artifact before claiming live package-manager evidence; test `Jido.AI.Agent` tools/streaming before claiming native Jido runtime fidelity. |
 
 The highest-value integration targets for the release are
 LangChain/LangGraph and Vercel AI SDK. They now have live package-manager
 evidence in addition to app-local smokes. Pydantic AI, OpenAI Agents SDK, and
-LlamaIndex also have live basic-call evidence. The .NET track now has live
+LlamaIndex also have live basic-call evidence. Jido now has app-local dogfood
+evidence through Wardwright's in-page authoring adapter, but it does not yet
+have a live external package-manager smoke. The .NET track now has live
 NuGet execution evidence for basic chat and Semantic Kernel registration, but
 receipt propagation still needs a wrapper because the native response object did
 not expose Wardwright headers.
 
-Watch or follow-up candidates remain outside the `0.1.0` support claim: Aider,
+Watch or follow-up candidates remain outside the `0.1.0` support claim:
+Alloy/Alloy EX, Gleam `glopenai`, Gleam `starlet`, Gleam `glean`, Aider,
 CrewAI, Agno, AutoGen/AG2, DSPy, Haystack, Mastra, Spring AI, LangChain4j, n8n,
 Dify, Flowise, OpenHands, CloudWeGo Eino, Genkit, Open Interpreter, AutoGPT,
 and smolagents. These should start as recipes or integration tests unless one
 of them exposes a durable hook that lets Wardwright verify more than generic
-OpenAI-compatible traffic.
+OpenAI-compatible traffic. Current research puts Alloy at recipe-only backlog
+because its OpenAI-compatible provider can pass provenance headers but does not
+yet expose response headers for receipt correlation. Among Gleam packages,
+`glopenai` is the best first recipe candidate because its sans-IO shape lets
+the caller own HTTP headers and receipt capture; `starlet` and `glean` need
+additional proof before any support claim.
 
 ## Live Package-Manager Recipe Checks
 
@@ -97,6 +106,53 @@ and ran these package-manager smokes against `http://127.0.0.1:8798/v1`:
 The .NET smoke found that `ChatResponse.AdditionalProperties` was empty for the
 native `OpenAIChatClient` response, so Wardwright receipt capture still needs
 the documented delegating client or another owned HTTP-client wrapper.
+
+## Jido / Jido AI In-Page Authoring
+
+Current support tier: `recipe_only`.
+
+Current fidelity label after the committed smoke passes:
+`framework_receipt_correlated`.
+
+Wardwright uses `jido_ai` for the experimental in-page model-authoring
+assistant. The integration stays behind `WardwrightWeb.AuthoringAgent` so the
+UI, prompt contract, local route selection, structured-output guard, and tool
+execution boundary are testable without provider credentials.
+
+Direct-provider mode calls an OpenAI-compatible backend through Jido AI. Dogfood
+mode routes the same assistant through a local Wardwright model:
+
+```sh
+WARDWRIGHT_AUTHORING_AGENT_ENABLED=1
+WARDWRIGHT_AUTHORING_AGENT_ROUTE=wardwright
+WARDWRIGHT_AUTHORING_AGENT_MODEL=local-fast-draft
+WARDWRIGHT_AUTHORING_AGENT_MODEL_API_KEY_FILE=/path/to/local/model-key
+WARDWRIGHT_AUTHORING_AGENT_MAX_TOKENS=16384
+WARDWRIGHT_AUTHORING_AGENT_TIMEOUT_MS=120000
+```
+
+For a local Gemma 4 26B dogfood baseline, register
+`config/local-gemma-authoring.model.json` and set
+`WARDWRIGHT_AUTHORING_AGENT_MODEL=local-gemma-authoring`. That model routes to
+`ollama/gemma4:26b-a4b-it-q4_K_M` with no governance, stream, prompt-transform,
+or tool-mediation rules. The structured-output schema is intentionally retained
+because the Jido-backed in-page assistant needs Wardwright to validate tool-plan
+JSON before it executes authoring tools.
+
+Dogfood mode is intentionally stricter than direct-provider mode. The selected
+local Wardwright model must expose
+`structured_output.schemas.authoring_tool_plan_v1`, so Wardwright validates the
+assistant's `{answer, tool_calls, next_steps}` JSON before read-only or
+draft-only authoring tools execute.
+
+The committed `app/test/jido_adapter_smoke_test.exs` smoke starts an app-local
+Wardwright router, configures the in-page assistant for the Wardwright route,
+uses a Jido-compatible client seam to make a real `/v1/chat/completions`
+request, passes synthetic caller provenance headers, and captures
+`x-wardwright-receipt-id` in adapter-visible response metadata. That proves the
+in-product dogfood path. It does not claim a live package-manager Jido install,
+Jido `AgentServer` state, Jido runtime tool registration, streaming receipt
+propagation, native Jido telemetry, or exact replay.
 
 ## Vercel AI SDK
 

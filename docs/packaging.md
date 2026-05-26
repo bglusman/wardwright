@@ -162,6 +162,9 @@ configured. Service installs should put its settings in
 `WARDWRIGHT_AUTHORING_AGENT_CONFIG_FILE` to point at a different file. This
 keeps `brew services` and `wardwright admin` launches from silently losing the
 local model/provider selection that was only present in one shell session.
+For local Gemma dogfooding, register `config/local-gemma-authoring.model.json`
+with the local Wardwright server and set
+`WARDWRIGHT_AUTHORING_AGENT_MODEL=local-gemma-authoring` in that env file.
 
 `WARDWRIGHT_ADMIN_TOKEN` remains optional for loopback-only use. For browser
 access to the operator workbench and protected control APIs beyond loopback, set
