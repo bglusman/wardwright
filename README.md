@@ -187,6 +187,14 @@ unsupported inputs should fail loudly or be documented as current limitations.
 
 ## Development
 
+The canonical local workflow uses `mise`, because repository tasks are declared
+in `mise.toml`. The checked-in `.tool-versions` mirrors the same runtimes for
+asdf users; use it to install Erlang, Elixir, Gleam, and Node, then run the
+underlying commands directly or install mise for `mise run ...` tasks. Keep the
+two files in sync when bumping tool versions. Pin exact versions in committed
+manifests rather than moving aliases such as `latest`, `main`, or
+`1.20-latest`.
+
 Run the active native suite:
 
 ```bash
