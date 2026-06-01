@@ -81,8 +81,8 @@ jobs:
           persist-credentials: false
       - uses: erlef/setup-beam@8251c48667b97e88a0a24ec512f5b72a039fcea7 # v1
         with:
-          otp-version: "28"
-          elixir-version: "1.19"
+          otp-version: "29.0"
+          elixir-version: "1.20.0-rc.6"
           gleam-version: "1.16.0"
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.0.5
         with:

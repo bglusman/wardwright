@@ -66,13 +66,16 @@ if [ "$ready" -ne 1 ]; then
 fi
 
 curl -fsS "${BASE_URL}/" >/dev/null
-curl -fsS "${BASE_URL}/admin" | grep -q "lustre-server-component"
-curl -fsS "${BASE_URL}/v1/models" | grep -q "coding-balanced"
-curl -fsS "${BASE_URL}/v1/wardwright/models" | grep -q "coding-balanced"
-curl -fsS "${BASE_URL}/v1/chat/completions" \
+admin_body="$(curl -fsS "${BASE_URL}/admin")"
+grep -q "lustre-server-component" <<<"$admin_body"
+models_body="$(curl -fsS "${BASE_URL}/v1/models")"
+grep -q "coding-balanced" <<<"$models_body"
+wardwright_models_body="$(curl -fsS "${BASE_URL}/v1/wardwright/models")"
+grep -q "coding-balanced" <<<"$wardwright_models_body"
+chat_body="$(curl -fsS "${BASE_URL}/v1/chat/completions" \
   -H "content-type: application/json" \
-  -d '{"model":"coding-balanced","messages":[{"role":"user","content":"burrito smoke"}]}' |
-  grep -q '"status":"completed"'
+  -d '{"model":"coding-balanced","messages":[{"role":"user","content":"burrito smoke"}]}')"
+grep -q '"status":"completed"' <<<"$chat_body"
 
 for beam in "gleam@erlang@process" "gleam@json" gleam_stdlib glizzy lustre; do
   if ! find "$INSTALL_DIR/lib" -maxdepth 3 -path "*/ebin/${beam}.beam" -print -quit | grep -q .; then
