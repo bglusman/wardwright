@@ -22,20 +22,20 @@ jobs:
       - uses: erlef/setup-beam@8251c48667b97e88a0a24ec512f5b72a039fcea7 # v1
         with:
           otp-version: "29.0"
-          elixir-version: "1.20.0-rc.5"
-          gleam-version: "1.16.0"
+          elixir-version: "1.20.0-rc.6"
+          gleam-version: "1.17.0"
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: "22"
+          node-version: "22.22.3"
       - name: Install deps
         run: mix deps.get
         working-directory: app
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: app/_build/assay
-          key: ${{ runner.os }}-beam-otp29-elixir120-gleam116-assay-${{ hashFiles('app/mix.lock') }}
+          key: ${{ runner.os }}-beam-otp29-elixir120-gleam117-assay-${{ hashFiles('app/mix.lock') }}
           restore-keys: |
-            ${{ runner.os }}-beam-otp29-elixir120-gleam116-assay-
+            ${{ runner.os }}-beam-otp29-elixir120-gleam117-assay-
       - name: Check Gleam formatting
         run: gleam format --check src
         working-directory: app
@@ -81,9 +81,9 @@ jobs:
           persist-credentials: false
       - uses: erlef/setup-beam@8251c48667b97e88a0a24ec512f5b72a039fcea7 # v1
         with:
-          otp-version: "28"
-          elixir-version: "1.19"
-          gleam-version: "1.16.0"
+          otp-version: "29.0"
+          elixir-version: "1.20.0-rc.6"
+          gleam-version: "1.17.0"
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.0.5
         with:
           version: "0.15.2"

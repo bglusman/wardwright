@@ -144,8 +144,8 @@ defmodule Wardwright.MixProject do
           enabled: true
         ],
         ci: [
-          elixir_version: "1.19",
-          otp_version: "28"
+          elixir_version: "1.20.0-rc.6",
+          otp_version: "29.0"
         ],
         prerelease_pattern: ~r/-(rc|beta|alpha|dev)(\.|$)/
       ]

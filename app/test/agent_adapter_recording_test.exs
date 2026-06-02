@@ -4,7 +4,7 @@ defmodule Wardwright.AgentAdapterRecordingTest do
   alias Wardwright.AgentAdapters.Identity
 
   @secret String.duplicate("adapter-secret", 4)
-  @now ~U[2026-05-23 22:00:00Z]
+  @now ~U[2030-01-01 00:00:00Z]
   @workspace_fingerprint Identity.workspace_fingerprint("/tmp/wardwright-project")
 
   setup do
