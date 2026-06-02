@@ -4,6 +4,7 @@ defmodule Wardwright.AgentAdapterRecordingTest do
   alias Wardwright.AgentAdapters.Identity
 
   @secret String.duplicate("adapter-secret", 4)
+  @now ~U[2030-01-01 00:00:00Z]
   @workspace_fingerprint Identity.workspace_fingerprint("/tmp/wardwright-project")
 
   setup do
@@ -185,7 +186,7 @@ defmodule Wardwright.AgentAdapterRecordingTest do
           },
           attrs
         ),
-        Keyword.merge([secret: @secret, now: DateTime.utc_now(), ttl_seconds: 7 * 24 * 60 * 60], opts)
+        Keyword.merge([secret: @secret, now: @now, ttl_seconds: 7 * 24 * 60 * 60], opts)
       )
 
     identity
