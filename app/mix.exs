@@ -113,7 +113,7 @@ defmodule Wardwright.MixProject do
       app: :wardwright,
       version: "0.0.11",
       elixir: "~> 1.18",
-      compilers: [:gleam_deps, :gleam] ++ Mix.compilers(),
+      compilers: [:gleam_deps, :gleam] ++ (Mix.compilers() -- [:phoenix]),
       aliases: ["deps.get": ["deps.get", "gleam.deps.get"]],
       erlc_paths: [
         "_build/#{Mix.env()}/lib/wardwright/_gleam_artefacts"
@@ -144,7 +144,7 @@ defmodule Wardwright.MixProject do
           enabled: true
         ],
         ci: [
-          elixir_version: "1.20.0-rc.6",
+          elixir_version: "1.20.0",
           otp_version: "29.0"
         ],
         prerelease_pattern: ~r/-(rc|beta|alpha|dev)(\.|$)/
@@ -163,7 +163,7 @@ defmodule Wardwright.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:dune, "~> 0.3.15"},
+      {:dune, "~> 0.3.16"},
       {:gleam_stdlib, "~> 1.0", compile: false, app: false, override: true},
       {:gleam_erlang, "~> 1.3", compile: false, app: false},
       {:gleam_json, "~> 3.1", compile: false, app: false},
