@@ -113,7 +113,7 @@ defmodule Wardwright.MixProject do
       app: :wardwright,
       version: "0.0.11",
       elixir: "~> 1.18",
-      compilers: [:gleam_deps, :gleam] ++ (Mix.compilers() -- [:phoenix]),
+      compilers: [:gleam_deps, :gleam] ++ Mix.compilers(),
       aliases: ["deps.get": ["deps.get", "gleam.deps.get"]],
       erlc_paths: [
         "_build/#{Mix.env()}/lib/wardwright/_gleam_artefacts"
