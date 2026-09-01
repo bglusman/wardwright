@@ -12,11 +12,11 @@
   },
   "files": {
     "app/lib/wardwright.ex": {
-      "total": 306,
+      "total": 309,
       "patterns": {
         "string_key_entry": 165,
         "string_key_access": 33,
-        "map_call_string_key": 102,
+        "map_call_string_key": 105,
         "get_in_string_path": 6
       }
     },
@@ -63,6 +63,33 @@
         "string_key_access": 0,
         "map_call_string_key": 0,
         "get_in_string_path": 0
+      }
+    },
+    "app/lib/wardwright/model_skyline.ex": {
+      "total": 51,
+      "patterns": {
+        "string_key_entry": 18,
+        "string_key_access": 28,
+        "map_call_string_key": 5,
+        "get_in_string_path": 0
+      }
+    },
+    "app/lib/wardwright/model_skyline/selection_snapshot.ex": {
+      "total": 65,
+      "patterns": {
+        "string_key_entry": 0,
+        "string_key_access": 57,
+        "map_call_string_key": 8,
+        "get_in_string_path": 0
+      }
+    },
+    "app/lib/wardwright/model_skyline/work_unit.ex": {
+      "total": 1,
+      "patterns": {
+        "string_key_entry": 0,
+        "string_key_access": 0,
+        "map_call_string_key": 0,
+        "get_in_string_path": 1
       }
     },
     "app/lib/wardwright/paths.ex": {
@@ -282,11 +309,11 @@
       }
     },
     "app/lib/wardwright/route_planner.ex": {
-      "total": 74,
+      "total": 75,
       "patterns": {
         "string_key_entry": 18,
         "string_key_access": 17,
-        "map_call_string_key": 39,
+        "map_call_string_key": 40,
         "get_in_string_path": 0
       }
     },
@@ -318,9 +345,9 @@
       }
     },
     "app/lib/wardwright/runtime/model_runtime.ex": {
-      "total": 8,
+      "total": 9,
       "patterns": {
-        "string_key_entry": 8,
+        "string_key_entry": 9,
         "string_key_access": 0,
         "map_call_string_key": 0,
         "get_in_string_path": 0

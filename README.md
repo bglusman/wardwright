@@ -159,6 +159,9 @@ composition, retry, and rewrite policies. Old `/policies` links redirect to
 See [Policy Workbench](docs/workbench.md) for screenshots and workflow details.
 See [Model Middleware](docs/wardwright-models.md) for the current model
 composition shape.
+The experimental local-file ModelSkyline consumer and its fail-closed phase-0
+limits are documented in
+[ModelSkyline Local Selection](docs/model-skyline-local-selection.md).
 
 ## Current Runtime
 

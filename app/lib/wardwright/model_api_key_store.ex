@@ -18,7 +18,12 @@ defmodule Wardwright.ModelApiKeyStore do
   def list(model_id \\ nil), do: GenServer.call(__MODULE__, {:list, model_id})
   def create(model_id, label), do: GenServer.call(__MODULE__, {:create, model_id, label})
   def revoke(id), do: GenServer.call(__MODULE__, {:revoke, id})
-  def valid?(model_id, key), do: GenServer.call(__MODULE__, {:valid?, model_id, key})
+  def authenticate(model_id, key), do: GenServer.call(__MODULE__, {:authenticate, model_id, key})
+
+  def valid?(model_id, key) do
+    match?({:ok, _record_id}, authenticate(model_id, key))
+  end
+
   def reset!, do: GenServer.call(__MODULE__, :reset)
 
   def handle_call({:list, model_id}, _from, state) do
@@ -70,15 +75,15 @@ defmodule Wardwright.ModelApiKeyStore do
     end
   end
 
-  def handle_call({:valid?, model_id, key}, _from, state) do
+  def handle_call({:authenticate, model_id, key}, _from, state) do
     key_hash = key |> to_string() |> String.trim() |> hash_key()
 
-    valid? =
-      Enum.any?(state.keys, fn {_id, record} ->
-        key_hash_matches?(record, model_id, key_hash)
+    result =
+      Enum.find_value(state.keys, :error, fn {id, record} ->
+        if key_hash_matches?(record, model_id, key_hash), do: {:ok, id}
       end)
 
-    {:reply, valid?, state}
+    {:reply, result, state}
   end
 
   def handle_call(:reset, _from, state) do

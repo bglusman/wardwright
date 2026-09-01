@@ -193,6 +193,16 @@ defmodule Wardwright.RoutePlannerTest do
              })
   end
 
+  test "model graph validation rejects ModelSkyline on an embedded artifact" do
+    config =
+      update_in(model_graph_config(), ["targets", Access.at(0), "artifact"], fn artifact ->
+        Map.put(artifact, "model_skyline", %{})
+      end)
+
+    assert {:error, message} = Wardwright.put_config(config)
+    assert message =~ "model_skyline is supported only on a top-level serving model"
+  end
+
   defp model_graph_config do
     %{
       "dispatchers" => [%{"id" => "outer-delegates", "models" => ["policy-safe-writer"]}],

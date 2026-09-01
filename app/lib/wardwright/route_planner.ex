@@ -736,6 +736,11 @@ defmodule Wardwright.RoutePlanner do
       not is_map(artifact) ->
         {:halt, {:error, "model target #{ModelGraph.target_model(target)} must include artifact"}}
 
+      Map.has_key?(artifact, "model_skyline") ->
+        {:halt,
+         {:error,
+          "model target #{ModelGraph.target_model(target)}: model_skyline is supported only on a top-level serving model"}}
+
       ref_id in visited ->
         {:halt, {:error, "model graph cycle detected at #{ref_id}"}}
 

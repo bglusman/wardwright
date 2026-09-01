@@ -72,7 +72,7 @@ defmodule Wardwright.Router do
     with {:ok, request} <- require_json_object(conn.body_params),
          {:ok, model} <- Wardwright.normalize_model(Map.get(request, "model")),
          {:ok, config} <- Wardwright.model_config(model),
-         :ok <- require_model_access(conn, model, config),
+         {:ok, model_principal_id} <- require_model_access(conn, model, config),
          {:ok, adapter_context} <- WardwrightWeb.AdapterRequestContext.from_conn(conn, config),
          :ok <- require_messages(request) do
       request = apply_prompt_transforms(request, config)
@@ -82,14 +82,20 @@ defmodule Wardwright.Router do
         conn
         |> WardwrightWeb.RequestContext.caller(Map.get(request, "metadata", %{}))
         |> WardwrightWeb.RequestContext.put_adapter(
-          WardwrightWeb.AdapterRequestContext.caller_adapter(adapter_context.adapter, adapter_context)
+          WardwrightWeb.AdapterRequestContext.caller_adapter(
+            adapter_context.adapter,
+            adapter_context
+          )
         )
 
       tool_context_opts = WardwrightWeb.RequestContext.tool_context_opts(conn)
       History.record_request(caller, request, tool_context_opts)
       {request, policy} = apply_request_policies(request, caller, tool_context_opts, config)
       {policy, fail_closed?} = deliver_policy_alerts(policy)
-      decision = route_decision(request, policy, config)
+      admission_mode = if fail_closed?, do: :preview, else: :admit
+
+      {decision, config} =
+        route_decision(request, policy, config, caller, model_principal_id, admission_mode)
 
       record_runtime_event(model, config, caller, "route.selected", %{
         "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
@@ -165,7 +171,7 @@ defmodule Wardwright.Router do
       History.record_request(caller, request, tool_context_opts)
       {request, policy} = apply_request_policies(request, caller, tool_context_opts, config)
       {policy, fail_closed?} = deliver_policy_alerts(policy)
-      decision = route_decision(request, policy, config)
+      {decision, config} = route_decision(request, policy, config, caller, nil, :preview)
 
       record_runtime_event(model, config, caller, "simulation.route_selected", %{
         "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
@@ -389,7 +395,13 @@ defmodule Wardwright.Router do
         )
 
       {:error, _reason} ->
-        error(conn, 400, "adapter pairing request is malformed", "invalid_request", "invalid_adapter_pairing")
+        error(
+          conn,
+          400,
+          "adapter pairing request is malformed",
+          "invalid_request",
+          "invalid_adapter_pairing"
+        )
     end
   end
 
@@ -399,7 +411,10 @@ defmodule Wardwright.Router do
          {:ok, workspace_fingerprint} <- required_body_string(body, "workspace_fingerprint"),
          {:ok, expected} <- supported_identity(identity),
          {:ok, claims} <-
-           Identity.validate(identity, Keyword.put(expected, :workspace_fingerprint, workspace_fingerprint)) do
+           Identity.validate(
+             identity,
+             Keyword.put(expected, :workspace_fingerprint, workspace_fingerprint)
+           ) do
       json(conn, 200, %{
         @adapter_key_identity =>
           Map.new([
@@ -413,7 +428,8 @@ defmodule Wardwright.Router do
         @adapter_key_verified => true
       })
     else
-      {:error, reason} when reason in [:expired, :invalid_signature, :malformed, :missing_secret, :wrong_workspace] ->
+      {:error, reason}
+      when reason in [:expired, :invalid_signature, :malformed, :missing_secret, :wrong_workspace] ->
         adapter_identity_error(conn, reason)
 
       {:error, message} when is_binary(message) ->
@@ -698,7 +714,11 @@ defmodule Wardwright.Router do
         json(
           conn,
           400,
-          WardwrightWeb.ControlDebuggerTools.error_response(message, "invalid_control_debugger_recording", data)
+          WardwrightWeb.ControlDebuggerTools.error_response(
+            message,
+            "invalid_control_debugger_recording",
+            data
+          )
         )
     end
   end
@@ -719,7 +739,11 @@ defmodule Wardwright.Router do
         json(
           conn,
           400,
-          WardwrightWeb.ControlDebuggerTools.error_response(message, "invalid_control_debugger_trace", data)
+          WardwrightWeb.ControlDebuggerTools.error_response(
+            message,
+            "invalid_control_debugger_trace",
+            data
+          )
         )
     end
   end
@@ -740,7 +764,11 @@ defmodule Wardwright.Router do
         json(
           conn,
           400,
-          WardwrightWeb.ControlDebuggerTools.error_response(message, "invalid_control_debugger_replay", data)
+          WardwrightWeb.ControlDebuggerTools.error_response(
+            message,
+            "invalid_control_debugger_replay",
+            data
+          )
         )
     end
   end
@@ -761,7 +789,11 @@ defmodule Wardwright.Router do
         json(
           conn,
           400,
-          WardwrightWeb.ControlDebuggerTools.error_response(message, "invalid_control_debugger_fork", data)
+          WardwrightWeb.ControlDebuggerTools.error_response(
+            message,
+            "invalid_control_debugger_fork",
+            data
+          )
         )
     end
   end
@@ -782,7 +814,11 @@ defmodule Wardwright.Router do
         json(
           conn,
           400,
-          WardwrightWeb.ControlDebuggerTools.error_response(message, "invalid_control_debugger_evidence", data)
+          WardwrightWeb.ControlDebuggerTools.error_response(
+            message,
+            "invalid_control_debugger_evidence",
+            data
+          )
         )
     end
   end
@@ -825,7 +861,13 @@ defmodule Wardwright.Router do
         error(conn, 403, message, "forbidden", "protected_endpoint")
 
       {:error, message} when is_binary(message) ->
-        error(conn, 400, message, "invalid_request", "invalid_harness_state_fidelity_verification")
+        error(
+          conn,
+          400,
+          message,
+          "invalid_request",
+          "invalid_harness_state_fidelity_verification"
+        )
     end
   end
 
@@ -1124,17 +1166,23 @@ defmodule Wardwright.Router do
   defp require_model_access(conn, model, config) do
     cond do
       Wardwright.model_requires_api_key?(config) ->
-        if Wardwright.ModelApiKeyStore.valid?(model, request_model_api_key(conn)) do
-          :ok
-        else
-          {:error, :model_auth, 401, "valid model API key required", "model_api_key_required"}
-        end
+        authenticate_model_access(conn, model)
 
       Wardwright.unkeyed_model_access(config) == "internal" ->
         {:error, :model_auth, 403, "model is only available for internal composition", "model_internal"}
 
       true ->
-        :ok
+        {:ok, nil}
+    end
+  end
+
+  defp authenticate_model_access(conn, model) do
+    case Wardwright.ModelApiKeyStore.authenticate(model, request_model_api_key(conn)) do
+      {:ok, principal_id} ->
+        {:ok, principal_id}
+
+      :error ->
+        {:error, :model_auth, 401, "valid model API key required", "model_api_key_required"}
     end
   end
 
@@ -1203,12 +1251,24 @@ defmodule Wardwright.Router do
           Map.get(identity, @adapter_key_target)} do
       {adapter_id, @adapter_runtime_omp, @adapter_runtime_omp} ->
         if adapter_id == OmpPack.adapter_id(),
-          do: {:ok, [adapter_id: OmpPack.adapter_id(), runtime: @adapter_runtime_omp, target: @adapter_runtime_omp]},
+          do:
+            {:ok,
+             [
+               adapter_id: OmpPack.adapter_id(),
+               runtime: @adapter_runtime_omp,
+               target: @adapter_runtime_omp
+             ]},
           else: {:error, :malformed}
 
       {adapter_id, @adapter_runtime_pi, @adapter_runtime_pi} ->
         if adapter_id == PiPack.adapter_id(),
-          do: {:ok, [adapter_id: PiPack.adapter_id(), runtime: @adapter_runtime_pi, target: @adapter_runtime_pi]},
+          do:
+            {:ok,
+             [
+               adapter_id: PiPack.adapter_id(),
+               runtime: @adapter_runtime_pi,
+               target: @adapter_runtime_pi
+             ]},
           else: {:error, :malformed}
 
       {adapter_id, @adapter_runtime_claude_cli, "claude-code"} ->
@@ -1232,7 +1292,13 @@ defmodule Wardwright.Router do
   end
 
   defp adapter_identity_error(conn, :wrong_workspace) do
-    error(conn, 403, "adapter identity is for a different workspace", "forbidden", "adapter_identity_wrong_workspace")
+    error(
+      conn,
+      403,
+      "adapter identity is for a different workspace",
+      "forbidden",
+      "adapter_identity_wrong_workspace"
+    )
   end
 
   defp adapter_identity_error(conn, :missing_secret) do
@@ -1253,10 +1319,33 @@ defmodule Wardwright.Router do
   defp bearer_token("bearer " <> token), do: WardwrightWeb.RequestContext.blank_to_nil(token)
   defp bearer_token(_value), do: nil
 
-  defp route_decision(request, policy, config) do
+  defp route_decision(request, policy, config, caller, principal_id, admission_mode) do
     estimate = Wardwright.estimate_prompt_tokens(Map.get(request, "messages", []))
-    Wardwright.select_route(config, estimate, Map.get(policy, "route_constraints", %{}))
+    constraints = Map.get(policy, "route_constraints", %{})
+
+    with {:ok, work_unit} <-
+           Wardwright.ModelSkyline.work_unit(config, principal_id, caller, admission_mode),
+         {:ok, routed_config, lease} <-
+           model_skyline_route_config(config, work_unit, admission_mode) do
+      receipt_status = if admission_mode == :admit, do: :pinned, else: :preview_unpinned
+
+      decision =
+        routed_config
+        |> Wardwright.select_route(estimate, constraints)
+        |> Wardwright.ModelSkyline.decorate_decision(lease, receipt_status)
+
+      {decision, routed_config}
+    else
+      {:error, reason} ->
+        {Wardwright.ModelSkyline.blocked_decision(estimate, constraints, reason, admission_mode), config}
+    end
   end
+
+  defp model_skyline_route_config(config, work_unit, :admit),
+    do: Wardwright.ModelSkyline.route_config(config, work_unit)
+
+  defp model_skyline_route_config(config, work_unit, :preview),
+    do: Wardwright.ModelSkyline.preview_config(config, work_unit)
 
   defp record_runtime_event(model, config, caller, type, fields) do
     version = config["version"]

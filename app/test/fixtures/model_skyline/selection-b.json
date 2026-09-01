@@ -1,0 +1,93 @@
+{
+  "schema_version": "model-skyline/v1alpha1",
+  "kind": "selection",
+  "hash_algorithm": "sha256-rfc8785-v1",
+  "snapshot_id": "e9b953a0e0f6076641b5b09b4ef66649f0ad192b382899f1c208aa34c7b4ca16",
+  "policy_hash": "3333333333333333333333333333333333333333333333333333333333333333",
+  "frontier_snapshot_id": "4444444444444444444444444444444444444444444444444444444444444444",
+  "selection_id": "coding-agent-defaults",
+  "frontier_id": "coding-value",
+  "workload": {
+    "id": "coding-session",
+    "version": "v1",
+    "unit": "completed_session"
+  },
+  "strategy": "lexicographic",
+  "order_by": "total_cost_per_work_unit",
+  "requested_count": 2,
+  "max_per_provider": 1,
+  "on_insufficient": "error",
+  "generated_at": "2026-08-31T12:15:00Z",
+  "valid_until": "2026-08-31T13:15:00Z",
+  "default": {
+    "offering": {
+      "offering_id": "anthropic/claude-fable-5@direct-us",
+      "model_id": "claude-fable-5",
+      "provider": "anthropic",
+      "endpoint": "messages",
+      "billing_mode": "direct",
+      "region": "us",
+      "service_tier": "standard",
+      "quantization": null,
+      "reasoning_effort": null,
+      "agent_harness": "wardwright",
+      "capabilities": [
+        "tools"
+      ]
+    },
+    "axes": {
+      "total_cost_per_work_unit": {
+        "value": "0.55",
+        "unit": "USD/work_unit",
+        "lower": null,
+        "upper": null,
+        "dependencies": [],
+        "source_ids": [],
+        "sources": [],
+        "oldest_observed_at": null,
+        "minimum_sample_count": null
+      }
+    },
+    "metadata": {
+      "label": "fallback"
+    }
+  },
+  "fallbacks": [
+    {
+      "offering": {
+        "offering_id": "openai/gpt-5.4@direct-us",
+        "model_id": "gpt-5.4",
+        "provider": "openai",
+        "endpoint": "responses",
+        "billing_mode": null,
+        "region": "us",
+        "service_tier": "standard",
+        "quantization": null,
+        "reasoning_effort": "medium",
+        "agent_harness": "wardwright",
+        "capabilities": [
+          "reasoning",
+          "tools"
+        ]
+      },
+      "axes": {
+        "total_cost_per_work_unit": {
+          "value": "0.42",
+          "unit": "USD/work_unit",
+          "lower": null,
+          "upper": null,
+          "dependencies": [],
+          "source_ids": [],
+          "sources": [],
+          "oldest_observed_at": null,
+          "minimum_sample_count": null
+        }
+      },
+      "metadata": {
+        "label": "primary",
+        "😀": 7,
+        "": 8
+      }
+    }
+  ]
+}

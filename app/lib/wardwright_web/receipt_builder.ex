@@ -20,29 +20,31 @@ defmodule WardwrightWeb.ReceiptBuilder do
       ],
       "caller" => caller,
       "created_at" => created_at,
-      "decision" => %{
-        "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
-        "fallback_models" => decision.fallback_models,
-        "fallback_used" => decision.fallback_used,
-        "governance" => config["governance"],
-        "policy_actions" => policy["actions"],
-        "policy_conflicts" => policy["conflicts"],
-        "policy_route_constraints" => decision.policy_route_constraints,
-        "reason" => decision.reason,
-        "route_blocked" => decision.route_blocked,
-        "route_id" => decision.route_id,
-        "route_lineage" => Map.get(decision, :route_lineage, []),
-        "route_type" => decision.route_type,
-        "rule" => decision.rule,
-        "selected_context_window" => decision.selected_context_window,
-        "selected_model" => decision.selected_model,
-        "selected_models" => decision.selected_models,
-        "selected_provider" => decision.selected_provider,
-        "skipped" => decision.skipped,
-        "strategy" => decision.combine_strategy,
-        "tool_policy_selectors" => policy["tool_policy_selectors"],
-        @tool_context_key => policy["tool_context"] || Wardwright.ToolContext.normalize(request)
-      },
+      "decision" =>
+        %{
+          "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
+          "fallback_models" => decision.fallback_models,
+          "fallback_used" => decision.fallback_used,
+          "governance" => config["governance"],
+          "policy_actions" => policy["actions"],
+          "policy_conflicts" => policy["conflicts"],
+          "policy_route_constraints" => decision.policy_route_constraints,
+          "reason" => decision.reason,
+          "route_blocked" => decision.route_blocked,
+          "route_id" => decision.route_id,
+          "route_lineage" => Map.get(decision, :route_lineage, []),
+          "route_type" => decision.route_type,
+          "rule" => decision.rule,
+          "selected_context_window" => decision.selected_context_window,
+          "selected_model" => decision.selected_model,
+          "selected_models" => decision.selected_models,
+          "selected_provider" => decision.selected_provider,
+          "skipped" => decision.skipped,
+          "strategy" => decision.combine_strategy,
+          "tool_policy_selectors" => policy["tool_policy_selectors"],
+          @tool_context_key => policy["tool_context"] || Wardwright.ToolContext.normalize(request)
+        }
+        |> put_if_present("model_skyline", Map.get(decision, :model_skyline)),
       "events" => receipt_events(receipt_id, created_at, status, decision, called_provider),
       "final" => %{
         "alert_count" => policy["alert_count"],
@@ -258,24 +260,26 @@ defmodule WardwrightWeb.ReceiptBuilder do
     vcr_mode = Wardwright.vcr_mode(config)
 
     %{
-      "decision" => %{
-        "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
-        "fallback_models" => decision.fallback_models,
-        "fallback_used" => decision.fallback_used,
-        "policy_route_constraints" => decision.policy_route_constraints,
-        "reason" => decision.reason,
-        "route_blocked" => decision.route_blocked,
-        "route_id" => decision.route_id,
-        "route_lineage" => Map.get(decision, :route_lineage, []),
-        "route_type" => decision.route_type,
-        "rule" => decision.rule,
-        "selected_context_window" => decision.selected_context_window,
-        "selected_model" => decision.selected_model,
-        "selected_models" => decision.selected_models,
-        "selected_provider" => decision.selected_provider,
-        "skipped" => decision.skipped,
-        "strategy" => decision.combine_strategy
-      },
+      "decision" =>
+        %{
+          "estimated_prompt_tokens" => decision.estimated_prompt_tokens,
+          "fallback_models" => decision.fallback_models,
+          "fallback_used" => decision.fallback_used,
+          "policy_route_constraints" => decision.policy_route_constraints,
+          "reason" => decision.reason,
+          "route_blocked" => decision.route_blocked,
+          "route_id" => decision.route_id,
+          "route_lineage" => Map.get(decision, :route_lineage, []),
+          "route_type" => decision.route_type,
+          "rule" => decision.rule,
+          "selected_context_window" => decision.selected_context_window,
+          "selected_model" => decision.selected_model,
+          "selected_models" => decision.selected_models,
+          "selected_provider" => decision.selected_provider,
+          "skipped" => decision.skipped,
+          "strategy" => decision.combine_strategy
+        }
+        |> put_if_present("model_skyline", Map.get(decision, :model_skyline)),
       "final" => %{"status" => status},
       "mode" => vcr_mode,
       "policy" => %{
@@ -331,6 +335,7 @@ defmodule WardwrightWeb.ReceiptBuilder do
       "skipped" => decision.skipped,
       "strategy" => decision.combine_strategy
     }
+    |> put_if_present("model_skyline", Map.get(decision, :model_skyline))
   end
 
   defp sanitized_request(request, decision, policy, config) do
@@ -396,7 +401,10 @@ defmodule WardwrightWeb.ReceiptBuilder do
 
   defp put_full_session_response(%{"mode" => "full_session"} = vcr, provider, receipt) do
     response_content = full_session_response_content(provider, receipt)
-    response_message = Map.get(provider, :response_message) || %{"content" => response_content, "role" => "assistant"}
+
+    response_message =
+      Map.get(provider, :response_message) ||
+        %{"content" => response_content, "role" => "assistant"}
 
     response =
       %{
