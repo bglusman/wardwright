@@ -45,6 +45,23 @@ defmodule Wardwright.ModelSkyline.SelectionSnapshotTest do
            ]
   end
 
+  test "accepts the producer contract's capability-count boundary" do
+    document = @fixture_a |> File.read!() |> JSON.decode!()
+
+    capabilities =
+      1..128
+      |> Enum.map(fn index -> "capability-#{String.pad_leading(Integer.to_string(index), 3, "0")}" end)
+      |> Enum.sort()
+
+    offering = document |> get_in(["default", "offering"]) |> Map.put("capabilities", capabilities)
+
+    assert {:ok, normalized} = SelectionSnapshot.normalize_offering(offering)
+    assert normalized["capabilities"] == capabilities
+
+    assert {:error, :invalid_selection} =
+             SelectionSnapshot.normalize_offering(Map.put(offering, "capabilities", capabilities ++ ["capability-129"]))
+  end
+
   test "accepts the publisher's explicit-null billing compatibility hash" do
     raw =
       @fixture_a

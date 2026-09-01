@@ -4,6 +4,7 @@ defmodule Wardwright.ModelSkyline.SelectionSnapshot do
   alias Wardwright.ModelSkyline.CanonicalJson
 
   @max_candidates 10_000
+  @max_capabilities 128
   @max_axes 64
   @max_axis_evidence_items 256
   @max_ttl_seconds 31_536_000
@@ -316,7 +317,7 @@ defmodule Wardwright.ModelSkyline.SelectionSnapshot do
     is_binary(value) and byte_size(value) in 1..512
   end
 
-  defp capabilities(values) when is_list(values) and length(values) <= 64 do
+  defp capabilities(values) when is_list(values) and length(values) <= @max_capabilities do
     if Enum.all?(values, &(is_binary(&1) and byte_size(&1) in 1..64)) and
          values == values |> Enum.uniq() |> Enum.sort() do
       :ok
