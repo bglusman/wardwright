@@ -76,7 +76,9 @@ defmodule Wardwright do
           "name" => "Use local until prompt length requires managed context"
         }
       ],
-      "governance" => [%{"action" => "transform", "id" => "prompt_transforms", "kind" => "request_transform"}],
+      "governance" => [
+        %{"action" => "transform", "id" => "prompt_transforms", "kind" => "request_transform"}
+      ],
       "model_definition_version" => @model_definition_version,
       "model_id" => @model_id,
       "policy_cache" => %{"max_entries" => 64, "recent_limit" => 20},
@@ -197,9 +199,12 @@ defmodule Wardwright do
          :ok <- require_archiveable_model(model_id) do
       remaining_configs = Map.delete(current_configs(), model_id)
       current_active_model_id = active_model_id()
-      preferred_active_model_id = if current_active_model_id != model_id, do: current_active_model_id
 
-      with {:ok, changed_count} <- model_registry_changed_count(Wardwright.SQLiteStore.archive_model_config(model_id)),
+      preferred_active_model_id =
+        if current_active_model_id != model_id, do: current_active_model_id
+
+      with {:ok, changed_count} <-
+             model_registry_changed_count(Wardwright.SQLiteStore.archive_model_config(model_id)),
            true <- changed_count > 0 do
         install_configs(Map.values(remaining_configs), preferred_active_model_id)
         configure_runtime(current_config())
@@ -236,8 +241,11 @@ defmodule Wardwright do
            true <- changed_count > 0 do
         {:ok, model_id}
       else
-        false -> {:error, "unknown archived Wardwright model #{inspect(model)}"}
-        {:error, reason} -> {:error, "could not delete archived #{inspect(model)}: #{inspect(reason)}"}
+        false ->
+          {:error, "unknown archived Wardwright model #{inspect(model)}"}
+
+        {:error, reason} ->
+          {:error, "could not delete archived #{inspect(model)}: #{inspect(reason)}"}
       end
     else
       {:error, :not_found} -> {:error, "unknown archived Wardwright model #{inspect(model)}"}
@@ -345,7 +353,9 @@ defmodule Wardwright do
 
   defp canonical_model_id(_), do: {:error, "model is required"}
 
-  def model_requires_api_key?(config \\ current_config()), do: Map.get(config, "requires_api_key", false) == true
+  def model_requires_api_key?(config \\ current_config()) do
+    Map.get(config, "requires_api_key", false) == true or is_map(Map.get(config, "model_skyline"))
+  end
 
   def unkeyed_model_access(config \\ current_config()), do: get_in(config, ["auth", "unkeyed_model_access"]) || "public"
 
@@ -437,7 +447,10 @@ defmodule Wardwright do
       "public_model_id" => model_id,
       "public_namespace" => "flat",
       "requires_api_key" => model_requires_api_key?(config),
-      "route_graph" => %{"nodes" => nodes, "root" => Map.get(config, "route_root", "dispatcher.prompt_length")},
+      "route_graph" => %{
+        "nodes" => nodes,
+        "root" => Map.get(config, "route_root", "dispatcher.prompt_length")
+      },
       "route_type" => root_route_type(config),
       "status" => "active",
       "stream_policy" => %{
@@ -926,18 +939,26 @@ defmodule Wardwright do
             "provider_timeout_ms" => positive_integer(Map.get(target, "provider_timeout_ms"), 180_000),
             "target_kind" =>
               target
-              |> Map.get("target_kind", Map.get(target, "kind", Wardwright.ModelGraph.default_target_kind(target)))
+              |> Map.get(
+                "target_kind",
+                Map.get(target, "kind", Wardwright.ModelGraph.default_target_kind(target))
+              )
               |> to_string()
               |> String.trim()
           }
 
           normalized_target =
             case Wardwright.ModelGraph.target_artifact(target) do
-              artifact when is_map(artifact) -> Map.put(normalized_target, "artifact", normalize_config(artifact))
-              _other -> normalized_target
+              artifact when is_map(artifact) ->
+                Map.put(normalized_target, "artifact", normalize_config(artifact))
+
+              _other ->
+                normalized_target
             end
 
-          normalized_target |> Enum.reject(fn {_key, value} -> value == "" or value == [] end) |> Map.new()
+          normalized_target
+          |> Enum.reject(fn {_key, value} -> value == "" or value == [] end)
+          |> Map.new()
         end),
       "vcr" => normalize_vcr(Map.get(config, "vcr", %{})),
       "version" =>
@@ -954,6 +975,13 @@ defmodule Wardwright do
       @server_tools_key => normalize_server_tools(Map.get(config, @server_tools_key, [])),
       @tool_mediation_key => normalize_tool_mediation(Map.get(config, @tool_mediation_key, %{}))
     }
+    |> put_model_skyline_config(Map.get(config, "model_skyline"))
+  end
+
+  defp put_model_skyline_config(config, nil), do: config
+
+  defp put_model_skyline_config(config, selection_config) do
+    Map.put(config, "model_skyline", selection_config)
   end
 
   defp normalize_description(config) do
@@ -1041,11 +1069,17 @@ defmodule Wardwright do
   defp normalize_recording(config) when is_map(config) do
     %{
       @recording_adapted_agents_key =>
-        normalize_recording_mode(Map.get(config, @recording_adapted_agents_key), @recording_auto_mode),
+        normalize_recording_mode(
+          Map.get(config, @recording_adapted_agents_key),
+          @recording_auto_mode
+        ),
       @recording_default_key =>
         normalize_recording_mode(Map.get(config, @recording_default_key), @recording_manual_mode),
       @recording_generic_clients_key =>
-        normalize_recording_mode(Map.get(config, @recording_generic_clients_key), @recording_manual_mode)
+        normalize_recording_mode(
+          Map.get(config, @recording_generic_clients_key),
+          @recording_manual_mode
+        )
     }
   end
 
@@ -1058,6 +1092,7 @@ defmodule Wardwright do
   end
 
   defp normalize_recording_mode(mode, _fallback) when mode in [@recording_auto_mode, @recording_manual_mode], do: mode
+
   defp normalize_recording_mode(_mode, fallback), do: fallback
 
   defp normalize_auth(config) when is_map(config) do
@@ -1108,7 +1143,12 @@ defmodule Wardwright do
         normalize_server_tool(tool)
 
       @server_tool_policy_cache_status ->
-        [%{@name_key => @server_tool_policy_cache_status, @server_tool_engine_key => @server_tool_builtin_engine}]
+        [
+          %{
+            @name_key => @server_tool_policy_cache_status,
+            @server_tool_engine_key => @server_tool_builtin_engine
+          }
+        ]
 
       _tool ->
         []
@@ -1128,7 +1168,12 @@ defmodule Wardwright do
         |> String.trim()
         |> case do
           @server_tool_policy_cache_status ->
-            [%{@name_key => @server_tool_policy_cache_status, @server_tool_engine_key => @server_tool_builtin_engine}]
+            [
+              %{
+                @name_key => @server_tool_policy_cache_status,
+                @server_tool_engine_key => @server_tool_builtin_engine
+              }
+            ]
 
           _other ->
             []
@@ -1161,7 +1206,8 @@ defmodule Wardwright do
           present_string?(Map.get(tool, @server_tool_snippet_id_key)) ->
         @server_tool_dune_engine
 
-      present_string?(Map.get(tool, @server_tool_module_key)) or present_string?(Map.get(tool, @server_tool_path_key)) ->
+      present_string?(Map.get(tool, @server_tool_module_key)) or
+          present_string?(Map.get(tool, @server_tool_path_key)) ->
         @server_tool_beam_module_engine
 
       true ->
@@ -1228,7 +1274,9 @@ defmodule Wardwright do
         {:error, "targets must not be empty"}
 
       true ->
-        with :ok <- validate_targets(targets) do
+        with :ok <- validate_targets(targets),
+             :ok <-
+               Wardwright.ModelSkyline.validate_config(Map.get(config, "model_skyline"), config) do
           Wardwright.RoutePlanner.validate(config)
         end
     end
@@ -1759,7 +1807,9 @@ defmodule Wardwright do
   defp openai_tool_call_delta(choice) do
     %{
       wardwright_stream_choice_index: json_get(choice, "index") || 0,
-      wardwright_stream_delta: %{@tool_calls_key => json_get(json_get(choice, @delta_key), @tool_calls_key)}
+      wardwright_stream_delta: %{
+        @tool_calls_key => json_get(json_get(choice, @delta_key), @tool_calls_key)
+      }
     }
   end
 

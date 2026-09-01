@@ -1,6 +1,7 @@
 defmodule Wardwright.Runtime do
   @moduledoc false
 
+  alias Wardwright.ModelSkyline.WorkUnit
   alias Wardwright.Runtime.{ModelRuntime, SessionRuntime}
   alias Wardwright.Runtime.ModelSupervisor
   alias Wardwright.Runtime.SessionSupervisor
@@ -70,6 +71,30 @@ defmodule Wardwright.Runtime do
     end
   end
 
+  def model_skyline_pin(model_id, version, %WorkUnit{} = work_unit, now) do
+    case ensure_model(model_id, version) do
+      {:ok, pid} ->
+        safe_model_skyline_runtime_call(fn ->
+          ModelRuntime.model_skyline_pin(pid, WorkUnit.runtime_key(work_unit), now)
+        end)
+
+      _error ->
+        {:error, :model_skyline_runtime_unavailable}
+    end
+  end
+
+  def put_model_skyline_pin(model_id, version, %WorkUnit{} = work_unit, lease, now) do
+    case ensure_model(model_id, version) do
+      {:ok, pid} ->
+        safe_model_skyline_runtime_call(fn ->
+          ModelRuntime.put_model_skyline_pin(pid, WorkUnit.runtime_key(work_unit), lease, now)
+        end)
+
+      _error ->
+        {:error, :model_skyline_runtime_unavailable}
+    end
+  end
+
   def eval_dune_snippet(model_id, version, session_id, source, input, session_opts, eval_opts \\ []) do
     with {:ok, pid} <- ensure_session(model_id, version, session_id) do
       SessionRuntime.eval_dune_snippet(pid, source, input, session_opts, eval_opts)
@@ -82,15 +107,21 @@ defmodule Wardwright.Runtime do
     %{
       "models" =>
         Wardwright.Runtime.Registry
-        |> Registry.select([{{{:"$1", :"$2", :"$3"}, :"$4", :_}, [{:==, :"$1", :model}], [{{:"$2", :"$3", :"$4"}}]}])
-        |> Enum.flat_map(fn {_model_id, _version, pid} -> safe_status(pid, &ModelRuntime.status/1) end)
+        |> Registry.select([
+          {{{:"$1", :"$2", :"$3"}, :"$4", :_}, [{:==, :"$1", :model}], [{{:"$2", :"$3", :"$4"}}]}
+        ])
+        |> Enum.flat_map(fn {_model_id, _version, pid} ->
+          safe_status(pid, &ModelRuntime.status/1)
+        end)
         |> Enum.sort_by(&{&1["model_id"], &1["version"]}),
       "sessions" =>
         Wardwright.Runtime.Registry
         |> Registry.select([
           {{{:"$1", :"$2", :"$3", :"$4"}, :"$5", :_}, [{:==, :"$1", :session}], [{{:"$2", :"$3", :"$4", :"$5"}}]}
         ])
-        |> Enum.flat_map(fn {_model_id, _version, _session_id, pid} -> safe_status(pid, &SessionRuntime.status/1) end)
+        |> Enum.flat_map(fn {_model_id, _version, _session_id, pid} ->
+          safe_status(pid, &SessionRuntime.status/1)
+        end)
         |> Enum.sort_by(&{&1["model_id"], &1["version"], &1["session_id"]}),
       @provider_attempts_key => Map.get(provider_runtime, @provider_attempts_key, []),
       @providers_key => Map.get(provider_runtime, @providers_key, [])
@@ -108,6 +139,14 @@ defmodule Wardwright.Runtime do
       "" -> @anonymous_session
       session_id -> session_id
     end
+  end
+
+  defp safe_model_skyline_runtime_call(call) do
+    call.()
+  rescue
+    _error -> {:error, :model_skyline_runtime_unavailable}
+  catch
+    :exit, _reason -> {:error, :model_skyline_runtime_unavailable}
   end
 
   defp safe_status(pid, status_fun) do

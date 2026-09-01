@@ -106,7 +106,9 @@ defmodule Wardwright.PublicApiTest do
 
     conn =
       call(:post, "/v1/chat/completions", %{
-        "messages" => [%{"content" => "record even when transcript storage is down", "role" => "user"}],
+        "messages" => [
+          %{"content" => "record even when transcript storage is down", "role" => "user"}
+        ],
         "metadata" => %{"run_id" => "run-#{session_id}", "session_id" => session_id},
         "model" => "unit-model"
       })
@@ -158,6 +160,11 @@ defmodule Wardwright.PublicApiTest do
 
     {:ok, created} = Wardwright.ModelApiKeyStore.create("unit-model", "test-client")
 
+    assert {:ok, created["id"]} ==
+             Wardwright.ModelApiKeyStore.authenticate("unit-model", created["key"])
+
+    assert :error == Wardwright.ModelApiKeyStore.authenticate("other-model", created["key"])
+
     accepted =
       call(
         :post,
@@ -172,6 +179,7 @@ defmodule Wardwright.PublicApiTest do
     assert accepted.status == 200
 
     assert :ok = Wardwright.ModelApiKeyStore.revoke(created["id"])
+    assert :error == Wardwright.ModelApiKeyStore.authenticate("unit-model", created["key"])
 
     revoked =
       call(
@@ -358,7 +366,11 @@ defmodule Wardwright.PublicApiTest do
         %{"name" => "wardwright_policy_cache_status"},
         %{
           "input" => %{"tenant" => "synthetic"},
-          "limits" => %{"max_heap_size" => 1_000_000, "max_reductions" => 10_000, "timeout_ms" => 500},
+          "limits" => %{
+            "max_heap_size" => 1_000_000,
+            "max_reductions" => 10_000,
+            "timeout_ms" => 500
+          },
           "name" => "synthetic_dune_tool",
           "parameters" => %{
             "properties" => %{
@@ -456,7 +468,9 @@ defmodule Wardwright.PublicApiTest do
              )
 
     assert {:ok, config} = Wardwright.model_config("server-tool-toggle")
-    assert [%{"enabled" => false, "name" => "wardwright_policy_cache_status"}, _] = config["server_tools"]
+
+    assert [%{"enabled" => false, "name" => "wardwright_policy_cache_status"}, _] =
+             config["server_tools"]
 
     assert {true, "Server tool disabled_dune_tool enabled."} =
              WardwrightWeb.LustreModelAccessData.toggle_server_tool(
@@ -525,7 +539,9 @@ defmodule Wardwright.PublicApiTest do
     assert examples.status == 200
     assert Enum.any?(JSON.decode!(examples.resp_body)["data"], &(&1["id"] == "read-before-edit"))
 
-    recorded = call(:post, "/v1/policy-authoring/control-debugger/examples/read-before-edit/record", %{})
+    recorded =
+      call(:post, "/v1/policy-authoring/control-debugger/examples/read-before-edit/record", %{})
+
     assert recorded.status == 201
     recording = JSON.decode!(recorded.resp_body)
 
@@ -564,7 +580,10 @@ defmodule Wardwright.PublicApiTest do
 
     forked =
       call(:post, "/v1/policy-authoring/control-debugger/traces/fork-cursor", %{
-        "policy_overlay" => %{"id" => "api-read-before-edit", "requires_prior_read_for" => ["edit_file"]},
+        "policy_overlay" => %{
+          "id" => "api-read-before-edit",
+          "requires_prior_read_for" => ["edit_file"]
+        },
         "session_id" => session_id,
         "trace_cursor" => cursor
       })
@@ -596,7 +615,9 @@ defmodule Wardwright.PublicApiTest do
       })
 
     assert missing_cursor.status == 400
-    assert get_in(JSON.decode!(missing_cursor.resp_body), ["error", "message"]) == "trace_cursor is required"
+
+    assert get_in(JSON.decode!(missing_cursor.resp_body), ["error", "message"]) ==
+             "trace_cursor is required"
   end
 
   test "protected policy authoring API lists and evaluates Dune snippets" do
@@ -1118,8 +1139,16 @@ defmodule Wardwright.PublicApiTest do
         "status" => "completed",
         "stream_policy" => %{
           "events" => [
-            %{"action" => "retry_with_reminder", "rule_id" => "tts.no-old-client", "type" => "stream_policy.triggered"},
-            %{"retry_count" => 1, "rule_id" => "tts.retry-arbiter", "type" => "attempt.retry_requested"}
+            %{
+              "action" => "retry_with_reminder",
+              "rule_id" => "tts.no-old-client",
+              "type" => "stream_policy.triggered"
+            },
+            %{
+              "retry_count" => 1,
+              "rule_id" => "tts.retry-arbiter",
+              "type" => "attempt.retry_requested"
+            }
           ],
           "released_to_consumer" => true,
           "retry_count" => 1,
@@ -1419,7 +1448,9 @@ defmodule Wardwright.PublicApiTest do
         }
       ])
 
-    invalid_allowed = call(:post, "/v1/policy-authoring/validate", %{"artifact" => invalid_allowed_tools})
+    invalid_allowed =
+      call(:post, "/v1/policy-authoring/validate", %{"artifact" => invalid_allowed_tools})
+
     assert invalid_allowed.status == 200
     invalid_allowed_body = JSON.decode!(invalid_allowed.resp_body)
 

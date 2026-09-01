@@ -147,6 +147,17 @@ These can all be expressed as route nodes inside a Wardwright model graph. The
 user should think in terms of model middleware behavior first, and only reach
 for the specific routing pattern when it matches the job.
 
+## Experimental ModelSkyline Selection
+
+Wardwright can consume a locally published ModelSkyline `SelectionSnapshot` at
+authenticated work-unit admission and pin its exact offering-to-target mapping
+by API-key principal plus available caller scopes. Protected simulation is a
+read-only, unpinned preview. This is a deliberately narrow phase-0 integration,
+with important local trust, restart, capacity, schema-validation, and
+provider-error-fallback limits. See
+[ModelSkyline Local Selection Consumer](model-skyline-local-selection.html) before
+enabling it.
+
 ## Policy Control
 
 The model graph is the baseline model definition. Route policy runs before
