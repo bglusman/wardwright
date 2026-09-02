@@ -1,3 +1,63 @@
+defmodule Wardwright.Test.ModelSkylineLoopbackProvider do
+  @moduledoc false
+
+  import Plug.Conn
+
+  def init(options), do: options
+
+  def call(conn, options) do
+    case {conn.method, conn.request_path} do
+      {"POST", "/chat/completions"} ->
+        {:ok, body, conn} = read_body(conn)
+        request = JSON.decode!(body)
+        controller = Keyword.fetch!(options, :controller)
+        label = Keyword.fetch!(options, :label)
+
+        status =
+          Agent.get_and_update(controller, fn state ->
+            {state.status,
+             %{
+               state
+               | authorizations: state.authorizations ++ [get_req_header(conn, "authorization")],
+                 calls: state.calls + 1,
+                 models: state.models ++ [request["model"]],
+                 prompts: state.prompts ++ [get_in(request, ["messages", Access.at(0), "content"])]
+             }}
+          end)
+
+        if status == 200 do
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            200,
+            JSON.encode!(%{
+              "choices" => [
+                %{
+                  "finish_reason" => "stop",
+                  "index" => 0,
+                  "message" => %{
+                    "content" => "loopback-#{label}-response-sentinel",
+                    "role" => "assistant"
+                  }
+                }
+              ],
+              "usage" => %{
+                "completion_tokens" => 2,
+                "prompt_tokens" => 3,
+                "total_tokens" => 5
+              }
+            })
+          )
+        else
+          send_resp(conn, status, "synthetic provider failure")
+        end
+
+      _ ->
+        send_resp(conn, 404, "not found")
+    end
+  end
+end
+
 defmodule Wardwright.ModelSkyline.WorkUnitTest do
   use Wardwright.RouterCase
 
@@ -5,6 +65,7 @@ defmodule Wardwright.ModelSkyline.WorkUnitTest do
   alias Wardwright.ModelSkyline.CanonicalJson
   alias Wardwright.ModelSkyline.WorkUnit
   alias Wardwright.Runtime.ModelRuntime
+  alias Wardwright.Test.ModelSkylineLoopbackProvider
 
   @fixture_a Path.expand("fixtures/model_skyline/selection-a.json", __DIR__)
   @fixture_b Path.expand("fixtures/model_skyline/selection-b.json", __DIR__)
@@ -278,6 +339,95 @@ defmodule Wardwright.ModelSkyline.WorkUnitTest do
     refute inspect(metadata) =~ "receipt-run-secret"
   end
 
+  test "real provider transport follows the snapshot order and keeps an admitted run pinned", %{
+    directory: directory
+  } do
+    previous_allow_test_credentials = System.get_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS")
+    previous_test_key = System.get_env("WARDWRIGHT_TEST_OPENAI_KEY")
+    System.put_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS", "1")
+    System.put_env("WARDWRIGHT_TEST_OPENAI_KEY", "test-openai-key")
+
+    on_exit(fn ->
+      restore_system_env("WARDWRIGHT_ALLOW_TEST_CREDENTIALS", previous_allow_test_credentials)
+      restore_system_env("WARDWRIGHT_TEST_OPENAI_KEY", previous_test_key)
+    end)
+
+    {primary_url, primary_controller} = start_loopback_provider("primary")
+    {fallback_url, fallback_controller} = start_loopback_provider("fallback")
+    path = Path.join(directory, "selection.json")
+    snapshot_a = write_fresh_snapshot(path, @fixture_a)
+    {_config, model_id} = install_provider_config(path, primary_url, fallback_url)
+    {:ok, api_key} = Wardwright.ModelApiKeyStore.create(model_id, "loopback-client")
+    prompt_sentinel = "model-skyline-request-content-sentinel"
+
+    admitted = serving_request(model_id, api_key["key"], "run-a", prompt_sentinel)
+
+    assert admitted.status == 200
+
+    assert get_in(JSON.decode!(admitted.resp_body), [
+             "choices",
+             Access.at(0),
+             "message",
+             "content"
+           ]) == "loopback-primary-response-sentinel"
+
+    assert %{
+             authorizations: [["Bearer test-openai-key"]],
+             calls: 1,
+             models: ["primary"],
+             prompts: [^prompt_sentinel]
+           } =
+             provider_state(primary_controller)
+
+    assert %{calls: 0} = provider_state(fallback_controller)
+
+    admitted_receipt = receipt_for(admitted)
+    admitted_evidence = get_in(admitted_receipt, ["decision", "model_skyline"])
+    assert admitted_evidence["snapshot_id"] == snapshot_a
+    refute JSON.encode!(admitted_receipt) =~ prompt_sentinel
+    refute JSON.encode!(admitted_receipt) =~ "loopback-primary-response-sentinel"
+
+    snapshot_b = replace_fresh_snapshot(path, @fixture_b)
+
+    pinned = serving_request(model_id, api_key["key"], "run-a", prompt_sentinel)
+    assert pinned.status == 200
+    assert get_in(receipt_for(pinned), ["decision", "model_skyline", "snapshot_id"]) == snapshot_a
+
+    assert %{calls: 2, prompts: [^prompt_sentinel, ^prompt_sentinel]} =
+             provider_state(primary_controller)
+
+    assert %{calls: 0} = provider_state(fallback_controller)
+
+    rotated = serving_request(model_id, api_key["key"], "run-b", prompt_sentinel)
+    assert rotated.status == 200
+
+    assert get_in(JSON.decode!(rotated.resp_body), [
+             "choices",
+             Access.at(0),
+             "message",
+             "content"
+           ]) == "loopback-fallback-response-sentinel"
+
+    assert get_in(receipt_for(rotated), ["decision", "model_skyline", "snapshot_id"]) == snapshot_b
+    assert %{calls: 2} = provider_state(primary_controller)
+
+    assert %{
+             authorizations: [["Bearer test-openai-key"]],
+             calls: 1,
+             models: ["fallback"],
+             prompts: [^prompt_sentinel]
+           } =
+             provider_state(fallback_controller)
+
+    File.write!(path, ~s({"not":"a selection"}))
+    primary_calls = provider_state(primary_controller).calls
+    fallback_calls = provider_state(fallback_controller).calls
+    rejected = serving_request(model_id, api_key["key"], "run-c", prompt_sentinel)
+    assert rejected.status == 429
+    assert provider_state(primary_controller).calls == primary_calls
+    assert provider_state(fallback_controller).calls == fallback_calls
+  end
+
   test "protected simulation resolves a read-only preview without an API key or pin", %{
     directory: directory
   } do
@@ -416,15 +566,95 @@ defmodule Wardwright.ModelSkyline.WorkUnitTest do
     {normalized, model_id}
   end
 
-  defp write_fresh_snapshot(path) do
+  defp install_provider_config(path, primary_url, fallback_url) do
+    {config, model_id} = install_config(path)
+
+    targets =
+      Enum.map(config["targets"], fn
+        %{"model" => "canned/primary"} = target ->
+          provider_target(target, primary_url)
+
+        %{"model" => "canned/fallback"} = target ->
+          provider_target(target, fallback_url)
+
+        target ->
+          target
+      end)
+
+    assert {:ok, normalized} = config |> Map.put("targets", targets) |> Wardwright.put_config()
+    {normalized, model_id}
+  end
+
+  defp provider_target(target, base_url) do
+    target
+    |> Map.delete("canned_outputs")
+    |> Map.merge(%{
+      "credential_env" => "WARDWRIGHT_TEST_OPENAI_KEY",
+      "provider_base_url" => base_url,
+      "provider_kind" => "openai-compatible"
+    })
+  end
+
+  defp start_loopback_provider(label) do
+    {:ok, controller} =
+      Agent.start_link(fn ->
+        %{authorizations: [], calls: 0, models: [], prompts: [], status: 200}
+      end)
+
+    ref = {:wardwright_model_skyline_provider, System.unique_integer([:positive])}
+
+    {:ok, _pid} =
+      Plug.Cowboy.http(
+        ModelSkylineLoopbackProvider,
+        [controller: controller, label: label],
+        ip: {127, 0, 0, 1},
+        ref: ref,
+        port: 0
+      )
+
+    port = :ranch.get_port(ref)
+
+    on_exit(fn ->
+      Plug.Cowboy.shutdown(ref)
+
+      if Process.alive?(controller) do
+        Agent.stop(controller)
+      end
+    end)
+
+    {"http://127.0.0.1:#{port}", controller}
+  end
+
+  defp provider_state(controller), do: Agent.get(controller, & &1)
+
+  defp serving_request(model_id, api_key, run_id, prompt) do
+    call(
+      :post,
+      "/v1/chat/completions",
+      %{messages: [%{content: prompt, role: "user"}], model: model_id},
+      [
+        {"authorization", "Bearer #{api_key}"},
+        {"x-wardwright-run-id", run_id}
+      ]
+    )
+  end
+
+  defp write_fresh_snapshot(path, fixture \\ @fixture_a) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     write_snapshot_at(
       path,
-      @fixture_a,
+      fixture,
       DateTime.add(now, -60, :second),
       DateTime.add(now, 3_600, :second)
     )
+  end
+
+  defp replace_fresh_snapshot(path, fixture) do
+    replacement = path <> ".replacement"
+    snapshot_id = write_fresh_snapshot(replacement, fixture)
+    File.rename!(replacement, path)
+    snapshot_id
   end
 
   defp write_snapshot_at(path, fixture, generated_at, valid_until) do
@@ -483,4 +713,7 @@ defmodule Wardwright.ModelSkyline.WorkUnitTest do
       "tenant_id" => %{"source" => "header", "value" => tenant_id}
     }
   end
+
+  defp restore_system_env(name, nil), do: System.delete_env(name)
+  defp restore_system_env(name, value), do: System.put_env(name, value)
 end
