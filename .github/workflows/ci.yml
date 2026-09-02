@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0
       - uses: erlef/setup-beam@8251c48667b97e88a0a24ec512f5b72a039fcea7 # v1
         with:
-          otp-version: "29.0.5"
+          otp-version: "29.0.6"
           elixir-version: "1.20.0-rc.6"
           gleam-version: "1.17.0"
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -33,9 +33,9 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: app/_build/assay
-          key: ${{ runner.os }}-beam-otp29-elixir120-gleam117-assay-${{ hashFiles('app/mix.lock') }}
+          key: ${{ runner.os }}-beam-otp29.0.6-elixir120-gleam117-assay-${{ hashFiles('app/mix.lock') }}
           restore-keys: |
-            ${{ runner.os }}-beam-otp29-elixir120-gleam117-assay-
+            ${{ runner.os }}-beam-otp29.0.6-elixir120-gleam117-assay-
       - name: Check Gleam formatting
         run: gleam format --check src
         working-directory: app
@@ -81,6 +81,9 @@ jobs:
           persist-credentials: false
       - uses: erlef/setup-beam@8251c48667b97e88a0a24ec512f5b72a039fcea7 # v1
         with:
+          # Temporary non-publishing compatibility smoke: Burrito's ERTS mirror
+          # does not yet carry OTP 29.0.6. Release builds remain pinned to 29.0.6.
+          # Tracked by https://github.com/bglusman/wardwright/issues/83.
           otp-version: "29.0.5"
           elixir-version: "1.20.0-rc.6"
           gleam-version: "1.17.0"
