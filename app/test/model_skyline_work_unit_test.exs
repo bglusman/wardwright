@@ -20,7 +20,9 @@ defmodule Wardwright.Test.ModelSkylineLoopbackProvider do
                state
                | authorizations: state.authorizations ++ [get_req_header(conn, "authorization")],
                  calls: state.calls + 1,
-                 models: state.models ++ [request["model"]]
+                 models: state.models ++ [request["model"]],
+                 prompts:
+                   state.prompts ++ [get_in(request, ["messages", Access.at(0), "content"])]
              }}
           end)
 
@@ -370,7 +372,12 @@ defmodule Wardwright.ModelSkyline.WorkUnitTest do
              "content"
            ]) == "loopback-primary-response-sentinel"
 
-    assert %{authorizations: [["Bearer test-openai-key"]], calls: 1, models: ["primary"]} =
+    assert %{
+             authorizations: [["Bearer test-openai-key"]],
+             calls: 1,
+             models: ["primary"],
+             prompts: [^prompt_sentinel]
+           } =
              provider_state(primary_controller)
 
     assert %{calls: 0} = provider_state(fallback_controller)
@@ -386,7 +393,8 @@ defmodule Wardwright.ModelSkyline.WorkUnitTest do
     pinned = serving_request(model_id, api_key["key"], "run-a", prompt_sentinel)
     assert pinned.status == 200
     assert get_in(receipt_for(pinned), ["decision", "model_skyline", "snapshot_id"]) == snapshot_a
-    assert %{calls: 2} = provider_state(primary_controller)
+    assert %{calls: 2, prompts: [^prompt_sentinel, ^prompt_sentinel]} =
+             provider_state(primary_controller)
     assert %{calls: 0} = provider_state(fallback_controller)
 
     rotated = serving_request(model_id, api_key["key"], "run-b", prompt_sentinel)
@@ -402,7 +410,12 @@ defmodule Wardwright.ModelSkyline.WorkUnitTest do
     assert get_in(receipt_for(rotated), ["decision", "model_skyline", "snapshot_id"]) == snapshot_b
     assert %{calls: 2} = provider_state(primary_controller)
 
-    assert %{authorizations: [["Bearer test-openai-key"]], calls: 1, models: ["fallback"]} =
+    assert %{
+             authorizations: [["Bearer test-openai-key"]],
+             calls: 1,
+             models: ["fallback"],
+             prompts: [^prompt_sentinel]
+           } =
              provider_state(fallback_controller)
 
     File.write!(path, ~s({"not":"a selection"}))
@@ -583,7 +596,9 @@ defmodule Wardwright.ModelSkyline.WorkUnitTest do
 
   defp start_loopback_provider(label) do
     {:ok, controller} =
-      Agent.start_link(fn -> %{authorizations: [], calls: 0, models: [], status: 200} end)
+      Agent.start_link(fn ->
+        %{authorizations: [], calls: 0, models: [], prompts: [], status: 200}
+      end)
 
     ref = {:wardwright_model_skyline_provider, System.unique_integer([:positive])}
 
