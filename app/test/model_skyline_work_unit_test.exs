@@ -21,8 +21,7 @@ defmodule Wardwright.Test.ModelSkylineLoopbackProvider do
                | authorizations: state.authorizations ++ [get_req_header(conn, "authorization")],
                  calls: state.calls + 1,
                  models: state.models ++ [request["model"]],
-                 prompts:
-                   state.prompts ++ [get_in(request, ["messages", Access.at(0), "content"])]
+                 prompts: state.prompts ++ [get_in(request, ["messages", Access.at(0), "content"])]
              }}
           end)
 
@@ -393,8 +392,10 @@ defmodule Wardwright.ModelSkyline.WorkUnitTest do
     pinned = serving_request(model_id, api_key["key"], "run-a", prompt_sentinel)
     assert pinned.status == 200
     assert get_in(receipt_for(pinned), ["decision", "model_skyline", "snapshot_id"]) == snapshot_a
+
     assert %{calls: 2, prompts: [^prompt_sentinel, ^prompt_sentinel]} =
              provider_state(primary_controller)
+
     assert %{calls: 0} = provider_state(fallback_controller)
 
     rotated = serving_request(model_id, api_key["key"], "run-b", prompt_sentinel)
@@ -606,6 +607,7 @@ defmodule Wardwright.ModelSkyline.WorkUnitTest do
       Plug.Cowboy.http(
         ModelSkylineLoopbackProvider,
         [controller: controller, label: label],
+        ip: {127, 0, 0, 1},
         ref: ref,
         port: 0
       )
